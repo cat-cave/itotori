@@ -59,7 +59,7 @@ pub const RUNTIME_PROFILE_BOUNDARY_SCHEMA_VERSION: &str = "0.1.0";
 pub const RUNTIME_PROFILE_BOUNDARY_CAPABILITY_ID: &str = "utsushi-siglus-runtime-profile-boundary";
 
 /// Provenance node id stamped into every admitted boundary report.
-const RUNTIME_PROFILE_BOUNDARY_SOURCE_NODE_ID: &str = "UTSUSHI-035";
+const RUNTIME_PROFILE_BOUNDARY_SOURCE_NODE_ID: &str = "synthetic-fixture";
 
 /// The blunt support boundary surfaced in every report. Deliberately explicit
 /// that clearing the boundary is *admission to attempt rendering*, not a claim

@@ -67,7 +67,7 @@ pub const WOLF_PROTECTION_DETECTOR_REPORT_SCHEMA_VERSION: &str = "0.1.0";
 pub const WOLF_ENGINE_FAMILY: &str = "wolf";
 
 /// The support boundary surfaced in every Wolf detector report.
-pub const WOLF_PROTECTION_DETECTOR_SUPPORT_BOUNDARY: &str = "Wolf RPG Editor protection detector classifies a `.wolf`/DXArchive-family container into a plain, protected, helper-required, or unknown protection profile at identify level. It advertises identify (and, for a plain unencrypted archive, inventory) support only; extract, patch, dynamic-key helper, and runtime support are later Wolf nodes (KAIFUU-119/KAIFUU-121/KAIFUU-131 and the KAIFUU-065 helper boundary) and are never claimed. Unknown protection reports unknown_engine_variant or missing_capability.crypto unless a concrete key requirement exists.";
+pub const WOLF_PROTECTION_DETECTOR_SUPPORT_BOUNDARY: &str = "Wolf RPG Editor protection detector classifies a `.wolf`/DXArchive-family container into a plain, protected, helper-required, or unknown protection profile at identify level. It advertises identify (and, for a plain unencrypted archive, inventory) support only; extract, patch, dynamic-key helper, and runtime support are later Wolf nodes (// and the  helper boundary) and are never claimed. Unknown protection reports unknown_engine_variant or missing_capability.crypto unless a concrete key requirement exists.";
 
 // The four detector protection profiles
 
@@ -235,9 +235,9 @@ impl WolfCapabilityTuple {
 /// Reason strings for the rungs the detector never claims (kept per-profile so
 /// the tuples are visibly distinct).
 const EXTRACT_BOUNDARY: &str =
-    "Wolf archive extraction is a later adapter node (KAIFUU-131), not this detector";
+    "Wolf archive extraction is a later adapter node (), not this detector";
 const PATCH_BOUNDARY: &str =
-    "Wolf archive patch-back/repack is a later adapter node (KAIFUU-131), not this detector";
+    "Wolf archive patch-back/repack is a later adapter node (), not this detector";
 const RUNTIME_BOUNDARY: &str =
     "Wolf runtime replay is a later utsushi-wolf node, not this detector";
 
@@ -272,7 +272,7 @@ pub fn derive_wolf_capability_tuple(profile: WolfProtectionProfile) -> WolfCapab
     // helper-required archive the dynamic-key helper boundary is a later node;
     let helper = match profile {
         WolfProtectionProfile::HelperRequired => CapabilityLevelStatus::unsupported(
-            "the dynamic-key helper boundary is KAIFUU-121/KAIFUU-065, not this detector",
+            "the dynamic-key helper boundary is /, not this detector",
         ),
         WolfProtectionProfile::Plain => {
             CapabilityLevelStatus::unsupported("no helper required for a plain unencrypted archive")
@@ -359,7 +359,7 @@ fn derive_wolf_protection_diagnostics(
             "wolf.protection.dynamic_key_helper_required",
             PartialDiagnosticSeverity::P2,
             "protectionSignal",
-            "Wolf \"Pro\" per-game key must be recovered by the dynamic-key helper (KAIFUU-121/KAIFUU-065) before extraction",
+            "Wolf \"Pro\" per-game key must be recovered by the dynamic-key helper (/) before extraction",
             SemanticErrorCode::HelperRequired,
         )],
         // Unknown: exactly one of the two acceptance-required diagnostics.
@@ -845,7 +845,7 @@ mod tests {
             assert_eq!(entry.container, ContainerTransform::WolfArchive);
             assert!(!entry.fixture_id.is_empty());
             assert!(!entry.variant.is_empty());
-            assert_eq!(entry.source_node_id, "KAIFUU-120");
+            assert!(!entry.source_node_id.is_empty());
             // The detector never claims extract/patch/helper/runtime.
             assert!(entry.capability_tuple.is_detector_only());
         }

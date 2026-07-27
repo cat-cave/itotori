@@ -74,7 +74,7 @@ fn classifies_every_staged_gameexe_ini_to_zero_unknown() {
         // Dump the breakdown to stderr so an auditor can verify the
         // zero-unknown claim from `cargo test -- --nocapture` output.
         eprintln!(
-            "\n=== KAIFUU-190 {label} Gameexe.ini classification breakdown ===\n\
+            "\n===  {label} Gameexe.ini classification breakdown ===\n\
              path:              {path}\n\
              total entries:     {total}\n\
              bridge_unit:       {bu}\n\

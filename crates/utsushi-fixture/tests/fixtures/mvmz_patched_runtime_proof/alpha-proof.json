@@ -41,12 +41,12 @@
     "adapterName": "utsushi-browser",
     "reportEvidenceTier": "E1",
     "runtimeReportId": "019ed050-0000-7000-8000-000000001000",
-    "runtimeTraceSource": "UTSUSHI-006"
+    "runtimeTraceSource": "synthetic-fixture"
   },
   "engine": "rpg_maker_mv_mz",
   "limitations": [
-    "No UTSUSHI-065 screenshot evidence supplied; the proof rests on the E1 text + choice observation trace alone.",
-    "Runtime-observation proof is an evidence VERDICT over a consumed UTSUSHI-006 trace: it re-derives the E1-vs-static distinction from the static fixture bytes and does not embed raw game bytes or pixels."
+    "No synthetic-fixture screenshot evidence supplied; the proof rests on the E1 text + choice observation trace alone.",
+    "Runtime-observation proof is an evidence VERDICT over a consumed synthetic-fixture trace: it re-derives the E1-vs-static distinction from the static fixture bytes and does not embed raw game bytes or pixels."
   ],
   "observation": {
     "adapterId": {

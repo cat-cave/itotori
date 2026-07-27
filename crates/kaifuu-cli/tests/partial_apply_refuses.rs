@@ -57,7 +57,7 @@ fn write_file(root: &std::path::Path, relative: &str, bytes: &[u8]) {
 fn write_partial_extract_envelope(path: &std::path::Path) {
     let envelope = serde_json::json!({
         "schemaVersion": "0.1.0",
-        "reportId": "kaifuu-partial-adapter-kaifuu-238-test",
+        "reportId": "kaifuu-partial-adapter--test",
         "adapterId": "kaifuu-reallive",
         "detected": false,
         "partial": true,
@@ -78,7 +78,7 @@ fn write_partial_extract_envelope(path: &std::path::Path) {
 #[test]
 fn partial_apply_refuses_delta_built_from_partial_source_extract() {
     let work = tempfile::Builder::new()
-        .prefix("kaifuu-238-partial-apply-refuses")
+        .prefix("-partial-apply-refuses")
         .tempdir()
         .expect("tempdir");
     let root = work.path();
@@ -163,7 +163,7 @@ fn partial_apply_accepts_delta_built_from_complete_source_extract() {
     // --source-extract is provided. This guards against accidentally
     // marking every delta as partial.
     let work = tempfile::Builder::new()
-        .prefix("kaifuu-238-partial-apply-accepts-complete")
+        .prefix("-partial-apply-accepts-complete")
         .tempdir()
         .expect("tempdir");
     let root = work.path();

@@ -27,7 +27,7 @@
     "evidenceTier": "E2",
     "observation": {
       "observationHookEventCount": 3,
-      "source": "UTSUSHI-006",
+      "source": "synthetic-fixture",
       "traceEventCount": 3
     },
     "replayPack": {
@@ -35,7 +35,7 @@
       "diagnosticCount": 0,
       "linkedEventCount": 2,
       "observationSource": "static_replay",
-      "source": "UTSUSHI-033"
+      "source": "synthetic-fixture"
     },
     "runtimeReportId": "58a98a57-e18f-75dc-8bce-19880e3b9856"
   },

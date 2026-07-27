@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "pathId": "kaifuu-asset-ocr-ui-title-card",
-  "sourceNodeId": "KAIFUU-026",
+  "sourceNodeId": "synthetic-fixture",
   "supportBoundary": "Kaifuu asset-OCR is a DETERMINISTIC in-process prototype: it decodes uncompressed (stored-deflate) 8-bit grayscale PNG fixtures and matches fixed-pitch 5x7 glyph cells against a small reference font. It never shells out to an external OCR binary and never reads compressed retail image bytes. Recognized text is published in recovered_text ONLY when every glyph matches exactly (Hamming distance 0); any fuzzy or unrecognized region is marked uncertain, its recovered_text is None, and it is surfaced as a structured finding carrying provenance + confidence + a labelled candidate — OCR output is evidence, never asserted ground-truth translation source.",
   "status": "passed",
   "asset": {

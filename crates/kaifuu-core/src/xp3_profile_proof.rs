@@ -162,7 +162,7 @@ pub fn xp3_profile_proof(
                         None
                     },
                     remediation: Some(
-                        "archives that carry the plain magic but cannot be inventoried route to encrypted; KAIFUU-038 makes no decryption or patch-back claim".to_string(),
+                        "archives that carry the plain magic but cannot be inventoried route to encrypted;  makes no decryption or patch-back claim".to_string(),
                     ),
                 });
                 // Route per inventory failure mode: the
@@ -197,7 +197,7 @@ pub fn xp3_profile_proof(
         Xp3ProfileClassification::Encrypted => {
             patch_capability_level = Xp3PatchCapabilityLevel::Unsupported;
             routing_remediation = Some(
-                "encrypted XP3 is routed for diagnostics only; KAIFUU-038 makes no decryption, extraction, or patch-back claim".to_string(),
+                "encrypted XP3 is routed for diagnostics only;  makes no decryption, extraction, or patch-back claim".to_string(),
             );
             diagnostics.push(Xp3ProfileProofDiagnostic {
                 code: "xp3.encrypted.unsupported".to_string(),
@@ -213,7 +213,7 @@ pub fn xp3_profile_proof(
         Xp3ProfileClassification::Compressed => {
             patch_capability_level = Xp3PatchCapabilityLevel::Unsupported;
             routing_remediation = Some(
-                "compressed XP3 is routed for diagnostics only; KAIFUU-098 makes no decompression, extraction, or patch-back claim".to_string(),
+                "compressed XP3 is routed for diagnostics only;  makes no decompression, extraction, or patch-back claim".to_string(),
             );
             diagnostics.push(Xp3ProfileProofDiagnostic {
                 code: "xp3.compressed.unsupported".to_string(),
@@ -229,7 +229,7 @@ pub fn xp3_profile_proof(
         Xp3ProfileClassification::HelperRequired => {
             patch_capability_level = Xp3PatchCapabilityLevel::Unsupported;
             routing_remediation = Some(
-                "helper-required XP3 archives require a KAIFUU-085 helper result; KAIFUU-038 makes no extraction or patch-back claim until the helper is recorded".to_string(),
+                "helper-required XP3 archives require a  helper result;  makes no extraction or patch-back claim until the helper is recorded".to_string(),
             );
             diagnostics.push(Xp3ProfileProofDiagnostic {
                 code: "xp3.helper_required".to_string(),

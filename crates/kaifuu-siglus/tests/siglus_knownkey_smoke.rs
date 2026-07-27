@@ -48,7 +48,7 @@ fn known_key_smoke_extracts_patches_verifies_and_reports() {
 
     // Overall: green, and HONESTLY narrow (not broad Siglus support).
     assert_eq!(report.status, OperationStatus::Passed);
-    assert_eq!(report.source_node_id, "KAIFUU-070");
+    assert_eq!(report.source_node_id, fixture.source_node_id);
     assert!(!report.capability.broad_siglus_support);
     assert!(!report.capability.shells_out);
     assert_eq!(report.capability.encoding, SiglusKnownKeyEncoding::Utf16Le);

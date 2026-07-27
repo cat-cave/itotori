@@ -117,7 +117,7 @@ impl WolfEncryptedSmokeFixture {
         Self {
             schema_version: WOLF_ENCRYPTED_SMOKE_SCHEMA_VERSION.to_string(),
             fixture_id: "wolf-encrypted-archive-smoke-synthetic".to_string(),
-            source_node_id: "KAIFUU-073".to_string(),
+            source_node_id: "synthetic-fixture".to_string(),
             engine_family: WOLF_ENGINE_FAMILY.to_string(),
             container: WOLF_ENCRYPTED_SMOKE_CONTAINER.to_string(),
             protection_profile: WolfProtectionProfile::Protected,

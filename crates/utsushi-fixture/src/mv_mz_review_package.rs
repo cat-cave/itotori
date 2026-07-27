@@ -302,7 +302,7 @@ fn runtime_trace_evidence_section(
             .and_then(Value::as_str)
             .unwrap_or("static_replay");
         json!({
-            "source": "UTSUSHI-033",
+            "source": "synthetic-fixture",
             "available": true,
             "observationSource": observation_source,
             "linkedEventCount": linked_event_count,
@@ -313,17 +313,17 @@ fn runtime_trace_evidence_section(
             semantic_code: "utsushi.review_package.replay_pack_absent",
             severity: "warning",
             surface: "runtime_trace_evidence.replay_pack",
-            message: "No UTSUSHI-033 replay-pack trace was supplied; runtime trace evidence \
-                      is limited to the UTSUSHI-006 observation-hook trace events."
+            message: "No  replay-pack trace was supplied; runtime trace evidence \
+                      is limited to the  observation-hook trace events."
                 .to_string(),
         });
         limitations.push(
-            "No UTSUSHI-033 replay-pack trace attached; message + choice replay evidence is \
+            "No  replay-pack trace attached; message + choice replay evidence is \
              absent from this package."
                 .to_string(),
         );
         json!({
-            "source": "UTSUSHI-033",
+            "source": "synthetic-fixture",
             "available": false,
         })
     };
@@ -332,7 +332,7 @@ fn runtime_trace_evidence_section(
         "runtimeReportId": runtime_report_id,
         "evidenceTier": evidence_tier,
         "observation": {
-            "source": "UTSUSHI-006",
+            "source": "synthetic-fixture",
             "traceEventCount": trace_event_count,
             "observationHookEventCount": observation_event_count,
         },

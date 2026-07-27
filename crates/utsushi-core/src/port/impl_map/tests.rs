@@ -101,7 +101,7 @@ fn accepts_supported_partial_unsupported_and_research_subsystem_variants_in_one_
         status: SubsystemStatus::Research {
             evidence_refs: vec![EvidenceRef {
                 kind: EvidenceKind::RoadmapNode,
-                locator: "UTSUSHI-146".to_string(),
+                locator: "synthetic-fixture".to_string(),
                 caption: "Reference vm research anchor".to_string(),
             }],
         },
@@ -164,7 +164,7 @@ fn accepts_research_subsystem_with_roadmap_node_evidence_ref() {
     map.subsystems[0].status = SubsystemStatus::Research {
         evidence_refs: vec![EvidenceRef {
             kind: EvidenceKind::RoadmapNode,
-            locator: "UTSUSHI-146".to_string(),
+            locator: "synthetic-fixture".to_string(),
             caption: "Reference vm research anchor".to_string(),
         }],
     };
@@ -222,7 +222,7 @@ fn rejects_research_evidence_ref_with_empty_caption() {
     map.subsystems[0].status = SubsystemStatus::Research {
         evidence_refs: vec![EvidenceRef {
             kind: EvidenceKind::RoadmapNode,
-            locator: "UTSUSHI-146".to_string(),
+            locator: "synthetic-fixture".to_string(),
             caption: "  ".to_string(),
         }],
     };

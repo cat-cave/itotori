@@ -62,7 +62,7 @@ pub const XP3_PATCH_SCHEMA_VERSION: &str = "0.1.0";
 pub const XP3_PATCH_CAPABILITY_ID: &str = "kaifuu-kirikiri-xp3-patch-back-smoke";
 
 /// The blunt support boundary carried in every report.
-pub const XP3_PATCH_SUPPORT_BOUNDARY: &str = "Kaifuu KiriKiri XP3 patch-back smoke extends the KAIFUU-100 profiled decrypt fixture: it decrypts a SYNTHETIC encrypted XP3 through the declared fixture secret ref, applies one trivial text replacement to a single member, re-enciphers with the same fixture key, recomputes each member adlr adler-32, and repacks the whole archive (patch-back mode repack_archive). The patched output is re-decrypted through the DECLARED secret requirement id and verified against the declared fixture profile: the patched member carries the new text and every other member is byte-identical. The identity rebuild (no change) is byte-identical to the source. This is NOT commercial encrypted-XP3 coverage and the fixture crypt filter is NOT a real per-title CxDec/TVP filter. No retail bytes and no raw key material leave the module.";
+pub const XP3_PATCH_SUPPORT_BOUNDARY: &str = "Kaifuu KiriKiri XP3 patch-back smoke extends the  profiled decrypt fixture: it decrypts a SYNTHETIC encrypted XP3 through the declared fixture secret ref, applies one trivial text replacement to a single member, re-enciphers with the same fixture key, recomputes each member adlr adler-32, and repacks the whole archive (patch-back mode repack_archive). The patched output is re-decrypted through the DECLARED secret requirement id and verified against the declared fixture profile: the patched member carries the new text and every other member is byte-identical. The identity rebuild (no change) is byte-identical to the source. This is NOT commercial encrypted-XP3 coverage and the fixture crypt filter is NOT a real per-title CxDec/TVP filter. No retail bytes and no raw key material leave the module.";
 
 /// One trivial text replacement: within `member_id`, replace the first
 /// occurrence of `find` with `replace`. Fixture-safe, public synthetic text.
@@ -100,7 +100,7 @@ impl Xp3PatchManifest {
         Self {
             schema_version: XP3_PATCH_SCHEMA_VERSION.to_string(),
             manifest_id: "kirikiri-xp3-patch-back-manifest".to_string(),
-            source_node_id: "KAIFUU-101".to_string(),
+            source_node_id: "synthetic-fixture".to_string(),
             replacements: vec![Xp3TextReplacement {
                 member_id: "scenario/intro.ks".to_string(),
                 find: "[synthetic-kirikiri-xp3-crypt-line-0]".to_string(),
@@ -635,7 +635,7 @@ mod tests {
         Xp3CryptFixture {
             schema_version: XP3_CRYPT_SCHEMA_VERSION.to_string(),
             fixture_id: "kirikiri-xp3-patch-back-fixture".to_string(),
-            source_node_id: "KAIFUU-101".to_string(),
+            source_node_id: "synthetic-fixture".to_string(),
             engine_family: XP3_CRYPT_ENGINE_FAMILY.to_string(),
             container: XP3_CRYPT_CONTAINER.to_string(),
             crypto_profile: Xp3CryptoProfile::XorSimpleCryptFixture,
@@ -740,7 +740,7 @@ mod tests {
         let manifest = Xp3PatchManifest {
             schema_version: XP3_PATCH_SCHEMA_VERSION.to_string(),
             manifest_id: "bad".to_string(),
-            source_node_id: "KAIFUU-101".to_string(),
+            source_node_id: "synthetic-fixture".to_string(),
             replacements: vec![Xp3TextReplacement {
                 member_id: "scenario/intro.ks".to_string(),
                 find: "this-text-does-not-exist".to_string(),
@@ -761,7 +761,7 @@ mod tests {
         let manifest = Xp3PatchManifest {
             schema_version: XP3_PATCH_SCHEMA_VERSION.to_string(),
             manifest_id: "bad".to_string(),
-            source_node_id: "KAIFUU-101".to_string(),
+            source_node_id: "synthetic-fixture".to_string(),
             replacements: vec![Xp3TextReplacement {
                 member_id: "no/such/member.ks".to_string(),
                 find: "x".to_string(),

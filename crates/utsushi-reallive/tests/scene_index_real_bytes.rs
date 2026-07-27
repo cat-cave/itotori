@@ -79,7 +79,7 @@ fn scene_index_real_bytes_parses_reallive_real_bytes_seen_txt_into_198_populated
     let index = RealSceneIndex::parse(&bytes).expect(
         "Sweetie HD REALLIVEDATA/Seen.txt must parse cleanly through \
          utsushi-reallive's own parser; silent zero-state on real bytes is the bug \
-         UTSUSHI-201 fixes",
+          fixes",
     );
 
     assert_eq!(

@@ -54,7 +54,7 @@ use crate::ids::deterministic_uuid7;
 use crate::patchback::{FileEdit, PatchbackError, patch_file_bytes};
 
 /// The fixture-profile id every unit is stamped.
-pub const FIXTURE_PROFILE_ID: &str = "KAIFUU-111";
+pub const FIXTURE_PROFILE_ID: &str = "synthetic-fixture";
 
 /// The canonical `js/plugins.js` file name.
 pub const PLUGINS_JS_FILE: &str = "plugins.js";
@@ -751,7 +751,7 @@ mod tests {
         assert!(p.fixture_hash.starts_with("sha256:"));
         assert_eq!(p.extracted_pointers, vec!["/windowTitle", "/okButton"]);
         for u in &out.units {
-            assert_eq!(u.fixture_profile_id, "KAIFUU-111");
+            assert_eq!(u.fixture_profile_id, "synthetic-fixture");
             assert_eq!(u.plugin_id, "com.example.MessageBox");
         }
     }

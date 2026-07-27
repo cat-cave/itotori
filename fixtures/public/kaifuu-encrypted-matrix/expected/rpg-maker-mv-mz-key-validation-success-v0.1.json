@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "fixtureId": "kaifuu-rpg-maker-mv-mz-key-validation-success",
   "status": "passed",
-  "supportBoundary": "KAIFUU-114 validates fixture-safe MV/MZ key evidence only; it does not decrypt, extract, replace, or patch encrypted media.",
+  "supportBoundary": "The key-validation report validates fixture-safe MV/MZ key evidence only; it does not decrypt, extract, replace, or patch encrypted media.",
   "records": [
     {
       "requirementId": "rpg-maker-mv-mz-asset-key",

@@ -31,8 +31,7 @@ const BANK_INDEX_OUT_OF_RANGE_CODE: &str = "utsushi.reallive.bank_index_out_of_r
 const EMPTY_SNAPSHOT_BYTES_CEILING: usize = 1024;
 
 fn snapshot_request(tick: u64) -> SnapshotRequest<'static> {
-    SnapshotRequest::new("run-utsushi-206", "2026-06-23T00:00:00Z", EvidenceTier::E2)
-        .with_tick(tick)
+    SnapshotRequest::new("run-", "2026-06-23T00:00:00Z", EvidenceTier::E2).with_tick(tick)
 }
 
 fn take(banks: &VarBanks, tick: u64) -> Snapshot {
@@ -122,7 +121,7 @@ fn variable_banks_empty_machine_snapshot_serializes_under_one_kilobyte() {
     let snapshot = take(&banks, 0);
     let serialized = serde_json::to_vec(&snapshot).expect("serialize");
     eprintln!(
-        "[UTSUSHI-206] empty_machine_snapshot_bytes={} ceiling={}",
+        "[] empty_machine_snapshot_bytes={} ceiling={}",
         serialized.len(),
         EMPTY_SNAPSHOT_BYTES_CEILING
     );

@@ -47,7 +47,7 @@ use crate::repro_bundle::{ReproBundle, ReproBundleValidationReport, validate_rep
 pub const COMPAT_EVIDENCE_REPORT_SCHEMA_VERSION: &str = "0.1.0";
 
 /// The boundary surfaced in every integrated report.
-pub const COMPAT_EVIDENCE_BOUNDARY: &str = "The claimed-support compatibility evidence report is a suite-readable INTEGRATION of three sources: the KAIFUU-105 claimed-support tuple validation (engine family, variant, container, crypto, codec, surface, patch-back mode, profile/fixture id, secret-requirement ids, diagnostics), the KAIFUU-106 redacted reproduction-bundle index (public fixture id + sha256 proof hash per claim), and the KAIFUU-107 regression-runner verdict (fixture resolution, secret-metadata status, findings, drift, latest pass/fail). It re-owns none of them. The report is redaction-clean: secrets and proofs are ref-only requirement ids / sha256 hashes, never raw keys, private paths, or retail bytes.";
+pub const COMPAT_EVIDENCE_BOUNDARY: &str = "The claimed-support compatibility evidence report is a suite-readable INTEGRATION of three sources: the  claimed-support tuple validation (engine family, variant, container, crypto, codec, surface, patch-back mode, profile/fixture id, secret-requirement ids, diagnostics), the  redacted reproduction-bundle index (public fixture id + sha256 proof hash per claim), and the  regression-runner verdict (fixture resolution, secret-metadata status, findings, drift, latest pass/fail). It re-owns none of them. The report is redaction-clean: secrets and proofs are ref-only requirement ids / sha256 hashes, never raw keys, private paths, or retail bytes.";
 
 // Redacted repro-bundle index entry (link)
 

@@ -56,7 +56,7 @@ pub const WOLF_HELPER_BOUNDARY_SCHEMA_VERSION: &str = "0.1.0";
 pub const WOLF_HELPER_BOUNDARY_REPORT_SCHEMA_VERSION: &str = "0.1.0";
 
 /// The support boundary surfaced in every Wolf helper-boundary report.
-pub const WOLF_HELPER_BOUNDARY_SUPPORT_BOUNDARY: &str = "The Wolf key/protection helper boundary turns a keyRef-bound Wolf protection profile (protected static-key or helper-required Wolf \"Pro\" per-game dynamic-key) into a LOCAL-ONLY KAIFUU-085 helper result. It resolves the key BY REF locally — carrying the secret-requirement ids, local-scheme secret refs, sha256 proof hashes, and a redacted diagnostic — and NEVER runs the helper, launches untrusted code, or emits raw key material. Plain and unknown protection profiles are not keyRef-bound and have no helper boundary.";
+pub const WOLF_HELPER_BOUNDARY_SUPPORT_BOUNDARY: &str = "The Wolf key/protection helper boundary turns a keyRef-bound Wolf protection profile (protected static-key or helper-required Wolf \"Pro\" per-game dynamic-key) into a LOCAL-ONLY  helper result. It resolves the key BY REF locally — carrying the secret-requirement ids, local-scheme secret refs, sha256 proof hashes, and a redacted diagnostic — and NEVER runs the helper, launches untrusted code, or emits raw key material. Plain and unknown protection profiles are not keyRef-bound and have no helper boundary.";
 
 // The boundary kind (which keyRef-bound Wolf protection profile)
 

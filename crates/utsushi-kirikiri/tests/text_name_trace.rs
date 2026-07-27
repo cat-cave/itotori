@@ -106,7 +106,7 @@ fn replay_matches_kaifuu_009_dialogue_extraction() {
 
     assert_eq!(
         replay_pairs, kaifuu_pairs,
-        "replay message/speaker stream must reproduce KAIFUU-009's dialogue units"
+        "replay message/speaker stream must reproduce 's dialogue units"
     );
     assert!(
         !kaifuu_pairs.is_empty(),

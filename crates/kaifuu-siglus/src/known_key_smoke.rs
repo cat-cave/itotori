@@ -367,7 +367,7 @@ mod tests {
         let fixture = SiglusKnownKeySmokeFixture {
             schema_version: KNOWN_KEY_SMOKE_SCHEMA_VERSION.to_string(),
             capability_id: KNOWN_KEY_SMOKE_CAPABILITY_ID.to_string(),
-            source_node_id: "KAIFUU-070".to_string(),
+            source_node_id: "synthetic-fixture".to_string(),
             engine_family: "siglus".to_string(),
             profile,
             patch: SiglusKnownKeyPatchSpec {

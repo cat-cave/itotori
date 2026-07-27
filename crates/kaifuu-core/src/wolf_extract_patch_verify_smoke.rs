@@ -58,7 +58,7 @@ pub const WOLF_EXTRACT_PATCH_VERIFY_SMOKE_SCHEMA_VERSION: &str = "0.1.0";
 pub const WOLF_EXTRACT_PATCH_VERIFY_SMOKE_CAPABILITY_ID: &str =
     "kaifuu-wolf-extract-patch-verify-smoke";
 /// Blunt support boundary carried in every smoke report.
-pub const WOLF_EXTRACT_PATCH_VERIFY_SMOKE_SUPPORT_BOUNDARY: &str = "Kaifuu Wolf extract-patch-verify smoke GENUINELY round-trips a synthetic profiled encrypted-Wolf fixture (extract text -> patch -> re-pack -> verify patched text present + unpatched members byte-identical) by driving the KAIFUU-058 profiled extract+patch driver over the KAIFUU-073 crypt substrate. It gates the Wolf readiness `patch` rung: the honored patch/extract proof hash is derived from the ACTUAL round-trip output, so `patch-proven` is unreachable without a genuinely passing smoke. Claimed-profile failures are loud typed compatibility bugs, never silent skips. Keys stay inside the module-private zeroize-on-drop resolver, handed back only by ref; reports carry refs, hashes, and counts only. This is not commercial Wolf/DXArchive coverage.";
+pub const WOLF_EXTRACT_PATCH_VERIFY_SMOKE_SUPPORT_BOUNDARY: &str = "Kaifuu Wolf extract-patch-verify smoke GENUINELY round-trips a synthetic profiled encrypted-Wolf fixture (extract text -> patch -> re-pack -> verify patched text present + unpatched members byte-identical) by driving the  profiled extract+patch driver over the  crypt substrate. It gates the Wolf readiness `patch` rung: the honored patch/extract proof hash is derived from the ACTUAL round-trip output, so `patch-proven` is unreachable without a genuinely passing smoke. Claimed-profile failures are loud typed compatibility bugs, never silent skips. Keys stay inside the module-private zeroize-on-drop resolver, handed back only by ref; reports carry refs, hashes, and counts only. This is not commercial Wolf/DXArchive coverage.";
 
 /// Which round-trip artifact a smoke-bound proof backs. Mirrors the readiness
 /// [`crate::wolf_readiness::WolfReadinessArtifactKind`] the smoke gates.
@@ -351,7 +351,7 @@ mod tests {
     };
 
     fn run() -> WolfExtractPatchVerifySmokeReport {
-        run_wolf_extract_patch_verify_smoke("KAIFUU-145").expect("smoke round-trips")
+        run_wolf_extract_patch_verify_smoke("synthetic-fixture").expect("smoke round-trips")
     }
 
     #[test]
@@ -406,7 +406,7 @@ mod tests {
         // Rebuild the resolved-keys resolver with a wrong label for the static
         // variant's ref via the profiled module's own controlled seam.
         registry = profiled_synthetic::production_registry_with_wrong_resolved_key(registry);
-        let err = run_wolf_extract_patch_verify_smoke_with_registry(&registry, "KAIFUU-145")
+        let err = run_wolf_extract_patch_verify_smoke_with_registry(&registry, "synthetic-fixture")
             .expect_err("a broken claimed profile must fail loud");
         assert!(matches!(
             err,

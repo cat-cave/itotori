@@ -43,7 +43,7 @@ pub const WOLF_PROFILED_PRODUCTION_SCHEMA_VERSION: &str = "0.1.0";
 pub const WOLF_PROFILED_PRODUCTION_CAPABILITY_ID: &str =
     "kaifuu-wolf-profiled-encrypted-archive-production";
 pub const WOLF_PROFILED_PRODUCTION_CONTAINER: &str = "wolf-like-encrypted-archive";
-pub const WOLF_PROFILED_PRODUCTION_SUPPORT_BOUNDARY: &str = "Kaifuu Wolf profiled encrypted-archive production extract+patch drives PROFILED archive/protection-key workflows on SYNTHETIC Wolf-like encrypted archive fixtures. A variant is DATA: declared protection profile + crypto profile + text-table surfaces + required key/helper evidence (a SecretRef, never raw key material, and an exact-ref-bound KAIFUU-085 helper result when helper-gated). A claimed profile must extract text-bearing data and patch it back through the same protection/container; claimed failures are loud typed compatibility bugs, never silent skips. Keys remain inside module-private zeroize-on-drop Debug-redacting holders and reports carry refs, hashes, and counts only. This is not commercial Wolf/DXArchive coverage.";
+pub const WOLF_PROFILED_PRODUCTION_SUPPORT_BOUNDARY: &str = "Kaifuu Wolf profiled encrypted-archive production extract+patch drives PROFILED archive/protection-key workflows on SYNTHETIC Wolf-like encrypted archive fixtures. A variant is DATA: declared protection profile + crypto profile + text-table surfaces + required key/helper evidence (a SecretRef, never raw key material, and an exact-ref-bound  helper result when helper-gated). A claimed profile must extract text-bearing data and patch it back through the same protection/container; claimed failures are loud typed compatibility bugs, never silent skips. Keys remain inside module-private zeroize-on-drop Debug-redacting holders and reports carry refs, hashes, and counts only. This is not commercial Wolf/DXArchive coverage.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -681,8 +681,8 @@ mod tests {
 
     #[test]
     fn profiled_wolf_variants_extract_and_patch_round_trip() {
-        let report =
-            run_wolf_profiled_production(&registry(), "KAIFUU-058").expect("profiled run passes");
+        let report = run_wolf_profiled_production(&registry(), "synthetic-fixture")
+            .expect("profiled run passes");
         assert!(report.is_ok());
         assert_eq!(report.claimed_count, 2);
         assert_eq!(report.not_claimed_count, 1);
@@ -726,7 +726,7 @@ mod tests {
         let secret_ref = registry.variants[0].secret_ref.as_str().to_string();
         registry.resolved_keys =
             resolver_from_fixture_labels(vec![(secret_ref, "wolf-profiled-production/wrong")]);
-        let err = run_wolf_profiled_production(&registry, "KAIFUU-058")
+        let err = run_wolf_profiled_production(&registry, "synthetic-fixture")
             .expect_err("wrong key is a compatibility bug");
         match err {
             WolfProfiledProductionError::ClaimedProfileFailed {
@@ -745,8 +745,8 @@ mod tests {
     fn no_raw_key_leaks_through_debug_or_report() {
         let registry = registry();
         let debug = format!("{registry:?}");
-        let report =
-            run_wolf_profiled_production(&registry, "KAIFUU-058").expect("profiled run passes");
+        let report = run_wolf_profiled_production(&registry, "synthetic-fixture")
+            .expect("profiled run passes");
         let json = report.stable_json().expect("stable json");
 
         for plaintext in [
@@ -781,7 +781,7 @@ mod tests {
             &requirement,
             &wrong_ref,
         ));
-        let err = run_wolf_profiled_production(&registry, "KAIFUU-058")
+        let err = run_wolf_profiled_production(&registry, "synthetic-fixture")
             .expect_err("wrong-ref helper evidence must not satisfy the gate");
         match err {
             WolfProfiledProductionError::ClaimedProfileFailed {
@@ -802,8 +802,8 @@ mod tests {
 
     #[test]
     fn unclaimed_profile_is_explicit_out_of_scope() {
-        let report =
-            run_wolf_profiled_production(&registry(), "KAIFUU-058").expect("profiled run passes");
+        let report = run_wolf_profiled_production(&registry(), "synthetic-fixture")
+            .expect("profiled run passes");
         let not_claimed: Vec<&WolfProfiledNotClaimedReport> = report
             .outcomes
             .iter()

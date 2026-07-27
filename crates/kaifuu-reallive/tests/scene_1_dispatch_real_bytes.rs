@@ -142,8 +142,8 @@ fn pins_sweetie_hd_scene_1_dispatch_with_zero_unknown_opcodes() {
     );
 
     // Dispatch to the new opcode parser.
-    let opcodes = parse_real_bytecode(&decompressed)
-        .expect("real bytecode must decode under the KAIFUU-191 parser");
+    let opcodes =
+        parse_real_bytecode(&decompressed).expect("real bytecode must decode under the  parser");
 
     assert!(
         !opcodes.is_empty(),
@@ -207,7 +207,7 @@ fn pins_sweetie_hd_scene_1_dispatch_with_zero_unknown_opcodes() {
     let recognized = total - unknown;
     let recognition_rate = (recognized as f64) / (total as f64);
     eprintln!(
-        "KAIFUU-191 Sweetie HD scene-1 opcode dispatch: total_opcodes={total} \
+        " Sweetie HD scene-1 opcode dispatch: total_opcodes={total} \
          recognized={recognized} unknown={unknown} recognition_rate={:.2}%",
         recognition_rate * 100.0,
     );

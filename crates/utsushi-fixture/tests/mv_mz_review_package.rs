@@ -81,10 +81,10 @@ fn manifest_names_all_required_surfaces() {
 
     // Runtime trace evidence: observation + replay pack.
     let trace = &manifest["runtimeTraceEvidence"];
-    assert_eq!(trace["observation"]["source"], "UTSUSHI-006");
+    assert_eq!(trace["observation"]["source"], "synthetic-fixture");
     assert_eq!(trace["observation"]["traceEventCount"], 3);
     assert_eq!(trace["observation"]["observationHookEventCount"], 3);
-    assert_eq!(trace["replayPack"]["source"], "UTSUSHI-033");
+    assert_eq!(trace["replayPack"]["source"], "synthetic-fixture");
     assert_eq!(trace["replayPack"]["available"], true);
     assert_eq!(trace["replayPack"]["linkedEventCount"], 2);
 

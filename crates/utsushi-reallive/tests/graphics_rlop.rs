@@ -69,15 +69,15 @@ impl OnDiskG00Package {
 
 impl AssetPackage for OnDiskG00Package {
     fn id(&self) -> &'static str {
-        "utsushi-215-on-disk-g00"
+        "-on-disk-g00"
     }
 
     fn descriptor(&self) -> PackageDescriptor {
         PackageDescriptor {
-            id: "utsushi-215-on-disk-g00".to_string(),
+            id: "-on-disk-g00".to_string(),
             kind: PackageKind::Plaintext,
             case_rule: CaseRule::Sensitive,
-            source: PackageSource::PublicName("utsushi-215-on-disk-g00".to_string()),
+            source: PackageSource::PublicName("-on-disk-g00".to_string()),
             revision: None,
         }
     }

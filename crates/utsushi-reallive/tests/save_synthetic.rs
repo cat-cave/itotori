@@ -233,8 +233,8 @@ fn save_state_snapshot_round_trips_through_in_memory_snapshot_store() {
     state.set_global_save(GlobalSave::decode(&global_bytes).expect("global"));
     state.set_read_flags(ReadFlags::decode(&read_bytes).expect("read"));
 
-    let request = SnapshotRequest::new("run-utsushi-218", "2026-06-26T00:00:00Z", EvidenceTier::E2)
-        .with_tick(1);
+    let request =
+        SnapshotRequest::new("run-", "2026-06-26T00:00:00Z", EvidenceTier::E2).with_tick(1);
     let snapshot: Snapshot = take_snapshot(&state, &request).expect("snapshot");
     store.insert(snapshot.clone()).expect("insert");
 

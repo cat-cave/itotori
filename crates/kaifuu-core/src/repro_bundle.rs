@@ -51,7 +51,7 @@ pub const REPRO_BUNDLE_SCHEMA_VERSION: &str = "0.1.0";
 pub const REPRO_BUNDLE_REPORT_SCHEMA_VERSION: &str = "0.1.0";
 
 /// The boundary surfaced in every report.
-pub const REPRO_BUNDLE_BOUNDARY: &str = "A reproduction bundle carries KAIFUU-105 claimed-support tuples (engine family, variant, container, crypto, codec, surface, patch-back mode, fixture/profile id, secret-requirement ids, diagnostics, claim + evidence chain) plus reproduction proofs (public fixture id + sha256 proof hash). It NEVER carries private assets: raw keys, private paths, retail bytes, screenshots, prompt logs, or story text are rejected with a bundle/tuple/field-named error. The proof hashes + fixture ids are sufficient to reproduce the public-fixture results with no private-corpus reference.";
+pub const REPRO_BUNDLE_BOUNDARY: &str = "A reproduction bundle carries  claimed-support tuples (engine family, variant, container, crypto, codec, surface, patch-back mode, fixture/profile id, secret-requirement ids, diagnostics, claim + evidence chain) plus reproduction proofs (public fixture id + sha256 proof hash). It NEVER carries private assets: raw keys, private paths, retail bytes, screenshots, prompt logs, or story text are rejected with a bundle/tuple/field-named error. The proof hashes + fixture ids are sufficient to reproduce the public-fixture results with no private-corpus reference.";
 
 // The six private-asset classes (reject-on-private)
 

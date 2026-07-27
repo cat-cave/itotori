@@ -553,7 +553,7 @@ pub struct VmTraceEvidence {
 
 impl VmTraceEvidence {
     /// Provenance node id stamped on every VM trace claim.
-    pub const SOURCE_NODE_ID: &'static str = "UTSUSHI-034";
+    pub const SOURCE_NODE_ID: &'static str = "synthetic-fixture";
 
     /// Serialize to stable, redaction-swept JSON (secret-refs only, no key
     /// bytes, no local paths). This is the committable evidence.

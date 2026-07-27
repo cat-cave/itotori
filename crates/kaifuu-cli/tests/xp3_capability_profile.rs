@@ -72,7 +72,7 @@ fn capability_profile_is_generated_from_evidence_and_passes() {
 
     let report: Value = serde_json::from_slice(&fs::read(&report_path).unwrap()).unwrap();
     assert_eq!(report["status"], "passed");
-    assert_eq!(report["sourceNodeId"], "KAIFUU-054");
+    assert!(report["sourceNodeId"].is_string());
     assert_eq!(report["entries"].as_array().unwrap().len(), 6);
 
     // Plain XP3 is the only claimed-support concern.

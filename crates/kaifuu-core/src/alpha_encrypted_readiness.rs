@@ -62,7 +62,7 @@ use generator::{build_entry, requires_patch_evidence};
 /// Spec-DAG source node id stamped into generated reports and entries.
 /// Kept here (not in the child module) so the grandfathered node-id token
 /// stays on the whitelisted parent path only.
-const ALPHA_ENCRYPTED_SOURCE_NODE_ID: &str = "KAIFUU-104";
+const ALPHA_ENCRYPTED_SOURCE_NODE_ID: &str = "synthetic-fixture";
 
 /// Schema version of the synthetic patch-artifact input.
 pub const ALPHA_ENCRYPTED_PATCH_ARTIFACT_SCHEMA_VERSION: &str = "0.1.0";
@@ -76,7 +76,7 @@ pub const ALPHA_ENCRYPTED_PATCH_ARTIFACT_GLOB: &str = "*.patch.json";
 
 /// The support boundary stamped into every report and summary — the
 /// readiness-evidence-not-production-support line.
-pub const ALPHA_ENCRYPTED_READINESS_SUPPORT_BOUNDARY: &str = "Alpha encrypted-readiness evidence composes the KAIFUU-103 packed-engine readiness validator output with synthetic packed-engine profile fixtures and synthetic patch artifacts. It is readiness EVIDENCE that a transform stack, key/helper gating, and patch-back surface are recognized — it is NOT a production patch-support claim. A readiness-only posture (helper-gated, missing key material, or media transform) never carries a patch result. Every input is synthetic and public; artifacts carry only ids, counts, and sha256 hashes — never key material, plaintext content, helper memory, or local paths.";
+pub const ALPHA_ENCRYPTED_READINESS_SUPPORT_BOUNDARY: &str = "Alpha encrypted-readiness evidence composes the  packed-engine readiness validator output with synthetic packed-engine profile fixtures and synthetic patch artifacts. It is readiness EVIDENCE that a transform stack, key/helper gating, and patch-back surface are recognized — it is NOT a production patch-support claim. A readiness-only posture (helper-gated, missing key material, or media transform) never carries a patch result. Every input is synthetic and public; artifacts carry only ids, counts, and sha256 hashes — never key material, plaintext content, helper memory, or local paths.";
 
 // Synthetic patch-artifact input
 

@@ -70,7 +70,7 @@ use driver::{build_fixture_archive, synthetic_text_bearing_value};
 pub const RGSS3_SMOKE_SCHEMA_VERSION: &str = "0.1.0";
 
 /// Provenance node id stamped into generated reports.
-pub const RGSS3_SMOKE_SOURCE_NODE_ID: &str = "KAIFUU-143";
+pub const RGSS3_SMOKE_SOURCE_NODE_ID: &str = "synthetic-fixture";
 
 /// Support boundary surfaced in every smoke report.
 pub const RGSS3_SMOKE_SUPPORT_BOUNDARY: &str = "The RGSS3 smoke extracts the Ruby String leaves of a synthetic RGSSAD v3 archive's `.rvdata2` Marshal payloads, applies one trivial localization, repacks, and verifies the round-trip through the layered-transform metadata (container=rgssad, crypto=xor, codec=ruby_marshal, patch-back=repack_archive) on PUBLIC SYNTHETIC fixtures only. It requires no encryption key and no private corpus. `Scripts.rvdata2` (zlib-deflated Ruby code) and any Marshal type outside the bounded VX Ace subset are out of scope and are surfaced as typed unsupported diagnostics before any rebuild byte for that entry.";

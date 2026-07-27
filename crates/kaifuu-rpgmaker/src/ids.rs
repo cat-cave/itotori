@@ -48,9 +48,9 @@ mod tests {
 
     #[test]
     fn preserves_namespace_and_uuid7_shape() {
-        let first = deterministic_uuid7("rpgmaker-k109:KAIFUU-109", "unit:Map001");
-        let again = deterministic_uuid7("rpgmaker-k109:KAIFUU-109", "unit:Map001");
-        let other_namespace = deterministic_uuid7("rpgmaker-k110:KAIFUU-110", "unit:Map001");
+        let first = deterministic_uuid7("rpgmaker-k109:", "unit:Map001");
+        let again = deterministic_uuid7("rpgmaker-k109:", "unit:Map001");
+        let other_namespace = deterministic_uuid7("rpgmaker-k110:", "unit:Map001");
 
         assert_eq!(first, again, "identical input is stable");
         assert_ne!(

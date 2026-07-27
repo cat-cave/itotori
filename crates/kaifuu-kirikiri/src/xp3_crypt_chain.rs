@@ -80,7 +80,7 @@ pub const XP3_CHAIN_CAPABILITY_ID: &str = "kaifuu-kirikiri-xp3-crypt-chain-smoke
 /// Stable format tag for the emitted delta evidence.
 pub const XP3_CHAIN_DELTA_FORMAT: &str = "kaifuu-xp3-crypt-delta-evidence";
 
-const XP3_CHAIN_SOURCE_ID: &str = "KAIFUU-072";
+const XP3_CHAIN_SOURCE_ID: &str = "synthetic-fixture";
 
 /// How the container was recognized: always a magic-byte signature, never a
 /// filename or file-tree heuristic.

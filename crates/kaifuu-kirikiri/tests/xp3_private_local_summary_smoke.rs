@@ -45,7 +45,7 @@ fn synthetic_patch_report() -> kaifuu_kirikiri::Xp3PatchReport {
         &dir.join("xp3-patch.json"),
         &dir.join("xp3-patch-manifest.json"),
     )
-    .expect("KAIFUU-101 XP3 patch-back smoke runs from the committed fixture")
+    .expect(" XP3 patch-back smoke runs from the committed fixture")
 }
 
 /// The composed summary is byte-identical to the committed public-safe fixture,

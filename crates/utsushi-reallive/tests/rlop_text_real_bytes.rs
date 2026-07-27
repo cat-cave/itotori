@@ -77,7 +77,7 @@ fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
 
     // > -> ->
     let index = RealSceneIndex::parse(&bytes)
-        .expect("Sweetie HD Seen.txt must parse through the UTSUSHI-201 directory parser");
+        .expect("Sweetie HD Seen.txt must parse through the  directory parser");
     let entry = index
         .lookup(1)
         .expect("Sweetie HD must contain a populated scene 1 entry");
@@ -142,7 +142,7 @@ fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
                     shift_jis_textout_offsets
                         .insert(u32::try_from(*byte_offset).unwrap_or(u32::MAX));
                     eprintln!(
-                        "[UTSUSHI-209 real-bytes] shift_jis textout @0x{byte_offset:04x} \
+                        "[ real-bytes] shift_jis textout @0x{byte_offset:04x} \
                          len={byte_len} first16={:02x?}",
                         &raw_bytes[..raw_bytes.len().min(16)],
                     );
@@ -152,7 +152,7 @@ fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
         }
     }
     eprintln!(
-        "[UTSUSHI-209 real-bytes] Sweetie HD scene #0001 element histogram (n={element_count}): \
+        "[ real-bytes] Sweetie HD scene #0001 element histogram (n={element_count}): \
          {counts:?} (textout shift_jis={textout_shift_jis} other={textout_other})",
     );
 
@@ -189,9 +189,7 @@ fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
         let outcome = match vm.step(&store, &registry, &mut scheduler) {
             Ok(outcome) => outcome,
             Err(err) => {
-                eprintln!(
-                    "[UTSUSHI-209 real-bytes] VM step error after {steps_executed} steps: {err}",
-                );
+                eprintln!("[ real-bytes] VM step error after {steps_executed} steps: {err}",);
                 break;
             }
         };
@@ -241,7 +239,7 @@ fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
 
     if last_outcome.is_none() && steps_executed == REAL_BYTES_STEP_BUDGET {
         eprintln!(
-            "[UTSUSHI-209 real-bytes] reached step budget ({REAL_BYTES_STEP_BUDGET}); \
+            "[ real-bytes] reached step budget ({REAL_BYTES_STEP_BUDGET}); \
              draining without explicit termination",
         );
     }
@@ -266,7 +264,7 @@ fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
     let warnings = runtime.take_warnings();
 
     eprintln!(
-        "[UTSUSHI-209 real-bytes] steps_executed={steps_executed} steps_with_event={steps_with_event} \
+        "[ real-bytes] steps_executed={steps_executed} steps_with_event={steps_with_event} \
          textout_observations={textout_observations} \
          textout_shift_jis_dispatched={textout_shift_jis_dispatched} \
          text_lines_emitted={} pending_body_len={} runtime_warnings={} last_outcome={:?}",
@@ -277,7 +275,7 @@ fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
     );
     for (idx, line) in lines.iter().enumerate().take(5) {
         eprintln!(
-            "[UTSUSHI-209 real-bytes] sample line[{idx}]: text={:?} speaker={:?} \
+            "[ real-bytes] sample line[{idx}]: text={:?} speaker={:?} \
              text_surface={:?}",
             line.text, line.speaker, line.text_surface,
         );
@@ -334,7 +332,7 @@ fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
         }
     }
     eprintln!(
-        "[UTSUSHI-209 real-bytes] clean_decode_count={clean_decode_count} \
+        "[ real-bytes] clean_decode_count={clean_decode_count} \
          first_clean={first_clean_text:?}",
     );
     assert!(
@@ -351,7 +349,5 @@ fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
         !first_clean.is_empty(),
         "non-empty Shift-JIS emission is the alpha-evidence; got an empty line",
     );
-    eprintln!(
-        "[UTSUSHI-209 real-bytes] alpha-evidence: first non-empty Shift-JIS line = {first_clean:?}",
-    );
+    eprintln!("[ real-bytes] alpha-evidence: first non-empty Shift-JIS line = {first_clean:?}",);
 }

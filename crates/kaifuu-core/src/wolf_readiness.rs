@@ -74,7 +74,7 @@ pub const WOLF_READINESS_SCHEMA_VERSION: &str = "0.1.0";
 pub const WOLF_READINESS_REPORT_SCHEMA_VERSION: &str = "0.1.0";
 
 /// The support boundary surfaced in every Wolf readiness report.
-pub const WOLF_READINESS_SUPPORT_BOUNDARY: &str = "The Wolf RPG Editor readiness proof COMBINES the KAIFUU-120 protection-detector evidence (identify/inventory) with the KAIFUU-121 key/protection helper-boundary reporting (key_resolved/key_missing/helper_required/helper_unavailable) into ONE per-capability-level readiness report. It reports the ACHIEVED level (identify, inventory, helper-required, extract, patch, or unsupported) mechanically per the fixture evidence and NEVER claims a level beyond it: an unrecognized protection variant is unsupported; extract and patch are claimed ONLY where an explicit synthetic fixture proves them (retail Wolf extraction/patch-back is a later adapter node, KAIFUU-131, and is never claimed here). Evidence is synthetic and redacted — secret refs and sha256 hashes only, never raw keys, paths, or retail bytes.";
+pub const WOLF_READINESS_SUPPORT_BOUNDARY: &str = "The Wolf RPG Editor readiness proof COMBINES the  protection-detector evidence (identify/inventory) with the  key/protection helper-boundary reporting (key_resolved/key_missing/helper_required/helper_unavailable) into ONE per-capability-level readiness report. It reports the ACHIEVED level (identify, inventory, helper-required, extract, patch, or unsupported) mechanically per the fixture evidence and NEVER claims a level beyond it: an unrecognized protection variant is unsupported; extract and patch are claimed ONLY where an explicit synthetic fixture proves them (retail Wolf extraction/patch-back is a later adapter node, , and is never claimed here). Evidence is synthetic and redacted — secret refs and sha256 hashes only, never raw keys, paths, or retail bytes.";
 
 // The achieved readiness level (the six-rung honest ladder)
 
@@ -735,7 +735,7 @@ fn honor_proof(
             code: "wolf.readiness.smoke_not_proven".to_string(),
             field: field.to_string(),
             message: format!(
-                "the {} rung requires a passing KAIFUU-145 extract-patch-verify smoke, but the smoke did not pass",
+                "the {} rung requires a passing  extract-patch-verify smoke, but the smoke did not pass",
                 expected.as_str()
             ),
         });

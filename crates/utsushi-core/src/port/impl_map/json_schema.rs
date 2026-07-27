@@ -194,7 +194,7 @@ pub fn build_schema() -> Value {
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://itotori.dev/schemas/utsushi/impl-map.schema.json",
-        "title": "Utsushi engine-port implementation map (UTSUSHI-025)",
+        "title": "Utsushi engine-port implementation map ()",
         "type": "object",
         "required": [
             "schemaVersion", "portId", "engineFamily", "subsystems",

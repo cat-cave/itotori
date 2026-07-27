@@ -79,17 +79,17 @@ fn scene1_header_matches_reallive_real_bytes() {
     // (rather than hard-coding the file offset) so a future
     // regression that silently dropped scene 1 would surface here too.
     let index = RealSceneIndex::parse(&bytes)
-        .expect("Sweetie HD Seen.txt must parse through the UTSUSHI-201 directory parser");
+        .expect("Sweetie HD Seen.txt must parse through the  directory parser");
     let entry = index
         .lookup(1)
         .expect("Sweetie HD must contain a populated scene 1 entry");
     assert_eq!(
         entry.byte_offset, SWEETIE_HD_SCENE_ONE_FILE_OFFSET,
-        "scene 1 file offset drift between UTSUSHI-201 and UTSUSHI-202 anchors",
+        "scene 1 file offset drift between  and  anchors",
     );
     assert_eq!(
         entry.byte_len, SWEETIE_HD_SCENE_ONE_BLOB_LEN,
-        "scene 1 blob length drift between UTSUSHI-201 and UTSUSHI-202 anchors",
+        "scene 1 blob length drift between  and  anchors",
     );
 
     let blob_start =
@@ -108,7 +108,7 @@ fn scene1_header_matches_reallive_real_bytes() {
 
     let (header, warnings) = SceneHeader::parse(blob).expect(
         "Sweetie HD scene 1 must produce a typed SceneHeader; silent zero-state on real \
-         bytes is the bug UTSUSHI-202 fixes",
+         bytes is the bug  fixes",
     );
 
     assert!(

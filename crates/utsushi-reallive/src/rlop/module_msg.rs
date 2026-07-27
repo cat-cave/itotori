@@ -368,7 +368,7 @@ mod tests {
         assert_eq!(
             MsgOpcode::ALL.len(),
             12,
-            "alpha contract: exactly 12 module_msg opcodes covered (choice family lives in module_sel as of UTSUSHI-211)",
+            "alpha contract: exactly 12 module_msg opcodes covered (choice family lives in module_sel as of )",
         );
     }
 

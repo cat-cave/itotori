@@ -51,7 +51,7 @@ pub const REGRESSION_REPORT_SCHEMA_VERSION: &str = "0.1.0";
 pub const REGRESSION_BASELINE_SCHEMA_VERSION: &str = "0.1.0";
 
 /// The boundary surfaced in every regression report.
-pub const REGRESSION_BOUNDARY: &str = "The claimed-profile regression runner re-runs the KAIFUU-105 support tuples carried by a KAIFUU-106 reproduction bundle against the KAIFUU-051 public-fixture catalogue and the bundle's reproduction proofs. A claim FAILS when its required public-fixture evidence is missing, when secret-requirement metadata a key-gated crypto layer needs is absent, or when its diagnostics DRIFT from the recorded baseline. Diagnostic drift is a finding, never a silent baseline update. The report carries no raw keys, private paths, or retail bytes.";
+pub const REGRESSION_BOUNDARY: &str = "The claimed-profile regression runner re-runs the  support tuples carried by a  reproduction bundle against the  public-fixture catalogue and the bundle's reproduction proofs. A claim FAILS when its required public-fixture evidence is missing, when secret-requirement metadata a key-gated crypto layer needs is absent, or when its diagnostics DRIFT from the recorded baseline. Diagnostic drift is a finding, never a silent baseline update. The report carries no raw keys, private paths, or retail bytes.";
 
 // public-fixture catalogue (the resolver input)
 

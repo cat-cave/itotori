@@ -29,7 +29,7 @@ use std::path::PathBuf;
 use utsushi_core::write_json;
 use utsushi_fixture::mvmz_patched_runtime_proof::mvmz_patched_runtime_proof_from_paths;
 
-const HELP: &str = r"utsushi mvmz-patched-runtime-proof — MV/MZ PATCHED launched-runtime observation proof (UTSUSHI-119)
+const HELP: &str = r"utsushi mvmz-patched-runtime-proof — MV/MZ PATCHED launched-runtime observation proof ()
 
 Usage:
   utsushi mvmz-patched-runtime-proof \
@@ -40,13 +40,13 @@ Usage:
     [--screenshot-evidence <PATH>] \
     --output <PATH>
 
-  --patched-runtime-trace <PATH>  UTSUSHI-006 trace of the PATCHED fixture launch (E1 runtime
+  --patched-runtime-trace <PATH>   trace of the PATCHED fixture launch (E1 runtime
                                   evidence from `utsushi trace --adapter utsushi-browser`).
   --patched-fixture-dir <DIR>     The PATCHED MV/MZ fixture directory (its STATIC source bytes;
                                   the crux confirms the observed translation is absent from it).
   --patch-result <PATH>           Kaifuu PatchResult whose outputHash attests the patched output.
-  --alpha-proof <PATH>            The UTSUSHI-102 runtime-observation proof (alpha baseline).
-  --screenshot-evidence <PATH>    Optional UTSUSHI-065 capture evidence (screenshot artifactRef).
+  --alpha-proof <PATH>            The  runtime-observation proof (alpha baseline).
+  --screenshot-evidence <PATH>    Optional  capture evidence (screenshot artifactRef).
   --output <PATH>                 Patched-runtime-observation proof manifest JSON.
 
 Exit codes:
@@ -192,7 +192,7 @@ mod tests {
         assert_eq!(proof["patchAttestation"]["hashMatches"], true);
         assert_eq!(
             proof["consumes"]["patchedRuntimeTraceSource"],
-            "UTSUSHI-006"
+            "synthetic-fixture"
         );
         let _ = std::fs::remove_file(output);
     }

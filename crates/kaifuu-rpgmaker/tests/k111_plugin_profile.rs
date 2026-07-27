@@ -126,7 +126,7 @@ fn only_declared_pointers_extract_with_all_fields() {
     );
     for unit in &out.units {
         assert_eq!(unit.source_file, "plugins.js");
-        assert_eq!(unit.fixture_profile_id, "KAIFUU-111");
+        assert_eq!(unit.fixture_profile_id, "synthetic-fixture");
         assert!(!unit.plugin_id.is_empty());
         assert!(!unit.bridge_unit_id().is_empty());
         assert_eq!(unit.patchability, Patchability::Patchable);

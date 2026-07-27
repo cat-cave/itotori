@@ -67,7 +67,7 @@ fn scene1_expression_elements_parse_and_evaluate() {
     // Walk the → 202 → 203 → 204 chain to recover the
     // decompressed scene-1 bytecode and lex its element stream.
     let index = RealSceneIndex::parse(&bytes)
-        .expect("Sweetie HD Seen.txt must parse through the UTSUSHI-201 directory parser");
+        .expect("Sweetie HD Seen.txt must parse through the  directory parser");
     let entry = index
         .lookup(1)
         .expect("Sweetie HD must contain a populated scene 1 entry");
@@ -86,7 +86,7 @@ fn scene1_expression_elements_parse_and_evaluate() {
     );
 
     let (header, _header_warnings) = SceneHeader::parse(blob)
-        .expect("Sweetie HD scene 1 must produce a typed SceneHeader (UTSUSHI-202 anchor)");
+        .expect("Sweetie HD scene 1 must produce a typed SceneHeader ( anchor)");
 
     let bytecode_offset = header.bytecode_offset as usize;
     let bytecode_compressed_size = header.bytecode_compressed_size as usize;
@@ -102,10 +102,10 @@ fn scene1_expression_elements_parse_and_evaluate() {
             None,
             header.compiler_version,
         )
-        .expect("Sweetie HD scene 1 must decompress cleanly (UTSUSHI-203 anchor)");
+        .expect("Sweetie HD scene 1 must decompress cleanly ( anchor)");
 
     let elements = decode_bytecode_stream(&decompressed)
-        .expect("Sweetie HD scene 1 decompressed bytes must lex (UTSUSHI-204 anchor)");
+        .expect("Sweetie HD scene 1 decompressed bytes must lex ( anchor)");
 
     // === surface under test ===
     let expression_raw_bytes: Vec<(usize, Vec<u8>)> = elements
@@ -121,7 +121,7 @@ fn scene1_expression_elements_parse_and_evaluate() {
         .collect();
 
     eprintln!(
-        "[UTSUSHI-205 real-bytes] Sweetie HD scene #0001: found {} Expression elements \
+        "[ real-bytes] Sweetie HD scene #0001: found {} Expression elements \
          (expected {})",
         expression_raw_bytes.len(),
         SCENE_ONE_EXPECTED_EXPRESSION_COUNT,
@@ -130,7 +130,7 @@ fn scene1_expression_elements_parse_and_evaluate() {
         expression_raw_bytes.len(),
         SCENE_ONE_EXPECTED_EXPRESSION_COUNT,
         "scene #0001 must produce exactly {SCENE_ONE_EXPECTED_EXPRESSION_COUNT} Expression \
-         elements (per the UTSUSHI-204 real-bytes histogram); got {}",
+         elements (per the  real-bytes histogram); got {}",
         expression_raw_bytes.len(),
     );
 
@@ -162,7 +162,7 @@ fn scene1_expression_elements_parse_and_evaluate() {
                 .map(ExpressionWarning::audit_code)
                 .collect();
             eprintln!(
-                "[UTSUSHI-205 real-bytes] expr #{idx:02} @ byte_offset=0x{byte_offset:04x} \
+                "[ real-bytes] expr #{idx:02} @ byte_offset=0x{byte_offset:04x} \
                  emitted warnings: {warning_codes:?}",
             );
         }
@@ -210,16 +210,16 @@ fn scene1_expression_elements_parse_and_evaluate() {
         *evaluation_outcomes.entry(bucket).or_insert(0) += 1;
 
         eprintln!(
-            "[UTSUSHI-205 real-bytes] expr #{idx:02} @ byte_offset=0x{byte_offset:04x} \
+            "[ real-bytes] expr #{idx:02} @ byte_offset=0x{byte_offset:04x} \
              ast={variant} outcome={outcome} raw_len={}",
             raw.len(),
         );
     }
 
-    eprintln!("[UTSUSHI-205 real-bytes] per-variant AST histogram: {variant_histogram:?}",);
-    eprintln!("[UTSUSHI-205 real-bytes] evaluation outcome buckets: {evaluation_outcomes:?}",);
+    eprintln!("[ real-bytes] per-variant AST histogram: {variant_histogram:?}",);
+    eprintln!("[ real-bytes] evaluation outcome buckets: {evaluation_outcomes:?}",);
     eprintln!(
-        "[UTSUSHI-205 real-bytes] clean_parse_count={clean_parse_count} \
+        "[ real-bytes] clean_parse_count={clean_parse_count} \
          warning_parse_count={warning_parse_count} \
          hard_failures={} (STRICT threshold: clean == {REQUIRED_CLEAN_PARSE_COUNT})",
         hard_failures.len(),

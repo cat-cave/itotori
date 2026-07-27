@@ -50,7 +50,7 @@ fn reallive_real_bytes_scene_one_replay_emits_textline() {
     let log = replay_scene(&seen_path, 1, &opts).expect("replay Sweetie HD scene 1");
 
     eprintln!(
-        "[UTSUSHI-220 real-bytes] events={} text_lines={} unknown_opcodes={} outcome={:?}",
+        "[ real-bytes] events={} text_lines={} unknown_opcodes={} outcome={:?}",
         log.events.len(),
         log.text_line_count(),
         log.unknown_opcode_count(),
@@ -89,7 +89,7 @@ fn reallive_real_bytes_scene_one_replay_emits_textline() {
         "real-bytes acceptance #0: first TextLine body_shift_jis must be non-empty",
     );
     eprintln!(
-        "[UTSUSHI-220 real-bytes] alpha-evidence: first TextLine @ pc=0x{:04x} \
+        "[ real-bytes] alpha-evidence: first TextLine @ pc=0x{:04x} \
          body_shift_jis={} bytes body_utf8={:?}",
         first_text_event.0,
         first_text_event.1.len(),
@@ -104,7 +104,7 @@ fn reallive_real_bytes_scene_one_replay_emits_textline() {
     // sink.
     let first_clean = log.first_text_line_utf8();
     eprintln!(
-        "[UTSUSHI-220 real-bytes] alpha-defining proof: first non-empty UTF-8 TextLine = {first_clean:?}",
+        "[ real-bytes] alpha-defining proof: first non-empty UTF-8 TextLine = {first_clean:?}",
     );
     assert!(
         first_clean.is_some(),
@@ -133,7 +133,7 @@ fn reallive_real_bytes_scene_one_replay_emits_textline() {
         .position(|event| matches!(event, ReplayEvent::TextLine { .. }))
         .expect("first text event index");
     eprintln!(
-        "[UTSUSHI-220 real-bytes] first TextLine event index={} of {} total events; \
+        "[ real-bytes] first TextLine event index={} of {} total events; \
          unknown_opcode_count={}",
         first_text_index,
         log.events.len(),
@@ -163,7 +163,7 @@ fn reallive_real_bytes_scene_one_replay_is_byte_deterministic() {
         .expect("serialise second replay");
 
     eprintln!(
-        "[UTSUSHI-220 real-bytes] determinism evidence: json_a.len()={} json_b.len()={} \
+        "[ real-bytes] determinism evidence: json_a.len()={} json_b.len()={} \
          events_a={} events_b={}",
         json_a.len(),
         json_b.len(),
@@ -190,7 +190,7 @@ fn reallive_real_bytes_scene_one_snapshot_round_trips() {
 
     let (log, snapshot) = replay_until_first_pause(&seen_path, 1).expect("replay until pause");
     eprintln!(
-        "[UTSUSHI-220 real-bytes] snapshot path: events={} outcome={:?} \
+        "[ real-bytes] snapshot path: events={} outcome={:?} \
          snapshot_inspectable_id={:?}",
         log.events.len(),
         log.final_outcome,

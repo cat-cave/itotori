@@ -110,16 +110,16 @@ fn bundle_is_valid_and_packages_the_proof_links() {
 
     // Proof links reference the artifacts by id/verdict.
     let links = &bundle["proofLinks"];
-    assert_eq!(links["patchedRuntimeProof"]["source"], "UTSUSHI-119");
+    assert_eq!(links["patchedRuntimeProof"]["source"], "synthetic-fixture");
     assert_eq!(
         links["patchedRuntimeProof"]["patchedRuntimeObservationProven"],
         true
     );
     assert_eq!(links["patchedRuntimeProof"]["provenEvidenceTier"], "E1");
-    assert_eq!(links["alphaProof"]["source"], "UTSUSHI-102");
+    assert_eq!(links["alphaProof"]["source"], "synthetic-fixture");
     assert_eq!(links["alphaProof"]["runtimeObservationProven"], true);
-    assert_eq!(links["screenshotEvidence"]["source"], "UTSUSHI-065");
-    assert_eq!(bundle["reviewManifest"]["source"], "UTSUSHI-010");
+    assert_eq!(links["screenshotEvidence"]["source"], "synthetic-fixture");
+    assert_eq!(bundle["reviewManifest"]["source"], "synthetic-fixture");
 
     // The packaged patched-proof id is the committed 119 proof id (packaging
     // not re-derivation).
