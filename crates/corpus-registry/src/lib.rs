@@ -6,11 +6,13 @@
 //! paths below that root. The manifest is deliberately not checked in because
 //! its paths identify private local installations.
 
+use std::collections::BTreeMap;
 use std::env;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+use serde::de::{self, MapAccess, Visitor};
 
 const ROOT_ENV: &str = "ITOTORI_CORPUS_ROOT";
 const MANIFEST_RELATIVE_PATH: &str = "../../corpora/manifest.v1.json";
@@ -21,16 +23,53 @@ struct Manifest {
     #[serde(rename = "$schema")]
     _schema: Option<String>,
     version: u8,
-    corpora: Vec<Entry>,
+    corpora: Entries,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Entry {
-    engine: String,
-    ordinal: u16,
-    variant: String,
     path: PathBuf,
+}
+
+#[derive(Debug)]
+struct Entries(BTreeMap<String, Entry>);
+
+impl<'de> Deserialize<'de> for Entries {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct EntriesVisitor;
+
+        impl<'de> Visitor<'de> for EntriesVisitor {
+            type Value = Entries;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a map of unique corpus identities to entries")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut entries = BTreeMap::new();
+                while let Some((identity, entry)) = map.next_entry::<String, Entry>()? {
+                    if let Some(previous) = entries.insert(identity.clone(), entry) {
+                        let current = entries.get(&identity).expect("inserted entry");
+                        return Err(de::Error::custom(format!(
+                            "duplicate corpus identity {identity}: paths {} and {}",
+                            previous.path.display(),
+                            current.path.display()
+                        )));
+                    }
+                }
+                Ok(Entries(entries))
+            }
+        }
+
+        deserializer.deserialize_map(EntriesVisitor)
+    }
 }
 
 /// A request for one corpus. Engine identifiers are manifest data, not an enum,
@@ -52,8 +91,8 @@ impl fmt::Display for Need<'_> {
     }
 }
 
-/// The reason a requested corpus is unavailable. Tests print this and return,
-/// preserving an explicit skip rather than panicking or claiming coverage.
+/// The reason a requested corpus is unavailable. Strict proof callers must
+/// surface this as a non-passing result rather than claim coverage.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Unavailable {
     RootUnset,
@@ -139,14 +178,11 @@ pub fn resolve_with_manifest(
     need: Need<'_>,
 ) -> Result<PathBuf, Unavailable> {
     let manifest = parse_manifest(manifest_path)?;
-    let Some(entry) = manifest.corpora.into_iter().find(|entry| {
-        entry.engine == need.engine
-            && entry.ordinal == need.ordinal
-            && entry.variant == need.variant
-    }) else {
+    let identity = need.to_string();
+    let Some(entry) = manifest.corpora.0.get(&identity) else {
         return Err(unavailable_not_declared(need));
     };
-    let path = root.join(entry.path);
+    let path = root.join(&entry.path);
     if path.is_dir() {
         Ok(path)
     } else {
@@ -157,12 +193,6 @@ pub fn resolve_with_manifest(
 /// Location of the private local manifest relative to this crate's source.
 pub fn manifest_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(MANIFEST_RELATIVE_PATH)
-}
-
-/// Print the uniform test skip record. The lane counts these lines separately
-/// from passes and fails, so a fully skipped lane is always rejected.
-pub fn skip(test: &str, reason: Unavailable) {
-    eprintln!("REAL-BYTES SKIP {test}: {reason}");
 }
 
 fn parse_manifest(path: &Path) -> Result<Manifest, Unavailable> {
@@ -189,8 +219,15 @@ fn parse_manifest(path: &Path) -> Result<Manifest, Unavailable> {
             reason: format!("unsupported version {}; expected 1", manifest.version),
         });
     }
-    if manifest.corpora.iter().any(|entry| {
-        entry.path.is_absolute()
+    if manifest.corpora.0.is_empty() {
+        return Err(Unavailable::ManifestInvalid {
+            path: path.to_path_buf(),
+            reason: "corpora must contain at least one identity".to_owned(),
+        });
+    }
+    if manifest.corpora.0.iter().any(|(identity, entry)| {
+        !valid_identity(identity)
+            || entry.path.is_absolute()
             || entry
                 .path
                 .components()
@@ -198,10 +235,35 @@ fn parse_manifest(path: &Path) -> Result<Manifest, Unavailable> {
     }) {
         return Err(Unavailable::ManifestInvalid {
             path: path.to_path_buf(),
-            reason: "corpus paths must be relative and must not contain `..`".to_owned(),
+            reason: "corpus identities must be engine/ordinal/variant and paths must be relative without `..`".to_owned(),
         });
     }
     Ok(manifest)
+}
+
+fn valid_identity(identity: &str) -> bool {
+    let mut parts = identity.split('/');
+    let Some(engine) = parts.next() else {
+        return false;
+    };
+    let Some(ordinal) = parts.next() else {
+        return false;
+    };
+    let Some(variant) = parts.next() else {
+        return false;
+    };
+    parts.next().is_none()
+        && valid_token(engine)
+        && ordinal.parse::<u16>().is_ok_and(|number| number > 0)
+        && valid_token(variant)
+}
+
+fn valid_token(token: &str) -> bool {
+    let mut chars = token.chars();
+    matches!(chars.next(), Some('a'..='z'))
+        && chars.all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+        })
 }
 
 fn unavailable_not_declared(need: Need<'_>) -> Unavailable {
@@ -230,7 +292,7 @@ mod tests {
         std::fs::write(
             path,
             format!(
-                r#"{{"$schema":"./manifest.v1.schema.json","version":1,"corpora":[{{"engine":"reallive","ordinal":1,"variant":"encrypted","path":"{relative_path}"}}]}}"#
+                r#"{{"$schema":"./manifest.v1.schema.json","version":1,"corpora":{{"reallive/1/encrypted":{{"path":"{relative_path}"}}}}}}"#
             ),
         )
         .expect("write manifest");
@@ -289,5 +351,30 @@ mod tests {
         .expect_err("missing private manifest must be actionable");
 
         assert!(error.to_string().contains("manifest.v1.example.json"));
+    }
+
+    #[test]
+    fn rejects_duplicate_identity_and_names_both_paths() {
+        let manifest = tempfile::NamedTempFile::new().expect("temporary manifest");
+        std::fs::write(
+            manifest.path(),
+            r#"{"version":1,"corpora":{"reallive/1/encrypted":{"path":"old"},"reallive/1/encrypted":{"path":"new"}}}"#,
+        )
+        .expect("write duplicate manifest");
+
+        let error = resolve_with_manifest(
+            Path::new("/corpus-root"),
+            manifest.path(),
+            Need {
+                engine: "reallive",
+                ordinal: 1,
+                variant: "encrypted",
+            },
+        )
+        .expect_err("duplicate identities must not select one declaration");
+
+        let message = error.to_string();
+        assert!(message.contains("reallive/1/encrypted"));
+        assert!(message.contains("old") && message.contains("new"));
     }
 }

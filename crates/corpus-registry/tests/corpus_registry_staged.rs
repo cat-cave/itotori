@@ -1,6 +1,7 @@
-use corpus_registry::{Need, Unavailable, resolve, skip};
+use corpus_registry::{Need, resolve};
 
 #[test]
+#[ignore = "strict real-bytes proof; requires ITOTORI_CORPUS_ROOT and the private registry manifest"]
 fn staged_registry_resolves_each_declared_corpus() {
     let needs = [
         Need {
@@ -34,25 +35,13 @@ fn staged_registry_resolves_each_declared_corpus() {
             variant: "plain",
         },
     ];
-    let first = needs[0];
-    if let Err(reason) = resolve(first) {
-        if matches!(reason, Unavailable::RootUnset) {
-            skip("staged_registry_resolves_each_declared_corpus", reason);
-            return;
-        }
-        panic!("registry must resolve its first declared corpus: {reason}");
-    }
-
     let mut resolved = 0;
 
     for need in needs {
-        match resolve(need) {
-            Ok(path) => {
-                assert!(path.is_dir(), "resolved corpus path is a directory");
-                resolved += 1;
-            }
-            Err(reason) => skip("staged_registry_resolves_each_declared_corpus", reason),
-        }
+        let path =
+            resolve(need).unwrap_or_else(|reason| panic!("registry must resolve {need}: {reason}"));
+        assert!(path.is_dir(), "resolved corpus path is a directory");
+        resolved += 1;
     }
 
     assert_eq!(

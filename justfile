@@ -326,6 +326,10 @@ ci-real-bytes:
       echo "ci-real-bytes: Softpal (Kizuna + Dimension)  = $ITOTORI_SOFTPAL_RESEARCH_ROOT"
     fi
     echo "ci-real-bytes: strict (missing corpus hard-fails, no opt-out); running real-bytes suites"
+    # Registry-backed proofs are part of this scheduled strict lane. The
+    # registry root + ignored local manifest are required: invoking a migrated
+    # proof without them must red the oracle rather than return from its body.
+    node scripts/real-bytes-lane.mjs
     # The app-level JSON-text proof drives the production TS seams plus the
     # real kaifuu apply binary. Build that binary in this lane so the proof
     # cannot accidentally use a stale or absent native dependency.
