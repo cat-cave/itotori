@@ -21,7 +21,7 @@ and both lanes fail LOUD rather than passing on a skipped/absent prerequisite.
 
 ## Lane 1 — per-gate (fast, deterministic)
 
-**Entry points:** `just ci` / `just ci-full` / `node scripts/qd-full-ci.mjs`
+**Entry points:** `just ci` / `node scripts/qd-full-ci.mjs`
 (affected-aware; `--all` forces the complete gate). `just check` is the fast
 sub-gate. GitHub: `.github/workflows/pr-tiers.yml` → `_tier0.yml` / `_tier1.yml`.
 
@@ -159,13 +159,13 @@ marks capability output `status: browser_runtime_skipped`, and marks smoke
 output `status: skipped` with `alphaEvidence.status: not_established`. A skip
 therefore cannot be consumed as a successful Chromium probe or runtime pass.
 
-| CI lane / recipe                                                                                                                                                               | May pass `--skip-browser`? | Rule                                                                                                                           |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Tier 0 (`ci-tier0-*`), `just check`                                                                                                                                            | Yes                        | These are browser-free public/static gates; a capabilities report may explicitly acknowledge that a browser was not exercised. |
-| Tier 1 portable, DB, and mutation recipes (`ci-tier1-ts-public-*`, `ci-tier1-rust-*`, `ci-tier1-db`, `ci-tier1-mutation`) and the browser-free `just ci` / `just ci-full` path | Yes                        | Only for a recipe step that is intentionally browserless, and only with the emitted skipped report retained as its evidence.   |
-| Tier 1 browser (`ci-tier1-browser`), `just browser-e2e`, and `just periodic-strict`                                                                                            | **No**                     | These lanes own real-browser execution and must fail loudly if Chromium is unavailable.                                        |
-| `just real-bytes-oracle` and every MV/MZ runtime-evidence or alpha-claim lane                                                                                                  | **No**                     | A Chromium launch is required evidence for an MV/MZ alpha claim; a skip is not an alpha pass.                                  |
-| `ci-tier1-alpha` / `just alpha-proof`                                                                                                                                          | **No**                     | This named alpha recipe must not use a browser skip to imply any runtime-alpha evidence.                                       |
+| CI lane / recipe                                                                                                                                              | May pass `--skip-browser`? | Rule                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Tier 0 (`ci-tier0-*`), `just check`                                                                                                                           | Yes                        | These are browser-free public/static gates; a capabilities report may explicitly acknowledge that a browser was not exercised. |
+| Tier 1 portable, DB, and mutation recipes (`ci-tier1-ts-public-*`, `ci-tier1-rust-*`, `ci-tier1-db`, `ci-tier1-mutation`) and the browser-free `just ci` path | Yes                        | Only for a recipe step that is intentionally browserless, and only with the emitted skipped report retained as its evidence.   |
+| Tier 1 browser (`ci-tier1-browser`), `just browser-e2e`, and `just periodic-strict`                                                                           | **No**                     | These lanes own real-browser execution and must fail loudly if Chromium is unavailable.                                        |
+| `just real-bytes-oracle` and every MV/MZ runtime-evidence or alpha-claim lane                                                                                 | **No**                     | A Chromium launch is required evidence for an MV/MZ alpha claim; a skip is not an alpha pass.                                  |
+| `just alpha-proof`                                                                                                                                            | **No**                     | This named alpha recipe must not use a browser skip to imply any runtime-alpha evidence.                                       |
 
 The `--skip-browser` surface is limited to `capabilities` and browser-adapter
 `smoke`; trace, capture, and runtime-proof commands reject it. A lane that

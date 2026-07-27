@@ -191,5 +191,5 @@ itself — the Nix + direnv + pnpm dev toolchain, the `just`-orchestrated gates,
 the qd DAG workflow, worktree lifecycle, internal architecture, testing
 standard, CI policy — start at [CONTRIBUTING.md](CONTRIBUTING.md), which routes
 you into [`docs/dev/`](docs/dev/README.md). The developer fresh-clone path
-(`just install`, `just alpha-demo`, `just check` / `just ci`) is documented in
+(`just install`, `just alpha-proof`, `just check` / `just ci`) is documented in
 [docs/install.md](docs/install.md) under the developer sections.

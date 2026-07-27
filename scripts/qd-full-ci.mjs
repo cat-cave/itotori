@@ -50,7 +50,7 @@ if (import.meta.url === pathToMainUrl(process.argv[1])) {
 //
 // Lane selection is dependency-graph-correct and conservative (when in doubt a
 // lane runs; nothing is permanently skipped — the full gate is always available
-// via `just ci` / `just ci-full` / `node scripts/qd-full-ci.mjs --all`).
+// via `just ci` / `node scripts/qd-full-ci.mjs --all`).
 //
 // The qd-managed disposable Postgres is only started for the full `ci` lane
 // (which owns db-migrate/test); the fine-grained ci-itotori gate self-manages its

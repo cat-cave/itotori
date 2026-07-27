@@ -64,12 +64,12 @@ fire and pieces can be swapped."
    `KAIFUU-190` (Gameexe key family expansion).
 4. **Recorded-LLM bundle.** A reproducible recorded-provider run through
    the full Itotori workflow (draft → QA → patch export) is reachable
-   behind `ITOTORI_LIVE_PROVIDER=0` with deterministic outputs. Tracked by
+   with deterministic outputs. Tracked by
    `ITOTORI-019` / `ITOTORI-021` / `ITOTORI-025`.
 5. **Dashboard reachable.** The spec-dag-dashboard renders DAG, claims, and
    audit state from real DB state (not fixtures); audit-findings dashboard
    work in flight extends this.
-6. **Repo hygiene.** `just check` / `just test` / `just ci` / `just hello`
+6. **Repo hygiene.** `just check` / `just test` / `just ci` / `just alpha-proof`
    green locally; no silenced tests that represent real outstanding work;
    no foreign-tool subprocess invocations in production code.
 

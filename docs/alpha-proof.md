@@ -57,4 +57,4 @@ Any disagreement is emitted as a structured finding and a blocking finding sets
 Use `just alpha-proof` plus its artifact-linkage validator. CI runs the same
 proof as its `alpha` job in
 [`.github/workflows/_tier1.yml`](../.github/workflows/_tier1.yml)
-(`just ci-tier1-alpha` → `alpha-proof`).
+(`just alpha-proof`).

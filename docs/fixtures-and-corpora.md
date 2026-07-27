@@ -91,7 +91,7 @@ Active product and operator docs must teach generic surfaces instead:
 
 - the artifact-driven CLI flow: `extract` → `structure-export` → `wiki build`
   → `localize` → `patch` → `validate`;
-- real-corpus descriptors such as `ITOTORI_REAL_CORPUS_MANIFEST`;
+- documented, tool-specific real-corpus inputs;
 - engine/runtime artifact surfaces such as bridge bundles, patch reports, replay
   logs, runtime evidence, and provider-run records;
 - placeholder corpus labels and local paths, never a new title-specific command,
@@ -144,31 +144,7 @@ environment variable, or local config file under `.tmp/`. Do not edit committed
 paths, public manifests, tests, or package metadata to point at private inputs.
 CI must pass with the private path absent.
 
-Suite workflows that need a real corpus should prefer a local descriptor over
-title-specific environment variables. The primary descriptor surface is:
-
-```sh
-ITOTORI_REAL_CORPUS_MANIFEST=<local manifest path>
-```
-
-The manifest is local-only and must not be committed. Its shape is:
-
-```json
-{
-  "schemaVersion": "itotori.real-corpus-manifest.v0",
-  "corpora": [
-    {
-      "corpusId": "example-alpha-1",
-      "projectId": "example-alpha-1",
-      "engine": "reallive",
-      "root": "<local-private-root>",
-      "sourceLocale": "ja-JP"
-    }
-  ]
-}
-```
-
-The extract stage selects its source with `--game-root` (or a local descriptor)
+The extract stage selects its source with `--game-root`
 and produces the bridge bundle. The subsequent `itotori localize` command
 selects its operating posture with `--run-mode` and `--output-scope`, consuming
 the bridge bundle and structure artifact produced by earlier stages. The
@@ -181,16 +157,9 @@ For a one-off single-corpus run, operators may set:
 ITOTORI_REAL_GAME_ROOT=<local-private-root>
 ```
 
-`LOCALIZE_PROJECT_SOURCE_PATH=<local-private-root>` remains supported for
-workflows where the operator already has a direct source root. New suite
-workflow documentation should prefer `ITOTORI_REAL_CORPUS_MANIFEST`, with
-`ITOTORI_REAL_GAME_ROOT` only as the simple fallback.
-
-Never commit a real `ITOTORI_REAL_CORPUS_MANIFEST`, an absolute private root,
-or a copied command transcript that reveals the selected root. Committed tests
-and dry-run artifacts should use placeholders such as
-`<ITOTORI_REAL_CORPUS_MANIFEST root>` or `<local-private-root>` instead of
-machine-local paths.
+Never commit an absolute private root or a copied command transcript that
+reveals the selected root. Committed tests and dry-run artifacts should use
+`<local-private-root>` instead of machine-local paths.
 
 Private local manifests should record:
 

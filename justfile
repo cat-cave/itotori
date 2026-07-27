@@ -227,10 +227,6 @@ ci: check build db-migrate test mutation-differential
 mutation-differential:
     node scripts/mutation-differential.mjs
 
-# Explicit alias for the COMPLETE gate (same as `just ci`), for callers that want
-# to be unambiguous that no affected-lane pruning is applied.
-ci-full: ci
-
 # real-bytes-tests-in-ci: run EVERY crate's real-bytes suite against its staged
 # real corpus. This lane is PERIODIC-ONLY — it is the ground-truth oracle
 # (`just real-bytes-oracle`), deliberately OUTSIDE per-gate CI. Per-gate CI is
@@ -492,7 +488,7 @@ periodic-strict: browser-e2e real-bytes-oracle
 # dependents) + the synthetic `mutation-differential` guardrail; shared/foundational
 # changes run the full `ci`. Per-gate CI is single-mode synthetic (copyright-free,
 # needs no real corpora); the real-bytes lane is periodic-only (real-bytes-oracle).
-# Nothing is permanently skipped: `just ci` / `just ci-full` /
+# Nothing is permanently skipped: `just ci` or
 # `node scripts/qd-full-ci.mjs --all` still run everything.
 qd-full-ci:
     node scripts/qd-full-ci.mjs
@@ -625,12 +621,6 @@ catalog-replay-db-strict:
 alpha-proof:
     corepack pnpm --dir apps/itotori exec vitest run test/composition-reachability.test.ts --exclude '**/.direnv/**'
 
-# ALPHA-005: fresh-clone public-fixture demo entry point. Public-fixture-only,
-# deterministic, no DB / creds / private corpora / real bytes — it delegates to
-# the alpha proof so a new user can prove a fresh clone end-to-end in one command.
-# See docs/alpha-readiness.md and docs/install.md.
-alpha-demo: alpha-proof
-
 # ALPHA-005: alpha localization-project readiness checklist. Re-derives the
 # readiness-doc claims from the GENERATED capability matrix + the SHARED-025
 # proof manifest (never hand-maintained claims), validates the evidence node
@@ -647,12 +637,6 @@ alpha-readiness-checklist:
 # `just check`. Mirrors `alpha-readiness-checklist` for the RGT tier.
 rgt-readiness-checklist:
     node scripts/rgt-readiness-checklist.mjs
-
-# ALPHA-009: `hello` is retained ONLY as a compatibility alias for nodes that
-# still declare `just hello` as a verification. It cannot diverge from the alpha
-# proof gate — it delegates directly to `just alpha-proof`. There is no separate
-# Hello World source of truth and no literal hello-world success string.
-hello: alpha-proof
 
 # UTSUSHI-220: alpha-defining e2e Sweetie HD scene-1 text-replay smoke.
 # Runs the synthetic replay_scene acceptance tests through `cargo test`
@@ -826,7 +810,7 @@ ci-tier0-manifest:
 
 # --- Tier 1: portable behavior, DB, browser, alpha, mutation ------------------
 
-ci-tier1: ci-tier1-ts-public-1of2 ci-tier1-ts-public-2of2 ci-tier1-rust-1of3 ci-tier1-rust-2of3 ci-tier1-rust-3of3 ci-tier1-db ci-tier1-browser ci-tier1-alpha ci-tier1-mutation
+ci-tier1: ci-tier1-ts-public-1of2 ci-tier1-ts-public-2of2 ci-tier1-rust-1of3 ci-tier1-rust-2of3 ci-tier1-rust-3of3 ci-tier1-db ci-tier1-browser ci-tier1-mutation
 
 # Public TS shard 1/2: schema + runtime-web-review + ds unit + app vitest shard 1/2.
 # DATABASE_URL unset → DB-backed suites skip honestly (owned by ci-tier1-db).
@@ -992,9 +976,6 @@ ci-tier1-browser:
       exit 1
     fi
     echo "ci-tier1-browser: executed-count ok (playwright_executed=${_pw_executed_total}; ds_visual=verified)"
-
-# ALPHA public-fixture vertical + linkage proof.
-ci-tier1-alpha: alpha-proof
 
 # Synthetic mutation differential (heavy recompile; dedicated CI job + sccache).
 ci-tier1-mutation:

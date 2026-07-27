@@ -103,7 +103,7 @@ just install        # pnpm install (workspace)
 ### Run the public-fixture demo (no secrets, no real bytes)
 
 ```sh
-just alpha-demo
+just alpha-proof
 ```
 
 This runs the deterministic public-fixture alpha vertical and its independent
