@@ -284,6 +284,14 @@ pub enum SelRuntimeWarning {
         /// Choice index (0-based) where the decode failed.
         choice_index: usize,
     },
+    /// A choice label started with `###PRINT(` but did not evaluate to a
+    /// string-bank value. The raw label remains observable with this typed
+    /// warning instead of being silently filtered or fabricated.
+    PrintDirectiveEvaluationFailed {
+        variant: SelectVariant,
+        choice_index: usize,
+        reason: String,
+    },
     /// An opcode expected a particular arg shape but received a
     /// different one (e.g. `Int` where `Bytes` was expected).
     ArgShapeMismatch {

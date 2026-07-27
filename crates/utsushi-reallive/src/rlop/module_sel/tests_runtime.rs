@@ -1,4 +1,5 @@
 use super::*;
+use crate::var_banks::{BankId, Value};
 
 #[test]
 fn selection_control_signal_keys_on_button_object_setup_ops() {
@@ -144,6 +145,100 @@ fn interleaved_int_arg_keeps_emitted_index_aligned_with_choices_vec() {
             choice_index: 1,
             expected: "bytes",
         }]
+    );
+}
+
+#[test]
+fn choice_print_directive_resolves_for_emission_and_parked_overlay() {
+    // This is the real SelectElement label shape: the printable directive
+    // wraps a string-bank reference whose index is an expression. The same
+    // resolved bytes must feed the emitted TextLine and the queued longop,
+    // because the live-player overlay reads the latter rather than replaying
+    // the text sink.
+    let sink = Arc::new(CollectingSink::new());
+    let runtime = Arc::new(SelRuntime::with_sink(
+        Arc::clone(&sink) as Arc<dyn TextSurfaceSink>
+    ));
+    let mut vm = Vm::new(1, 0);
+    vm.banks_mut()
+        .set(BankId::StrS, 3, Value::Str(b"resolved option".to_vec()))
+        .expect("string-bank slot is valid");
+    let directive = [
+        b"###PRINT($".as_slice(),
+        &[0x12, b'[', b'$', 0xFF, 3, 0, 0, 0, b']', b')'],
+    ]
+    .concat();
+
+    let outcome =
+        SelectOp::new(Arc::clone(&runtime)).dispatch(&mut vm, &[ExprValue::Bytes(directive)]);
+
+    let lines = sink.lines.lock().expect("lock");
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].text, "resolved option");
+    drop(lines);
+
+    let DispatchOutcome::Yield {
+        longop_id,
+        private_state,
+    } = outcome
+    else {
+        panic!("select must yield a longop");
+    };
+    let select = SelectLongOp::try_from_longop(&LongOp {
+        id: longop_id,
+        private_state,
+    })
+    .expect("decode select payload");
+    assert_eq!(select.choices(), &[b"resolved option".to_vec()]);
+}
+
+#[test]
+fn choice_print_directive_retains_raw_label_and_warns_when_slot_is_unset() {
+    let sink = Arc::new(CollectingSink::new());
+    let runtime = Arc::new(SelRuntime::with_sink(
+        Arc::clone(&sink) as Arc<dyn TextSurfaceSink>
+    ));
+    let mut vm = Vm::new(1, 0);
+    let directive = [
+        b"###PRINT($".as_slice(),
+        &[0x12, b'[', b'$', 0xFF, 3, 0, 0, 0, b']', b')'],
+    ]
+    .concat();
+
+    let outcome = SelectOp::new(Arc::clone(&runtime))
+        .dispatch(&mut vm, &[ExprValue::Bytes(directive.clone())]);
+
+    let lines = sink.lines.lock().expect("lock");
+    assert_eq!(lines.len(), 1);
+    assert!(lines[0].text.starts_with("###PRINT("));
+    drop(lines);
+
+    let DispatchOutcome::Yield {
+        longop_id,
+        private_state,
+    } = outcome
+    else {
+        panic!("select must yield a longop");
+    };
+    let select = SelectLongOp::try_from_longop(&LongOp {
+        id: longop_id,
+        private_state,
+    })
+    .expect("decode select payload");
+    assert_eq!(select.choices(), &[directive]);
+    assert_eq!(
+        runtime.take_warnings(),
+        vec![
+            SelRuntimeWarning::PrintDirectiveEvaluationFailed {
+                variant: SelectVariant::Select,
+                choice_index: 0,
+                reason: "###PRINT string-bank slot strS[3] was unset".to_string(),
+            },
+            SelRuntimeWarning::InvalidShiftJis {
+                variant: SelectVariant::Select,
+                choice_index: 0,
+            }
+        ]
     );
 }
 

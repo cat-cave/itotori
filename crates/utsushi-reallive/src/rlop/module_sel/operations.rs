@@ -1,4 +1,52 @@
 use super::*;
+use crate::expression::ExprNode;
+use crate::expression_eval::evaluate;
+use crate::var_banks::{BankId, Value};
+
+const PRINT_DIRECTIVE: &[u8] = b"###PRINT(";
+
+/// Resolve a choice-label `###PRINT(<string-reference>)` directive.
+///
+/// `SelectLongOperation` in rlvm resolves this before it stores the option,
+/// which matters twice: the emitted [`TextLine`] and the parked
+/// [`SelectLongOp`] both become player-visible labels.  The string-bank bytes
+/// are the engine's wire values, not `VarBanks` fingerprint discriminants.
+fn evaluate_print_choice(vm: &Vm, raw: &[u8]) -> Result<Option<Vec<u8>>, String> {
+    if !raw.starts_with(PRINT_DIRECTIVE) {
+        return Ok(None);
+    }
+    let expression = &raw[PRINT_DIRECTIVE.len()..];
+    let (node, consumed) = crate::parse_expression(expression).map_err(|err| err.to_string())?;
+    if expression.get(consumed) != Some(&b')') || consumed + 1 != expression.len() {
+        return Err(
+            "###PRINT directive must contain exactly one parenthesized expression".to_string(),
+        );
+    }
+    let ExprNode::MemoryRef { bank, index } = node else {
+        return Err("###PRINT expression must resolve a string-bank reference".to_string());
+    };
+    let bank = match bank {
+        // rlvm `intmemref.h`: strK, strM, strS respectively.
+        0x0A => BankId::StrK,
+        0x0C => BankId::StrM,
+        0x12 => BankId::StrS,
+        other => return Err(format!("###PRINT references non-string bank 0x{other:02x}")),
+    };
+    let index = evaluate(&index, vm.banks()).map_err(|err| err.to_string())?;
+    let index = u16::try_from(index)
+        .map_err(|_| format!("###PRINT string-bank index out of range: {index}"))?;
+    match vm.banks().get(bank, index) {
+        Some(Value::Str(bytes)) => Ok(Some(bytes)),
+        Some(Value::Int(_)) => Err(format!(
+            "###PRINT string-bank slot {}[{index}] held an integer",
+            bank.as_str()
+        )),
+        None => Err(format!(
+            "###PRINT string-bank slot {}[{index}] was unset",
+            bank.as_str()
+        )),
+    }
+}
 
 /// Shared dispatch body for the four variants. Each variant is its own
 /// [`RLOperation`] impl so the registry key (and the
@@ -13,8 +61,8 @@ fn dispatch_select(
     let mut choices: Vec<Vec<u8>> = Vec::with_capacity(args.len());
     let mut rendered: Vec<(usize, String)> = Vec::with_capacity(args.len());
     for (idx, arg) in args.iter().enumerate() {
-        let bytes = match arg {
-            ExprValue::Bytes(bytes) => bytes.clone(),
+        let raw_bytes = match arg {
+            ExprValue::Bytes(bytes) => bytes,
             ExprValue::Int(_) | ExprValue::IntReference { .. } => {
                 // A skipped Int never becomes a stored choice, so the raw
                 // arg position `idx` is the only meaningful pointer to the
@@ -25,6 +73,18 @@ fn dispatch_select(
                     expected: "bytes",
                 });
                 continue;
+            }
+        };
+        let bytes = match evaluate_print_choice(vm, raw_bytes) {
+            Ok(Some(resolved)) => resolved,
+            Ok(None) => raw_bytes.clone(),
+            Err(reason) => {
+                runtime.record_warning(SelRuntimeWarning::PrintDirectiveEvaluationFailed {
+                    variant,
+                    choice_index: choices.len(),
+                    reason,
+                });
+                raw_bytes.clone()
             }
         };
         // The emitted `choice:<idx>` surface (and SELBTN styling) must use
