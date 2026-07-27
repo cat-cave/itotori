@@ -16,6 +16,7 @@
 
 pub mod opcode_profile;
 pub mod runtime_profile;
+pub mod scene_vm;
 pub mod siglus_g00;
 pub mod siglus_render;
 pub mod structure_export;
