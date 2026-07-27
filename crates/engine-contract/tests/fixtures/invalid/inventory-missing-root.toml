@@ -1,0 +1,9 @@
+schema = "inventory/v1"
+
+[[corpus]]
+id = "corpus-01"
+engine = "engine-alpha"
+variant = "variant-base"
+content_address = "sha256:fixture-digest-a"
+tags = ["extract"]
+access = "read-only"

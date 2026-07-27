@@ -1,0 +1,20 @@
+{
+  "schema": "receipt/v1",
+  "plan_id": "plan-001",
+  "run_id": "run-002",
+  "runner": { "state": "available", "job_steps": 3 },
+  "counts": {
+    "planned": 1,
+    "selected": 1,
+    "started": 1,
+    "executed": 1,
+    "passed": 0,
+    "failed": 1,
+    "skipped": 0,
+    "unavailable": 0
+  },
+  "proofs": [{ "id": "proof-two-inputs", "state": "executed", "assertion_count": 0 }],
+  "diagnostics": [
+    { "code": "executed-proof-produced-no-assertions", "subject": "proof-two-inputs" }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema": "plan/v1",
+  "id": "plan-002",
+  "lane": "lane-strict",
+  "requirements": [
+    {
+      "id": "requirement-private-inputs",
+      "state": "absent",
+      "diagnostic": "required-input-absent"
+    }
+  ],
+  "proofs": []
+}

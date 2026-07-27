@@ -1,0 +1,14 @@
+{
+  "schema": "plan/v1",
+  "id": "plan-001",
+  "lane": "lane-strict",
+  "requirements": [{ "id": "requirement-private-inputs", "state": "satisfied" }],
+  "proofs": [
+    {
+      "id": "proof-two-inputs",
+      "engine": "engine-alpha",
+      "corpora": ["corpus-01", "corpus-02"],
+      "executor": { "kind": "engine-plugin", "command": "prove", "selector": "two-inputs" }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+schema = "inventory/v1"
+
+[[corpus]]
+id = "corpus-01"
+engine = "engine-alpha"
+variant = "variant-base"
+root = "/private/corpus-01"
+content_address = "sha256:fixture-digest-a"
+tags = ["extract", "patch"]
+access = "read-only"
+
+[[corpus]]
+id = "corpus-02"
+engine = "engine-alpha"
+variant = "variant-revision"
+root = "/private/corpus-02"
+content_address = "sha256:fixture-digest-b"
+tags = ["extract", "patch"]
+access = "read-only"
