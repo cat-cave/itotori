@@ -102,8 +102,8 @@ test("probeFromEnv treats an absent root env as a missing corpus (no skip path)"
 test("probeFromEnv computes the content-address from the staged hash list", () => {
   const probes = probeFromEnv(
     {
-      ITOTORI_REAL_GAME_ROOT: "/staged/sweetie",
-      ITOTORI_SWEETIE_CONTENT_ADDRESS: "deadbeef",
+      ITOTORI_REAL_GAME_ROOT: "/staged/private-engine-corpus",
+      ITOTORI_PRIVATE_ENGINE_CORPUS_CONTENT_ADDRESS: "deadbeef",
       ITOTORI_ZDR_PROFILE: APPROVED_ZDR_PROFILE,
     },
     { isDir: () => true, isFile: () => true, sha256File: () => "deadbeef" },

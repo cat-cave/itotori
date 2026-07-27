@@ -83,6 +83,8 @@ check:
     node scripts/audit-no-node-ids.mjs
     node --test scripts/audit-no-game-names.test.mjs
     node scripts/audit-no-game-names.mjs
+    node --test scripts/validate-no-specific-game-references.test.mjs
+    node scripts/validate-no-specific-game-references.mjs
     node --test scripts/file-line-cap-guard.test.mjs
     node scripts/file-line-cap-guard.mjs
     node --test scripts/audit-deletion-ledger.test.mjs
@@ -361,12 +363,12 @@ ci-real-bytes:
     fi
 
 # OPT-IN PRIVATE real-byte proof lane. NOT a merge-required gate — it needs the
-# content-addressed Sweetie corpus + the exact approved ZDR profile, which the
+# content-addressed private engine corpus + the exact approved ZDR profile, which the
 # public hosted runners lack (triggered on demand / by label; see
 # .github/workflows/real-bytes-private-proof.yml). Unlike the periodic oracle it
 # may NOT green-skip: the preflight gate FAILS (red) on any missing REQUIRED
-# Sweetie bytes, an unpinned/mismatched content-address, or ZDR profile drift.
-# It exercises extract -> structure -> patch -> replay on the ACTUAL Sweetie
+# private corpus bytes, an unpinned/mismatched content-address, or ZDR profile drift.
+# It exercises extract -> structure -> patch -> replay on the staged private
 # bytes and emits a CONTENT-FREE evidence manifest
 # (.tmp/private-proof/evidence.json — counts/hashes/ids only, never source/
 # target/prompt text). The gate + manifest logic are unit-tested in
@@ -378,7 +380,7 @@ ci-real-bytes-private-proof:
     export ITOTORI_REAL_GAME_ROOT="${ITOTORI_REAL_GAME_ROOT:-/scratch/itotori-research/sweetie-hd}"
     RESULTS="$PWD/.tmp/private-proof/stage-results.json"
     rm -f "$RESULTS"
-    # 1. FAIL-NOT-SKIP preflight: required Sweetie bytes present + content-
+    # 1. FAIL-NOT-SKIP preflight: required private corpus bytes present + content-
     #    addressed + ZDR profile attested. Missing/mismatched = RED, never skip.
     node scripts/ci/private-real-byte-proof.mjs --preflight
     # 2. Build the moat binaries the extract/replay stages drive (never reuse a
@@ -387,7 +389,7 @@ ci-real-bytes-private-proof:
     export ITOTORI_KAIFUU_BIN="${ITOTORI_KAIFUU_BIN:-${CARGO_TARGET_DIR:-target}/release/kaifuu-cli}"
     export ITOTORI_UTSUSHI_BIN="${ITOTORI_UTSUSHI_BIN:-${CARGO_TARGET_DIR:-target}/release/utsushi-cli}"
     pnpm exec vp run ts:build
-    # 3. EXTRACT — decode the real Sweetie RealLive scenario bytes.
+    # 3. EXTRACT — decode the staged RealLive scenario bytes.
     cargo test -p kaifuu-reallive -p kaifuu-cli -- --ignored
     node scripts/ci/private-real-byte-proof.mjs --record-stage extract --results "$RESULTS"
     # 4. STRUCTURE — scene graph / choices / speakers from the real bytes.
@@ -722,8 +724,6 @@ qd-export:
 
 ci-tier0: ci-tier0-meta ci-tier0-ts ci-tier0-rust ci-tier0-manifest
 
-# Policy / schema / toolchain / compose-model / fixture / readiness gates.
-# Mirrors the non-Rust, non-TS portion of `just check`.
 ci-tier0-meta:
     node --test scripts/itotori-db-compose-config.test.mjs
     node --test scripts/permission-denial-db-gate.test.mjs
@@ -755,6 +755,8 @@ ci-tier0-meta:
     node scripts/audit-no-node-ids.mjs
     node --test scripts/audit-no-game-names.test.mjs
     node scripts/audit-no-game-names.mjs
+    node --test scripts/validate-no-specific-game-references.test.mjs
+    node scripts/validate-no-specific-game-references.mjs
     node --test scripts/file-line-cap-guard.test.mjs
     node scripts/file-line-cap-guard.mjs
     node --test scripts/audit-deletion-ledger.test.mjs
@@ -787,12 +789,10 @@ ci-tier0-meta:
     node scripts/verify-toolchain-policy.mjs
     node scripts/verify-deny-strict.mjs
 
-# TypeScript / Vite+ static: format + lint (vp check) and workspace typecheck.
 ci-tier0-ts:
     pnpm exec vp check
     pnpm exec vp run ts:typecheck
 
-# Rust static: fmt + check + clippy -D warnings + cargo-deny.
 ci-tier0-rust:
     cargo fmt --check
     cargo check --workspace

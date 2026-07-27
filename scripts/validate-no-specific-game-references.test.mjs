@@ -197,6 +197,15 @@ test("check mode exits 1 on an active-surface leak and 0 on a classified histori
   });
 });
 
+test("Tier 0 content audit runs the enforceable generalization-purge gate", () => {
+  const justfile = readFileSync(resolve(here, "..", "justfile"), "utf8");
+  const tier0Meta = justfile.match(/^ci-tier0-meta:\n([\s\S]*?)^ci-tier0-ts:/mu)?.[1];
+
+  assert.ok(tier0Meta, "ci-tier0-meta recipe must exist");
+  assert.match(tier0Meta, /node --test scripts\/validate-no-specific-game-references\.test\.mjs/u);
+  assert.match(tier0Meta, /node scripts\/validate-no-specific-game-references\.mjs/u);
+});
+
 test("report mode prints active leaks but exits zero (advisory audit)", () => {
   withTempGitRepo((repo) => {
     writeRepoFile(repo, "src/app.ts", 'const target = "moonlit-fixture";\n');

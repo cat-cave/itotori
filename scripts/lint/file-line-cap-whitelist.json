@@ -5,7 +5,7 @@
   "total": 46,
   "files": {
     "crates/kaifuu-cli/src/main.rs": 831,
-    "crates/kaifuu-cli/tests/patch_real_sweetie_hd.rs": 567,
+    "crates/kaifuu-cli/tests/patch_real_private_corpus.rs": 567,
     "crates/kaifuu-core/src/lib.rs": 1166,
     "crates/kaifuu-core/src/mv_mz_encrypted_asset_replacement.rs": 712,
     "crates/kaifuu-core/src/mv_mz_encrypted_audio.rs": 1044,
