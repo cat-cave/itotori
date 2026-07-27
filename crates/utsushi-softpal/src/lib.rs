@@ -13,17 +13,11 @@
 //!
 //! # Faithful scope (no fabricated runtime behaviour)
 //!
-//! The runtime drives the arity-driven `Sv20` dispatch stream in play order:
-//! every operator is walked (executed), each `Call` is dispatched to its
-//! engine command surface — TEXT-SHOW emits a dialogue line, SELECT presents a
-//! choice menu — and the nullary control operators advance scene/block state.
-//! Conditional jump / expression-value semantics (which would require reversing
-//! `Pal.dll`) are **not** modelled, so dispatch follows the linear play order
-//! the disassembler establishes and headless choice selection is
-//! deterministic-first. The oracle for the emitted text/choice stream is the
-//! extracted bridge disassembly ([`kaifuu_softpal::ScriptScan::resolve`]): the
-//! runtime cross-checks its executed stream against that 100%-resolved
-//! disassembly and refuses to run on a mismatch.
+//! The runtime evaluates the established arithmetic/comparison operators,
+//! persistent operand banks, labels, calls, and conditional jumps. It emits
+//! dialogue, choices, and branch moments in executed order. An operand form or
+//! engine dispatch not established by byte evidence stops execution with a
+//! counted diagnostic; it is never silently treated as a no-op.
 
 #![forbid(unsafe_code)]
 #![deny(missing_debug_implementations)]
@@ -31,23 +25,21 @@
 mod engine_port;
 mod scene_render;
 mod scene_runtime;
+mod scene_vm;
 
 pub use engine_port::{UtsushiSoftpalPort, UtsushiSoftpalPortContext};
 pub use scene_render::{
     SoftpalFrame, SoftpalRedaction, SoftpalRenderError, encode_softpal_png, render_dialogue_frame,
 };
 pub use scene_runtime::{
-    ChoiceOption, SceneStep, SoftpalRuntimeError, SoftpalScene, SoftpalSceneStats,
+    ChoiceOption, RuntimeDiagnostic, SceneStep, SoftpalRuntimeError, SoftpalScene,
+    SoftpalSceneStats,
 };
 
 /// One-line capability boundary, mirroring the kaifuu detector's support
 /// statements: what this runtime port DOES and, honestly, does not claim.
 pub const SOFTPAL_RUNTIME_SUPPORT_BOUNDARY: &str = "utsushi-softpal executes the extracted Softpal \
-    Sv20 scene-dispatch (arity-driven operator walk in play order: TEXT-SHOW dialogue emission with \
-    speaker, SELECT choice menus with deterministic-first headless selection, nullary control-flow \
-    markers) through the shared Utsushi substrate text + frame sinks, cross-checking the executed \
-    dialogue/choice stream against the 100%-pointer-resolved kaifuu-softpal bridge disassembly, and \
-    captures an edge-redacted message-box LAYOUT frame (structure only, no glyph pixels; the decoded \
-    text is the localization proof). It does NOT evaluate Sv20 expression values or resolve \
-    conditional jumps (Pal.dll semantics) — dispatch is the linear play order the disassembler \
-    proves, not a branch-following interpreter.";
+    Sv20 VM through the shared Utsushi substrate text + frame sinks: established arithmetic, \
+    comparisons, operand banks, label calls, and conditional jumps produce deterministic dialogue, \
+    choice, and branch moments. Unproven operands or engine dispatches stop with counted diagnostics; \
+    no unproven construct is silently skipped. It captures an edge-redacted message-box LAYOUT frame.";

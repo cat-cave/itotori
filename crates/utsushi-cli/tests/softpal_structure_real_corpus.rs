@@ -1,58 +1,53 @@
-//! Env-gated real-bytes proof for the Softpal structure producer.
+//! Read-only regression proof for the shipped Softpal structure producer.
 //!
-//! The private corpus root is read-only and never contributes bytes to this
-//! repository. When unavailable, this test emits one clean skip line.
+//! No retail bytes are committed. When the staged corpora are unavailable the
+//! test reports the missing prerequisite and exits cleanly.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use serde_json::Value;
 use tempfile::TempDir;
 
-const RESEARCH_ROOT_ENV: &str = "ITOTORI_SOFTPAL_RESEARCH_ROOT";
-
-fn data_archives(root: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
-    for entry in fs::read_dir(root)? {
-        let entry = entry?;
-        let path = entry.path();
-        let metadata = fs::metadata(&path)?;
-        if metadata.is_dir() {
-            data_archives(&path, out)?;
-        } else if metadata.is_file()
-            && path
-                .file_name()
-                .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("data.pac"))
-        {
-            out.push(path);
-        }
-    }
-    Ok(())
+struct CorpusExpectation {
+    root: &'static str,
+    messages: usize,
+    speakers: usize,
+    choices: usize,
 }
 
-#[test]
-fn exports_nontrivial_linear_structure_for_each_private_corpus() {
-    let Some(root) = std::env::var_os(RESEARCH_ROOT_ENV).map(PathBuf::from) else {
-        eprintln!("SKIP softpal structure real bytes: {RESEARCH_ROOT_ENV} is unset");
-        return;
-    };
-    if !root.is_dir() {
-        eprintln!("SKIP softpal structure real bytes: {RESEARCH_ROOT_ENV} is not a directory");
-        return;
-    }
-    let mut archives = Vec::new();
-    data_archives(&root, &mut archives).expect("walk private corpus root");
-    archives.sort();
-    assert!(
-        archives.len() >= 2,
-        "private corpus must contain at least two data archives; found {}",
-        archives.len()
-    );
+const CORPORA: [CorpusExpectation; 2] = [
+    CorpusExpectation {
+        root: "/scratch/corpus/softpal-1",
+        messages: 30_165,
+        speakers: 19_990,
+        choices: 11,
+    },
+    CorpusExpectation {
+        root: "/scratch/corpus/softpal-2",
+        messages: 39_832,
+        speakers: 28_665,
+        choices: 16,
+    },
+];
 
+#[test]
+fn exports_complete_linear_structure_for_each_staged_corpus() {
     let output_root = TempDir::new().expect("temporary output root");
-    for (index, archive) in archives.iter().enumerate() {
-        let game_root = archive.parent().expect("data archive parent");
-        let output = output_root.path().join(format!("structure-{index}.json"));
+    for (index, corpus) in CORPORA.iter().enumerate() {
+        let game_root = Path::new(corpus.root);
+        if !game_root.is_dir() {
+            eprintln!(
+                "SKIP softpal structure corpus {}: staged root is unavailable at {}",
+                index + 1,
+                game_root.display()
+            );
+            continue;
+        }
+        let output = output_root
+            .path()
+            .join(format!("structure-{}.json", index + 1));
         let command = Command::new(env!("CARGO_BIN_EXE_utsushi-cli"))
             .args(["structure", "--engine", "softpal", "--game-root"])
             .arg(game_root)
@@ -62,7 +57,8 @@ fn exports_nontrivial_linear_structure_for_each_private_corpus() {
             .expect("run structure producer");
         assert!(
             command.status.success(),
-            "structure producer failed for corpus {index}: {}",
+            "structure producer failed for corpus {}: {}",
+            index + 1,
             String::from_utf8_lossy(&command.stderr)
         );
 
@@ -70,23 +66,35 @@ fn exports_nontrivial_linear_structure_for_each_private_corpus() {
             &fs::read(&output).expect("structure producer writes an artifact"),
         )
         .expect("structure artifact is JSON");
-        let scene = structure["scenes"]
-            .as_array()
-            .and_then(|scenes| scenes.first());
-        let messages = scene
-            .and_then(|value| value["messages"].as_array())
-            .map_or(0, Vec::len);
-        let choices = scene
-            .and_then(|value| value["choices"].as_array())
-            .map_or(0, Vec::len);
+        let scene = &structure["scenes"][0];
+        let messages = scene["messages"].as_array().expect("messages array");
+        let speakers = messages
+            .iter()
+            .filter(|message| message["speaker"].is_string())
+            .count();
+        let choices = scene["choices"].as_array().expect("choices array");
+
         assert_eq!(structure["engine"], "softpal");
         assert_eq!(structure["scenes"].as_array().map(Vec::len), Some(1));
-        assert!(
-            messages > 100,
-            "corpus {index} must expose a nontrivial dialogue stream; got {messages} messages"
+        assert_eq!(
+            messages.len(),
+            corpus.messages,
+            "corpus {} messages",
+            index + 1
+        );
+        assert_eq!(speakers, corpus.speakers, "corpus {} speakers", index + 1);
+        assert_eq!(
+            choices.len(),
+            corpus.choices,
+            "corpus {} choices",
+            index + 1
         );
         eprintln!(
-            "softpal structure corpus {index}: scenes=1 messages={messages} choices={choices}"
+            "softpal structure corpus {}: messages={} speakers={} choices={}",
+            index + 1,
+            messages.len(),
+            speakers,
+            choices.len(),
         );
     }
 }
