@@ -419,6 +419,11 @@ ci-real-bytes-private-proof:
 real-bytes-oracle:
     node scripts/real-bytes-oracle.mjs
 
+# Local real-byte registry entry point. It reports every declared corpus before
+# running and fails if no proof can execute; a green empty lane is forbidden.
+real-bytes:
+    node scripts/real-bytes-lane.mjs
+
 # Drift-only slice of the oracle: the SYNTHETIC-vs-REAL drift check WITHOUT the
 # corpora-bound ground-truth suite (repo sources only). Runs anywhere (incl.
 # hosted CI runners with no corpora) so drift can be caught nightly even where

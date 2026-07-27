@@ -171,7 +171,7 @@ pub(super) fn multi_game_validation_runs_against_two_distinct_reallive_corpora()
         "multi-game validation requires >= 2 RealLive corpora, but only {} \
          resolved; set {} to a second, distinct RealLive title",
         reports.len(),
-        real_corpus::REAL_GAME_ROOT_2_ENV,
+        real_corpus::SECONDARY,
     );
     assert_ne!(
         reports[0].seen_sha256, reports[1].seen_sha256,

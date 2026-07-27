@@ -183,8 +183,8 @@
         "containerKey": "reallive:scene-0001",
         "entryPath": ["scene", "0001", "units", "0001"],
         "range": {
-          "endByte": 31,
-          "startByte": 29
+          "endByte": 40,
+          "startByte": 38
         }
       },
       "sourceRevision": {
@@ -239,8 +239,8 @@
         "containerKey": "reallive:scene-0001",
         "entryPath": ["scene", "0001", "units", "0002"],
         "range": {
-          "endByte": 31,
-          "startByte": 29
+          "endByte": 45,
+          "startByte": 43
         }
       },
       "sourceRevision": {
@@ -357,8 +357,8 @@
         "containerKey": "reallive:scene-0002",
         "entryPath": ["scene", "0002", "units", "0001"],
         "range": {
-          "endByte": 31,
-          "startByte": 29
+          "endByte": 40,
+          "startByte": 38
         }
       },
       "sourceRevision": {
@@ -413,8 +413,8 @@
         "containerKey": "reallive:scene-0002",
         "entryPath": ["scene", "0002", "units", "0002"],
         "range": {
-          "endByte": 31,
-          "startByte": 29
+          "endByte": 45,
+          "startByte": 43
         }
       },
       "sourceRevision": {

@@ -324,6 +324,6 @@ fn bridge_bundles_carry_zero_non_dialogue_units_on_both_corpora_real_bytes() {
         "multi-game validation requires >= 2 distinct RealLive corpora, but only \
          {} resolved; stage the second corpus or set {}",
         reports.len(),
-        real_corpus::REAL_GAME_ROOT_2_ENV,
+        real_corpus::SECONDARY,
     );
 }

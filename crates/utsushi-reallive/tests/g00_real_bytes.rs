@@ -267,13 +267,10 @@ fn assert_type0_corpus_coherent(title: &str, g00_dir: &PathBuf) {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (and optionally _2) env var"]
 fn g00_type0_corpus_coherence_both_titles() {
     let mut ran = false;
-    for env_var in [
-        real_corpus::REAL_GAME_ROOT_ENV,
-        real_corpus::REAL_GAME_ROOT_2_ENV,
-    ] {
-        if let Some(dir) = real_corpus::g00_dir_for_env(env_var) {
+    for env_var in [real_corpus::PRIMARY, real_corpus::SECONDARY] {
+        if let Some(dir) = real_corpus::g00_dir_for(env_var) {
             ran = true;
-            assert_type0_corpus_coherent(env_var, &dir);
+            assert_type0_corpus_coherent(env_var.engine, &dir);
         }
     }
     if !ran {
@@ -445,13 +442,10 @@ fn assert_strict_validator_accepts_clean_decodes(title: &str, g00_dir: &PathBuf)
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (and optionally _2) env var"]
 fn g00_strict_validator_accepts_real_corpus_both_titles() {
     let mut ran = false;
-    for env_var in [
-        real_corpus::REAL_GAME_ROOT_ENV,
-        real_corpus::REAL_GAME_ROOT_2_ENV,
-    ] {
-        if let Some(dir) = real_corpus::g00_dir_for_env(env_var) {
+    for env_var in [real_corpus::PRIMARY, real_corpus::SECONDARY] {
+        if let Some(dir) = real_corpus::g00_dir_for(env_var) {
             ran = true;
-            assert_strict_validator_accepts_clean_decodes(env_var, &dir);
+            assert_strict_validator_accepts_clean_decodes(env_var.engine, &dir);
         }
     }
     if !ran {

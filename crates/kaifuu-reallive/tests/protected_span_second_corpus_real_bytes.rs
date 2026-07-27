@@ -367,7 +367,7 @@ fn protected_span_extraction_generalizes_to_second_corpus_real_bytes() {
         "protected-span multi-game validation requires >= 2 distinct RealLive corpora, but \
          only {} resolved; set {}",
         reports.len(),
-        real_corpus::REAL_GAME_ROOT_2_ENV,
+        real_corpus::SECONDARY,
     );
 
     let first = reports

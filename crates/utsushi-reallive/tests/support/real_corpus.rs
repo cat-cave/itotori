@@ -1,23 +1,30 @@
 // reason: shared real-bytes test-support helpers; not every consumer test uses every helper.
 #![allow(dead_code)]
-
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use utsushi_fixture::corpus_registry::{Need, resolve};
+pub const PRIMARY: Need<'static> = Need {
+    engine: "reallive",
+    ordinal: 1,
+    variant: "encrypted",
+};
+pub const SECONDARY: Need<'static> = Need {
+    engine: "reallive",
+    ordinal: 2,
+    variant: "plain",
+};
 
+// Legacy callers outside the migrated RealLive slice still name their local
+// corpus roots directly. Keep this compatibility surface until that follow-up.
 pub const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
 pub const REAL_GAME_ROOT_2_ENV: &str = "ITOTORI_REAL_GAME_ROOT_2";
 
-/// Report the corpus-unavailable branch of an env-gated real-bytes test.
-///
-/// The test's early-return call site makes this an explicit skip rather than a
-/// panic: a local or CI environment without the optional corpus has not made a
-/// claim about real bytes. Returns `()` (not `!`) so those call sites keep their
-/// `return` without an `unreachable_code` lint.
+/// Prints a registry-identified, actionable real-bytes skip. Returns `()` (not
+/// `!`) so call sites retain `return` without an `unreachable_code` lint.
 pub fn require_real_bytes(test_name: &str) {
     eprintln!(
-        "SKIP {test_name}: no readable {REAL_GAME_ROOT_ENV} corpus; set \
-         {REAL_GAME_ROOT_ENV}=/path/to/reallive-game-root to exercise real bytes."
+        "REAL-BYTES SKIP {test_name}: reallive/1/encrypted is unavailable; set ITOTORI_CORPUS_ROOT=/path/to/corpora and configure reallive/1/encrypted in corpora/manifest.v1.json to exercise real bytes."
     );
 }
 
@@ -33,14 +40,12 @@ pub struct RealCorpus {
     pub seen_txt: PathBuf,
 }
 
-/// Resolve the first corpus (`ITOTORI_REAL_GAME_ROOT`, Sweetie HD).
 pub fn corpus_1() -> Option<RealCorpus> {
-    corpus_for_env("corpus-1", REAL_GAME_ROOT_ENV)
+    corpus_for_need("corpus-1", PRIMARY)
 }
 
-/// Resolve the second corpus (`ITOTORI_REAL_GAME_ROOT_2`, e.g. Kanon).
 pub fn corpus_2() -> Option<RealCorpus> {
-    corpus_for_env("corpus-2", REAL_GAME_ROOT_2_ENV)
+    corpus_for_need("corpus-2", SECONDARY)
 }
 
 /// Every staged real RealLive corpus, in declaration order. Empty when no
@@ -71,8 +76,8 @@ impl RealCorpus {
     }
 }
 
-fn corpus_for_env(label: &'static str, env_name: &str) -> Option<RealCorpus> {
-    let root = PathBuf::from(env::var_os(env_name)?);
+fn corpus_for_need(label: &'static str, need: Need<'_>) -> Option<RealCorpus> {
+    let root = resolve(need).ok()?;
     let resolved = resolve_corpus_root(&root)?;
     let seen_txt = find_seen_archive(&resolved)?;
     Some(RealCorpus { label, seen_txt })
@@ -124,16 +129,19 @@ fn find_child_ci(dir: &Path, name: &str) -> Option<PathBuf> {
 }
 
 pub fn game_root() -> Option<PathBuf> {
-    env::var_os(REAL_GAME_ROOT_ENV)
-        .and_then(|root| resolve_reallive_game_root(&PathBuf::from(root)))
+    resolve(PRIMARY)
+        .ok()
+        .and_then(|root| resolve_reallive_game_root(&root))
 }
 
-/// Locate the g00 asset directory reachable from the game root named by
-/// `env_var`. Handles BOTH the standard `REALLIVEDATA/g00` layout
-/// (Sweetie HD) and title variants that ship a top-level (case-varying)
-/// `G00` directory (Kanon). Returns `None` when the env var is unset or
-/// no g00 directory can be found. Directory search is bounded to a depth
-/// of 4 from the raw env path.
+/// Locate a g00 directory from a registry request. Directory search is bounded
+/// to depth 4 and supports both common layouts.
+pub fn g00_dir_for(need: Need<'_>) -> Option<PathBuf> {
+    let root = resolve(need).ok()?;
+    find_g00_dir(&root, 4)
+}
+
+/// Legacy accessor retained for the unmigrated RealLive tests.
 pub fn g00_dir_for_env(env_var: &str) -> Option<PathBuf> {
     let root = PathBuf::from(env::var_os(env_var)?);
     find_g00_dir(&root, 4)
@@ -200,7 +208,7 @@ pub fn save_file_path(file_name: &str) -> Option<PathBuf> {
 }
 
 pub fn skip_message(test_name: &str) -> String {
-    format!("{REAL_GAME_ROOT_ENV} unset or no REALLIVEDATA directory found; skipping {test_name}")
+    format!("reallive/1/encrypted is unavailable or malformed; skipping {test_name}")
 }
 
 fn file_in_reallivedata(name: &str) -> Option<PathBuf> {

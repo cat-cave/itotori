@@ -615,6 +615,7 @@ dependencies = [
  "sevenz-rust2",
  "sha2",
  "tempfile",
+ "utsushi-fixture",
 ]
 
 [[package]]
@@ -687,6 +688,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
+ "utsushi-fixture",
  "uuid",
 ]
 
@@ -1629,6 +1631,7 @@ dependencies = [
  "swash",
  "thiserror",
  "utsushi-core",
+ "utsushi-fixture",
 ]
 
 [[package]]

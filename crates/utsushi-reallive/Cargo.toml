@@ -28,6 +28,7 @@ swash.workspace = true
 encoding_rs.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+utsushi-fixture = { path = "../utsushi-fixture" }
 # SHA-256-derived `artifact_id` for the headless render
 # pipeline's in-memory artifact store. Sourced through the workspace
 # dep (`utsushi-core` already declares `sha2.workspace = true`).

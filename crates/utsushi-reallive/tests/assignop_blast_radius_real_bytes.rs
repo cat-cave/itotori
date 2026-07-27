@@ -284,9 +284,7 @@ fn two_corpora_or_skip(test_name: &str) -> Option<Vec<real_corpus::RealCorpus>> 
     let corpora = real_corpus::corpora();
     if corpora.len() < 2 {
         eprintln!(
-            "SKIP {test_name}: need readable {} and {} RealLive corpus roots; found {}",
-            real_corpus::REAL_GAME_ROOT_ENV,
-            real_corpus::REAL_GAME_ROOT_2_ENV,
+            "REAL-BYTES SKIP {test_name}: need reallive/1/encrypted and reallive/2/plain; found {}. Set ITOTORI_CORPUS_ROOT=/path/to/corpora and configure both entries in corpora/manifest.v1.json to exercise real bytes.",
             corpora.len(),
         );
         return None;
