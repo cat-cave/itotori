@@ -132,8 +132,8 @@ pub use adapter::{
     scan_for_secret_leak,
 };
 pub use archive::{
-    SCENE_PCK_HEADER_BYTE_LEN, SiglusArchiveError, SiglusSceneEntry, SiglusSceneIndex,
-    parse_scene_pck,
+    SCENE_PCK_HEADER_BYTE_LEN, SiglusArchiveError, SiglusIncludedCommand, SiglusSceneEntry,
+    SiglusSceneIndex, parse_scene_pck,
 };
 pub use bridge::{
     BridgeOpts, BridgeProduceError, BridgeSceneInput, ProducedBundle, produce_bundle,

@@ -1,138 +1,13 @@
 //! Program-counter dispatch and explicit runtime diagnostics.
-use super::program::SceneProgram;
+use super::model::{
+    CallFrame, ChoicePolicy, ExecutionReport, Moment, ProgramSource, SceneVm, Value, VmError,
+    VmState,
+};
+use super::program::{SceneProgram, TitleProgram};
 use kaifuu_siglus::{SiglusArgForm, SiglusOpcode, SiglusOperand, SiglusPush};
-use std::collections::BTreeMap;
-use thiserror::Error;
 
 /// Finite guard for malformed/cyclic script paths; it is a terminal diagnostic.
 const STEP_LIMIT: usize = 100_000;
-
-/// Deterministic selection policy for `GLOBAL.SELBTN`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChoicePolicy {
-    /// Pick the first presented option, consistently across runs.
-    First,
-}
-
-/// Observable execution event in program-counter order.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Moment {
-    /// A decoded `CD_TEXT` run reached by execution.
-    Text {
-        offset: usize,
-        speaker: Option<String>,
-        text: String,
-    },
-    /// A selection reached by execution and resolved by the fixed policy.
-    Choice {
-        offset: usize,
-        options: Vec<String>,
-        chosen: usize,
-    },
-}
-
-/// Persistent state, separate from call-local frames, for later scene reads.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct VmState {
-    /// The global integer bank addressed by packed `0x7f` element heads.
-    pub globals: BTreeMap<i32, i32>,
-}
-
-/// Execution outcome and the moments observed before a terminal condition.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExecutionReport {
-    /// Scene decoded and executed.
-    pub scene_id: u32,
-    /// Number of real instructions dispatched.
-    pub instructions_executed: usize,
-    /// Ordered text/choice moments from the executed path.
-    pub moments: Vec<Moment>,
-    /// Normal terminal condition.
-    pub halted: bool,
-}
-
-/// A loud execution failure. Every unsupported opcode or runtime call is
-/// terminal; callers can aggregate this tuple without inspecting title text.
-#[derive(Debug, Error, Clone, PartialEq, Eq)]
-pub enum VmError {
-    /// An instruction needs a stack value that execution did not produce.
-    #[error("utsushi.siglus.vm.stack_underflow: scene {scene_id} offset {offset}")]
-    StackUnderflow { scene_id: u32, offset: usize },
-    /// A label did not resolve to a bytecode instruction.
-    #[error("utsushi.siglus.vm.unresolved_jump: scene {scene_id} offset {offset} label {label}")]
-    UnresolvedJump {
-        scene_id: u32,
-        offset: usize,
-        label: i32,
-    },
-    /// A source opcode lacks an execution implementation.
-    #[error(
-        "utsushi.siglus.vm.unsupported_opcode: scene {scene_id} offset {offset} lead {lead:#04x}"
-    )]
-    UnsupportedOpcode {
-        scene_id: u32,
-        offset: usize,
-        lead: u8,
-    },
-    /// A direct system call is not in the deliberately supported no-effect or
-    /// control subset. The function id + return form are the aggregate key.
-    #[error(
-        "utsushi.siglus.vm.unsupported_syscall: scene {scene_id} offset {offset} function {function_id} return_form {return_form}"
-    )]
-    UnsupportedSyscall {
-        scene_id: u32,
-        offset: usize,
-        function_id: i32,
-        return_form: i32,
-    },
-    /// A command target cannot be dispatched as a direct global-system slot.
-    #[error("utsushi.siglus.vm.unsupported_command_target: scene {scene_id} offset {offset}")]
-    UnsupportedCommandTarget { scene_id: u32, offset: usize },
-    /// A script-function element has no decoded entry-point map in the scene.
-    #[error(
-        "utsushi.siglus.vm.unsupported_script_function: scene {scene_id} offset {offset} function {function_id}"
-    )]
-    UnsupportedScriptFunction {
-        scene_id: u32,
-        offset: usize,
-        function_id: i32,
-    },
-    /// Evaluation encountered a source operation whose semantics are absent.
-    #[error(
-        "utsushi.siglus.vm.unsupported_operation: scene {scene_id} offset {offset} operation {operation}"
-    )]
-    UnsupportedOperation {
-        scene_id: u32,
-        offset: usize,
-        operation: &'static str,
-    },
-    /// The path did not reach a terminal instruction within its safety budget.
-    #[error("utsushi.siglus.vm.step_limit: scene {scene_id} after {steps} instructions")]
-    StepLimit { scene_id: u32, steps: usize },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum Value {
-    Int(i32),
-    Str(i32),
-    System(i32),
-    Function(i32),
-}
-
-/// A single-scene interpreter. Its state may be retained and passed to a later
-/// scene, while its operand/call stacks are always reset at scene entry.
-#[derive(Debug)]
-pub struct SceneVm<'a> {
-    pub(super) program: &'a SceneProgram,
-    pub(super) state: &'a mut VmState,
-    pub(super) values: Vec<Value>,
-    pub(super) frames: Vec<usize>,
-    pub(super) calls: Vec<usize>,
-    pub(super) speaker: Option<String>,
-    pub(super) pc: usize,
-    pub(super) moments: Vec<Moment>,
-    pub(super) policy: ChoicePolicy,
-}
 
 /// Execute one decoded scene under the deterministic first-choice policy.
 pub fn execute_scene(
@@ -142,11 +17,22 @@ pub fn execute_scene(
     SceneVm::new(program, state, ChoicePolicy::First).run()
 }
 
+/// Execute an entry scene with the archive-level shared command table.
+pub fn execute_title_scene(
+    program: &TitleProgram,
+    scene_id: u32,
+    state: &mut VmState,
+) -> Result<ExecutionReport, VmError> {
+    SceneVm::for_title(program, scene_id, state, ChoicePolicy::First)?.run()
+}
+
 impl<'a> SceneVm<'a> {
     /// Construct a scene-entry VM with fresh operand and call stacks.
     pub fn new(program: &'a SceneProgram, state: &'a mut VmState, policy: ChoicePolicy) -> Self {
         Self {
-            program,
+            source: ProgramSource::Scene(program),
+            entry_scene_id: program.scene_id,
+            scene_id: program.scene_id,
             state,
             values: Vec::new(),
             frames: Vec::new(),
@@ -158,10 +44,47 @@ impl<'a> SceneVm<'a> {
         }
     }
 
+    fn for_title(
+        program: &'a TitleProgram,
+        scene_id: u32,
+        state: &'a mut VmState,
+        policy: ChoicePolicy,
+    ) -> Result<Self, VmError> {
+        if program.scene(scene_id).is_none() {
+            return Err(VmError::UnsupportedScriptFunction {
+                scene_id,
+                offset: 0,
+                function_id: -1,
+            });
+        }
+        Ok(Self {
+            source: ProgramSource::Title(program),
+            entry_scene_id: scene_id,
+            scene_id,
+            state,
+            values: Vec::new(),
+            frames: Vec::new(),
+            calls: Vec::new(),
+            speaker: None,
+            pc: 0,
+            moments: Vec::new(),
+            policy,
+        })
+    }
+
+    fn program(&self) -> &SceneProgram {
+        match self.source {
+            ProgramSource::Scene(program) => program,
+            ProgramSource::Title(program) => program
+                .scene(self.scene_id)
+                .expect("title scene was validated before dispatch"),
+        }
+    }
+
     /// Drive dispatch until `CD_RETURN` at scene entry or `CD_EOF`.
     pub fn run(mut self) -> Result<ExecutionReport, VmError> {
         for steps in 0..STEP_LIMIT {
-            let Some(current) = self.program.instructions.get(self.pc) else {
+            let Some(current) = self.program().instructions.get(self.pc) else {
                 return Ok(self.report(steps));
             };
             let offset = current.instruction.byte_offset;
@@ -220,14 +143,18 @@ impl<'a> SceneVm<'a> {
                     SiglusOperand::Gosub(label, forms) | SiglusOperand::GosubStr(label, forms),
                 ) => {
                     self.pop_n(offset, count(&forms))?;
-                    self.calls.push(self.pc);
+                    self.calls.push(CallFrame {
+                        scene_id: self.scene_id,
+                        pc: self.pc,
+                    });
                     self.jump(offset, label)?;
                 }
                 (SiglusOpcode::Return, SiglusOperand::Return(forms)) => {
                     let returns = self.pop_n(offset, count(&forms))?;
-                    if let Some(pc) = self.calls.pop() {
+                    if let Some(frame) = self.calls.pop() {
                         self.values.extend(returns);
-                        self.pc = pc;
+                        self.scene_id = frame.scene_id;
+                        self.pc = frame.pc;
                     } else {
                         return Ok(self.report(steps + 1));
                     }
@@ -245,14 +172,14 @@ impl<'a> SceneVm<'a> {
                 (SiglusOpcode::Eof, _) => return Ok(self.report(steps + 1)),
                 (SiglusOpcode::Unknown { lead, .. }, _) => {
                     return Err(VmError::UnsupportedOpcode {
-                        scene_id: self.program.scene_id,
+                        scene_id: self.scene_id,
                         offset,
                         lead,
                     });
                 }
                 _ => {
                     return Err(VmError::UnsupportedOperation {
-                        scene_id: self.program.scene_id,
+                        scene_id: self.scene_id,
                         offset,
                         operation: "operand-shape",
                     });
@@ -260,14 +187,14 @@ impl<'a> SceneVm<'a> {
             }
         }
         Err(VmError::StepLimit {
-            scene_id: self.program.scene_id,
+            scene_id: self.entry_scene_id,
             steps: STEP_LIMIT,
         })
     }
 
     fn report(&self, instructions_executed: usize) -> ExecutionReport {
         ExecutionReport {
-            scene_id: self.program.scene_id,
+            scene_id: self.entry_scene_id,
             instructions_executed,
             moments: self.moments.clone(),
             halted: true,
@@ -275,7 +202,7 @@ impl<'a> SceneVm<'a> {
     }
     fn underflow(&self, offset: usize) -> VmError {
         VmError::StackUnderflow {
-            scene_id: self.program.scene_id,
+            scene_id: self.scene_id,
             offset,
         }
     }
@@ -286,7 +213,7 @@ impl<'a> SceneVm<'a> {
         match self.pop(offset)? {
             Value::Int(value) => Ok(value),
             _ => Err(VmError::UnsupportedOperation {
-                scene_id: self.program.scene_id,
+                scene_id: self.scene_id,
                 offset,
                 operation: "non-integer condition",
             }),
@@ -311,10 +238,22 @@ impl<'a> SceneVm<'a> {
     }
     fn element(&mut self, offset: usize) -> Result<Value, VmError> {
         let values = self.frame(offset)?;
+        self.resolve_element(offset, values)
+    }
+    fn resolve_element(&mut self, offset: usize, values: Vec<Value>) -> Result<Value, VmError> {
         match values.as_slice() {
             [Value::Int(raw)] if (*raw >> 24) & 0xff == 0x7f => Ok(Value::Int(
                 *self.state.globals.get(&(*raw & 0x00ff_ffff)).unwrap_or(&0),
             )),
+            [Value::Int(raw), Value::Int(-1), Value::Int(index)] if (*raw >> 24) & 0xff == 0x7f => {
+                Ok(Value::Int(
+                    *self
+                        .state
+                        .indexed_globals
+                        .get(&(*raw & 0x00ff_ffff, *index))
+                        .unwrap_or(&0),
+                ))
+            }
             [Value::Int(raw)] if (*raw >> 24) & 0xff == 0x00 => {
                 Ok(Value::System(*raw & 0x00ff_ffff))
             }
@@ -322,7 +261,7 @@ impl<'a> SceneVm<'a> {
                 Ok(Value::Function(*raw & 0x00ff_ffff))
             }
             _ => Err(VmError::UnsupportedOperation {
-                scene_id: self.program.scene_id,
+                scene_id: self.scene_id,
                 offset,
                 operation: "element-path",
             }),
@@ -339,19 +278,28 @@ impl<'a> SceneVm<'a> {
                 self.state.globals.insert(*raw & 0x00ff_ffff, value);
                 Ok(())
             }
+            [Value::Int(raw), Value::Int(-1), Value::Int(index)] if (*raw >> 24) & 0xff == 0x7f => {
+                self.state
+                    .indexed_globals
+                    .insert((*raw & 0x00ff_ffff, *index), value);
+                Ok(())
+            }
             _ => Err(VmError::UnsupportedOperation {
-                scene_id: self.program.scene_id,
+                scene_id: self.scene_id,
                 offset,
                 operation: "assignment-target",
             }),
         }
     }
     fn jump(&mut self, offset: usize, label: i32) -> Result<(), VmError> {
-        self.pc = self.program.target(label).ok_or(VmError::UnresolvedJump {
-            scene_id: self.program.scene_id,
-            offset,
-            label,
-        })?;
+        self.pc = self
+            .program()
+            .target(label)
+            .ok_or(VmError::UnresolvedJump {
+                scene_id: self.scene_id,
+                offset,
+                label,
+            })?;
         Ok(())
     }
     fn pop_n(&mut self, offset: usize, count: usize) -> Result<Vec<Value>, VmError> {
@@ -362,24 +310,41 @@ impl<'a> SceneVm<'a> {
         values.reverse();
         Ok(values)
     }
+    fn script_function(&self, index: i32) -> Option<super::program::FunctionTarget> {
+        match self.source {
+            ProgramSource::Scene(program) => {
+                program
+                    .function(index)
+                    .map(|pc| super::program::FunctionTarget {
+                        scene_id: self.scene_id,
+                        pc,
+                    })
+            }
+            ProgramSource::Title(program) => program.function(self.scene_id, index),
+        }
+    }
     fn command(&mut self, offset: usize, arg_count: usize, ret_form: i32) -> Result<(), VmError> {
         let args = self.pop_n(offset, arg_count)?;
         let target = self.element(offset)?;
         if let Value::Function(index) = target {
-            self.calls.push(self.pc);
-            self.pc = self
-                .program
-                .function(index)
+            let target = self
+                .script_function(index)
                 .ok_or(VmError::UnsupportedScriptFunction {
-                    scene_id: self.program.scene_id,
+                    scene_id: self.scene_id,
                     offset,
                     function_id: index,
                 })?;
+            self.calls.push(CallFrame {
+                scene_id: self.scene_id,
+                pc: self.pc,
+            });
+            self.scene_id = target.scene_id;
+            self.pc = target.pc;
             return Ok(());
         }
         let Value::System(function_id) = target else {
             return Err(VmError::UnsupportedCommandTarget {
-                scene_id: self.program.scene_id,
+                scene_id: self.scene_id,
                 offset,
             });
         };
@@ -398,7 +363,7 @@ impl<'a> SceneVm<'a> {
             | 68..=74
             | 77
             | 79..=83
-            | 85..=87
+            | 84..=87
             | 91..=94
             | 97
             | 104
@@ -413,7 +378,7 @@ impl<'a> SceneVm<'a> {
             | 170..=176 => Value::Int(0),
             _ => {
                 return Err(VmError::UnsupportedSyscall {
-                    scene_id: self.program.scene_id,
+                    scene_id: self.scene_id,
                     offset,
                     function_id,
                     return_form: ret_form,
@@ -429,13 +394,13 @@ impl<'a> SceneVm<'a> {
         let options = args
             .into_iter()
             .filter_map(|value| match value {
-                Value::Str(index) => self.program.strings.get(&index).cloned(),
+                Value::Str(index) => self.program().strings.get(&index).cloned(),
                 _ => None,
             })
             .collect::<Vec<_>>();
         if options.is_empty() {
             return Err(VmError::UnsupportedOperation {
-                scene_id: self.program.scene_id,
+                scene_id: self.scene_id,
                 offset,
                 operation: "empty-selection",
             });
@@ -444,6 +409,7 @@ impl<'a> SceneVm<'a> {
             ChoicePolicy::First => 0,
         };
         self.moments.push(Moment::Choice {
+            scene_id: self.scene_id,
             offset,
             options,
             chosen,
@@ -453,22 +419,23 @@ impl<'a> SceneVm<'a> {
     fn text(&mut self, offset: usize) -> Result<(), VmError> {
         let Value::Str(index) = self.pop(offset)? else {
             return Err(VmError::UnsupportedOperation {
-                scene_id: self.program.scene_id,
+                scene_id: self.scene_id,
                 offset,
                 operation: "computed-text",
             });
         };
         let text =
-            self.program
+            self.program()
                 .strings
                 .get(&index)
                 .cloned()
                 .ok_or(VmError::UnsupportedOperation {
-                    scene_id: self.program.scene_id,
+                    scene_id: self.scene_id,
                     offset,
                     operation: "text-string",
                 })?;
         self.moments.push(Moment::Text {
+            scene_id: self.scene_id,
             offset,
             speaker: self.speaker.clone(),
             text,
@@ -478,12 +445,12 @@ impl<'a> SceneVm<'a> {
     fn name(&mut self, offset: usize) -> Result<(), VmError> {
         let Value::Str(index) = self.pop(offset)? else {
             return Err(VmError::UnsupportedOperation {
-                scene_id: self.program.scene_id,
+                scene_id: self.scene_id,
                 offset,
                 operation: "computed-name",
             });
         };
-        self.speaker = self.program.strings.get(&index).cloned();
+        self.speaker = self.program().strings.get(&index).cloned();
         Ok(())
     }
 }

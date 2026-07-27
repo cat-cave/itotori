@@ -1,6 +1,6 @@
 //! Integer expression evaluation for the executing scene VM.
 
-use super::execute::{SceneVm, Value, VmError};
+use super::model::{SceneVm, Value, VmError};
 
 impl SceneVm<'_> {
     pub(super) fn unary(&mut self, offset: usize, op: u8) -> Result<(), VmError> {
@@ -46,7 +46,7 @@ impl SceneVm<'_> {
 
     fn unsupported(&self, offset: usize, operation: &'static str) -> VmError {
         VmError::UnsupportedOperation {
-            scene_id: self.program.scene_id,
+            scene_id: self.scene_id,
             offset,
             operation,
         }
