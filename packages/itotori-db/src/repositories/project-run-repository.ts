@@ -37,6 +37,7 @@ import {
   toReservation,
   type SqlExecutor,
 } from "./project-run-repository-internal.js";
+import { rethrowProjectRunConstraint } from "./project-run-diagnostics.js";
 
 export { ItotoriProjectRunRepositoryError } from "./project-run-repository-internal.js";
 
@@ -218,11 +219,12 @@ export class ItotoriProjectRunRepository implements ItotoriProjectRunRepositoryP
   ): Promise<ProjectRunRecord> {
     await requirePermission(this.db, actor, permissionValues.draftWrite);
     const normalized = normalizeCreate(input);
-    return this.db.transaction(async (tx) => {
-      const executor = tx as unknown as SqlExecutor;
-      const rows = await rowsOf(
-        executor,
-        sql`
+    try {
+      return await this.db.transaction(async (tx) => {
+        const executor = tx as unknown as SqlExecutor;
+        const rows = await rowsOf(
+          executor,
+          sql`
         insert into ${projectRuns} (
           run_id, project_id, locale_branch_id, context_snapshot_id, localization_snapshot_id, status
         ) values (
@@ -230,14 +232,17 @@ export class ItotoriProjectRunRepository implements ItotoriProjectRunRepositoryP
           ${normalized.contextSnapshotId}, ${normalized.localizationSnapshotId}, ${projectRunStatusValues.queued}
         ) returning *
       `,
-      );
-      if (rows[0] === undefined) throw new Error("project run insert did not return a row");
-      await executor.execute(sql`
+        );
+        if (rows[0] === undefined) throw new Error("project run insert did not return a row");
+        await executor.execute(sql`
         insert into ${projectRunCostAccounts} (run_id, project_id, cap_micros_usd)
         values (${normalized.runId}, ${normalized.projectId}, ${normalized.capMicrosUsd})
       `);
-      return loadRun(executor, normalized.projectId, normalized.runId);
-    });
+        return loadRun(executor, normalized.projectId, normalized.runId);
+      });
+    } catch (error) {
+      rethrowProjectRunConstraint(error, normalized);
+    }
   }
 
   async advanceRun(

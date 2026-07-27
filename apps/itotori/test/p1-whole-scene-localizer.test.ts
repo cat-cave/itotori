@@ -627,6 +627,33 @@ describe("P1 whole-scene localizer — end-to-end rejection", () => {
     expect(captured).toHaveLength(0);
   });
 
+  it("reports a protected-span gate rejection instead of a transport failure", async () => {
+    const captured: Captured[] = [];
+    const runtime = {
+      ...recordedRuntime([], captured),
+      contentAccess: {
+        requireContentRead: async () => {
+          throw new FinalizeError("protected-span", "synthetic protected placeholder rejection");
+        },
+      },
+    };
+    await expect(
+      localizeScene(
+        {
+          ...BASE,
+          units: [unitFact(0)],
+          bibleRenderingIds: BIBLE,
+          budgetBytes: 10_000,
+          overlapUnits: 1,
+        },
+        runtime,
+      ),
+    ).rejects.toThrow(
+      "p1 localize gate-rejection: content gate rejected output: protected placeholder preservation failed",
+    );
+    expect(captured).toHaveLength(0);
+  });
+
   it("(b) never dispatches an unvalidated (scope-forged) target into the author thread", async () => {
     const sceneUnits = [0, 1, 2, 3, 4, 5].map((index) =>
       unitFact(index, { skeleton: pad(`c${index}`, 10) }),
