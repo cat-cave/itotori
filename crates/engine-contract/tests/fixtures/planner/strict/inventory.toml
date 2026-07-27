@@ -1,0 +1,19 @@
+schema = "inventory/v1"
+
+[[corpus]]
+id = "corpus-fixture-a"
+engine = "engine-fixture"
+variant = "variant-a"
+root = "/private/fixture-a"
+content_address = "sha256:fixture-a"
+tags = ["extract"]
+access = "read-only"
+
+[[corpus]]
+id = "corpus-fixture-b"
+engine = "engine-fixture"
+variant = "variant-b"
+root = "/private/fixture-b"
+content_address = "sha256:fixture-b"
+tags = ["extract"]
+access = "read-only"
