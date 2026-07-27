@@ -70,6 +70,15 @@ impl SceneVm<'_> {
             ] if owner(*raw) == 125 => self.call_property(offset, *raw, Some(*index)),
             [Value::Int(raw)] if owner(*raw) == 0 => Ok(Value::System(*raw & 0x00ff_ffff)),
             [Value::Int(raw)] if owner(*raw) == 126 => Ok(Value::Function(*raw & 0x00ff_ffff)),
+            _ if structured_system_path(&values).is_some() => {
+                let path = structured_system_path(&values).expect("path was checked");
+                Ok(self
+                    .state
+                    .structured_system
+                    .get(&(self.scene_id, path))
+                    .cloned()
+                    .unwrap_or(Value::Int(0)))
+            }
             _ => Err(self.operation(offset, "element-path")),
         }
     }
@@ -115,6 +124,12 @@ impl SceneVm<'_> {
                 Value::Int(index),
             ] if owner(*raw) == 125 => {
                 return self.assign_call_property(offset, *raw, Some(*index), value);
+            }
+            _ if structured_system_path(&values).is_some() => {
+                let path = structured_system_path(&values).expect("path was checked");
+                self.state
+                    .structured_system
+                    .insert((self.scene_id, path), value);
             }
             _ => return Err(self.operation(offset, "assignment-target")),
         }
@@ -226,4 +241,15 @@ fn owner(value: i32) -> i32 {
 
 fn int_list(form: i32) -> bool {
     matches!(form, 25..=32 | 137)
+}
+
+fn structured_system_path(values: &[Value]) -> Option<Vec<i32>> {
+    let path = values
+        .iter()
+        .map(|value| match value {
+            Value::Int(value) => Some(*value),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    matches!(path.as_slice(), [83, 0, -1, ..]).then_some(path)
 }

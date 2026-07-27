@@ -236,6 +236,50 @@ fn carries_call_properties_into_global_list_assignment_before_reaching_text() {
     );
 }
 
+#[test]
+fn preserves_structured_system_assignment_for_a_later_branch() {
+    let mut code = Vec::new();
+    elm(&mut code);
+    push_int(&mut code, 83);
+    push_int(&mut code, 0);
+    push_int(&mut code, -1);
+    push_int(&mut code, 10);
+    push_int(&mut code, 7);
+    assign(&mut code);
+    elm(&mut code);
+    push_int(&mut code, 83);
+    push_int(&mut code, 0);
+    push_int(&mut code, -1);
+    push_int(&mut code, 10);
+    code.push(0x05);
+    push_int(&mut code, 7);
+    binary(&mut code, 0x10);
+    goto_false(&mut code, 0);
+    push_str(&mut code, 0);
+    text(&mut code);
+    code.push(0x16);
+    let wrong = code.len() as i32;
+    push_str(&mut code, 1);
+    text(&mut code);
+    code.push(0x16);
+
+    let program = SceneProgram::from_payload(9, &payload(&code, &[wrong], &["resolved", "wrong"]))
+        .expect("structured-system payload compiles");
+    let report = execute_scene(&program, &mut VmState::default())
+        .expect("structured-system assignment keeps execution on the resolved branch");
+
+    assert_eq!(
+        report.moments,
+        vec![Moment::Text {
+            scene_id: 9,
+            offset: 130,
+            speaker: None,
+            text: "resolved".to_string(),
+        }],
+        "stubbing the structured system store makes the later read take the wrong branch"
+    );
+}
+
 fn payload(code: &[u8], labels: &[i32], strings: &[&str]) -> Vec<u8> {
     payload_with_z_labels(code, labels, &[0], strings)
 }
