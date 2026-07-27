@@ -53,15 +53,13 @@ itotori extract --engine reallive \
   --whole-seen --bundle-output <run-dir>/bridge.json
 ```
 
-Replace `--whole-seen` with `--scene <0..65535>` for one scene. The alternate
-source is `--vault-canonical-id <id>`; it and `--game-root` are mutually
-exclusive. `--decompile-report-output <path>` is optional.
-
-The current parser has no `--scenes` or `--unit-range` implementation, and the
-current bridge schema has no extraction `sourceScope` field. Do not include
-those tokens: unknown flags are not generally rejected, so an invocation can
-appear successful while using only the recognized scope. Inspect the command
-line and the resulting bridge before treating a slice as bounded.
+Use `--scene <0..65535>` for one scene, `--scenes <N,N,...>` for a selected
+set, or `--unit-range <START:END>` for an archive-order unit interval (end
+exclusive). Each scoped bridge carries a bound `sourceScope`; the subsequent
+structure export preserves it, so localize can consume a small run without
+mistaking it for a whole archive. The alternate source is
+`--vault-canonical-id <id>`; it and `--game-root` are mutually exclusive.
+`--decompile-report-output <path>` is optional.
 
 Whole-archive extraction is also the safe default for encrypted archives: the
 decoder can recover supported cross-scene encryption only after it sees the

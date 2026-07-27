@@ -2,6 +2,7 @@ mod extract;
 mod opcode_gate;
 mod patch;
 mod paths;
+mod run_scope;
 
 pub(crate) use extract::run_extract_reallive_bundle;
 pub(crate) use patch::run_patch_reallive_bundle;

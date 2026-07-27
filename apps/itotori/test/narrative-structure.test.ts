@@ -5,6 +5,7 @@ import {
   NARRATIVE_STRUCTURE_V2,
   NarrativeStructureParseError,
   NarrativeStructureVersionError,
+  assertWholeArchiveSourceScope,
   parseNarrativeStructure,
   reduceCharacterOccurrences,
   reduceNarrativeStructure,
@@ -58,6 +59,24 @@ describe("narrative structure exports", () => {
     value.scenes[0]!.unexpected = true;
     expect(() => parseNarrativeStructure(value, SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS)).toThrow(
       NarrativeStructureParseError,
+    );
+  });
+
+  it("rejects a scoped artifact when a whole archive is required", () => {
+    const scoped = structuredClone(fixture("narrative-structure-v2.json")) as Record<
+      string,
+      unknown
+    >;
+    scoped.sourceScope = {
+      kind: "scene_set",
+      sourceArchiveHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      sceneIds: [1],
+      unitRange: null,
+      unitCount: 1,
+    };
+    const parsed = parseNarrativeStructure(scoped, SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS);
+    expect(() => assertWholeArchiveSourceScope(parsed)).toThrow(
+      /whole archive required; artifact declares scene_set/u,
     );
   });
 });

@@ -22,7 +22,7 @@ import { optionalFlag, requiredFlag } from "../cli/flags.js";
 export type KaifuuProcessResult = NativeCliProcessResult;
 
 /** The extract shapes a produced bridge can represent. */
-export type ExtractMode = "per-scene" | "whole-seen" | "whole-game";
+export type ExtractMode = "per-scene" | "scene-set" | "unit-range" | "whole-seen" | "whole-game";
 
 /** The highest scene id RealLive's u16 scene directory can address. */
 export const REALLIVE_SCENE_ID_MAX = 65_535;
@@ -57,6 +57,10 @@ export type RealliveExtractSource = {
   scene?: number;
   /** Whole-game mode: one bridge over the entire Seen.txt. */
   wholeSeen?: boolean;
+  /** A comma-delimited user selection becomes a deterministic scene-set bridge. */
+  scenes?: readonly number[];
+  /** Global archive-order bridge-unit interval, with an exclusive end. */
+  unitRange?: { start: number; endExclusive: number };
   /** Optional: kaifuu's alpha-006e decompile report (zero-unknown property). */
   decompileReportOutputPath?: string;
 };
@@ -333,6 +337,18 @@ const EXTRACT_CAPABILITIES = {
           },
         ],
       },
+      {
+        id: "scene-set",
+        label: "Scene set",
+        fixedValues: {},
+        fields: [{ key: "scenes", label: "Scene ids", input: "text", required: true }],
+      },
+      {
+        id: "unit-range",
+        label: "Unit range",
+        fixedValues: {},
+        fields: [{ key: "unitRange", label: "Unit range", input: "text", required: true }],
+      },
     ],
   },
   softpal: {
@@ -483,6 +499,10 @@ const realliveExtractAdapter: ExtractAdapter<"reallive"> = {
       out.push("--whole-seen");
     } else if (args.scene !== undefined) {
       out.push("--scene", String(args.scene));
+    } else if (args.scenes !== undefined) {
+      out.push("--scenes", args.scenes.join(","));
+    } else if (args.unitRange !== undefined) {
+      out.push("--unit-range", `${args.unitRange.start}:${args.unitRange.endExclusive}`);
     }
     out.push("--bundle-output", args.bundleOutputPath);
     if (args.decompileReportOutputPath !== undefined) {
@@ -491,14 +511,15 @@ const realliveExtractAdapter: ExtractAdapter<"reallive"> = {
     return out;
   },
   validate(args, env) {
-    if (args.wholeSeen === true && args.scene !== undefined) {
+    const scopeCount = [
+      args.wholeSeen === true,
+      args.scene !== undefined,
+      args.scenes !== undefined,
+      args.unitRange !== undefined,
+    ].filter(Boolean).length;
+    if (scopeCount !== 1) {
       throw new Error(
-        "kaifuu extract refused: --whole-seen and --scene are mutually exclusive (--whole-seen produces one bridge over the entire Seen.txt)",
-      );
-    }
-    if (args.wholeSeen !== true && args.scene === undefined) {
-      throw new Error(
-        "kaifuu extract refused: provide --scene <N> (per-scene) or --whole-seen (whole-game)",
+        "kaifuu extract refused: choose exactly one scope: --scene, --scenes, --unit-range, or --whole-seen",
       );
     }
     if (
@@ -507,6 +528,24 @@ const realliveExtractAdapter: ExtractAdapter<"reallive"> = {
     ) {
       throw new Error(
         `kaifuu extract refused: --scene '${String(args.scene)}' must be a u16 (0..${REALLIVE_SCENE_ID_MAX})`,
+      );
+    }
+    if (
+      args.scenes?.some(
+        (scene) => !Number.isInteger(scene) || scene < 0 || scene > REALLIVE_SCENE_ID_MAX,
+      )
+    ) {
+      throw new Error("kaifuu extract refused: every --scenes value must be a u16");
+    }
+    if (
+      args.unitRange !== undefined &&
+      (!Number.isInteger(args.unitRange.start) ||
+        !Number.isInteger(args.unitRange.endExclusive) ||
+        args.unitRange.start < 0 ||
+        args.unitRange.start >= args.unitRange.endExclusive)
+    ) {
+      throw new Error(
+        "kaifuu extract refused: --unit-range must have non-negative START:END with START < END",
       );
     }
     // Sourcing: at least one route must be resolvable BEFORE spawning.
@@ -521,27 +560,31 @@ const realliveExtractAdapter: ExtractAdapter<"reallive"> = {
     }
   },
   mode(args) {
-    return args.wholeSeen === true ? "whole-seen" : "per-scene";
+    if (args.wholeSeen === true) return "whole-seen";
+    if (args.scenes !== undefined) return "scene-set";
+    if (args.unitRange !== undefined) return "unit-range";
+    return "per-scene";
   },
   parseCli(args) {
     const wholeSeen = args.includes("--whole-seen");
     const sceneTokenPresent = args.includes("--scene");
+    const scenesRaw = optionalFlag(args, "--scenes");
+    const unitRangeRaw = optionalFlag(args, "--unit-range");
     const sceneRaw = optionalFlag(args, "--scene");
     // Resolve the mode at parse time so a user-shaped invocation gets a clear,
     // immediate error rather than a confusing one deep in the seam.
-    if (wholeSeen && sceneTokenPresent) {
-      throw new Error(
-        "extract refused: --whole-seen and --scene are mutually exclusive (choose one extract mode)",
-      );
-    }
     if (sceneTokenPresent && sceneRaw === undefined) {
       throw new Error(
         "extract refused: --scene requires a numeric value (0..65535, e.g. --scene 6010)",
       );
     }
-    if (!wholeSeen && !sceneTokenPresent) {
+    if (
+      [wholeSeen, sceneTokenPresent, scenesRaw !== undefined, unitRangeRaw !== undefined].filter(
+        Boolean,
+      ).length !== 1
+    ) {
       throw new Error(
-        "extract refused: provide --scene <N> (per-scene) or --whole-seen (whole-game)",
+        "extract refused: choose exactly one scope: --scene, --scenes, --unit-range, or --whole-seen",
       );
     }
     const gameRoot = optionalFlag(args, "--game-root");
@@ -555,6 +598,8 @@ const realliveExtractAdapter: ExtractAdapter<"reallive"> = {
       sourceLocale: requiredFlag(args, "--source-locale"),
       ...(wholeSeen ? { wholeSeen: true } : {}),
       ...(sceneRaw !== undefined ? { scene: parseRealliveSceneId(sceneRaw) } : {}),
+      ...(scenesRaw !== undefined ? { scenes: parseRealliveSceneSet(scenesRaw) } : {}),
+      ...(unitRangeRaw !== undefined ? { unitRange: parseRealliveUnitRange(unitRangeRaw) } : {}),
       ...(gameRoot !== undefined ? { gameRoot } : {}),
       ...(vaultCanonicalId !== undefined ? { vaultCanonicalId } : {}),
       ...(decompileReportOutputPath !== undefined ? { decompileReportOutputPath } : {}),
@@ -601,6 +646,33 @@ function parseRealliveSceneId(value: string): number {
     );
   }
   return parsed;
+}
+
+function parseRealliveSceneSet(value: string): number[] {
+  const scenes = value.split(",").map(parseRealliveSceneId);
+  if (scenes.length === 0 || new Set(scenes).size !== scenes.length) {
+    throw new Error("extract refused: --scenes must contain one or more distinct u16 scene ids");
+  }
+  return scenes;
+}
+
+function parseRealliveUnitRange(value: string): { start: number; endExclusive: number } {
+  const [start, endExclusive, extra] = value.split(":");
+  if (start === undefined || endExclusive === undefined || extra !== undefined) {
+    throw new Error("extract refused: --unit-range must be START:END (end exclusive)");
+  }
+  const range = { start: Number(start), endExclusive: Number(endExclusive) };
+  if (
+    !Number.isInteger(range.start) ||
+    !Number.isInteger(range.endExclusive) ||
+    range.start < 0 ||
+    range.start >= range.endExclusive
+  ) {
+    throw new Error(
+      "extract refused: --unit-range must have non-negative START:END with START < END",
+    );
+  }
+  return range;
 }
 
 // ---------------------------------------------------------------------------

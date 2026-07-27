@@ -250,6 +250,38 @@ fn whole_seen_extract_writes_one_multi_scene_bridge() {
     let _ = fs::remove_dir_all(root);
 }
 
+#[test]
+fn scoped_scene_extract_declares_a_non_whole_identity() {
+    let root = temp_dir("scoped-scene-extract");
+    let game_root = root.join("game");
+    let data_root = game_root.join("REALLIVEDATA");
+    fs::create_dir_all(&data_root).unwrap();
+    let seen_bytes = build_synthetic_seen_txt_two_scenes();
+    fs::write(data_root.join("Seen.txt"), &seen_bytes).unwrap();
+    fs::write(data_root.join("Gameexe.ini"), b"#SEEN_START=1\n").unwrap();
+    let bridge_path = root.join("scoped-bridge.json");
+
+    run_extract_reallive_bundle(
+        &[
+            "extract", "--engine", "reallive", "--game-root", game_root.to_str().unwrap(),
+            "--game-id", "kaifuu-reallive-synthetic", "--game-version", "1.0.0",
+            "--source-profile-id", "kaifuu-reallive-synthetic", "--source-locale", "ja-JP",
+            "--scene", "1", "--bundle-output", bridge_path.to_str().unwrap(),
+        ]
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect::<Vec<_>>(),
+    )
+    .unwrap();
+
+    let bridge: serde_json::Value = read_json(&bridge_path).unwrap();
+    assert_eq!(bridge["sourceScope"]["kind"], "scene_set");
+    assert_eq!(bridge["sourceScope"]["sceneIds"], serde_json::json!([1]));
+    assert_eq!(bridge["assets"].as_array().unwrap().len(), 1);
+    assert_ne!(bridge["sourceBundleHash"], sha256_hash_bytes(&seen_bytes));
+    let _ = fs::remove_dir_all(root);
+}
+
 /// Frame `bytecode` into a single-scene synthetic Seen.txt (real 10,000-slot
 /// directory + 0x1d0 scene header + AVG32 literal compression), scene at
 /// slot 1. Mirrors `binary_patch_smoke::build_synthetic_seen_txt` but takes

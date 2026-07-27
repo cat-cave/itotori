@@ -43,8 +43,13 @@ pub(super) fn build(input: ExpandedInput<'_>) -> Result<Value, String> {
         .iter()
         .map(|scene| (scene.scene_id, scene.bytecode.as_slice()))
         .collect();
-    let observations =
-        observe_all_scenes(&input.engine, &opts, input.archive_scene_ids, input.entry)?;
+    let observations = observe_all_scenes(
+        &input.engine,
+        &opts,
+        input.archive_scene_ids,
+        input.entry,
+        input.bridge.source_scope["kind"] != "whole_archive",
+    )?;
     let dispatch_order: Vec<SceneId> = observations.iter().map(|scene| scene.scene_id).collect();
 
     let mut edges = Vec::new();
@@ -258,6 +263,7 @@ pub(super) fn build(input: ExpandedInput<'_>) -> Result<Value, String> {
         "schemaVersion": "utsushi.narrative-structure.v2",
         "bridgeId": input.bridge.bridge_id,
         "sourceBundleHash": input.bridge.source_bundle_hash,
+        "sourceScope": input.bridge.source_scope,
         "entryScene": input.entry,
         "sceneDispatchOrder": dispatch_order,
         "coverage": coverage,
@@ -272,6 +278,7 @@ fn observe_all_scenes(
     opts: &ReplayOpts,
     archive_scene_ids: &BTreeSet<SceneId>,
     entry: SceneId,
+    scoped: bool,
 ) -> Result<Vec<ObservedScene>, String> {
     if !archive_scene_ids.contains(&entry) {
         return Err(format!("utsushi.structure.entry_missing: scene {entry}"));
@@ -289,6 +296,23 @@ fn observe_all_scenes(
             continue;
         }
         let cold_root = root != entry;
+        if scoped {
+            let observation = engine.observe_for_port(root, opts);
+            if !observation.scene.reached_natural_terminus {
+                return Err(format!(
+                    "utsushi.structure.replay_truncated: scene {root} did not reach a natural terminus"
+                ));
+            }
+            visited.insert(root);
+            observations.push(ObservedScene {
+                scene_id: root,
+                cold_seeded: cold_root,
+                lines: observation.play_order_lines,
+                prompts: observation.selection_prompts,
+                next_scene: observation.first_cross_scene,
+            });
+            continue;
+        }
         let playthrough = engine.observe_playthrough(root, opts, archive_scene_ids.len());
         for segment in playthrough.segments {
             if !visited.insert(segment.scene_id) {

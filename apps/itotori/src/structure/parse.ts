@@ -207,6 +207,29 @@ const CoverageSchema = z
     complete: z.literal(true),
   })
   .strict();
+const SourceScopeSchema = z
+  .object({
+    kind: z.enum(["whole_archive", "scene_set", "unit_range"]),
+    sourceArchiveHash: Sha256Schema,
+    sceneIds: z.array(z.number().int().min(0).max(65_535)).min(1),
+    unitRange: z
+      .object({ start: z.number().int().nonnegative(), endExclusive: z.number().int().positive() })
+      .strict()
+      .nullable(),
+    unitCount: z.number().int().positive(),
+  })
+  .strict()
+  .superRefine((scope, context) => {
+    if (scope.kind === "unit_range" && scope.unitRange === null) {
+      context.addIssue({ code: "custom", message: "unit_range requires unitRange" });
+    }
+    if (scope.kind !== "unit_range" && scope.unitRange !== null) {
+      context.addIssue({ code: "custom", message: "only unit_range may carry unitRange" });
+    }
+    if (scope.unitRange !== null && scope.unitRange.start >= scope.unitRange.endExclusive) {
+      context.addIssue({ code: "custom", message: "unitRange must be non-empty" });
+    }
+  });
 
 function unique<T>(values: readonly T[]): boolean {
   return new Set(values).size === values.length;
@@ -274,6 +297,7 @@ export const NarrativeStructureV2Schema = z
     scenes: z.array(SceneV2Schema),
     bridgeId: IdentifierSchema.optional(),
     sourceBundleHash: Sha256Schema.optional(),
+    sourceScope: SourceScopeSchema.optional(),
     engineEvidence: NarrativeEngineEvidenceSchema.optional(),
     coverage: CoverageSchema.optional(),
     routes: z.array(RouteSchema).optional(),
@@ -405,4 +429,13 @@ export function parseNarrativeStructure(
     sceneDispatchOrder: [...parsed.sceneDispatchOrder],
     scenes: parsed.scenes.map(normalizeScene),
   };
+}
+
+/** Whole-archive-only consumers must call this before treating a run as complete. */
+export function assertWholeArchiveSourceScope(structure: NarrativeStructure): void {
+  if (structure.sourceScope?.kind !== "whole_archive") {
+    throw new NarrativeStructureParseError(
+      `whole archive required; artifact declares ${structure.sourceScope?.kind ?? "no source scope"}`,
+    );
+  }
 }
