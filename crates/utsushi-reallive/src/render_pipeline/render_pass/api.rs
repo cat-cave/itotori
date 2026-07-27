@@ -177,19 +177,15 @@ impl RenderPass {
         self.announce_framebuffer(&framebuffer, root, run_id, sink)
     }
 
-    /// Emit the full-fidelity PRIVATE screenshot AND the public
-    /// (policy-selected) screenshot for `stack` + `text`.
+    /// Emit the full-fidelity PRIVATE screenshot and a redacted public
+    /// screenshot for `stack` + `text`.
     ///
     /// 1. The full-fidelity framebuffer (real decoded g00 composited
     ///    [`RedactionPolicy::Full`]) is encoded and written to
     ///    `private_dir/<sha256>.png` — an uncommitted, hashable file on
     ///    disk. Its pixels are byte-derived from the decoded g00.
-    /// 2. The public framebuffer is rendered under
-    ///    [`RedactionPolicy::public_toggle`]`(emit.public_redact)`: with
-    ///    `public_redact == true` (the default) image rects carry only a
-    ///    copyright-safe edge-outline (see [`redact_edge_map`]); with
-    ///    `false` the public buffer equals the full-fidelity buffer. It is
-    ///    announced through `emit.sink` at E2.
+    /// 2. The public framebuffer carries a copyright-safe edge-outline
+    ///    (see [`redact_edge_map`]) and is announced through `emit.sink` at E2.
     ///
     /// Redaction is thus a policy at THIS emit boundary — the render path
     /// itself always produces the full-fidelity buffer.
@@ -199,6 +195,9 @@ impl RenderPass {
         text: &TextLayer,
         emit: SceneEmit<'_>,
     ) -> Result<SceneScreenshots, RenderEmitError> {
+        if !emit.public_redact {
+            return Err(RenderEmitError::FullFidelityPublicArtifactRefused);
+        }
         // Full-fidelity private buffer (always real g00 art). Collect the
         // render report so any DROPPED object (e.g. an un-decodable
         // BACK.g00 background) is surfaced on the result rather than
@@ -226,8 +225,8 @@ impl RenderPass {
             ))
         })?;
 
-        // Public buffer under the redaction toggle. When redaction is off
-        // the public buffer IS the full-fidelity buffer.
+        // Public artifacts are always redacted. The private PNG is the only
+        // full-fidelity output and must be read through an authorized path.
         let policy = RedactionPolicy::public_toggle(emit.public_redact);
         let public_fb = match policy {
             RedactionPolicy::Full => full_fb,

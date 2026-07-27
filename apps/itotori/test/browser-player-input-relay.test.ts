@@ -91,7 +91,7 @@ type Relayed = { received: { type: string; index?: number } | null; redaction: s
 describe("browser player input relay", () => {
   it("returns a distinct VM address for every input, never the opening state again", async () => {
     const manager = await managerWithStubEngine();
-    const opening = await manager.start(START);
+    const opening = await manager.start(START, false);
     const pointers = [opening.instructionPointer];
     for (let step = 0; step < 4; step++) {
       const next = await manager.send(opening.sessionId, { type: "advance" });
@@ -105,7 +105,7 @@ describe("browser player input relay", () => {
 
   it("hands the engine the exact option index the reader chose", async () => {
     const manager = await managerWithStubEngine();
-    const opening = await manager.start(START);
+    const opening = await manager.start(START, false);
     const state = (await manager.send(opening.sessionId, {
       type: "choice",
       index: 3,
@@ -115,16 +115,13 @@ describe("browser player input relay", () => {
     expect(state.received).toEqual({ type: "choice", index: 3 });
   });
 
-  it("launches the engine with the redaction posture the surface asked for", async () => {
+  it("launches the engine with the redaction posture selected by the server", async () => {
     const manager = await managerWithStubEngine();
-    const revealed = (await manager.start({
-      ...START,
-      redaction: "off",
-    })) as unknown as Relayed;
+    const revealed = (await manager.start(START, true)) as unknown as Relayed;
     manager.close((revealed as unknown as { sessionId: string }).sessionId);
     expect(revealed.redaction).toBe("off");
 
-    const guarded = (await manager.start(START)) as unknown as Relayed;
+    const guarded = (await manager.start(START, false)) as unknown as Relayed;
     manager.close((guarded as unknown as { sessionId: string }).sessionId);
     expect(guarded.redaction).toBe("on");
   });
@@ -138,7 +135,7 @@ describe("browser player input relay", () => {
 
   it("drops a session whose engine died rather than answering from a stale state", async () => {
     const manager = await managerWithStubEngine();
-    const opening = await manager.start(START);
+    const opening = await manager.start(START, false);
     manager.close(opening.sessionId);
     await expect(manager.send(opening.sessionId, { type: "advance" })).rejects.toBeInstanceOf(
       BrowserPlayerSessionError,

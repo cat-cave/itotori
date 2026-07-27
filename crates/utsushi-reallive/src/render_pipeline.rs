@@ -22,7 +22,8 @@
 //! fills and the localized [`TextLayer`] are composited on top.
 //!
 //! Copyright redaction is a POLICY applied at the artifact-emit
-//! boundary, NOT hard-enforced in the render path. [`RedactionPolicy`]
+//! boundary, and is hard-enforced before a managed artifact is announced.
+//! [`RedactionPolicy`]
 //! selects whether a rendered frame carries the real decoded art
 //! ([`RedactionPolicy::Full`]) or a copyright-safe EDGE-OUTLINE of every
 //! image object's rect ([`RedactionPolicy::Redact`], the default). The
@@ -33,9 +34,9 @@
 //! solid fill, which showed nothing. [`RenderPass::emit_scene_screenshots`]
 //! writes the full-fidelity buffer to a PRIVATE, uncommitted path
 //! (hashable, never committed) and announces the public
-//! (policy-selected) buffer through the substrate frame sink — so a
-//! committed/CI proof publishes no copyrighted art while a
-//! locally-authorized run can toggle redaction off.
+//! redacted buffer through the substrate frame sink — so a committed/CI proof
+//! publishes no copyrighted art. A locally-authorized viewer reads the
+//! separately stored private file through an authorized path.
 //!
 //! # Substrate frame-artifact emission (E2)
 //!
@@ -142,8 +143,7 @@ pub const SCREENSHOT_ARTIFACT_KIND: &str = "screenshot";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RedactionPolicy {
     /// Composite the real decoded g00 art. Used for the PRIVATE
-    /// uncommitted full-fidelity artifact and for locally-authorized
-    /// (redaction-off) public frames.
+    /// uncommitted full-fidelity artifact.
     Full,
     /// Replace every image object's rect with a copyright-safe
     /// EDGE-OUTLINE of the decoded g00 (see [`redact_edge_map`]): the
@@ -308,6 +308,9 @@ pub enum RenderPassBuildError {
 /// Typed errors surfaced by [`RenderPass::emit_localized_screenshot`].
 #[derive(Debug, thiserror::Error)]
 pub enum RenderEmitError {
+    /// A managed/public artifact can never contain a full-fidelity frame.
+    #[error("full-fidelity frames must use the private artifact path")]
+    FullFidelityPublicArtifactRefused,
     /// Writing the PNG bytes to the managed [`RuntimeArtifactRoot`]
     /// failed (URI shape, symlink rejection, IO).
     #[error("render artifact write failed: {0}")]
@@ -382,8 +385,8 @@ pub struct SceneEmit<'a> {
     pub sink: &'a dyn FrameArtifactSink,
     /// Directory the PRIVATE full-fidelity PNG is written to (uncommitted).
     pub private_dir: &'a Path,
-    /// Public-frame redaction toggle. `true` (default) redacts image
-    /// rects; `false` publishes the full-fidelity buffer.
+    /// Public-frame redaction guard. `false` is refused: public artifacts
+    /// never publish the full-fidelity buffer.
     pub public_redact: bool,
     /// Selection affordance painted above the text layer. `None` when the
     /// VM is not parked on a choice gate.

@@ -196,7 +196,7 @@ fn emit_rejects_a_choice_overlay_that_paints_nothing() {
                 "choice-overlay-rasterised",
                 &sink,
                 &private_dir,
-                false,
+                true,
             )
             .with_choice(ChoiceOverlay::Text(&offscreen)),
         )

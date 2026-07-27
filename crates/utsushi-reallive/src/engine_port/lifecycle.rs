@@ -15,7 +15,7 @@ impl UtsushiReallivePort {
     /// narration renders none.
     ///
     /// - The PRIVATE frame (real decoded g00 + dialogue) is written
-    ///   uncommitted and hashable, under `<root>/private-full/`.
+    ///   uncommitted and hashable, beside (never beneath) `<root>`.
     /// - The PUBLIC frame composites a copyright-safe edge-outline of the
     ///   g00 (scene structure/layout, no source pixels) with the SAME
     ///   message box on top, and is announced through the substrate frame
@@ -44,9 +44,10 @@ impl UtsushiReallivePort {
             self.screen_size,
             self.screen_size,
         );
-        // Full-fidelity private frames live beside the managed public root
-        // but are never announced/committed.
-        let private_dir = root.path().join("private-full");
+        // Full-fidelity frames must not be reachable from the managed public
+        // root. The sibling location has no public artifact URI; an
+        // authorized server route is required to read it.
+        let private_dir = root.path().with_extension("private-full");
         let throwaway = RecordingFrameArtifactSink::new();
         let shots = pass
             .emit_scene_screenshots(

@@ -18,6 +18,7 @@ const gameexePath = process.env.ITOTORI_PLAYER_E2E_GAMEEXE ?? "";
 const g00Dir = process.env.ITOTORI_PLAYER_E2E_G00_DIR ?? "";
 const artifactRoot = process.env.ITOTORI_PLAYER_E2E_ARTIFACT_ROOT ?? "";
 const entryScene = Number(process.env.ITOTORI_PLAYER_E2E_SCENE ?? "1");
+const session = process.env.ITOTORI_PLAYER_E2E_SESSION_ID ?? "e2e";
 
 const descriptorPresent =
   [seenPath, gameexePath, g00Dir, artifactRoot].every((value) => value.trim().length > 0) &&
@@ -84,13 +85,7 @@ async function addressAfterChoice(
 }
 
 async function openPlayer(page: Page): Promise<void> {
-  const query = new URLSearchParams({
-    seenPath,
-    gameexePath,
-    g00Dir,
-    artifactRoot,
-    scene: String(entryScene),
-  });
+  const query = new URLSearchParams({ session });
   await page.goto(`/play/player?${query.toString()}`);
   await expect(page.locator("[data-live-player-panel]")).toBeVisible({ timeout: STEP_TIMEOUT_MS });
   await settle(page);

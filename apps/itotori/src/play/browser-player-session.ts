@@ -10,19 +10,19 @@ import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { resolveNativeCli, type NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
 
-export type BrowserPlayerStart = {
+/** Trusted server-side launch data. This type is never decoded from HTTP. */
+export type BrowserPlayerLaunch = {
   seenPath: string;
   gameexePath: string;
   g00Dir: string;
   artifactRoot: string;
   scene: number;
-  redaction?: "on" | "off";
 };
 
 export type BrowserPlayerInput = { type: "advance" } | { type: "choice"; index: number };
 
 export type BrowserPlayerFrame = {
-  dataUrl: string;
+  frameId: string;
   artifactId: string;
   width: number;
   height: number;
@@ -55,17 +55,22 @@ export class BrowserPlayerSessionError extends Error {
 }
 
 export class BrowserPlayerSessionManager {
-  private readonly sessions = new Map<string, LivePlayerChild>();
+  private readonly sessions = new Map<string, BrowserPlayerSession>();
 
   constructor(private readonly nativeCli: NativeCliRunner = {}) {}
 
-  async start(input: BrowserPlayerStart): Promise<BrowserPlayerState> {
-    validateStart(input);
+  async start(input: BrowserPlayerLaunch, reveal: boolean): Promise<BrowserPlayerState> {
+    validateLaunch(input);
     const sessionId = randomUUID();
-    const child = LivePlayerChild.start(input, this.nativeCli);
-    this.sessions.set(sessionId, child);
+    const child = LivePlayerChild.start(input, reveal, this.nativeCli);
+    const session = {
+      child,
+      reveal,
+      frames: new Map<string, { path: string; requiresReveal: boolean }>(),
+    };
+    this.sessions.set(sessionId, session);
     try {
-      return await this.withFrame(sessionId, await child.next());
+      return await this.withFrame(sessionId, session, await child.next());
     } catch (error) {
       this.sessions.delete(sessionId);
       child.close();
@@ -77,10 +82,10 @@ export class BrowserPlayerSessionManager {
     const session = this.require(sessionId);
     validateInput(input);
     try {
-      return await this.withFrame(sessionId, await session.send(input));
+      return await this.withFrame(sessionId, session, await session.child.send(input));
     } catch (error) {
       this.sessions.delete(sessionId);
-      session.close();
+      session.child.close();
       throw error;
     }
   }
@@ -88,21 +93,40 @@ export class BrowserPlayerSessionManager {
   close(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     this.sessions.delete(sessionId);
-    session?.close();
+    session?.child.close();
   }
 
-  private require(sessionId: string): LivePlayerChild {
+  async readFrame(sessionId: string, frameId: string, reveal: boolean): Promise<Buffer> {
+    const frame = this.require(sessionId).frames.get(frameId);
+    if (frame === undefined)
+      throw new BrowserPlayerSessionError("browser player frame was not found");
+    if (frame.requiresReveal && !reveal)
+      throw new BrowserPlayerSessionError("reveal capability is required for this frame");
+    return await readFile(frame.path);
+  }
+
+  private require(sessionId: string): BrowserPlayerSession {
     const session = this.sessions.get(sessionId);
     if (session === undefined)
       throw new BrowserPlayerSessionError("browser player session was not found");
     return session;
   }
 
-  private async withFrame(sessionId: string, state: CliState): Promise<BrowserPlayerState> {
-    const frame = state.frame === null ? null : await frameData(state.frame);
+  private async withFrame(
+    sessionId: string,
+    session: BrowserPlayerSession,
+    state: CliState,
+  ): Promise<BrowserPlayerState> {
+    const frame = state.frame === null ? null : registerFrame(session, state.frame);
     return { ...state, sessionId, frame };
   }
 }
+
+type BrowserPlayerSession = {
+  child: LivePlayerChild;
+  reveal: boolean;
+  frames: Map<string, { path: string; requiresReveal: boolean }>;
+};
 
 class LivePlayerChild {
   private readonly pending: Array<{ resolve(value: CliState): void; reject(reason: Error): void }> =
@@ -129,7 +153,11 @@ class LivePlayerChild {
     });
   }
 
-  static start(input: BrowserPlayerStart, nativeCli: NativeCliRunner): LivePlayerChild {
+  static start(
+    input: BrowserPlayerLaunch,
+    reveal: boolean,
+    nativeCli: NativeCliRunner,
+  ): LivePlayerChild {
     const env = nativeCli.env ?? process.env;
     const resolved = resolveNativeCli("utsushi-cli", env);
     const args = [
@@ -146,7 +174,7 @@ class LivePlayerChild {
       "--artifact-root",
       input.artifactRoot,
       "--redaction",
-      input.redaction ?? "on",
+      reveal ? "off" : "on",
     ];
     return new LivePlayerChild(spawn(resolved.command, args, { env, stdio: "pipe" }));
   }
@@ -194,7 +222,7 @@ class LivePlayerChild {
   }
 }
 
-function validateStart(input: BrowserPlayerStart): void {
+function validateLaunch(input: BrowserPlayerLaunch): void {
   for (const value of [input.seenPath, input.gameexePath, input.g00Dir, input.artifactRoot]) {
     if (typeof value !== "string" || value.trim().length === 0)
       throw new BrowserPlayerSessionError("player launch paths are required");
@@ -227,7 +255,8 @@ function parseCliState(value: unknown): CliState {
   return value as CliState;
 }
 
-async function frameData(frame: CliFrame): Promise<BrowserPlayerFrame> {
-  const bytes = await readFile(frame.path);
-  return { ...frame, dataUrl: `data:image/png;base64,${bytes.toString("base64")}` };
+function registerFrame(session: BrowserPlayerSession, frame: CliFrame): BrowserPlayerFrame {
+  const frameId = randomUUID();
+  session.frames.set(frameId, { path: frame.path, requiresReveal: session.reveal });
+  return { ...frame, frameId };
 }

@@ -43,9 +43,9 @@ pub(crate) fn run_live_player_command(args: &[String]) -> Result<(), Box<dyn Err
     let g00_dir = PathBuf::from(required_flag(args, "--g00-dir")?);
     let artifact_root = PathBuf::from(required_flag(args, "--artifact-root")?);
     let run_id = optional_flag(args, "--run-id").unwrap_or("browser-player");
-    let public_redact = match optional_flag(args, "--redaction") {
-        None | Some("on") => true,
-        Some("off") => false,
+    let reveal = match optional_flag(args, "--redaction") {
+        None | Some("on") => false,
+        Some("off") => true,
         Some(value) => {
             return Err(format!("live-player --redaction must be on|off, got {value}").into());
         }
@@ -77,7 +77,7 @@ pub(crate) fn run_live_player_command(args: &[String]) -> Result<(), Box<dyn Err
         // rejected rather than silently falling back to a stale image.
         private_dir: artifact_root.with_extension("private-live-player"),
         run_id: run_id.to_string(),
-        public_redact,
+        reveal,
         current_text: None,
     };
 
@@ -114,7 +114,7 @@ struct Renderer {
     artifact_root: RuntimeArtifactRoot,
     private_dir: PathBuf,
     run_id: String,
-    public_redact: bool,
+    reveal: bool,
     /// The visible dialogue remains on screen across inputs that change VM
     /// state without emitting a replacement `TextLine` (for example a choice
     /// boundary). Each response is still newly rasterised against the current
@@ -207,18 +207,28 @@ fn response(
         &run_id,
         &sink,
         &renderer.private_dir,
-        renderer.public_redact,
+        true,
     );
     if let Some(overlay) = overlay {
         emit = emit.with_choice(overlay);
     }
     let screenshots = pass.emit_scene_screenshots(&session.graphics_stack(), &text, emit)?;
-    let path = renderer
-        .artifact_root
-        .artifact_path(&screenshots.public.artifact_ref.uri)?;
+    let (path, artifact_id) = if renderer.reveal {
+        (
+            screenshots.private_png_path,
+            format!("private:{}", screenshots.private_png_sha256),
+        )
+    } else {
+        (
+            renderer
+                .artifact_root
+                .artifact_path(&screenshots.public.artifact_ref.uri)?,
+            screenshots.public.artifact_ref.artifact_id,
+        )
+    };
     let frame = json!({
         "path": path,
-        "artifactId": screenshots.public.artifact_ref.artifact_id,
+        "artifactId": artifact_id,
         "width": screenshots.public.width,
         "height": screenshots.public.height,
     });
