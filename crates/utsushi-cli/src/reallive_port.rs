@@ -68,19 +68,37 @@ pub(crate) fn build_adapter(
 /// on-disk g00 directory. The port only opens assets it observes; it does not
 /// index the rest of the game tree.
 #[derive(Debug)]
-struct OnDiskG00Package {
+pub(crate) struct OnDiskG00Package {
     g00_dir: PathBuf,
 }
 
 impl OnDiskG00Package {
-    fn new(g00_dir: PathBuf) -> Self {
+    pub(crate) fn new(g00_dir: PathBuf) -> Self {
         Self { g00_dir }
     }
 
     fn host_path(&self, id: &AssetId) -> PathBuf {
         let logical = id.path();
         let stem = logical.strip_prefix("g00/").unwrap_or(logical);
-        self.g00_dir.join(stem)
+        let direct = self.g00_dir.join(stem);
+        if direct.exists() {
+            return direct;
+        }
+        // RealLive asset keys are ASCII-case-insensitive while a title's
+        // extracted g00 filenames need not preserve the script's spelling
+        // (`_BLACK` versus `_black` in the owned corpus, for example).
+        // Resolve only the requested basename; never build a global index.
+        std::fs::read_dir(&self.g00_dir)
+            .ok()
+            .and_then(|entries| {
+                entries.filter_map(Result::ok).find_map(|entry| {
+                    let name = entry.file_name();
+                    name.to_str()
+                        .is_some_and(|name| name.eq_ignore_ascii_case(stem))
+                        .then_some(entry.path())
+                })
+            })
+            .unwrap_or(direct)
     }
 }
 
@@ -93,14 +111,14 @@ impl AssetPackage for OnDiskG00Package {
         PackageDescriptor {
             id: self.id().to_string(),
             kind: PackageKind::Plaintext,
-            case_rule: CaseRule::Sensitive,
+            case_rule: CaseRule::InsensitiveAscii,
             source: PackageSource::PublicName(self.id().to_string()),
             revision: None,
         }
     }
 
     fn case_rule(&self) -> CaseRule {
-        CaseRule::Sensitive
+        CaseRule::InsensitiveAscii
     }
 
     fn resolve(&self, logical: &str) -> VfsResult<AssetId> {

@@ -4,12 +4,14 @@ mod dispatch_gate;
 mod fixture_runtime;
 mod flag_parse;
 mod kag_plaintext_replay;
+mod live_player;
 mod mvmz_patched_runtime_proof;
 mod mvmz_runtime_proof;
 mod patch_render;
 mod patch_render_args;
 mod reallive_port;
 mod render_validate;
+mod render_validate_g00;
 mod replay;
 mod replay_cli_registry;
 mod replay_registry;
@@ -30,7 +32,7 @@ use utsushi_core::{
 };
 use utsushi_fixture::FixtureEnginePort;
 
-const USAGE: &str = "usage: utsushi capabilities --output <path> [--skip-browser]\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine <adapter> --artifact-root <DIR> --launch-descriptor <JSON> --output <PATH>\n       utsushi replay-validate --engine <adapter> --artifact-root <DIR> --launch-descriptor <JSON> --print-replay-log <PATH> [--print-textlines] [--dispatch-report <PATH>] [--require-semantic-reached-path]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--message-index <N>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi structure --engine reallive --gameexe <PATH> --seen <PATH> --output <PATH> [--entry-scene <N>] [--max-scenes <N>]\n       utsushi structure --engine softpal --game-root <PATH> --output <PATH>\n       utsushi patch-render --engine reallive --seen <PATH> --translated-bundle <PATH> --scene <N> --gameexe <PATH> --game-dir <DIR> --patched-seen-output <PATH> --artifact-root <DIR> [--scope dialogue|dialogue+choices] [--redaction on|off] [--bg-asset <STEM>] [--expect-text-contains <SUBSTR>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi trace-kag <script.ks> --output <PATH>\n       utsushi coverage-export --read-model <PATH> --generated-at <RFC3339> --output <PATH> [--markdown-output <PATH>] [--include-gap-findings]\n       utsushi mvmz-runtime-proof --runtime-trace <PATH> --fixture-dir <DIR> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi mvmz-patched-runtime-proof --patched-runtime-trace <PATH> --patched-fixture-dir <DIR> --patch-result <PATH> --alpha-proof <PATH> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi conform <game_dir> [--adapter <name>] --output <path>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>\n       utsushi smoke <game_dir> --adapter <browser-adapter> --output <path> [--artifact-root <path>] [--skip-browser]";
+const USAGE: &str = "usage: utsushi capabilities --output <path> [--skip-browser]\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine <adapter> --artifact-root <DIR> --launch-descriptor <JSON> --output <PATH>\n       utsushi replay-validate --engine <adapter> --artifact-root <DIR> --launch-descriptor <JSON> --print-replay-log <PATH> [--print-textlines] [--dispatch-report <PATH>] [--require-semantic-reached-path]\n       utsushi live-player --seen <PATH> --scene <N> --gameexe <PATH> --g00-dir <DIR> --artifact-root <DIR> [--run-id <ID>] [--redaction on|off]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--message-index <N>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi structure --engine reallive --gameexe <PATH> --seen <PATH> --output <PATH> [--entry-scene <N>] [--max-scenes <N>]\n       utsushi structure --engine softpal --game-root <PATH> --output <PATH>\n       utsushi structure --engine siglus --scene <PATH> --gameexe <PATH> --output <PATH>\n       utsushi patch-render --engine reallive --seen <PATH> --translated-bundle <PATH> --scene <N> --gameexe <PATH> --game-dir <DIR> --patched-seen-output <PATH> --artifact-root <DIR> [--scope dialogue|dialogue+choices] [--redaction on|off] [--bg-asset <STEM>] [--expect-text-contains <SUBSTR>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi trace-kag <script.ks> --output <PATH>\n       utsushi coverage-export --read-model <PATH> --generated-at <RFC3339> --output <PATH> [--markdown-output <PATH>] [--include-gap-findings]\n       utsushi mvmz-runtime-proof --runtime-trace <PATH> --fixture-dir <DIR> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi mvmz-patched-runtime-proof --patched-runtime-trace <PATH> --patched-fixture-dir <DIR> --patch-result <PATH> --alpha-proof <PATH> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi conform <game_dir> [--adapter <name>] --output <path>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>\n       utsushi smoke <game_dir> --adapter <browser-adapter> --output <path> [--artifact-root <path>] [--skip-browser]";
 const DEFAULT_ADAPTER_NAME: &str = FixtureEnginePort::MANIFEST.id;
 
 fn main() {
@@ -89,6 +91,10 @@ fn run_cli_with_registry(
             // `replay-validate` argv slot.
             let tail: Vec<String> = args.iter().skip(1).cloned().collect();
             replay_validate::run_replay_validate_command(&tail, registry)?;
+        }
+        Some("live-player") => {
+            let tail: Vec<String> = args.iter().skip(1).cloned().collect();
+            live_player::run_live_player_command(&tail)?;
         }
         Some("render-validate") => {
             // rasterized localized screenshot through the

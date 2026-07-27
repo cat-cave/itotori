@@ -34,10 +34,7 @@ use std::sync::Arc;
 
 use serde_json::json;
 use utsushi_core::RuntimeArtifactRoot;
-use utsushi_core::substrate::{
-    AssetBytes, AssetId, AssetKind, AssetMetadata, AssetPackage, AssetSize, CaseRule, EvidenceTier,
-    PackageDescriptor, PackageKind, PackageSource, TextLine, VfsError, VfsResult,
-};
+use utsushi_core::substrate::{AssetPackage, EvidenceTier, TextLine};
 use utsushi_reallive::{
     Gameexe, GraphicsObject, GraphicsObjectStack, GraphicsPlane, GraphicsScale,
     RecordingFrameArtifactSink, RedactionPolicy, RenderPass, ReplayOpts, SceneEmit, TextLayer,
@@ -48,6 +45,7 @@ use crate::dispatch_gate::{
     DispatchReport, dispatch_report_from_engine, require_semantic_reached_path,
     write_dispatch_report,
 };
+use crate::render_validate_g00::OnDiskG00Package;
 use crate::staged_replay::staged_engine;
 
 /// Only `reallive` is supported (no silent fallback).
@@ -746,75 +744,6 @@ fn dir_has_g00_file(dir: &Path) -> bool {
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("g00"))
         })
     })
-}
-
-/// Minimal [`AssetPackage`] resolving `g00/<STEM>.g00` against a real
-/// on-disk g00 directory. Reads via `std::fs`; never indexes the whole
-/// game tree (a one-shot CLI render must not walk `koe/` and `wav/`).
-#[derive(Debug)]
-struct OnDiskG00Package {
-    g00_dir: PathBuf,
-}
-
-impl OnDiskG00Package {
-    fn new(g00_dir: PathBuf) -> Self {
-        Self { g00_dir }
-    }
-
-    fn host_path(&self, id: &AssetId) -> PathBuf {
-        let logical = id.path();
-        let stem = logical.strip_prefix("g00/").unwrap_or(logical);
-        self.g00_dir.join(stem)
-    }
-}
-
-impl AssetPackage for OnDiskG00Package {
-    fn id(&self) -> &'static str {
-        "render-validate-on-disk-g00"
-    }
-
-    fn descriptor(&self) -> PackageDescriptor {
-        PackageDescriptor {
-            id: self.id().to_string(),
-            kind: PackageKind::Plaintext,
-            case_rule: CaseRule::Sensitive,
-            source: PackageSource::PublicName(self.id().to_string()),
-            revision: None,
-        }
-    }
-
-    fn case_rule(&self) -> CaseRule {
-        CaseRule::Sensitive
-    }
-
-    fn resolve(&self, logical: &str) -> VfsResult<AssetId> {
-        AssetId::from_parts(self.id(), logical)
-    }
-
-    fn exists(&self, id: &AssetId) -> VfsResult<bool> {
-        Ok(self.host_path(id).exists())
-    }
-
-    fn stat(&self, id: &AssetId) -> VfsResult<AssetMetadata> {
-        let meta = fs::metadata(self.host_path(id))
-            .map_err(|_| VfsError::AssetMissing { id: id.clone() })?;
-        Ok(AssetMetadata {
-            id: id.clone(),
-            kind: AssetKind::File,
-            size: AssetSize::Bytes(meta.len()),
-            revision: None,
-        })
-    }
-
-    fn open(&self, id: &AssetId) -> VfsResult<AssetBytes> {
-        let bytes =
-            fs::read(self.host_path(id)).map_err(|_| VfsError::AssetMissing { id: id.clone() })?;
-        Ok(AssetBytes::from(bytes))
-    }
-
-    fn list(&self, _prefix: &AssetId) -> VfsResult<Vec<AssetId>> {
-        Ok(Vec::new())
-    }
 }
 
 #[cfg(test)]

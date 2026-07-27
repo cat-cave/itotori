@@ -30,6 +30,7 @@ import { AddressableFocusScreen } from "./screens/AddressableFocusScreen.js";
 import { DashboardScreen } from "./screens/DashboardScreen.js";
 import { OnboardingScreen, parseOnboardingRoute } from "./screens/OnboardingScreen.js";
 import { PlayHubScreen, parsePlayHubRoute } from "./screens/PlayHubScreen.js";
+import { LivePlayerScreen, parseLivePlayerRoute } from "./screens/LivePlayerScreen.js";
 import { PlayRouteMapScreen, parsePlayRouteMapRoute } from "./screens/PlayRouteMapScreen.js";
 import {
   PlayFlagComposerScreen,
@@ -185,6 +186,11 @@ function RoutedScreen({
   const playHub = parsePlayHubRoute(location.pathname, location.search);
   if (playHub !== null) {
     return <PlayHubScreen route={playHub} />;
+  }
+
+  const livePlayer = parseLivePlayerRoute(location.pathname, location.search);
+  if (livePlayer !== null || /^\/play\/player\/?$/u.test(location.pathname)) {
+    return <LivePlayerScreen config={livePlayer} />;
   }
 
   // `/play/routemap` — canonical route/choice context visualization.

@@ -274,15 +274,11 @@ pub use choice_window::{
 
 /// Real TrueType glyph rasteriser for the localized text layer.
 ///
-/// Renders LEGIBLE mixed-case English dialogue with the bundled DejaVu
-/// Sans font (`assets/DejaVuSans.ttf`, compiled in with `include_bytes!`
-/// — no runtime font lookup, no network). Glyphs are laid out with real
-/// horizontal advances + kerning and anti-aliased coverage, so lowercase
-/// is genuine lowercase (not folded to uppercase) and text reads at a
-/// readable size. A code point the font has no glyph for (every CJK
-/// Shift-JIS source character) falls back to the font's `.notdef` box, so
-/// a localized English layer is still provably distinct — at the pixel
-/// level — from the untranslated Japanese source.
+/// Renders legible Japanese-source and localized dialogue with the bundled
+/// JP-only Noto Serif CJK derivative (`assets/ItotoriJapaneseSubset.otf`,
+/// compiled in with `include_bytes!` — no runtime font lookup, no network).
+/// Glyphs are laid out with real horizontal advances + kerning and
+/// anti-aliased coverage.
 mod font;
 
 /// Typed errors surfaced by [`RenderPass::new`] when the caller-supplied

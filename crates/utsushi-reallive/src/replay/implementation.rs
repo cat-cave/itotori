@@ -7,6 +7,7 @@ mod engine_core;
 mod engine_frames;
 mod engine_observe;
 mod registry;
+mod session;
 #[cfg(test)]
 mod tests;
 
@@ -17,6 +18,9 @@ pub use driver::{
 pub use registry::{
     DecompressedScene, SceneStoreBundle, SceneStoreStats, build_scene_store,
     build_scene_store_from_decompressed, decompress_all_scenes, full_registry_rlop_count,
+};
+pub use session::{
+    LiveSession, LiveSessionError, LiveSessionState, LiveSessionUpdate, LiveSessionWait,
 };
 
 use branch_driver::drive_branch_following;

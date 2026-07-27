@@ -18,6 +18,12 @@ import {
 import { parseItotoriSessionCookie } from "./auth-session-cookie.js";
 import { assertPrivacyRetentionEgressContract } from "./contracts/privacy.js";
 import { configuredServicePort } from "./services/configured-port.js";
+import {
+  BrowserPlayerSessionError,
+  BrowserPlayerSessionManager,
+  type BrowserPlayerInput,
+  type BrowserPlayerStart,
+} from "./play/browser-player-session.js";
 
 export type DashboardServerOptions = {
   databaseUrl?: string;
@@ -28,6 +34,8 @@ export type DashboardServerOptions = {
   runtimeWebRoot?: URL;
   managedArtifactRoot?: URL;
   publicFixtureArtifactRoot?: URL;
+  /** In-memory server-side engine sessions. Never persisted to the DB. */
+  browserPlayerSessions?: BrowserPlayerSessionManager;
 };
 
 const dashboardListenHost = "127.0.0.1";
@@ -56,9 +64,19 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
   // read-only DB services directly. It may also be injected directly.
   const readOnlyServiceFactory =
     options.readOnlyServiceFactory ?? toReadOnlyServiceFactory(serviceFactory);
+  const browserPlayerSessions = options.browserPlayerSessions ?? new BrowserPlayerSessionManager();
   return createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
     if (isItotoriApiPath(url.pathname)) {
+      if (isBrowserPlayerRoute(url.pathname)) {
+        await serveBrowserPlayerRequest({
+          request,
+          response,
+          pathname: url.pathname,
+          browserPlayerSessions,
+        });
+        return;
+      }
       const patchIterationDeliveryArchiveRoute = parsePatchIterationDeliveryArchiveRoute(
         url.pathname,
       );
@@ -174,6 +192,95 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
     response.writeHead(404, { "content-type": "text/plain" });
     response.end("not found");
   });
+}
+
+async function serveBrowserPlayerRequest(input: {
+  request: IncomingMessage;
+  response: ServerResponse;
+  pathname: string;
+  browserPlayerSessions: BrowserPlayerSessionManager;
+}): Promise<void> {
+  try {
+    if (input.request.method !== "POST") {
+      writeApiError(input.response, 405, "method_not_allowed", "method must be POST");
+      return;
+    }
+    const body = await readJsonRequestBody(input.request);
+    if (input.pathname === "/api/player/sessions") {
+      const state = await input.browserPlayerSessions.start(parseBrowserPlayerStart(body));
+      writeBrowserPlayerJson(input.response, 201, state);
+      return;
+    }
+    const sessionId = parseBrowserPlayerInputRoute(input.pathname);
+    if (sessionId === null) {
+      writeApiError(input.response, 404, "not_found", "browser player route was not found");
+      return;
+    }
+    const state = await input.browserPlayerSessions.send(sessionId, parseBrowserPlayerInput(body));
+    writeBrowserPlayerJson(input.response, 200, state);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const status = error instanceof BrowserPlayerSessionError ? 422 : 400;
+    writeApiError(input.response, status, "bad_request", message);
+  }
+}
+
+function isBrowserPlayerRoute(pathname: string): boolean {
+  return pathname === "/api/player/sessions" || parseBrowserPlayerInputRoute(pathname) !== null;
+}
+
+function parseBrowserPlayerInputRoute(pathname: string): string | null {
+  const match = /^\/api\/player\/sessions\/([^/]+)\/input$/u.exec(pathname);
+  return match === null ? null : decodeURIComponent(match[1] ?? "");
+}
+
+function parseBrowserPlayerStart(value: unknown): BrowserPlayerStart {
+  if (!isObject(value))
+    throw new BrowserPlayerSessionError("player start request must be an object");
+  return {
+    seenPath: requiredString(value, "seenPath"),
+    gameexePath: requiredString(value, "gameexePath"),
+    g00Dir: requiredString(value, "g00Dir"),
+    artifactRoot: requiredString(value, "artifactRoot"),
+    scene: requiredNumber(value, "scene"),
+    ...(value.redaction === undefined ? {} : { redaction: parseRedaction(value.redaction) }),
+  };
+}
+
+function parseBrowserPlayerInput(value: unknown): BrowserPlayerInput {
+  if (!isObject(value) || typeof value.type !== "string")
+    throw new BrowserPlayerSessionError("player input requires a type");
+  if (value.type === "advance") return { type: "advance" };
+  if (value.type === "choice") return { type: "choice", index: requiredNumber(value, "index") };
+  throw new BrowserPlayerSessionError("player input type must be advance or choice");
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function requiredString(value: Record<string, unknown>, key: string): string {
+  const entry = value[key];
+  if (typeof entry !== "string")
+    throw new BrowserPlayerSessionError(`player ${key} must be a string`);
+  return entry;
+}
+
+function requiredNumber(value: Record<string, unknown>, key: string): number {
+  const entry = value[key];
+  if (typeof entry !== "number")
+    throw new BrowserPlayerSessionError(`player ${key} must be a number`);
+  return entry;
+}
+
+function parseRedaction(value: unknown): "on" | "off" {
+  if (value === "on" || value === "off") return value;
+  throw new BrowserPlayerSessionError("player redaction must be on or off");
+}
+
+function writeBrowserPlayerJson(response: ServerResponse, status: number, body: unknown): void {
+  response.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
+  response.end(JSON.stringify(body));
 }
 
 async function servePatchIterationDeliveryArchiveRequest(input: {
