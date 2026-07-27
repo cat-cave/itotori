@@ -154,21 +154,17 @@ impl RLOperation for GetCursorPosOp {
 }
 
 fn four_int_references(args: &[ExprValue]) -> Result<[(BankId, u16); 4], String> {
-    if args.len() != 8 {
+    if args.len() != 4 {
         return Err(format!(
             "expected four integer references, got {} values",
             args.len()
         ));
     }
     let reference = |slot: usize| -> Result<(BankId, u16), String> {
-        let bank_raw = args[slot * 2]
-            .as_int()
-            .ok_or_else(|| format!("reference {slot}: bank is not an integer"))?;
-        let index_raw = args[slot * 2 + 1]
-            .as_int()
-            .ok_or_else(|| format!("reference {slot}: index is not an integer"))?;
-        let bank_byte = u8::try_from(bank_raw)
-            .map_err(|_| format!("reference {slot}: bank {bank_raw} is out of range"))?;
+        let (bank_raw, index_raw) = args[slot]
+            .as_int_reference()
+            .ok_or_else(|| format!("reference {slot} is not a direct integer-bank reference"))?;
+        let bank_byte = bank_raw;
         let bank = BankId::from_int_bank_byte(bank_byte)
             .ok_or_else(|| format!("reference {slot}: bank 0x{bank_byte:02x} is not integer"))?;
         let index = u16::try_from(index_raw)
@@ -197,9 +193,13 @@ mod tests {
         let op = GetCursorPosOp {
             runtime: std::sync::Arc::new(runtime),
         };
-        let refs = [0x00, 3, 0x00, 4, 0x00, 5, 0x00, 6]
+        let refs = [3, 4, 5, 6]
             .into_iter()
-            .map(ExprValue::Int)
+            .map(|index| ExprValue::IntReference {
+                bank: 0x00,
+                index,
+                value: 0,
+            })
             .collect::<Vec<_>>();
         op.dispatch(&mut vm, &refs);
         assert_eq!(vm.banks().get(BankId::IntA, 3), Some(Value::Int(400)));

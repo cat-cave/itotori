@@ -15,7 +15,7 @@ fn dispatch_select(
     for (idx, arg) in args.iter().enumerate() {
         let bytes = match arg {
             ExprValue::Bytes(bytes) => bytes.clone(),
-            ExprValue::Int(_) => {
+            ExprValue::Int(_) | ExprValue::IntReference { .. } => {
                 // A skipped Int never becomes a stored choice, so the raw
                 // arg position `idx` is the only meaningful pointer to the
                 // offending arg in the source list.

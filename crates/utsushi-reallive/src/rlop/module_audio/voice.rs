@@ -24,7 +24,7 @@ impl KoePlayOp {
 impl RLOperation for KoePlayOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
         let sample_id = match args.first() {
-            Some(ExprValue::Int(n)) => *n,
+            Some(ExprValue::Int(n) | ExprValue::IntReference { value: n, .. }) => *n,
             Some(ExprValue::Bytes(_)) => {
                 self.runtime
                     .record_warning(AudioRuntimeWarning::ArgShapeMismatch {
