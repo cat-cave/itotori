@@ -390,8 +390,8 @@ const PRIMARY_CORPUS_SEEN_SHA256: &str =
 /// signatures and sha256 only.
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT_2 (2nd RealLive title, e.g. Kanon)"]
-fn kanon_second_corpus_decompiles_zero_unknown() {
-    cases::kanon_second_corpus_decompiles_zero_unknown();
+fn secondary_corpus_decompiles_zero_unknown() {
+    cases::secondary_corpus_decompiles_zero_unknown();
 }
 
 /// Dependency-free SHA-256 for corpus distinctness checks.

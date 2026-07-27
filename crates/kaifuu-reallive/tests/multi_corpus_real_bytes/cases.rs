@@ -271,10 +271,10 @@ pub(super) fn every_menu_boot_system_scene_decodes_to_zero_unknown() {
     );
 }
 
-pub(super) fn kanon_second_corpus_decompiles_zero_unknown() {
+pub(super) fn secondary_corpus_decompiles_zero_unknown() {
     let Some(corpus) = real_corpus::corpus_2() else {
         real_corpus::require_real_bytes(
-            "kanon_second_corpus_decompiles_zero_unknown \
+            "secondary_corpus_decompiles_zero_unknown \
              (set ITOTORI_REAL_GAME_ROOT_2 to a 2nd RealLive title, e.g. Kanon)",
         );
         return;

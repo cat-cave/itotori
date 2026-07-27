@@ -29,13 +29,15 @@
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
 use kaifuu_reallive::{
     BridgeOpts, BridgeProduceError, RealLiveOpcode, SceneHeader, Xor2DecScene,
     decode_dialogue_textout, decompress_avg32, gameexe::parse_gameexe_inventory, parse_archive,
-    parse_real_bytecode, produce_bundle, recover_and_decrypt_archive,
+    parse_real_bytecode, parse_scene_override_file_name, produce_bundle,
+    recover_and_decrypt_archive,
 };
 
 use real_corpus::RealCorpus;
@@ -57,10 +59,21 @@ struct PurityReport {
     /// Units whose `sourceText` carries a control byte / `U+FFFD` / is merely
     /// a kidoku marker. The gate's bar is ZERO.
     non_dialogue_units: usize,
-    /// Textout runs that the OLD valid-decode-only gate would have surfaced
-    /// (zero decode errors) but the NEW gate drops because they carry control
-    /// bytes — the mojibake units this node removes.
-    mojibake_runs_dropped: usize,
+    /// Exact `22 22` Textout bodies. These are syntax-only quote pairs, so
+    /// their rendered body is empty rather than mojibake.
+    empty_quoted_bodies_dropped: usize,
+    /// One raw-byte sample from the exact empty-body population. Kept as bytes
+    /// in the report so a diagnostic cannot mistake syntax for decoded text.
+    empty_quoted_body_sample: Option<[u8; 2]>,
+    /// Non-empty raw runs that decode cleanly as Shift-JIS but do not pass the
+    /// visible-dialogue predicate. This is intentionally distinct from an
+    /// empty quoted body and from an undecodable binary run.
+    clean_decode_non_dialogue_runs_dropped: usize,
+    /// Archive-only count of exact empty quoted bodies. Comparing it with the
+    /// effective count makes standalone-scene replacement visible in the
+    /// report instead of silently mixing two byte sets.
+    archive_empty_quoted_bodies: usize,
+    scene_overrides: usize,
     /// Total Textout runs the NEW gate surfaces as dialogue (no false
     /// negatives: real dialogue retained).
     dialogue_runs_surfaced: usize,
@@ -94,6 +107,39 @@ fn read_gameexe(seen_txt: &Path) -> Vec<u8> {
         .unwrap_or_default()
 }
 
+/// Read format-defined standalone scene replacements next to the archive.
+/// The bridge must inspect these effective scene bytes, not the archive's
+/// replaced slot, because the runtime does the same.
+fn scene_overrides(seen_txt: &Path) -> BTreeMap<u16, Vec<u8>> {
+    let Some(data_dir) = seen_txt.parent() else {
+        return BTreeMap::new();
+    };
+    fs::read_dir(data_dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            let scene_id = parse_scene_override_file_name(path.file_name()?.to_str()?)?;
+            Some((scene_id, fs::read(path).ok()?))
+        })
+        .collect()
+}
+
+fn count_empty_quoted_bodies(scenes: &[Xor2DecScene]) -> usize {
+    scenes
+        .iter()
+        .filter_map(|scene| parse_real_bytecode(&scene.bytecode).ok())
+        .flatten()
+        .filter(|opcode| {
+            matches!(
+                opcode,
+                RealLiveOpcode::Textout { raw_bytes, .. } if raw_bytes == b"\"\""
+            )
+        })
+        .count()
+}
+
 fn purity_for_corpus(corpus: &RealCorpus) -> PurityReport {
     let bytes = fs::read(&corpus.seen_txt)
         .unwrap_or_else(|err| panic!("read {}: {err}", corpus.seen_txt.display()));
@@ -101,9 +147,13 @@ fn purity_for_corpus(corpus: &RealCorpus) -> PurityReport {
         .unwrap_or_else(|diag| panic!("[{}] SEEN archive must parse: {diag:?}", corpus.label));
     let gameexe_bytes = read_gameexe(&corpus.seen_txt);
     let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
+    let overrides = scene_overrides(&corpus.seen_txt);
 
-    // Stage 1: envelope -> header -> AVG32 decompress, keeping per-scene
-    // metadata in lockstep so a bundle can be produced post-xor_2.
+    // Stage 1: envelope -> header -> AVG32 decompress. Keep both the archive
+    // slots and the runtime's effective replacement slots: the former explains
+    // an archive/effective count delta, while only the latter reaches bridge
+    // production.
+    let mut archive_scenes: Vec<Xor2DecScene> = Vec::new();
     let mut scenes: Vec<Xor2DecScene> = Vec::new();
     let mut metas: Vec<SceneMeta> = Vec::new();
     for entry in &index.entries {
@@ -112,7 +162,10 @@ fn purity_for_corpus(corpus: &RealCorpus) -> PurityReport {
         if end > bytes.len() {
             continue;
         }
-        let blob = &bytes[off..end];
+        let archive_blob = &bytes[off..end];
+        let blob = overrides
+            .get(&entry.scene_id)
+            .map_or(archive_blob, Vec::as_slice);
         let Ok(header) = SceneHeader::parse(blob) else {
             continue;
         };
@@ -125,6 +178,25 @@ fn purity_for_corpus(corpus: &RealCorpus) -> PurityReport {
         let Ok(decompressed) = decompress_avg32(&blob[bo..bo + bc], bu) else {
             continue;
         };
+        let Ok(archive_header) = SceneHeader::parse(archive_blob) else {
+            continue;
+        };
+        let archive_bo = archive_header.bytecode_offset as usize;
+        let archive_bc = archive_header.bytecode_compressed_size as usize;
+        let archive_bu = archive_header.bytecode_uncompressed_size as usize;
+        if archive_bo + archive_bc > archive_blob.len() {
+            continue;
+        }
+        let Ok(archive_decompressed) = decompress_avg32(
+            &archive_blob[archive_bo..archive_bo + archive_bc],
+            archive_bu,
+        ) else {
+            continue;
+        };
+        archive_scenes.push(Xor2DecScene {
+            compiler_version: archive_header.compiler_version,
+            bytecode: archive_decompressed,
+        });
         scenes.push(Xor2DecScene {
             compiler_version: header.compiler_version,
             bytecode: decompressed,
@@ -136,8 +208,9 @@ fn purity_for_corpus(corpus: &RealCorpus) -> PurityReport {
         });
     }
 
-    // Stage 2: archive-wide second-level xor_2 recovery (Sweetie HD only;
-    // Kanon's compiler version leaves every scene untouched).
+    // Stage 2: archive-wide second-level xor_2 recovery. Apply it to each
+    // comparison set before counting, so both sides have the same decode stage.
+    let _ = recover_and_decrypt_archive(&mut archive_scenes);
     let _ = recover_and_decrypt_archive(&mut scenes);
 
     let mut report = PurityReport {
@@ -146,7 +219,11 @@ fn purity_for_corpus(corpus: &RealCorpus) -> PurityReport {
         scenes_with_units: 0,
         total_units: 0,
         non_dialogue_units: 0,
-        mojibake_runs_dropped: 0,
+        empty_quoted_bodies_dropped: 0,
+        empty_quoted_body_sample: None,
+        clean_decode_non_dialogue_runs_dropped: 0,
+        archive_empty_quoted_bodies: count_empty_quoted_bodies(&archive_scenes),
+        scene_overrides: overrides.len(),
         dialogue_runs_surfaced: 0,
     };
 
@@ -162,23 +239,28 @@ fn purity_for_corpus(corpus: &RealCorpus) -> PurityReport {
     };
 
     for (scene, meta) in scenes.iter().zip(metas.iter()) {
-        // Before/after accounting: classify each Textout run by the OLD gate
-        // (valid Shift-JIS decode, zero replacement errors) vs the NEW gate
-        // (also no control bytes). A run the old gate accepted but the new
-        // one drops is a mojibake unit this node removes.
+        // Classify dropped Textout runs by the visible-text reason. In
+        // particular, `22 22` is quote syntax whose rendered body is empty;
+        // it is not a decoded garbage string.
         if let Ok(opcodes) = parse_real_bytecode(&scene.bytecode) {
             for op in &opcodes {
                 if let RealLiveOpcode::Textout { raw_bytes, .. } = op {
                     if raw_bytes.is_empty() {
                         continue;
                     }
-                    let (_d, _e, had_errors) = encoding_rs::SHIFT_JIS.decode(raw_bytes);
-                    let old_gate = !had_errors;
-                    let new_gate = decode_dialogue_textout(raw_bytes).is_some();
-                    if new_gate {
+                    if raw_bytes == b"\"\"" {
+                        report.empty_quoted_bodies_dropped += 1;
+                        report
+                            .empty_quoted_body_sample
+                            .get_or_insert([raw_bytes[0], raw_bytes[1]]);
+                    } else if decode_dialogue_textout(raw_bytes).is_some() {
                         report.dialogue_runs_surfaced += 1;
-                    } else if old_gate {
-                        report.mojibake_runs_dropped += 1;
+                    } else {
+                        let (_decoded, _encoding, had_errors) =
+                            encoding_rs::SHIFT_JIS.decode(raw_bytes);
+                        if !had_errors {
+                            report.clean_decode_non_dialogue_runs_dropped += 1;
+                        }
                     }
                 }
             }
@@ -262,19 +344,26 @@ fn purity_for_corpus(corpus: &RealCorpus) -> PurityReport {
 }
 
 fn print_report(report: &PurityReport) {
+    let raw_sample = report.empty_quoted_body_sample.map_or_else(
+        || "none".to_string(),
+        |[first, second]| format!("{first:02x} {second:02x}"),
+    );
     eprintln!(
         "[{}] PURITY: populated_scenes={} scenes_with_units={} total_units={} \
-         non_dialogue_units={} | dialogue_runs_surfaced={} mojibake_runs_dropped={} \
-         (before={} after={})",
+         non_dialogue_units={} | dialogue_runs_surfaced={} empty_quoted_bodies_dropped={} \
+         clean_decode_non_dialogue_runs_dropped={} archive_empty_quoted_bodies={} \
+         scene_overrides={} raw_empty_quote_sample=[{}]",
         report.label,
         report.populated_scenes,
         report.scenes_with_units,
         report.total_units,
         report.non_dialogue_units,
         report.dialogue_runs_surfaced,
-        report.mojibake_runs_dropped,
-        report.dialogue_runs_surfaced + report.mojibake_runs_dropped,
-        report.dialogue_runs_surfaced,
+        report.empty_quoted_bodies_dropped,
+        report.clean_decode_non_dialogue_runs_dropped,
+        report.archive_empty_quoted_bodies,
+        report.scene_overrides,
+        raw_sample,
     );
 }
 
@@ -299,13 +388,29 @@ fn bridge_bundles_carry_zero_non_dialogue_units_on_both_corpora_real_bytes() {
             "[{}] SEEN archive parsed but has zero populated scenes",
             report.label
         );
-        // The producer must actually engage real dialogue on each corpus —
-        // otherwise a zero-unit run could vacuously pass the purity gate.
-        assert!(
-            report.total_units > 0,
-            "[{}] no translatable unit was produced across the whole archive",
-            report.label
-        );
+        // A no-unit corpus is legitimate only with direct byte evidence that
+        // its effective Textouts are empty quoted bodies. Conversely, when the
+        // classifier finds dialogue, a zero-unit bridge is always a defect.
+        if report.dialogue_runs_surfaced > 0 {
+            assert!(
+                report.total_units > 0,
+                "[{}] classified {} dialogue Textout run(s) but produced no translatable units",
+                report.label,
+                report.dialogue_runs_surfaced,
+            );
+        } else if report.total_units == 0 {
+            assert!(
+                report.empty_quoted_bodies_dropped > 0,
+                "[{}] produced no units and no dialogue, but has no exact empty-quoted Textout evidence",
+                report.label
+            );
+            assert_eq!(
+                report.empty_quoted_body_sample,
+                Some([0x22, 0x22]),
+                "[{}] empty-body accounting must retain the raw quote-pair bytes",
+                report.label
+            );
+        }
         // THE GATE: not one emitted unit may be a binary / control-char run
         // or a bare kidoku-table marker.
         assert_eq!(
