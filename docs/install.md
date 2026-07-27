@@ -6,11 +6,10 @@ package, no clone, no Nix/pnpm). The
 [developer / fresh-clone path](#developer-fresh-clone-setup) below it is for
 people changing itotori itself.
 
-> Start at the repo [README](../README.md) for the end-to-end user quickstart
-> (install → `itotori init` → the multi-command localize flow:
-> `extract` → `structure-export` → `wiki build` → `localize` → `patch` →
-> `validate` → patched output). This document is the detailed install reference
-> behind that quickstart.
+> Start at the repo [README](../README.md) for the observed user flow:
+> install → `itotori init` → `extract` → `structure-export`. The current public
+> CLI has no observed archive-to-patch handoff; the README names the exact stop
+> and prerequisites. This document is the detailed install reference.
 
 ## User install (the package)
 
@@ -111,18 +110,10 @@ linkage validator. It is the fastest end-to-end proof that a fresh clone is
 working. See [`alpha-readiness.md`](alpha-readiness.md) §2 and
 [`alpha-proof.md`](alpha-proof.md).
 
-After the preceding extract, structure-export, and wiki-build stages have
-produced their artifacts, invoke the localizer with an explicit run mode:
-
-```sh
-itotori localize \
-  --project-id <project-id> --run-id <run-id> --locale-branch-id <locale-branch-id> --target-locale <locale> --source-root <game-root> --build-root <build-root> \
-  --run-mode test-dev \
-  --structure <run-dir>/structure.json \
-  --bridge <run-dir>/bridge.json \
-  --output-scope dialogue-only \
-  --output <run-dir>/run-summary.json
-```
+The repository's public-fixture demo is the supported full proof in this
+checkout. A real-corpus CLI run currently stops after structure export until an
+operator supplies the encrypted-state and live-provider prerequisites; it does
+not currently provide a CLI-only localize-to-patch handoff.
 
 ### Run the readiness checklist
 

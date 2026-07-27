@@ -52,7 +52,7 @@ import {
 } from "./structure-export/structure-provider-registry.js";
 import type { NativeCliRunner } from "./native-bin/cli-bin-resolver.js";
 import { applyEnginePatchback, detectPatchbackEngine } from "./patchback/index.js";
-import { buildHelpText } from "./help-text.js";
+import { buildCommandHelpText, buildHelpText } from "./help-text.js";
 import { runInitCommand, type InitCommandDeps } from "./init-command.js";
 import { optionalFlag, requiredFlag } from "./cli/flags.js";
 import { runPatchbackProduceCommand } from "./patchback/produce-cli.js";
@@ -172,6 +172,11 @@ export async function runItotoriCliCommand(
     );
   }
   if (args.includes("--help") || args.includes("-h")) {
+    const commandHelp = buildCommandHelpText(args);
+    if (commandHelp !== undefined) {
+      process.stdout.write(`${commandHelp}\n`);
+      return;
+    }
     const allCommands = args.includes("--all");
     process.stdout.write(`${buildHelpText(allCommands)}\n`);
     return;

@@ -19,9 +19,8 @@ These docs describe the monorepo as a three-project suite:
 ## User-facing docs (start here)
 
 New users start with the root [README.md](../README.md) user quickstart
-(`itotori` install → `init` → the multi-command localize flow:
-`extract` → `structure-export` → `wiki build` → `localize` → `patch` →
-`validate` → review → output), then
+(`itotori` install → `init` → observed `extract` → `structure-export`, with
+the live-state and patch-handoff boundary stated explicitly), then
 [install.md](install.md) (fresh-clone setup + the public-fixture demo), then
 [alpha-readiness.md](alpha-readiness.md) (checked alpha readiness) and
 [security-and-limitations.md](security-and-limitations.md) for the security

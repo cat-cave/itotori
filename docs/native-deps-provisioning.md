@@ -185,9 +185,9 @@ On a fresh **non-nix, glibc Linux** machine (Node ≥ `.node-version` present):
      `ITOTORI_POSTGRES_BIN_DIR`.
 4. Run migrations: `just db-migrate`.
 5. Preflight: `just doctor` → must be green (exit 0).
-6. Localize (opt-in, needs corpus + ZDR creds per
-   [`security-and-limitations.md`](security-and-limitations.md)):
-   `itotori localize --project-id <id> --run-id <id> --locale-branch-id <id> --target-locale <locale> --source-root <game-root> --build-root <build-root> --run-mode production --structure <run-dir>/structure.json --bridge <run-dir>/bridge.json --output-scope dialogue-only --output <run-dir>/run-summary.json`.
+6. Stop after structure export unless the operator has provisioned the encrypted
+   live-state prerequisites. The current public CLI has no observed
+   localize-to-patch handoff; see [`localize-reallive.md`](localize-reallive.md).
 
 ## Out of scope here (later nodes)
 

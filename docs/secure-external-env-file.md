@@ -15,13 +15,12 @@ choose works, and non-Nix users are never forced into that setup.
 ## TL;DR — recommended usage
 
 ```sh
-# Env-var form (works for every itotori command):
+# Env-var form (the file is validated before any CLI command runs):
 ITOTORI_LOCAL_ENV_FILE=~/.config/nix-desktop/secrets/env.d/itotori-openrouter.env \
-  itotori localize --project-id <id> --run-id <id> --locale-branch-id <id> --target-locale <locale> --source-root <game-root> --build-root <build-root> --run-mode production --structure <structure.json> --bridge <bridge.json>
+  itotori --version
 
 # Or the CLI-flag form (takes precedence over the env var):
-itotori localize --env-file /path/to/your/itotori-openrouter.env \
-  --project-id <id> --run-id <id> --locale-branch-id <id> --target-locale <locale> --source-root <game-root> --build-root <build-root> --run-mode production --structure <structure.json> --bridge <bridge.json>
+itotori --env-file /path/to/your/itotori-openrouter.env --version
 ```
 
 The env file is a plain `.env`-style file. A minimal one:
@@ -71,7 +70,7 @@ environment:
 # The exported key wins; the file's OPENROUTER_API_KEY is ignored.
 OPENROUTER_API_KEY=sk-or-override \
 ITOTORI_LOCAL_ENV_FILE=/path/to/itotori-openrouter.env \
-  itotori localize --project-id <id> --run-id <id> --locale-branch-id <id> --target-locale <locale> --source-root <game-root> --build-root <build-root> --run-mode production --structure <structure.json> --bridge <bridge.json>
+  itotori --version
 ```
 
 ## Secret hygiene

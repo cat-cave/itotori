@@ -127,9 +127,10 @@ export async function runInitCommand(args: string[], deps: InitCommandDeps): Pro
     deps.log("       Provision Postgres or set DATABASE_URL, then re-run `itotori init`.");
     deps.log("");
   }
-  deps.log("  3. Localize a game. The full pipeline is a multi-command flow:");
-  deps.log("       extract -> structure-export -> wiki build -> localize -> patch -> validate");
-  deps.log("       Run `itotori --help` for each command's required flags.");
+  deps.log("  3. Start a corpus run: extract -> structure-export.");
+  deps.log("       wiki/localize need ITOTORI_FIELD_CIPHER_KEY; this CLI does not export");
+  deps.log("       localize output as the translated bridge required by patch.");
+  deps.log("       Run `itotori <command> --help` for that command's required flags.");
   deps.log("");
   deps.log("Setup complete!");
 }
