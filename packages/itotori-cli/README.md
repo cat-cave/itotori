@@ -32,7 +32,6 @@ currently a `>=24.14` major) is the sole host requirement.
 ```sh
 itotori --version          # itotori <ITOTORI_PRODUCT_VERSION>
 itotori -v                 # alias
-itotori localize --run-mode production --structure <structure.json> --bridge <bridge.json> --output-scope dialogue-only   # whole-game localize
 itotori db-migrate          # apply the DB schema migrations (needs DATABASE_URL)
 ```
 
@@ -57,9 +56,12 @@ Run `just doctor` (from a clone) to preflight every native dep; an installed
 machine follows the deterministic provisioning path in
 [`docs/native-deps-provisioning.md`](../../docs/native-deps-provisioning.md).
 
-A live `itotori localize` run requires an exported `OPENROUTER_API_KEY`; every
-provider request carries the required ZDR routing posture (see
-[`docs/security-and-limitations.md`](../../docs/security-and-limitations.md)).
+The observed real-corpus CLI flow currently reaches extract and structure
+export. `wiki build` and `localize` require the operator-provisioned
+`ITOTORI_FIELD_CIPHER_KEY`, and the CLI does not export localize accepted outputs
+as the translated bridge required by `patch`. See the root README for the
+current boundary and [`docs/security-and-limitations.md`](../../docs/security-and-limitations.md)
+for live-provider ZDR posture.
 
 ## Versioning
 

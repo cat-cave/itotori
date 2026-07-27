@@ -5,14 +5,14 @@ deliberately distinguishes working commands from interfaces that are present in
 design notes but not exposed by the current CLI. Do not infer an end-to-end
 success from a command that merely exits zero.
 
-The current front door is a sequence of separate commands:
+The observed, runnable front door currently ends after structure export:
 
 ```text
-extract → structure-export → wiki build → localize → patch / validate
+extract → structure-export
 ```
 
-`localize-game` does not exist. `itotori --help` lists the top-level commands;
-the checked source parsers and native `--help` are the flag authority.
+`localize-game` does not exist. Use `itotori <command> --help` before a run for
+that command's required flags; the checked source parsers remain the authority.
 
 ## Before touching private bytes
 
@@ -22,9 +22,9 @@ use those builds. This avoids drawing conclusions from an old extractor or
 runtime binary.
 
 ```sh
-cargo build --release -p kaifuu-cli -p utsushi-cli
-export ITOTORI_KAIFUU_BIN="${CARGO_TARGET_DIR:-target}/release/kaifuu-cli"
-export ITOTORI_UTSUSHI_BIN="${CARGO_TARGET_DIR:-target}/release/utsushi-cli"
+cargo build -p kaifuu-cli -p utsushi-cli
+export ITOTORI_KAIFUU_BIN="${CARGO_TARGET_DIR:-target}/debug/kaifuu-cli"
+export ITOTORI_UTSUSHI_BIN="${CARGO_TARGET_DIR:-target}/debug/utsushi-cli"
 
 just doctor
 ```
@@ -66,7 +66,7 @@ decoder can recover supported cross-scene encryption only after it sees the
 archive. If a decompile report records unknown opcodes, treat it as a decode
 gap; do not continue as if the bridge were complete.
 
-## Structure, bible, and drafting
+## Structure export
 
 Build structure from the bridge and the source's actual engine files:
 
@@ -79,97 +79,23 @@ itotori structure-export --engine reallive \
 ```
 
 `--entry-scene <n>` selects a non-default entry point; `--max-scenes <n>`
-fails rather than silently truncating the archive. Then build the source bible:
+fails rather than silently truncating the archive.
 
-```sh
-itotori wiki build \
-  --structure <run-dir>/structure.json --bridge <run-dir>/bridge.json \
-  --source-locale <locale> --run-mode production \
-  --output <run-dir>/wiki-summary.json
-```
+## The current stop: encrypted live state and patch handoff
 
-`wiki build` accepts `--concurrency <positive-integer>`, `--roles <a,b,...>`,
-and `--portrait-sources <json>`. Production and pilot policy require the
-wiki-first bible. Only `test-dev` permits `localize --ablation`.
+After a successful extract and structure export, both `wiki build` and
+`localize` refuse before work begins unless Postgres has been migrated and the
+existing `ITOTORI_FIELD_CIPHER_KEY` is set to a base64-encoded 256-bit key. The
+key is an operator-provisioned secret for durable encrypted records; do not put
+it on the command line, print it, or commit it.
 
-Run the localizer with durable run identities and the two roots it owns:
-
-```sh
-itotori localize \
-  --project-id <id> --run-id <id> --locale-branch-id <id> \
-  --target-locale <bcp-47> \
-  --source-root <read-only-game-root> --build-root <writable-build-root> \
-  --run-mode production \
-  --structure <run-dir>/structure.json --bridge <run-dir>/bridge.json \
-  --output-scope dialogue-only --output <run-dir>/run-summary.json
-```
-
-Supply the project, run, and locale-branch identities; the target locale; the
-read-only source and writable build roots; the run mode; and the preceding
-structure and bridge artifacts. While provisioning that scope, `localize`
-derives the engine family from structure, and the source revision, source
-locale, bridge identity, extractor, and source-bundle hash from the bridge. Do
-not redundantly supply those derived values.
-
-Optional localizer flags are `--context-scope`, `--whole-scene-max-units`,
-`--ablation`, and `--lease-owner-id`. Output scopes are `dialogue-only`,
-`dialogue-and-choices`, `dialogue-choices-ui`, and `all`.
-
-Important: `run-summary.json` is a redacted summary, not a translated bridge
-bundle and not input to `itotori patch`. The direct patch command requires a
-translated BridgeBundle v0.2. `itotori patch produce` can build from a complete
-`NativePatchbackInput` (fact snapshot, accepted outputs, scope, locales, and
-raw bridge), but the current public CLI does not export that input from a
-`localize` run. Therefore this repository does not currently provide a
-standalone CLI-only localize-to-patch handoff. Keep the run summary as evidence
-and obtain the accepted-output patch input from the owning integration; do not
-substitute the summary file.
-
-## Patching and validation
-
-When you have a translated bridge bundle, patch into a new writable target:
-
-```sh
-itotori patch \
-  --source <read-only-game-root> --target <empty-output-root> \
-  --bundle <translated-bridge.json> --scope dialogue-only
-```
-
-The patcher discovers the engine from `--source`; it does not take `--engine`.
-`--scope` is exactly `dialogue-only` or `dialogue+choices`; `--force` permits
-an existing non-empty target. The target must be outside the source. For this
-engine the target is a sparse overlay containing the patched `Seen.txt`, not a
-copied playable game tree.
-
-Validate patched bytes against the original, full source tree:
-
-```sh
-itotori validate --engine reallive \
-  --seen <output-root>/REALLIVEDATA/Seen.txt --scene <n> \
-  --gameexe <game-root>/REALLIVEDATA/Gameexe.ini \
-  --game-dir <game-root>/REALLIVEDATA \
-  --replay-log <run-dir>/replay.json \
-  --artifact-root <run-dir>/render \
-  --render-output <run-dir>/render-report.json
-```
-
-`validate` first replay-validates and then renders. Optional flags are
-`--redaction on|off`, `--print-textlines`, `--source-seen`, `--bg-asset`,
-`--private-artifact-root`, `--run-id`, `--expect-text-contains`, `--width`,
-and `--height`.
-
-Rendering needs the full extracted tree. A minimal root or sparse patch target
-can yield an empty-looking frame that resembles a decoder bug. Supply
-`--game-dir` as the directory containing the real `g00/` directory, normally
-`REALLIVEDATA`; the wrapper derives `<game-dir>/g00`. When calling the native
-player or runtime directly, `--g00-dir` must point at the `g00` directory
-itself, never its parent.
-
-The public render artifact is redacted by default and is evidence tier E2.
-It demonstrates observed rendered text, not pixel-exact retail-renderer
-fidelity. A browser player session is a separate long-lived native process:
-start it with a complete descriptor, advance or choose through that same
-session, and close it when finished. Do not emulate it with cached frames.
+This checkout has not produced a localized bridge or patch from the public CLI
+on a real corpus. Even if the live wiki/localize prerequisites are supplied,
+`localize` writes a redacted run summary rather than the translated BridgeBundle
+that `patch` accepts. The CLI does not export the required accepted-output
+`NativePatchbackInput` either. This is an implementation gap, not a limitation
+of the source data. Obtain that input from the owning integration; do not pass
+`run-summary.json` to `itotori patch` or claim the archive-to-patch route works.
 
 ## Real-byte gates
 
@@ -185,8 +111,6 @@ and counts for shareable evidence.
 
 ## Known boundaries
 
-- The documented scope expansion (`--scenes`, `--unit-range`) and bridge
-  `sourceScope` are not present in this checkout's parsers or bridge schema.
 - The corpus-manifest registry exists as an internal validation surface, but is
   not a selector on the installed extract command.
 - The localizer's summary cannot be patched directly; no CLI export currently

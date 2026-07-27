@@ -136,4 +136,82 @@ export function buildHelpText(allCommands = false): string {
   return lines.join("\n");
 }
 
+/** Help for a concrete command. Keep the parsed flag surface next to the
+ * top-level help so `itotori <command> --help` is useful at the failure point. */
+export function buildCommandHelpText(args: readonly string[]): string | undefined {
+  const command = args[0];
+  const subcommand = args[1];
+  const lines: string[] = [];
+  const usage = (value: string) => {
+    lines.push("USAGE:");
+    lines.push(`  ${value}`);
+    lines.push("");
+  };
+
+  switch (command) {
+    case "init":
+      usage("itotori init [--non-interactive] [--config <PATH>]");
+      lines.push("Writes local setup configuration. Supply OpenRouter, database, and field-cipher");
+      lines.push(
+        "credentials through the environment or an env file; never put secrets on the command line.",
+      );
+      break;
+    case "extract":
+      usage("itotori extract --engine <ENGINE> ... --bundle-output <JSON>");
+      lines.push("RealLive requires --engine reallive, --game-root, --game-id, --game-version,");
+      lines.push("--source-profile-id, --source-locale, and exactly one scope (--scene, --scenes,");
+      lines.push("--unit-range, or --whole-seen).");
+      break;
+    case "structure-export":
+      usage("itotori structure-export --engine <ENGINE> --output <JSON> ...");
+      lines.push(
+        "RealLive requires --engine reallive --gameexe <INI> --seen <TXT> --output <JSON>.",
+      );
+      lines.push("--bridge <JSON>, --entry-scene <N>, and --max-scenes <N> are optional.");
+      break;
+    case "wiki":
+      if (subcommand !== "build") return undefined;
+      usage(
+        "itotori wiki build --structure <JSON> --bridge <JSON> --source-locale <LOCALE> --run-mode <MODE> [--output <JSON>]",
+      );
+      lines.push(
+        "MODE is production, pilot, or test-dev. Optional: --concurrency, --roles, --portrait-sources.",
+      );
+      break;
+    case "localize":
+      usage(
+        "itotori localize --project-id <ID> --run-id <ID> --locale-branch-id <ID> --target-locale <LOCALE> --source-root <PATH> --build-root <PATH> --run-mode <MODE> --structure <JSON> --bridge <JSON> [--output <JSON>]",
+      );
+      lines.push(
+        "Optional: --context-scope, --output-scope, --whole-scene-max-units, --ablation, --lease-owner-id.",
+      );
+      break;
+    case "patch":
+      if (subcommand === "produce") {
+        usage(
+          "itotori patch produce --input <JSON> --source <PATH> --build-root <PATH> --scope dialogue-only|dialogue+choices --output <JSON>",
+        );
+      } else {
+        usage(
+          "itotori patch --source <PATH> --target <PATH> --bundle <TRANSLATED-BRIDGE> --scope dialogue-only|dialogue+choices [--force]",
+        );
+      }
+      break;
+    case "validate":
+      usage(
+        "itotori validate --engine reallive --seen <TXT> --scene <N> --gameexe <INI> --game-dir <DIR> --replay-log <JSON> --artifact-root <DIR> --render-output <JSON>",
+      );
+      lines.push(
+        "Optional: --redaction, --print-textlines, --source-seen, --bg-asset, --private-artifact-root,",
+      );
+      lines.push("--run-id, --expect-text-contains, --width, --height.");
+      break;
+    default:
+      return undefined;
+  }
+  lines.push("");
+  lines.push("Run `itotori --help` for the complete command list.");
+  return lines.join("\n");
+}
+
 export const ITOTORI_HELP_TEXT = buildHelpText(false);

@@ -24,13 +24,16 @@ localize a game. Those are the developer paths
   real engine vertical is RealLive; see
   [docs/kaifuu-detection-matrix.md](docs/kaifuu-detection-matrix.md) for the
   supported/unsupported variant matrix.
+- **A base64-encoded 256-bit `ITOTORI_FIELD_CIPHER_KEY`** for encrypted wiki
+  and localization records. `init` does not generate it; obtain it from the
+  localization operator. Never pass it on the command line or commit it.
 - **Native runtime dependencies** the CLI drives but does not bundle (the
   kaifuu/utsushi Rust binaries, Postgres, and Chromium for render validation).
   `itotori init` walks you through the database; the rest are provisioned via
   the deterministic path in
   [docs/native-deps-provisioning.md](docs/native-deps-provisioning.md).
 
-## Quickstart: install → localize → review → patched output
+## Quickstart: install → extract → structure export
 
 ### 1. Install itotori
 
@@ -54,7 +57,7 @@ npm install -g packages/itotori-cli/itotori-<version>.tgz
 ### 2. Set up (guided)
 
 ```sh
-itotori init                      # OpenRouter key + ZDR + database + config file
+itotori init                      # records available OpenRouter + database configuration
 itotori db-migrate                # apply the database schema (needs DATABASE_URL)
 ```
 
@@ -66,11 +69,10 @@ for the security posture.
 
 ### 3. Localize a game
 
-The pipeline is a **multi-command sequence** — each stage is one `itotori`
-command that produces the artifact the next stage consumes:
+The observed native front half is a multi-command sequence:
 
 ```
-extract  →  structure-export  →  wiki build  →  localize  →  patch  →  validate
+extract  →  structure-export
 ```
 
 ```sh
@@ -81,33 +83,23 @@ itotori extract --whole-seen \
   --bundle-output <run-dir>/bridge.json
 
 itotori structure-export \
+  --engine reallive \
   --gameexe <game-root>/REALLIVEDATA/Gameexe.ini \
   --seen     <game-root>/REALLIVEDATA/Seen.txt \
   --bridge   <run-dir>/bridge.json --output <run-dir>/structure.json
-
-itotori wiki build \
-  --structure <run-dir>/structure.json --bridge <run-dir>/bridge.json \
-  --source-locale ja-JP --run-mode production
-
-itotori localize \
-  --run-mode production \
-  --structure <run-dir>/structure.json --bridge <run-dir>/bridge.json \
-  --output-scope dialogue-only --output <run-dir>/run-summary.json
-
-itotori patch \
-  --source <read-only-game-root> --target <writable-output-root> \
-  --bundle <run-dir>/run-summary.json --scope dialogue-only
-
-itotori validate \
-  --seen <target>/REALLIVEDATA/Seen.txt --scene <N> \
-  --gameexe <target>/REALLIVEDATA/Gameexe.ini --game-dir <target>/REALLIVEDATA \
-  --replay-log <run-dir>/replay.json \
-  --artifact-root <run-dir>/render --render-output <run-dir>/render/report.json
 ```
 
-Run `itotori --help` for each command's flag list. A live run requires the
-OpenRouter key + ZDR assertion configured in step 2; without them itotori fails
-loudly rather than downgrading.
+`wiki build` and `localize` both refuse before doing work unless Postgres is
+migrated and `ITOTORI_FIELD_CIPHER_KEY` is present. The current public CLI has
+not been observed completing their live-provider path on this corpus. It also
+does not export the accepted outputs from `localize` as the translated bridge
+required by `patch`; `run-summary.json` is not a patch input. Consequently,
+there is no copy-paste CLI-only route from this archive to a localized patch in
+this build. Do not substitute a summary JSON for a translated bridge.
+
+Use `itotori <command> --help` at the command you are about to run; it prints
+that command's required flags. A live run additionally requires the provider
+credentials and ZDR posture described in step 2.
 
 For a step-by-step RealLive walkthrough with generic game placeholders, exact
 flags, environment variables, and honest signposts, see the
@@ -115,21 +107,17 @@ flags, environment variables, and honest signposts, see the
 
 ### 4. Review the results
 
-Each stage writes its artifacts into your run directory: the extracted bridge
-bundle, the narrative structure, the drafted translations, and the QA findings.
-The validate stage produces a **replay log** and **render evidence**
-(screenshots) so you can confirm the patched game actually works. On success
-`localize` prints a JSON summary — `runMode`, `outputScope`, `sceneCount`,
-`finalizedUnitCount`, `patchId`, `buildLqaVerdictCount`, `attemptCount` —
-pointing you at the review surfaces. The Studio dashboard (the React app in
-`apps/itotori/`, documented in [docs/frontend.md](docs/frontend.md)) is the
-browsable review surface for drafts, QA findings, and runtime evidence.
+The observed stages write an extracted bridge bundle and narrative structure to
+your run directory. Do not represent either as a localized patch. The Studio
+dashboard (the React app in `apps/itotori/`, documented in
+[docs/frontend.md](docs/frontend.md)) remains the review surface for work
+created through the owning integration.
 
 ### 5. Take the patched output
 
-The patched, playable game lands in `patch --target`. Kaifuu can also emit a
-`.kaifuu` delta package so the same patch can be re-applied or shipped without
-redistributing the game — see
+When an owning integration supplies a translated bridge, `patch` writes its
+target and Kaifuu can emit a `.kaifuu` delta package. That translated bridge is
+not produced by the CLI-only flow above; see
 [docs/subprojects-kaifuu.md](docs/subprojects-kaifuu.md) and the format-stability
 policy in
 [docs/format-stability-and-compatibility-policy.md](docs/format-stability-and-compatibility-policy.md).

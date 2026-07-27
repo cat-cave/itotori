@@ -58,18 +58,9 @@ retail bytes. It fails unless every artifact agrees on the same fixture id,
 source revision, locale branch, and content hashes — there is no success-string
 shortcut. See [`alpha-proof.md`](alpha-proof.md).
 
-After extract, structure export, and wiki build have produced their artifacts,
-run the localizer with an explicit run mode:
-
-```sh
-itotori localize \
-  --project-id <project-id> --run-id <run-id> --locale-branch-id <locale-branch-id> --target-locale <locale> --source-root <game-root> --build-root <build-root> \
-  --run-mode test-dev \
-  --structure <run-dir>/structure.json \
-  --bridge <run-dir>/bridge.json \
-  --output-scope dialogue-only \
-  --output <run-dir>/run-summary.json
-```
+The alpha proof is exercised by `just alpha-demo`; it is not a copy-paste
+real-corpus CLI localize invocation. The real-corpus public CLI boundary is
+documented in [`localize-reallive.md`](localize-reallive.md).
 
 Use `production` or `pilot` only with the required live corpus and credentials;
 the mode policy rejects invalid combinations. See [`install.md`](install.md) and

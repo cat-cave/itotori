@@ -89,9 +89,9 @@ title as evidence or historical context:
 
 Active product and operator docs must teach generic surfaces instead:
 
-- the artifact-driven CLI flow: `extract` → `structure-export` → `wiki build`
-  → `localize` → `patch` → `validate`;
-- documented, tool-specific real-corpus inputs;
+- the observed artifact-producing CLI flow: `extract` → `structure-export`,
+  plus the explicit encrypted-state and patch-handoff boundary in the runbook;
+- real-corpus descriptors such as `ITOTORI_REAL_CORPUS_MANIFEST`;
 - engine/runtime artifact surfaces such as bridge bundles, patch reports, replay
   logs, runtime evidence, and provider-run records;
 - placeholder corpus labels and local paths, never a new title-specific command,
@@ -144,10 +144,33 @@ environment variable, or local config file under `.tmp/`. Do not edit committed
 paths, public manifests, tests, or package metadata to point at private inputs.
 CI must pass with the private path absent.
 
-The extract stage selects its source with `--game-root`
-and produces the bridge bundle. The subsequent `itotori localize` command
-selects its operating posture with `--run-mode` and `--output-scope`, consuming
-the bridge bundle and structure artifact produced by earlier stages. The
+Suite workflows that need a real corpus should prefer a local descriptor over
+title-specific environment variables. The primary descriptor surface is:
+
+```sh
+ITOTORI_REAL_CORPUS_MANIFEST=<local manifest path>
+```
+
+The manifest is local-only and must not be committed. Its shape is:
+
+```json
+{
+  "schemaVersion": "itotori.real-corpus-manifest.v0",
+  "corpora": [
+    {
+      "corpusId": "example-alpha-1",
+      "projectId": "example-alpha-1",
+      "engine": "reallive",
+      "root": "<local-private-root>",
+      "sourceLocale": "ja-JP"
+    }
+  ]
+}
+```
+
+The extract stage selects its source with `--game-root` (or a local descriptor)
+and produces the bridge bundle. Structure export consumes that bridge. The
+current public CLI does not provide an observed bridge-to-patch handoff; the
 selected `root` must be a read-only source tree for the run and is treated as
 private local state.
 
