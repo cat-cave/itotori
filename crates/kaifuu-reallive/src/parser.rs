@@ -1,7 +1,7 @@
 //! Real RealLive scene-bytecode parser.
 //! `parse_scene` consumes a decompressed scene-bytecode byte stream
-//! (post-AVG32 LZSS + XOR per
-//! `docs/research/reallive-sweetie-hd-encryption-mechanism.md`) and
+//! (post-AVG32 LZSS + XOR per the RealLive encryption-mechanism research
+//! note) and
 //! decodes it into a sequence of [`RealLiveOpcode`] values via the
 //! opener-byte switch documented in `docs/research/reallive-engine.md`
 //! §D.

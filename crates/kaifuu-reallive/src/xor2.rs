@@ -1,5 +1,5 @@
-//! `reallive-xor2-sukara-decryptor` — RealLive second-level XOR (`xor_2`)
-//! decryptor plus in-process, clean-room recovery of the per-game 16-byte key.
+//! RealLive second-level XOR (`xor_2`) decryptor plus in-process,
+//! clean-room recovery of the per-game 16-byte key.
 //! # The mechanism (clean-room, restated from rlvm — no source vendored)
 //! RealLive scene bytecode for compiler versions `110002` / `1110002` carries
 //! a SECOND-LEVEL XOR applied *after* the first-level AVG32 LZSS + 256-byte
@@ -11,11 +11,10 @@
 //! for each XorKey { key[16], xor_offset, xor_length } until the {-1} sentinel:
 //! for i in 0.. xor_length while (xor_offset + i) < dst_len:
 //! dst[xor_offset + i] ^= key[i % 16]
-//! Every published rlvm Key/Visual-Arts table (Little Busters, Clannad FV,
-//! Snow, Kud Wafter) uses a single segment `xor_offset = 256`,
-//! `xor_length = 257`. Sweetie HD / Sukara (`REGNAME = "HADASHI\OSHIOKIHD"`)
-//! is **absent** from rlvm's table — so its key is recovered here rather than
-//! looked up.
+//! Every entry in rlvm's published `XorKey` table uses a single segment
+//! `xor_offset = 256`, `xor_length = 257`. The compiler-`110002` xor_2
+//! RealLive variant is **absent** from rlvm's table — so its per-game key
+//! is recovered here rather than looked up.
 //! # Why the key is RECOVERED in-process, not read from the executable
 //! Forensic finding (this node): the 16-byte key is **not stored as plaintext
 //! anywhere in the shipped game** — a full static scan of `RealLive.exe`

@@ -27,12 +27,13 @@
 //!   destination — so a jump to opcode X still points to opcode X at its
 //!   new offset. A jump landing strictly inside an edited body surfaces
 //!   `kaifuu.reallive.patchback_goto_target_unresolvable` Fatal. Proven on
-//!   Sweetie HD scene 8509 (91 goto pointers, longer + shorter bodies).
+//!   corpus-1 (compiler `110002`) scene 8509 (91 goto pointers, longer +
+//!   shorter bodies).
 //! - replaces the synthetic `0x23 ('#') opener + named opcode
 //!   byte` shape with the **real** RealLive bytecode opener-byte switch
 //!   documented in `docs/research/reallive-engine.md` §D and confirmed
-//!   against Sweetie HD's decompressed scene 1 in
-//!   `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4.2.
+//!   against the real decompressed scene 1 (see the RealLive
+//!   encryption-mechanism research note §4.2).
 //!   The pre- synthetic-opener path is deleted, not aliased.
 //! - No `Command::new`, no Wine, no Windows helper, no remote helper.
 //!   This crate is a pure function over `&[u8]`; the adapter (in
@@ -49,8 +50,8 @@
 //! # SEEN.TXT envelope (real 10,000-slot fixed-offset-table —)
 //! The envelope this crate parses is the **real RealLive 10,000-slot
 //! fixed-offset-table** documented at `docs/research/reallive-engine.md`
-//! §C and confirmed against Sweetie HD's
-//! `REALLIVEDATA/Seen.txt` per
+//! §C and confirmed against the real
+//! `REALLIVEDATA/Seen.txt` corpus per
 //! `docs/audits/real-bytes-validation-2026-06-24.md` §2.8.
 //! ```text
 //! | slot 0 | slot 1 | | slot 9999| scene payloads |
@@ -63,12 +64,13 @@
 //!   slot is reserved/unused (silently omitted by the parser).
 //! - Non-zero slots whose `offset + length` runs past the file end emit
 //!   `kaifuu.reallive.truncated_scene` Fatal.
-//! - Sweetie HD has 198 populated slots, scene-id range 1..=9999.
+//! - Corpus-1 (compiler `110002`) has 198 populated slots, scene-id range
+//!   1..=9999.
 //! # Scene bytecode (real RealLive opcode dispatch —)
 //! Scene payloads encountered in the archive carry the AVG32-compressed
 //! header + bytecode. The caller decompresses the payload (the AVG32
-//! LZSS + 256-byte XOR transform documented in
-//! `docs/research/reallive-sweetie-hd-encryption-mechanism.md`) and
+//! LZSS + 256-byte XOR transform documented in the RealLive
+//! encryption-mechanism research note) and
 //! feeds the resulting plaintext bytecode bytes to [`parse_scene`].
 //! [`parse_scene`] performs the documented opener-byte switch:
 //! | Lead byte | BytecodeElement | Decoded as |

@@ -359,8 +359,8 @@ fn unit_offset_after_choice_command_tracks_authoritative_decode_width_no_drift()
 #[test]
 fn predicate_classifies_real_binary_block_as_non_translatable_and_real_dialogue_as_translatable() {
     use crate::test_fixtures::{SCENE1_BINARY_BLOCK_214B, SCENE2011_DIALOGUE_SJIS};
-    // Real bytes: the Sweetie HD scene-1 214-byte binary data block is
-    // NOT translatable; a real scene-2011 Shift-JIS dialogue line IS.
+    // Real bytes: the scene-1 214-byte binary data block (from the real
+    // corpus) is NOT translatable; a real scene-2011 Shift-JIS dialogue line IS.
     assert!(
         decode_dialogue_textout(SCENE1_BINARY_BLOCK_214B).is_none(),
         "the 214-byte periodic-binary data block must be excluded from translatable units"
