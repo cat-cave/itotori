@@ -102,6 +102,26 @@ type DispatchState = {
 
 type FailureKind = Extract<CallResult, { status: "failure" }>["failureKind"];
 
+function gateRejectionDiagnostic(error: unknown): string | null {
+  if (!(error instanceof Error) || !["FinalizeError", "RepairFinalizeError"].includes(error.name)) {
+    return null;
+  }
+  const code =
+    typeof (error as { code?: unknown }).code === "string"
+      ? (error as unknown as { code: string }).code
+      : "unspecified";
+  if (
+    !/^(?:protected-span|scope-kind-mismatch|segment-batch-mismatch|double-finalize|unit-cardinality|unit-order|source-hash|encoding|choice-encoding|basis-mismatch|resolving-evidence|parent-batch-mismatch|parent-mismatch|bundle-mismatch|unaffected-mutated|failed-ids-mismatch|passing-id-patch|patch-order|not-grounded|forbidden-key|invalid-target|missing-output)$/u.test(
+      code,
+    )
+  ) {
+    return null;
+  }
+  return code === "protected-span"
+    ? "content gate rejected output: protected placeholder preservation failed"
+    : `content gate rejected output: ${error.name} (${code})`;
+}
+
 const EMPTY_USAGE = {
   promptTokens: 0,
   completionTokens: 0,
@@ -330,6 +350,7 @@ function failureKind(error: unknown, state: DispatchState): FailureKind {
     return "schema-failure";
   }
   if (error instanceof AuthorizationError) return "permission";
+  if (gateRejectionDiagnostic(error) !== null) return "gate-rejection";
   const message = error instanceof Error ? error.message : "";
   if (
     /measured model profile|call route does not match|role model profile|rebuilt LLM requires|operator assertions/iu.test(
@@ -486,6 +507,7 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     const memoKey = memoState.lastMemoKey ?? sha256(spec);
     const completedLastStep = finalStep?.memoKey === memoKey;
     const kind = failureKind(error, state);
+    const gateDiagnostic = gateRejectionDiagnostic(error);
     const defectCode =
       kind === "invalid-json"
         ? "invalid-json"
@@ -513,16 +535,18 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
         ? (finalStep?.billing ?? { status: "billing-unknown" })
         : { status: "billing-unknown" },
       defects:
-        kind === "step-limit" ||
-        kind === "transport" ||
-        kind === "http" ||
-        kind === "cancelled" ||
-        kind === "retries-exhausted" ||
-        kind === "spend-admission" ||
-        kind === "configuration" ||
-        kind === "permission"
-          ? []
-          : [{ path: [], code: defectCode, message: `terminal ${kind}` }],
+        gateDiagnostic !== null
+          ? [{ path: [], code: "semantic", message: gateDiagnostic }]
+          : kind === "step-limit" ||
+              kind === "transport" ||
+              kind === "http" ||
+              kind === "cancelled" ||
+              kind === "retries-exhausted" ||
+              kind === "spend-admission" ||
+              kind === "configuration" ||
+              kind === "permission"
+            ? []
+            : [{ path: [], code: defectCode, message: `terminal ${kind}` }],
       events: state.events,
     });
   } finally {
