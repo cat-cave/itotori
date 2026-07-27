@@ -29,14 +29,16 @@
 //!
 //! Byte (after `\`) | Operator | Variant
 //! ---------------- | ------------ | ------------------
-//! `0x02` | `+` | [`ExprOp::Add`]
-//! `0x03` | `-` | [`ExprOp::Sub`]
-//! `0x04` | `*` | [`ExprOp::Mul`]
-//! `0x05` | `/` | [`ExprOp::Div`]
-//! `0x06` | `%` | [`ExprOp::Mod`]
-//! `0x07` | `&` | [`ExprOp::And`]
-//! `0x08` | `\|` | [`ExprOp::Or`]
-//! `0x09` | `^` | [`ExprOp::Xor`]
+//! `0x00` | `+` | [`ExprOp::Add`]
+//! `0x01` | `-` | [`ExprOp::Sub`]
+//! `0x02` | `*` | [`ExprOp::Mul`]
+//! `0x03` | `/` | [`ExprOp::Div`]
+//! `0x04` | `%` | [`ExprOp::Mod`]
+//! `0x05` | `&` | [`ExprOp::And`]
+//! `0x06` | `\|` | [`ExprOp::Or`]
+//! `0x07` | `^` | [`ExprOp::Xor`]
+//! `0x08` | `<<` | [`ExprOp::Shl`]
+//! `0x09` | `>>` | [`ExprOp::Shr`]
 //! `0x28` | `==` | [`ExprOp::Equ`]
 //! `0x29` | `!=` | [`ExprOp::Neq`]
 //! `0x2A` | `<` | [`ExprOp::Lt`]
@@ -95,6 +97,9 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+#[path = "expression/arithmetic.rs"]
+mod arithmetic;
+
 /// Lead byte of a memory-reference / int-literal token (`$`).
 pub const EXPRESSION_TOKEN_LEAD: u8 = 0x24;
 /// Backslash byte introducing a unary form or binary-op continuation.
@@ -136,21 +141,25 @@ pub const COMMA_BYTE: u8 = b',';
 #[repr(u8)]
 pub enum ExprOp {
     /// `+` — addition.
-    Add = 0x02,
+    Add = 0x00,
     /// `-` — subtraction.
-    Sub = 0x03,
+    Sub = 0x01,
     /// `*` — multiplication.
-    Mul = 0x04,
+    Mul = 0x02,
     /// `/` — division (zero divisor → [`EvaluationError::DivisionByZero`]).
-    Div = 0x05,
+    Div = 0x03,
     /// `%` — modulo (zero divisor → [`EvaluationError::DivisionByZero`]).
-    Mod = 0x06,
+    Mod = 0x04,
     /// `&` — bitwise and.
-    And = 0x07,
+    And = 0x05,
     /// `|` — bitwise or.
-    Or = 0x08,
+    Or = 0x06,
     /// `^` — bitwise xor.
-    Xor = 0x09,
+    Xor = 0x07,
+    /// `<<` — left shift.
+    Shl = 0x08,
+    /// `>>` — arithmetic right shift.
+    Shr = 0x09,
     /// `==` — equality.
     Equ = 0x28,
     /// `!=` — inequality.
@@ -176,14 +185,16 @@ impl ExprOp {
     /// partial-result recovery path handles the unknown byte explicitly.
     pub fn from_byte(byte: u8) -> Option<Self> {
         Some(match byte {
-            0x02 => Self::Add,
-            0x03 => Self::Sub,
-            0x04 => Self::Mul,
-            0x05 => Self::Div,
-            0x06 => Self::Mod,
-            0x07 => Self::And,
-            0x08 => Self::Or,
-            0x09 => Self::Xor,
+            0x00 => Self::Add,
+            0x01 => Self::Sub,
+            0x02 => Self::Mul,
+            0x03 => Self::Div,
+            0x04 => Self::Mod,
+            0x05 => Self::And,
+            0x06 => Self::Or,
+            0x07 => Self::Xor,
+            0x08 => Self::Shl,
+            0x09 => Self::Shr,
             0x28 => Self::Equ,
             0x29 => Self::Neq,
             0x2A => Self::Lt,
@@ -719,7 +730,7 @@ fn parse_and(state: &mut ParserState<'_>) -> Result<ExprNode, ExpressionParseErr
 /// `<arith> ( \<comparison> <arith> )?` — one comparison level (no
 /// chaining; comparisons are not associative in RealLive scripts).
 fn parse_cond(state: &mut ParserState<'_>) -> Result<ExprNode, ExpressionParseError> {
-    let lhs = parse_arith(state)?;
+    let lhs = arithmetic::parse_arith(state)?;
     let comparison_ops = [
         ExprOp::Equ,
         ExprOp::Neq,
@@ -730,60 +741,12 @@ fn parse_cond(state: &mut ParserState<'_>) -> Result<ExprNode, ExpressionParseEr
     ];
     if let Some(op) = peek_binary_op(state, &comparison_ops) {
         state.advance(2);
-        let rhs = parse_arith(state)?;
+        let rhs = arithmetic::parse_arith(state)?;
         return Ok(ExprNode::BinaryOp {
             op,
             lhs: Box::new(lhs),
             rhs: Box::new(rhs),
         });
-    }
-    Ok(lhs)
-}
-
-/// `<term> ( \<arith_op> <arith> )*` — arithmetic / bitwise operators
-/// left-associative.
-fn parse_arith(state: &mut ParserState<'_>) -> Result<ExprNode, ExpressionParseError> {
-    let mut lhs = parse_term(state)?;
-    let arithmetic_ops = [
-        ExprOp::Add,
-        ExprOp::Sub,
-        ExprOp::Mul,
-        ExprOp::Div,
-        ExprOp::Mod,
-        ExprOp::And,
-        ExprOp::Or,
-        ExprOp::Xor,
-    ];
-    loop {
-        if let Some(op) = peek_binary_op(state, &arithmetic_ops) {
-            state.advance(2);
-            let rhs = parse_term(state)?;
-            lhs = ExprNode::BinaryOp {
-                op,
-                lhs: Box::new(lhs),
-                rhs: Box::new(rhs),
-            };
-            continue;
-        }
-        // Unknown-operator slot: `\` + a byte outside every documented
-        // binary / comparison / logical / assignment / unary table.
-        // Emulator path: warn + yield the partial result so far (as if
-        // the unknown byte were a terminating `+ 0`). Decompile path:
-        // typed error (no fabricated AST).
-        //
-        // `position` / warning `offset` identify the unknown *operator
-        // byte* (peek(1)), not the backslash cursor — matching
-        // [`ExpressionParseError::UnknownOperator`] / [`ExpressionWarning`].
-        if peek_unknown_binary_op_slot(state) {
-            let unknown_byte = state.peek(1).unwrap_or(0);
-            let op_position = state.pos + 1;
-            state.on_unknown_operator(unknown_byte, op_position)?;
-            // Consume the `\` + unknown byte and terminate the
-            // arithmetic continuation chain with the partial LHS.
-            state.advance(2);
-            break;
-        }
-        break;
     }
     Ok(lhs)
 }

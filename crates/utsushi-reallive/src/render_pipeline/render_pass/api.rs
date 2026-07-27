@@ -171,8 +171,9 @@ impl RenderPass {
         run_id: &str,
         sink: &dyn FrameArtifactSink,
     ) -> Result<FrameArtifact, RenderEmitError> {
-        let (framebuffer, text_pixels) = self.rasterise_with_text(stack, text);
+        let (mut framebuffer, text_pixels) = self.rasterise_with_text(stack, text);
         Self::reject_blank_localized(text, text_pixels)?;
+        framebuffer.flatten_over_black();
         self.announce_framebuffer(&framebuffer, root, run_id, sink)
     }
 
@@ -206,6 +207,7 @@ impl RenderPass {
         let (mut full_fb, report) = self.rasterise_reporting(stack, RedactionPolicy::Full);
         let full_text_pixels = full_fb.draw_text(text);
         Self::reject_blank_localized(text, full_text_pixels)?;
+        full_fb.flatten_over_black();
 
         let private_png = encode_png_rgba_deterministic(&full_fb);
         let private_sha = sha256_hex(&private_png);
@@ -229,8 +231,11 @@ impl RenderPass {
         let public_fb = match policy {
             RedactionPolicy::Full => full_fb,
             RedactionPolicy::Redact => {
-                self.rasterise_with_text_policy(stack, text, RedactionPolicy::Redact)
-                    .0
+                let mut framebuffer = self
+                    .rasterise_with_text_policy(stack, text, RedactionPolicy::Redact)
+                    .0;
+                framebuffer.flatten_over_black();
+                framebuffer
             }
         };
         let public = self.announce_framebuffer(&public_fb, emit.root, emit.run_id, emit.sink)?;

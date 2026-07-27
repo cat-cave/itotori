@@ -55,6 +55,9 @@ pub enum SkipReason {
         dst_w: u32,
         dst_h: u32,
     },
+    /// An image requested a type-2 atlas region that is not present in
+    /// the decoded G00; the object is not silently rendered as a full atlas.
+    InvalidRegion { requested: u32, region_count: usize },
 }
 
 /// A single graphics object that was skipped (dropped, contributing no

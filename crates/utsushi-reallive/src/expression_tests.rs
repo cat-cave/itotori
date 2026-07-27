@@ -77,9 +77,9 @@ fn memory_ref_bank_b_index_zero() {
 
 #[test]
 fn add_one_plus_two_builds_binary_op_add() {
-    // $ FF 01 00 00 00 \ 02 $ FF 02 00 00 00
+    // $ FF 01 00 00 00 \ 00 $ FF 02 00 00 00
     let bytes = [
-        0x24, 0xFF, 0x01, 0x00, 0x00, 0x00, 0x5C, 0x02, 0x24, 0xFF, 0x02, 0x00, 0x00, 0x00,
+        0x24, 0xFF, 0x01, 0x00, 0x00, 0x00, 0x5C, 0x00, 0x24, 0xFF, 0x02, 0x00, 0x00, 0x00,
     ];
     let (node, consumed) = parse_expression(&bytes).expect("parse");
     assert_eq!(consumed, bytes.len());
@@ -165,14 +165,16 @@ fn decompile_path_unknown_operator_byte_is_typed_error() {
 
 #[test]
 fn op_byte_table_pins_each_variant() {
-    assert_eq!(ExprOp::Add.as_byte(), 0x02);
-    assert_eq!(ExprOp::Sub.as_byte(), 0x03);
-    assert_eq!(ExprOp::Mul.as_byte(), 0x04);
-    assert_eq!(ExprOp::Div.as_byte(), 0x05);
-    assert_eq!(ExprOp::Mod.as_byte(), 0x06);
-    assert_eq!(ExprOp::And.as_byte(), 0x07);
-    assert_eq!(ExprOp::Or.as_byte(), 0x08);
-    assert_eq!(ExprOp::Xor.as_byte(), 0x09);
+    assert_eq!(ExprOp::Add.as_byte(), 0x00);
+    assert_eq!(ExprOp::Sub.as_byte(), 0x01);
+    assert_eq!(ExprOp::Mul.as_byte(), 0x02);
+    assert_eq!(ExprOp::Div.as_byte(), 0x03);
+    assert_eq!(ExprOp::Mod.as_byte(), 0x04);
+    assert_eq!(ExprOp::And.as_byte(), 0x05);
+    assert_eq!(ExprOp::Or.as_byte(), 0x06);
+    assert_eq!(ExprOp::Xor.as_byte(), 0x07);
+    assert_eq!(ExprOp::Shl.as_byte(), 0x08);
+    assert_eq!(ExprOp::Shr.as_byte(), 0x09);
     assert_eq!(ExprOp::Equ.as_byte(), 0x28);
     assert_eq!(ExprOp::Neq.as_byte(), 0x29);
     assert_eq!(ExprOp::Lt.as_byte(), 0x2A);
@@ -181,6 +183,34 @@ fn op_byte_table_pins_each_variant() {
     assert_eq!(ExprOp::Ge.as_byte(), 0x2D);
     assert_eq!(ExprOp::LogicAnd.as_byte(), 0x3C);
     assert_eq!(ExprOp::LogicOr.as_byte(), 0x3D);
+}
+
+#[test]
+fn real_command_coordinate_expression_preserves_binary_precedence() {
+    let literal = |value: i32| {
+        let mut bytes = vec![EXPRESSION_TOKEN_LEAD, EXPRESSION_INT_LITERAL_TAG];
+        bytes.extend_from_slice(&value.to_le_bytes());
+        bytes
+    };
+    let mut bytes = vec![PAREN_OPEN];
+    bytes.extend(literal(1280));
+    bytes.extend([EXPRESSION_BACKSLASH, 0x03]);
+    bytes.extend(literal(2));
+    bytes.push(PAREN_CLOSE);
+    bytes.extend([EXPRESSION_BACKSLASH, 0x01, PAREN_OPEN]);
+    bytes.extend(literal(360));
+    bytes.extend([EXPRESSION_BACKSLASH, 0x03]);
+    bytes.extend(literal(2));
+    bytes.push(PAREN_CLOSE);
+    bytes.extend([EXPRESSION_BACKSLASH, 0x01]);
+    bytes.extend(literal(1));
+
+    let (node, consumed) = parse_expression(&bytes).expect("coordinate expression parses");
+    assert_eq!(consumed, bytes.len());
+    assert_eq!(
+        crate::evaluate(&node, &crate::VarBanks::default()).unwrap(),
+        459
+    );
 }
 
 #[test]

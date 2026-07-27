@@ -46,7 +46,9 @@ use crate::bytecode_element::{
     BytecodeDecodeError, BytecodeElement, CommandArgShape, decode_command_arg_values,
     extract_select_choice_texts,
 };
-use crate::expression::{ExprNode, ExpressionWarning, parse_expression_with_warnings};
+use crate::expression::{
+    ExprNode, ExpressionWarning, parse_expression, parse_expression_with_warnings,
+};
 use crate::expression_eval::{EvaluationError, evaluate, evaluate_assignment};
 use crate::rlop::{
     DispatchOutcome, ExprValue, LongOp, LongOpId, LongOpReadiness, LongOpScheduler,
@@ -54,6 +56,7 @@ use crate::rlop::{
 };
 use crate::var_banks::VarBanks;
 
+mod command_args;
 mod diagnostics;
 mod substrate;
 
@@ -857,17 +860,7 @@ impl Vm {
         }
     }
 
-    /// Decode a `Command` element's `(...)` argument list (from
-    /// `raw_bytes`, past the 8-byte header) into the [`ExprValue`] slice
-    /// [`crate::rlop::RLOperation::dispatch`] expects.
-    ///
-    /// This is the seam the audit pinned: the integration dispatch path
-    /// used to pass `&[]`, so control-flow opcodes never received their
-    /// targets and a real scene's `goto` was silently walked linearly
-    /// instead of jumping. Each comma-separated argument value is decoded
-    /// to its real `ExprValue` — expression-shaped data is parsed
-    /// evaluated to an `Int`, string / complex data is carried as
-    /// `Bytes`.
+    /// Decode command values into the [`ExprValue`] slice each RLOp receives.
     ///
     /// Decoding is fail-soft to match the surrounding dispatch loop: a
     /// value that fails to parse / evaluate surfaces a typed
@@ -918,6 +911,9 @@ impl Vm {
                         break;
                     }
                 },
+                CommandArgShape::Complex if arg.bytes.first() == Some(&b'(') => {
+                    values.push(self.decode_parenthesized_command_arg(arg.bytes));
+                }
                 CommandArgShape::String | CommandArgShape::Complex => {
                     values.push(ExprValue::Bytes(arg.bytes));
                 }

@@ -74,11 +74,11 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::g00::decode_g00;
+use crate::g00::{G00Rect, decode_g00};
 use crate::gameexe::MessageWindowConfig;
 use crate::graphics_objects::{
     GraphicsLayer, GraphicsObject, GraphicsObjectKind, GraphicsObjectStack, GraphicsPlane,
-    WipeColour,
+    ImageRef, WipeColour,
 };
 use crate::syscall::ScreenSize;
 use utsushi_core::substrate::{

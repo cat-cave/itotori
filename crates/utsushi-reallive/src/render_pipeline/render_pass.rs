@@ -22,15 +22,7 @@ impl RenderPass {
                 framebuffer.fill_blended(toned, object.alpha.0);
             }
             GraphicsObjectKind::Image { image_ref } => {
-                self.paint_image(
-                    framebuffer,
-                    object,
-                    &image_ref.asset_key,
-                    plane,
-                    slot,
-                    policy,
-                    report,
-                );
+                self.paint_image(framebuffer, object, image_ref, plane, slot, policy, report);
             }
         }
     }
@@ -80,12 +72,13 @@ impl RenderPass {
         &self,
         framebuffer: &mut Framebuffer,
         object: &GraphicsObject,
-        asset_key: &str,
+        image_ref: &ImageRef,
         plane: GraphicsPlane,
         slot: usize,
         policy: RedactionPolicy,
         report: &mut RenderReport,
     ) {
+        let asset_key = &image_ref.asset_key;
         let Some(assets) = self.assets.as_ref() else {
             Self::record_skip(report, asset_key, plane, slot, SkipReason::NoAssetPackage);
             return;
@@ -145,12 +138,39 @@ impl RenderPass {
         };
         for warning in warnings {
             report.warnings.push(ObjectWarning {
-                asset_key: asset_key.to_string(),
+                asset_key: asset_key.clone(),
                 warning,
             });
         }
-        let src_w = image.width;
-        let src_h = image.height;
+        // A type-2 G00 can be an atlas of object-button states. Rendering
+        // the whole expanded canvas duplicates every state; render the
+        // script-selected region (or the default region zero) instead.
+        let source = if image.regions.is_empty() {
+            G00Rect {
+                x1: 0,
+                y1: 0,
+                x2: image.width.saturating_sub(1) as i32,
+                y2: image.height.saturating_sub(1) as i32,
+            }
+        } else {
+            let index = image_ref.region_index.unwrap_or(0) as usize;
+            let Some(region) = image.regions.get(index) else {
+                Self::record_skip(
+                    report,
+                    asset_key,
+                    plane,
+                    slot,
+                    SkipReason::InvalidRegion {
+                        requested: index as u32,
+                        region_count: image.regions.len(),
+                    },
+                );
+                return;
+            };
+            region.rect
+        };
+        let src_w = source.width();
+        let src_h = source.height();
         if src_w == 0 || src_h == 0 {
             Self::record_skip(
                 report,
@@ -201,7 +221,7 @@ impl RenderPass {
             Some(edges) => edges,
             None => &image.pixels_rgba,
         };
-        let src_stride = (src_w as usize) * RGBA_BYTES_PER_PIXEL;
+        let canvas_stride = (image.width as usize) * RGBA_BYTES_PER_PIXEL;
         for dy in 0..dst_h {
             // `object.position` comes from VM state and can be arbitrary;
             // saturating_add keeps a corrupt/out-of-range position from
@@ -212,14 +232,14 @@ impl RenderPass {
                 continue;
             }
             // Nearest-neighbour source row.
-            let sy = ((dy as u64 * src_h as u64) / dst_h as u64) as u32;
+            let sy = source.y1 as u32 + ((dy as u64 * src_h as u64) / dst_h as u64) as u32;
             for dx in 0..dst_w {
                 let px = object.position.x.saturating_add(dx as i32);
                 if px < 0 || px >= framebuffer.width as i32 {
                     continue;
                 }
-                let sx = ((dx as u64 * src_w as u64) / dst_w as u64) as u32;
-                let sidx = (sy as usize) * src_stride + (sx as usize) * RGBA_BYTES_PER_PIXEL;
+                let sx = source.x1 as u32 + ((dx as u64 * src_w as u64) / dst_w as u64) as u32;
+                let sidx = (sy as usize) * canvas_stride + (sx as usize) * RGBA_BYTES_PER_PIXEL;
                 let sample = [
                     source_pixels[sidx],
                     source_pixels[sidx + 1],
