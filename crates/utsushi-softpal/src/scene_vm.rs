@@ -51,7 +51,6 @@ pub(crate) struct Vm<'a> {
     branches: usize,
     instruction_count: usize,
 }
-
 impl<'a> Vm<'a> {
     pub(crate) fn new(
         scan: &'a OpcodeScan,
@@ -87,7 +86,6 @@ impl<'a> Vm<'a> {
             instruction_count: 0,
         }
     }
-
     pub(crate) fn run(mut self) -> VmResult {
         while let Some(instruction) = self.instructions.get(self.ip).copied() {
             self.instruction_count += 1;
@@ -156,7 +154,6 @@ impl<'a> Vm<'a> {
             instructions: self.instruction_count,
         }
     }
-
     fn expression(&mut self, instruction: Instruction) -> bool {
         let operands = instruction.operands();
         let Some(destination) = operands.first().copied() else {
@@ -273,7 +270,6 @@ impl<'a> Vm<'a> {
         self.ip = ip;
         true
     }
-
     fn push(&mut self, instruction: Instruction) -> bool {
         let Some(value) = instruction
             .operands()
@@ -285,7 +281,6 @@ impl<'a> Vm<'a> {
         self.stack.push(value);
         true
     }
-
     fn pop(&mut self, instruction: Instruction) -> bool {
         let Some(value) = self.stack.pop() else {
             return self.bad("pop_stack_underflow", instruction.offset);
@@ -310,6 +305,11 @@ impl<'a> Vm<'a> {
                     });
                 }
                 true
+            }
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x000f, 0x0005) =>
+            {
+                self.bad("debug_window_state_unavailable", instruction.offset)
             }
             CommandFamily::Call { target } if target.semantic_name().is_some() => true,
             CommandFamily::Call { target } => self.bad(

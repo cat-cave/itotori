@@ -94,9 +94,9 @@ fn progresses_past_the_empty_native_registry_without_inventing_callbacks() {
             index + 1
         );
         assert_eq!(
-            diagnostics.get("call_000f_0005"),
+            diagnostics.get("debug_window_state_unavailable"),
             Some(&1),
-            "corpus {} names the next unresolved native call",
+            "corpus {} stops at the unshipped debug-window state",
             index + 1
         );
         assert_eq!(
