@@ -108,6 +108,11 @@ pub(super) fn mount_registry_handles(
     // System (fixed-seed clock/RNG → deterministic replay).
     let sys_runtime = Arc::new(SysRuntime::new(LogicalClockTick(0)));
     register_sys_rlops(&mut registry, Arc::clone(&sys_runtime));
+    let cursor = Arc::new(cursor_input::CursorInputRuntime::new(
+        Arc::clone(&graphics_runtime),
+        control_flow == ControlFlowMount::BranchFollowing,
+    ));
+    cursor_input::register_cursor_input_rlops(&mut registry, Arc::clone(&cursor));
 
     // Memory (no runtime).
     register_mem_rlops(&mut registry);
@@ -136,6 +141,7 @@ pub(super) fn mount_registry_handles(
         audio: audio_runtime,
         graphics: graphics_runtime,
         selection: sel_runtime,
+        cursor,
     }
 }
 

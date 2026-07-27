@@ -231,7 +231,10 @@ struct RegistryHandles {
     audio: Arc<AudioRuntime>,
     graphics: Arc<GraphicsRuntime>,
     selection: Arc<SelRuntime>,
+    cursor: Arc<cursor_input::CursorInputRuntime>,
 }
+
+mod cursor_input;
 
 /// A reusable replay engine over ONE multi-scene store: decompress
 /// decode the whole Seen.txt archive ONCE, then replay from any scene id

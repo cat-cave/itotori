@@ -90,6 +90,7 @@ pub struct LiveSession {
     event_index: u64,
     ended: bool,
     selection: Arc<SelRuntime>,
+    cursor: Arc<cursor_input::CursorInputRuntime>,
     /// Button-object options recorded by the most recent `select_objbtn`
     /// prompt. Retained across the drive loop because the selection
     /// runtime's prompt buffer DRAINS on read.
@@ -156,6 +157,7 @@ impl ReplayEngine {
             event_index: 0,
             ended: false,
             selection: handles.selection,
+            cursor: handles.cursor,
             object_buttons: Vec::new(),
             event_loop: PolledEventLoop::default(),
         };
@@ -259,10 +261,35 @@ impl LiveSession {
         // resolve: the input IS the event the loop is sampling for, and it is
         // spent modelling that. Queueing it as well would let one press cross
         // two boundaries — the loop, and then whichever real gate follows it.
-        if !self.event_loop.is_parked() {
+        if self.event_loop.is_parked() {
+            self.cursor.record(&input, (640, 480));
+        } else if let Some(choice) = self.object_button_choice_at(&input) {
+            self.queue.push(InputEvent::choice(choice));
+        } else {
             self.queue.push(input);
         }
         self.drive_to_boundary()
+    }
+
+    /// Resolve a completed primary-pointer gesture against the exact decoded
+    /// object-button rectangles exposed by the current prompt. The live
+    /// substrate normalizes pointer coordinates; RealLive's default screen
+    /// space is 640×480 when no game configuration is mounted here.
+    fn object_button_choice_at(&self, input: &InputEvent) -> Option<u16> {
+        let InputEvent::Pointer {
+            x,
+            y,
+            button: utsushi_core::input::PointerButton::Primary,
+        } = input
+        else {
+            return None;
+        };
+        let px = (x * 639.0).round() as i32;
+        let py = (y * 479.0).round() as i32;
+        self.object_buttons
+            .iter()
+            .find(|option| option.contains_pixel(px, py))
+            .map(|option| option.display_index)
     }
 
     fn drive_to_boundary(&mut self) -> Result<LiveSessionUpdate, LiveSessionError> {

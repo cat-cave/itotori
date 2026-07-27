@@ -198,8 +198,9 @@ pub struct PortObservation {
     /// [`Self::play_order_source`] to distinguish executed from catalogued
     /// text.
     pub play_order_lines: Vec<TextLine>,
-    /// Which single pass supplied [`Self::play_order_lines`]. Consumers can
-    /// distinguish executed branch dialogue from the byte-order fallback.
+    /// Whether the selected lines came from execution or the static
+    /// catalogue fallback. Only branch-following lines are execution proof;
+    /// catalogue fallback is explicitly not execution recovery.
     pub play_order_source: PlayOrderSource,
     /// Selection prompts from the same chosen pass as [`Self::play_order_lines`].
     pub selection_prompts: Vec<SelectionPrompt>,
@@ -215,13 +216,13 @@ pub struct PortObservation {
     pub scene: SceneObservation,
 }
 
-/// The replay pass that supplied a port-facing play-order stream.
+/// Provenance of the single play-order stream exposed by a port observation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayOrderSource {
     /// The branch-following VM execution emitted the lines.
     BranchFollowing,
-    /// The branch pass emitted no usable dialogue, so the static byte-order
-    /// catalogue supplied the lines.
+    /// The branch emitted no usable dialogue, so the static byte-order
+    /// catalogue supplied the lines. This is not execution recovery.
     LinearCatalogue,
 }
 
