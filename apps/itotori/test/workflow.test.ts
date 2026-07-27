@@ -8,7 +8,9 @@ import {
   applyCorrections,
   classifyStratum,
   coherenceSchedule,
+  FinalizeBatchError,
   finalizeUnit,
+  finalizeUnits,
   implicatedRerun,
   joinFindings,
   missingStageUnits,
@@ -606,6 +608,26 @@ describe("RB workflow — independent per-unit CAS finalize (clause 9)", () => {
     // uB is untouched — decoupled.
     const bHead = await store.readUnitHead("uB", "final");
     expect(bHead?.version).toBe(1);
+  });
+
+  it("fails the run boundary when every accepted-output finalize rejects", async () => {
+    const policy = resolveWorkflowPolicy(PRODUCTION);
+    const refusingStore = {
+      async finalizeUnit(): Promise<UnitArtifactRef> {
+        throw new Error("accepted-output finalizer refuses this output");
+      },
+    };
+    await expect(
+      finalizeUnits(refusingStore as WorkflowPorts["store"], policy, [
+        { unitId: "uA", contentHash: SRC },
+        { unitId: "uB", contentHash: SRC },
+      ]),
+    ).rejects.toThrow(
+      new FinalizeBatchError([
+        { unitId: "uA", reason: "accepted-output finalizer refuses this output" },
+        { unitId: "uB", reason: "accepted-output finalizer refuses this output" },
+      ]),
+    );
   });
 });
 

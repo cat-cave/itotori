@@ -95,7 +95,7 @@ export async function withDatabaseItotoriServices<T>(
     const memoStore = new ItotoriLlmCallMemoRepository(pool, cipher, contentAccess);
     const snapshotRepository = new ItotoriLlmSnapshotRepository(pool);
     const engineFamilyRegistry = projectEngineRegistry();
-    const services = unavailableServiceSurface({
+    const services = retiredServiceSurface({
       projectWorkflow: new ItotoriProjectWorkflowService({
         actor,
         projects: new ItotoriProjectRepository(db, engineFamilyRegistry),
@@ -210,10 +210,7 @@ export async function withDatabaseItotoriServices<T>(
               maxAttemptExposureUsd: config.maxAttemptExposureUsd,
               confirmedCostCapUsd: config.confirmedCostCapUsd,
             }),
-            roles: unavailableLiveRoleSeams(),
-            finalizeArtifact() {
-              throw unavailableAfterCutover("accepted-output finalization");
-            },
+            roles: productionRoleBindings(),
             draftBudget: { budgetBytes: 16_384, overlapUnits: 1 },
           });
           const source = await substrate.resolvePortSource(request, perRun);
@@ -237,30 +234,19 @@ export async function withDatabaseItotoriServices<T>(
   }, options.databaseUrl ?? databaseUrlFromEnv());
 }
 
-function unavailableLiveRoleSeams() {
+function productionRoleBindings() {
   return {
     review: {
       async reviewLane() {
-        throw unavailableAfterCutover("live review role seam");
-      },
-    },
-    patchback: {
-      buildInput() {
-        throw unavailableAfterCutover("native patchback seam");
-      },
-      translatedBundlePath() {
-        throw unavailableAfterCutover("native patchback seam");
-      },
-      async buildLqa() {
-        throw unavailableAfterCutover("Build-LQA role seam");
+        throw new Error("production review role binding has not been installed");
       },
     },
     adjudicate: {
       buildRefs() {
-        throw unavailableAfterCutover("adjudication role seam");
+        throw new Error("production adjudication role binding has not been installed");
       },
       async readPayload() {
-        throw unavailableAfterCutover("adjudication role seam");
+        throw new Error("production adjudication role binding has not been installed");
       },
       resolveEvidence: () => null,
     },
@@ -272,7 +258,7 @@ function projectEngineRegistry() {
   return createProjectEngineFamilyRegistry(engineCapabilityMatrixJson);
 }
 
-export function unavailableServiceSurface(
+export function retiredServiceSurface(
   installed: Pick<
     ItotoriApplicationServices,
     | "projectWorkflow"
@@ -292,7 +278,7 @@ export function unavailableServiceSurface(
     get(target, property, receiver) {
       if (Reflect.has(target, property)) return Reflect.get(target, property, receiver);
       return () => {
-        throw unavailableAfterCutover(String(property));
+        throw new Error(`retired service port '${String(property)}' has no installed binding`);
       };
     },
   }) as ItotoriApplicationServices;
@@ -395,10 +381,6 @@ function createLiveWikiEnhancementRunner(input: {
       };
     },
   });
-}
-
-function unavailableAfterCutover(surface: string): Error {
-  return new Error(`${surface} is not available after the legacy cutover`);
 }
 
 function productionLocalizationConfig(env: Readonly<Record<string, string | undefined>>): {

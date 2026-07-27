@@ -18,7 +18,11 @@
 import type { InstalledBible, RequirementOptions } from "../localized-wiki/ground-truth/index.js";
 import type { UnitBibleBinding } from "../localized-wiki/ground-truth/index.js";
 import type { FactSnapshot, OrderedUnitFact } from "../prepass/index.js";
-import type { LocalizeSceneInput, LocalizerRuntimeBase } from "../roles/p1/index.js";
+import type {
+  LocalizeSceneInput,
+  LocalizerRuntimeBase,
+  SceneLocalization,
+} from "../roles/p1/index.js";
 import type { EditLineInput, EditorRuntimeBase } from "../roles/p2/index.js";
 import type { RepairOptions, RepairRequest, RepairRuntimeBase } from "../roles/p3/index.js";
 import type { Q6Dispatch, Q6DispatchRefs, Q6ReviewInput } from "../roles/q6/index.js";
@@ -58,6 +62,10 @@ export interface DraftDeps {
     readonly bibleBindingsByUnit?: ReadonlyMap<string, UnitBibleBinding>;
   }): LocalizeSceneInput;
   readonly runtime: LocalizerRuntimeBase;
+  /** Records the physical P1 receipts and validated drafts that a later CAS
+   * finalization must seal. The workflow port invokes this only after P1 has
+   * returned a complete, validated scene. */
+  recordFinalizationData?(localized: SceneLocalization): void;
 }
 
 /** The gate seam: assemble the deterministic-gate input from a drafted scene plus
