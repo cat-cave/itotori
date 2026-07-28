@@ -3,7 +3,7 @@
 //! Snapshot path constants, wire types, encode/decode helpers, and the
 //! trait impls that round-trip the VM through a substrate [`StateTree`].
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +13,7 @@ use utsushi_core::substrate::{
 
 use crate::rlop::{LongOp, LongOpId};
 
-use super::{SceneId, StackFrame, StackFrameKind, Vm};
+use super::{FrameCounterState, SceneId, StackFrame, StackFrameKind, Vm};
 
 /// Stable identifier of the VM `Inspectable` surface. Used by the
 /// substrate facade so two snapshots from different ports cannot be
@@ -37,6 +37,8 @@ const STACK_PATH: &str = "port.utsushi_reallive_vm.stack";
 const LONGOP_PATH: &str = "port.utsushi_reallive_vm.longop_queue";
 /// State-path leaf for the halt flag.
 const HALTED_PATH: &str = "port.utsushi_reallive_vm.halted";
+/// State-path leaf for the normal-layer frame-counter surface.
+const FRAME_COUNTERS_PATH: &str = "port.utsushi_reallive_vm.frame_counters";
 
 /// Manifest string under [`MANIFEST_PATH`]. Carries the schema label
 /// so a future schema bump can be detected at restore time.
@@ -65,6 +67,11 @@ struct LongOpWire {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct LongOpQueueWire {
     queue: Vec<LongOpWire>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct FrameCountersWire {
+    counters: BTreeMap<i32, FrameCounterState>,
 }
 
 pub(super) fn bytes_to_hex(bytes: &[u8]) -> String {
@@ -168,6 +175,23 @@ fn decode_longop_queue(payload: &str) -> Result<VecDeque<LongOp>, String> {
     Ok(out)
 }
 
+fn encode_frame_counters(
+    counters: &BTreeMap<i32, FrameCounterState>,
+) -> Result<String, SnapshotError> {
+    serde_json::to_string(&FrameCountersWire {
+        counters: counters.clone(),
+    })
+    .map_err(|err| SnapshotError::SerializationFailure {
+        reason: err.to_string(),
+    })
+}
+
+fn decode_frame_counters(payload: &str) -> Result<BTreeMap<i32, FrameCounterState>, String> {
+    serde_json::from_str::<FrameCountersWire>(payload)
+        .map(|wire| wire.counters)
+        .map_err(|err| format!("malformed frame_counters JSON: {err}"))
+}
+
 impl Inspectable for Vm {
     fn inspectable_id(&self) -> &'static str {
         VM_INSPECTABLE_ID
@@ -209,6 +233,12 @@ impl Inspectable for Vm {
                 value: encode_longop_queue(&self.longop_queue)?,
             },
         )?;
+        tree.insert(
+            StatePath::parse(FRAME_COUNTERS_PATH)?,
+            StateValue::String {
+                value: encode_frame_counters(&self.frame_counters)?,
+            },
+        )?;
         // Embed the var-banks substrate impl. The banks own their own
         // sub-tree under `port.var_banks.*` so we merge it here.
         let banks_tree = self.banks.inspect_state()?;
@@ -227,6 +257,7 @@ impl Restorable for Vm {
         let mut new_halted = false;
         let mut new_stack: Vec<StackFrame> = Vec::new();
         let mut new_longop_queue: VecDeque<LongOp> = VecDeque::new();
+        let mut new_frame_counters: BTreeMap<i32, FrameCounterState> = BTreeMap::new();
         let mut manifest_seen = false;
         let mut scene_seen = false;
         let mut pc_seen = false;
@@ -298,6 +329,15 @@ impl Restorable for Vm {
                     })?;
                     consumed.push(path.clone());
                 }
+                (FRAME_COUNTERS_PATH, StateValue::String { value }) => {
+                    new_frame_counters = decode_frame_counters(value).map_err(|reason| {
+                        SnapshotError::RestoreValueOutOfRange {
+                            path: path.clone(),
+                            reason,
+                        }
+                    })?;
+                    consumed.push(path.clone());
+                }
                 // Type-mismatch fallbacks: each sits after every typed arm so
                 // the `other` binding never shadows a specific-type match.
                 (SCENE_PATH | PC_PATH, other) => {
@@ -314,7 +354,7 @@ impl Restorable for Vm {
                         found: other.type_tag(),
                     });
                 }
-                (MANIFEST_PATH | STACK_PATH | LONGOP_PATH, other) => {
+                (MANIFEST_PATH | STACK_PATH | LONGOP_PATH | FRAME_COUNTERS_PATH, other) => {
                     return Err(SnapshotError::RestoreTypeMismatch {
                         path: path.clone(),
                         expected: "string",
@@ -357,6 +397,7 @@ impl Restorable for Vm {
         self.halted = new_halted;
         self.stack = new_stack;
         self.longop_queue = new_longop_queue;
+        self.frame_counters = new_frame_counters;
         Ok(RestoreReport {
             consumed_paths: consumed,
             ignored_by_design: banks_report.ignored_by_design,

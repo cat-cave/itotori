@@ -12,6 +12,9 @@ pub enum ExprValue {
     /// argument. `value` retains the reference's current read value so
     /// ordinary input operations keep their existing integer semantics.
     IntReference { bank: u8, index: i32, value: i32 },
+    /// A parenthesized compound command argument.  Multi-dispatch syscalls
+    /// use this to retain each tuple's evaluated values and write targets.
+    List(Vec<ExprValue>),
     /// Raw byte string. Used by when a string-shaped
     /// argument flows into a dispatch.
     Bytes(Vec<u8>),
@@ -22,7 +25,7 @@ impl ExprValue {
     pub fn as_int(&self) -> Option<i32> {
         match self {
             Self::Int(value) | Self::IntReference { value, .. } => Some(*value),
-            Self::Bytes(_) => None,
+            Self::List(_) | Self::Bytes(_) => None,
         }
     }
 
@@ -30,7 +33,7 @@ impl ExprValue {
     pub fn as_bytes(&self) -> Option<&[u8]> {
         match self {
             Self::Bytes(bytes) => Some(bytes.as_slice()),
-            Self::Int(_) | Self::IntReference { .. } => None,
+            Self::Int(_) | Self::IntReference { .. } | Self::List(_) => None,
         }
     }
 
@@ -39,7 +42,7 @@ impl ExprValue {
     pub fn as_int_reference(&self) -> Option<(u8, i32)> {
         match self {
             Self::IntReference { bank, index, .. } => Some((*bank, *index)),
-            Self::Int(_) | Self::Bytes(_) => None,
+            Self::Int(_) | Self::List(_) | Self::Bytes(_) => None,
         }
     }
 }

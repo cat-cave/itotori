@@ -128,6 +128,7 @@ opcode_module_table! {
     "module_sys_timer.rs" => module_sys_timer: |r, _| module_sys_timer::register_sys_timer_rlops(r),
     "module_sys_config_commands.rs" => module_sys_config_commands: |r, _| module_sys_config_commands::register_sys_config_rlops(r),
     "module_observed_surface.rs" => module_observed_surface: |r, _| module_observed_surface::register_observed_surface_rlops(r),
+    "module_sys_frame.rs" => module_sys_frame: |r, _| module_sys_frame::register_sys_frame_rlops(r),
 }
 
 /// Mount every entry in [`OPCODE_MODULE_TABLE`] onto `registry`,
