@@ -331,6 +331,8 @@ export type {
   ItotoriProjectRunRepositoryPort,
   ProjectRunCostAccountRecord,
   ProjectRunCostReservationRecord,
+  ProjectRunDashboardPage,
+  ProjectRunDashboardRow,
   ProjectRunLease,
   ProjectRunLeaseFence,
   ProjectRunLiveReadModel,

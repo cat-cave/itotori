@@ -7,7 +7,7 @@ import type {
   ProjectDashboardStatus,
   ProjectTelemetryTimeseries,
 } from "@itotori/db";
-import type { AuthorizationActor } from "@itotori/db";
+import type { ProjectRunDashboardPage } from "@itotori/db";
 
 export const PROJECT_OVERVIEW_SCHEMA_VERSION = "projects.overview.v0.1";
 
@@ -36,16 +36,20 @@ export type ProjectOverviewJournalRow = {
   journalRunId: string;
   projectId: string;
   localeBranchId: string;
-  sourceRevisionId: string;
-  targetLocale: string;
+  status: "queued" | "running" | "paused" | "completed" | "failed" | "cancelled";
   createdAt: string;
+  updatedAt: string;
+  wallClockMs: number;
+  attemptedUnitCount: number;
+  finalizedUnitCount: number;
+  patchedUnitCount: number;
   physicalCallCount: number;
-  failedPhysicalCallCount: number;
-  writtenOutcomeCount: number;
-  candidateCount: number;
-  qaFindingCount: number;
-  contextRefCount: number;
-  speakerLabelCount: number;
+  deadlineFailureCount: number;
+  spentMicrosUsd: number;
+  reservedMicrosUsd: number;
+  servedPairs: Array<{ model: string; provider: string }>;
+  patchVersionId: string | null;
+  patchStatus: string | null;
 };
 
 export type ProjectOverviewJournalPage = {
@@ -113,13 +117,13 @@ export class ProjectOverviewProjectMismatchError extends Error {
 }
 
 export type ComposeProjectOverviewInput = {
-  actor: AuthorizationActor;
   status: ProjectDashboardStatus;
   decisions: DashboardDecisionReadModel;
   cost: ProjectCostReport;
   telemetry: ProjectTelemetryTimeseries;
   costDrilldown: CostDrilldownPage;
   benchmarkReports: readonly BenchmarkReportSummary[];
+  journalPage: ProjectRunDashboardPage;
   options?: ProjectOverviewReadModelOptions;
 };
 
@@ -136,11 +140,11 @@ export async function composeProjectOverviewReadModel(
     throw new ProjectOverviewProjectMismatchError(input.options.projectId, input.status.projectId);
   }
   const projectId = input.options?.projectId ?? input.status.projectId;
-  const journal = await loadProjectOverviewJournalPage({
-    actor: input.actor,
+  const journal = loadProjectOverviewJournalPage({
     projectId,
     status: input.status,
     includeJournal: input.options?.includeJournal ?? true,
+    journalPage: input.journalPage,
     ...(input.options?.journal !== undefined ? { options: input.options.journal } : {}),
   });
 
@@ -167,22 +171,46 @@ export async function composeProjectOverviewReadModel(
  * A foreign branch id is refused before the repository is called, so a
  * project-scoped overview can never expose another project's run provenance.
  */
-export async function loadProjectOverviewJournalPage(input: {
-  actor: AuthorizationActor;
+export function loadProjectOverviewJournalPage(input: {
   projectId: string;
   status: ProjectDashboardStatus;
   includeJournal?: boolean;
+  journalPage: ProjectRunDashboardPage;
   options?: ProjectOverviewJournalPageOptions;
-}): Promise<ProjectOverviewJournalPage> {
+}): ProjectOverviewJournalPage {
   const localeBranchId = selectedJournalLocaleBranchId(input.status, input.options);
   const limit = normalizeJournalLimit(input.options?.limit);
   const offset = normalizeJournalOffset(input.options?.offset);
-  // The journal persistence substrate is retired. Preserve the stable
-  // overview envelope while making the retired provenance panel explicitly
-  // empty; it must not reach a compatibility repository.
-  void input.actor;
-  void input.includeJournal;
-  return emptyJournalPage(input.projectId, localeBranchId, limit, offset);
+  if (!input.includeJournal)
+    return emptyJournalPage(input.projectId, localeBranchId, limit, offset);
+  const rows = input.journalPage.rows.map((row) => ({
+    journalRunId: row.runId,
+    projectId: row.projectId,
+    localeBranchId: row.localeBranchId,
+    status: row.status,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    wallClockMs: Math.max(0, row.updatedAt.getTime() - row.createdAt.getTime()),
+    attemptedUnitCount: row.attemptedUnitCount,
+    finalizedUnitCount: row.finalizedUnitCount,
+    patchedUnitCount: row.patchedUnitCount,
+    physicalCallCount: row.physicalCallCount,
+    deadlineFailureCount: row.deadlineFailureCount,
+    spentMicrosUsd: row.spentMicrosUsd,
+    reservedMicrosUsd: row.reservedMicrosUsd,
+    servedPairs: row.servedPairs.map((pair) => ({ ...pair })),
+    patchVersionId: row.patchVersionId,
+    patchStatus: row.patchStatus,
+  }));
+  return {
+    filter: { projectId: input.projectId, localeBranchId },
+    pagination: pagination(input.journalPage.total, limit, offset),
+    rows,
+    latestRow:
+      input.journalPage.latestRow === null
+        ? null
+        : (rows.find((row) => row.journalRunId === input.journalPage.latestRow?.runId) ?? null),
+  };
 }
 
 export function redactProjectOverviewReadModel(

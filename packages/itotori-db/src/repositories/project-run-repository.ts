@@ -149,6 +149,36 @@ export type ProjectRunLiveReadModel = {
   };
 };
 
+/**
+ * Persisted, operator-facing run facts.  This deliberately joins the run's
+ * immutable localization snapshot to physical LLM receipts: a served pair is
+ * absent when it was not captured, never inferred from routing configuration.
+ */
+export type ProjectRunDashboardRow = {
+  runId: string;
+  projectId: string;
+  localeBranchId: string;
+  status: ProjectRunStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  attemptedUnitCount: number;
+  finalizedUnitCount: number;
+  patchedUnitCount: number;
+  physicalCallCount: number;
+  deadlineFailureCount: number;
+  spentMicrosUsd: number;
+  reservedMicrosUsd: number;
+  servedPairs: Array<{ model: string; provider: string }>;
+  patchVersionId: string | null;
+  patchStatus: string | null;
+};
+
+export type ProjectRunDashboardPage = {
+  total: number;
+  rows: ProjectRunDashboardRow[];
+  latestRow: ProjectRunDashboardRow | null;
+};
+
 /** Counts for each durable unit-progress state. */
 export type ProjectRunProgressStatusCounts = Record<ProjectRunProgressStatus, number>;
 
@@ -207,6 +237,10 @@ export interface ItotoriProjectRunRepositoryPort {
     projectId: string,
     runId: string,
   ): Promise<ProjectRunLiveReadModel | null>;
+  listDashboardRuns(
+    actor: AuthorizationActor,
+    input: { projectId: string; localeBranchId: string | null; limit: number; offset: number },
+  ): Promise<ProjectRunDashboardPage>;
   listPortfolioProgress(actor: AuthorizationActor): Promise<ProjectRunPortfolioProgressSummary[]>;
 }
 
@@ -510,6 +544,80 @@ export class ItotoriProjectRunRepository implements ItotoriProjectRunRepositoryP
     };
   }
 
+  async listDashboardRuns(
+    actor: AuthorizationActor,
+    input: { projectId: string; localeBranchId: string | null; limit: number; offset: number },
+  ): Promise<ProjectRunDashboardPage> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    const projectId = requiredText(input.projectId, "projectId");
+    const limit = Math.max(1, Math.min(input.limit, 100));
+    const offset = Math.max(0, input.offset);
+    const branchClause =
+      input.localeBranchId === null
+        ? sql``
+        : sql`and run.locale_branch_id = ${requiredText(input.localeBranchId, "localeBranchId")}`;
+    const totalRows = await rowsOf(
+      this.db as unknown as SqlExecutor,
+      sql`select count(*)::int as total from ${projectRuns} run
+          where run.project_id = ${projectId} ${branchClause}`,
+    );
+    const rows = await rowsOf(
+      this.db as unknown as SqlExecutor,
+      sql`
+        select
+          run.run_id, run.project_id, run.locale_branch_id, run.status, run.created_at, run.updated_at,
+          account.spent_micros_usd, account.reserved_micros_usd,
+          coalesce(progress.attempted_unit_count, 0)::int as attempted_unit_count,
+          coalesce(progress.finalized_unit_count, 0)::int as finalized_unit_count,
+          coalesce(progress.patched_unit_count, 0)::int as patched_unit_count,
+          coalesce(receipts.physical_call_count, 0)::int as physical_call_count,
+          greatest(coalesce(receipts.deadline_failure_count, 0), coalesce(progress.deadline_blocker_count, 0))::int as deadline_failure_count,
+          coalesce(receipts.served_pairs, '[]'::jsonb) as served_pairs,
+          patch.patch_version_id, patch.status as patch_status
+        from ${projectRuns} run
+        join ${projectRunCostAccounts} account
+          on account.run_id = run.run_id and account.project_id = run.project_id
+        left join lateral (
+          select
+            count(distinct bridge_unit_id)::int as attempted_unit_count,
+            count(distinct bridge_unit_id) filter (where status in ('accepted', 'patched'))::int as finalized_unit_count,
+            count(distinct bridge_unit_id) filter (where status = 'patched')::int as patched_unit_count,
+            count(distinct bridge_unit_id) filter (where blockers @> '["deadline-failed"]'::jsonb)::int as deadline_blocker_count
+          from ${projectRunProgress}
+          where run_id = run.run_id and project_id = run.project_id
+        ) progress on true
+        left join lateral (
+          select
+            count(distinct attempt.attempt_id)::int as physical_call_count,
+            count(distinct attempt.attempt_id) filter (
+              where attempt.attempt_status = 'in-flight' and attempt.deadline_at <= now()
+            )::int as deadline_failure_count,
+            coalesce(jsonb_agg(distinct jsonb_build_object(
+              'model', attempt.served_model, 'provider', attempt.served_provider
+            )) filter (where attempt.served_pair_status = 'confirmed'), '[]'::jsonb) as served_pairs
+          from itotori_llm_conversation_events event
+          join itotori_llm_http_attempts attempt on attempt.memo_key = event.memo_key
+          where event.snapshot_kind = 'localization'
+            and event.snapshot_id = run.localization_snapshot_id
+        ) receipts on true
+        left join lateral (
+          select patch_version_id, status
+          from itotori_localization_patch_versions
+          where project_id = run.project_id and locale_branch_id = run.locale_branch_id
+            and delivery_scope_id = run.run_id
+          order by created_at desc, patch_version_id desc
+          limit 1
+        ) patch on true
+        where run.project_id = ${projectId} ${branchClause}
+        order by run.created_at desc, run.run_id desc
+        limit ${limit} offset ${offset}
+      `,
+    );
+    const pageRows = rows.map(projectRunDashboardRowFromRow);
+    const total = numberOfDashboard(totalRows[0], "total");
+    return { total, rows: pageRows, latestRow: pageRows[0] ?? null };
+  }
+
   async listPortfolioProgress(
     actor: AuthorizationActor,
   ): Promise<ProjectRunPortfolioProgressSummary[]> {
@@ -627,6 +735,73 @@ function portfolioProgressFromRow(
     averageCoveragePercent: portfolioCoverage(row.average_coverage_percent),
     blockers: portfolioBlockersFromRow(row.blockers),
   };
+}
+
+function projectRunDashboardRowFromRow(row: Record<string, unknown>): ProjectRunDashboardRow {
+  return {
+    runId: dashboardText(row, "run_id"),
+    projectId: dashboardText(row, "project_id"),
+    localeBranchId: dashboardText(row, "locale_branch_id"),
+    status: dashboardText(row, "status") as ProjectRunStatus,
+    createdAt: dashboardDate(row, "created_at"),
+    updatedAt: dashboardDate(row, "updated_at"),
+    attemptedUnitCount: numberOfDashboard(row, "attempted_unit_count"),
+    finalizedUnitCount: numberOfDashboard(row, "finalized_unit_count"),
+    patchedUnitCount: numberOfDashboard(row, "patched_unit_count"),
+    physicalCallCount: numberOfDashboard(row, "physical_call_count"),
+    deadlineFailureCount: numberOfDashboard(row, "deadline_failure_count"),
+    spentMicrosUsd: numberOfDashboard(row, "spent_micros_usd"),
+    reservedMicrosUsd: numberOfDashboard(row, "reserved_micros_usd"),
+    servedPairs: dashboardServedPairs(row.served_pairs),
+    patchVersionId: dashboardNullableText(row, "patch_version_id"),
+    patchStatus: dashboardNullableText(row, "patch_status"),
+  };
+}
+
+function numberOfDashboard(row: Record<string, unknown> | undefined, field: string): number {
+  const value = row?.[field];
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error(`dashboard ${field} is invalid`);
+  return parsed;
+}
+
+function dashboardText(row: Record<string, unknown>, field: string): string {
+  const value = row[field];
+  if (typeof value !== "string" || value.length === 0)
+    throw new Error(`dashboard ${field} is missing`);
+  return value;
+}
+
+function dashboardNullableText(row: Record<string, unknown>, field: string): string | null {
+  const value = row[field];
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error(`dashboard ${field} is invalid`);
+  return value;
+}
+
+function dashboardDate(row: Record<string, unknown>, field: string): Date {
+  const value = row[field];
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) throw new Error(`dashboard ${field} is invalid`);
+  return date;
+}
+
+function dashboardServedPairs(value: unknown): Array<{ model: string; provider: string }> {
+  if (!Array.isArray(value)) throw new Error("dashboard served_pairs is invalid");
+  return value.map((pair) => {
+    if (
+      typeof pair !== "object" ||
+      pair === null ||
+      typeof (pair as Record<string, unknown>).model !== "string" ||
+      typeof (pair as Record<string, unknown>).provider !== "string"
+    ) {
+      throw new Error("dashboard served pair is invalid");
+    }
+    return {
+      model: (pair as Record<string, string>).model!,
+      provider: (pair as Record<string, string>).provider!,
+    };
+  });
 }
 
 function runStatusCountsFromRow(row: Record<string, unknown>): ProjectRunStatusCounts {
