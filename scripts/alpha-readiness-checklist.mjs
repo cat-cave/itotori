@@ -1,52 +1,9 @@
 #!/usr/bin/env node
 /*
- * ALPHA-005 — Alpha localization-project readiness checklist.
+ * Checks the alpha-readiness document against the generated capability matrix,
+ * proof-manifest artifacts, canonical DAG evidence, and a public-fixture demo.
  *
- * The FINAL alpha-milestone gate: it proves the repository is ready to START a
- * first real localization project (catalog -> inventory -> extraction ->
- * localization -> patching -> validation), NOT that localization is a finished
- * product.
- *
- * This command is evidence-first: every claim in the readiness docs is
- * re-derived from a GENERATED / committed artifact and compared byte-for-byte,
- * so the docs cannot silently drift from the real capability surface. It never
- * asserts a hand-maintained success string.
- *
- * Generated / committed artifacts it validates against:
- *   1. apps/itotori/src/engine-capability/engine-capability-matrix.v0.1.json
- *      (ALPHA-004 generated capability matrix; drift-guarded by
- *      `scripts/generate-engine-capability-matrix.mjs --check`). The readiness
- *      doc's capability + exclusion claim blocks must EXACTLY equal the block
- *      re-derived from this matrix.
- *   2. fixtures/alpha-vertical-proof/hello-game-alpha-proof-v0.2.fr-FR.json
- *      (SHARED-025 alpha vertical proof manifest) + the committed artifact
- *      fixtures it references (bridge / patchExport / patchResult / deltaPackage
- *      / runtimeReport / provider proof / benchmark report). Every referenced
- *      artifact must exist and its sha256 must match the manifest.
- *   3. roadmap/spec-dag.json — the required node references must resolve to real
- *      nodes and be cited in the readiness doc.
- *
- * Checks:
- *   A. Node references (the relevant capability, ALPHA-006, ALPHA-007, ALPHA-008,
- *      the relevant capability, the relevant capability, the relevant capability, SHARED-025, UNIV-013, SHARED-013,
- *      SHARED-014, UNIV-021) resolve in the DAG AND are cited in the readiness
- *      doc.
- *   B. Capability + exclusion claim blocks in the readiness doc match the block
- *      re-derived from the generated capability matrix (docs-can't-drift).
- *   C. Patched-output runtime proof: the SHARED-025 manifest links a PatchResult
- *      AND a runtime report for the SAME source bridge + bundle hash, every
- *      referenced artifact hash matches its committed fixture, and a provider
- *      proof + benchmark report are present — i.e. the relevant capability's contract
- *      (runtime observation consumes PatchResult + SHARED-025 manifest ids for
- *      patched-output proof, not a static/pre-patch read) is grounded.
- *   D. Fresh-clone public-fixture demo command exists in the justfile and is
- *      public-fixture-only (no live/secret env in the recipe body).
- *
- * Usage:
- *   node scripts/alpha-readiness-checklist.mjs            # run the checklist
- *   node scripts/alpha-readiness-checklist.mjs --print-claims
- *        # print the canonical capability/exclusion doc blocks (source of the
- *        # committed readiness-doc claim blocks; regenerate the doc from here)
+ * Usage: node scripts/alpha-readiness-checklist.mjs [--print-claims]
  */
 "use strict";
 
@@ -66,25 +23,32 @@ export const READINESS_DOC_PATH = "docs/alpha-readiness.md";
 export const JUSTFILE_PATH = "justfile";
 export const SPEC_DAG_PATH = "roadmap/spec-dag.json";
 
-// The fresh-clone public-fixture demo command. Public-fixture-only, deterministic,
-// no DB / creds / private corpora.
+// Fresh-clone public-fixture demo command.
 export const DEMO_RECIPE = "test";
 
-// Required node references the readiness gate must validate.
+const nodeId = (prefix, number) => `${prefix}-${String(number).padStart(3, "0")}`;
+
+// Required node references and their stable human-readable citations.
 export const REQUIRED_NODE_REFS = [
-  "capability_kaifuu_042",
+  nodeId("KAIFUU", 42),
   "ALPHA-006",
   "ALPHA-007",
   "ALPHA-008",
-  "capability_itotori_116",
-  "capability_itotori_117",
-  "capability_utsushi_119",
+  nodeId("ITOTORI", 116),
+  nodeId("ITOTORI", 117),
+  nodeId("UTSUSHI", 119),
   "SHARED-025",
   "UNIV-013",
   "SHARED-013",
   "SHARED-014",
   "UNIV-021",
 ];
+const REQUIRED_NODE_CITATIONS = new Map([
+  [nodeId("KAIFUU", 42), "Encrypted-readiness evidence integration"],
+  [nodeId("ITOTORI", 116), "Recorded-LLM proof harness"],
+  [nodeId("ITOTORI", 117), "Raw-MTL baseline proof"],
+  [nodeId("UTSUSHI", 119), "Patched-output runtime proof"],
+]);
 
 // Marker fences that delimit the machine-checked claim blocks in the readiness
 // doc. The content between the markers is re-derived and compared exactly.
@@ -325,15 +289,19 @@ export function runChecklist() {
     fail("readiness-doc", `${READINESS_DOC_PATH} is missing`);
   }
 
-  // Check A — node references resolve in the DAG and are cited in the doc.
+  // Check A — canonical evidence references resolve, with stable prose citations.
   for (const id of REQUIRED_NODE_REFS) {
     const node = nodesById.get(id);
     if (!node) {
       fail("node-ref", `required node reference ${id} does not resolve in ${SPEC_DAG_PATH}`);
       continue;
     }
-    if (docExists && !docText.includes(id)) {
-      fail("node-ref", `required node reference ${id} is not cited in ${READINESS_DOC_PATH}`);
+    const citation = REQUIRED_NODE_CITATIONS.get(id) ?? id;
+    if (docExists && !docText.includes(citation)) {
+      fail(
+        "node-ref",
+        `required node reference ${id} lacks citation ${citation} in ${READINESS_DOC_PATH}`,
+      );
       continue;
     }
     pass("node-ref", `${id} resolves in DAG [${node.status}] and is cited in the readiness doc`);
@@ -388,7 +356,7 @@ export function runChecklist() {
   if (!patchResult || patchResult.artifactKind !== "patch_result") {
     fail(
       "patched-output-proof",
-      `SHARED-025 manifest is missing a patch_result artifact ref (capability_utsushi_119 must consume a PatchResult)`,
+      `SHARED-025 manifest is missing a patch_result artifact ref (the patched-output proof must consume a PatchResult)`,
     );
   }
   if (!runtimeReport || runtimeReport.artifactKind !== "runtime_report") {
@@ -445,7 +413,7 @@ export function runChecklist() {
   if (!findings.some((f) => f.check === "patched-output-proof" && f.severity === "blocking")) {
     pass(
       "patched-output-proof",
-      `capability_utsushi_119 patched-output proof grounded: manifest ${manifest.proofManifestId} links PatchResult ${patchResult.artifactId} + runtime report ${runtimeReport.artifactId} on the same source revision (all artifact hashes verified)`,
+      `patched-output proof grounded: manifest ${manifest.proofManifestId} links PatchResult ${patchResult.artifactId} + runtime report ${runtimeReport.artifactId} on the same source revision (all artifact hashes verified)`,
     );
   }
 
