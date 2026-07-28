@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// the relevant capability — synthetic encrypted-XP3 contract scaffolding fixture generator.
+// KAIFUU-171 — synthetic encrypted-XP3 contract scaffolding fixture generator.
 //
 // This generator owns every byte under
 // `fixtures/public/kaifuu-encrypted-xp3-contract-scaffold/`. The fixture is
@@ -141,7 +141,7 @@ byte is authored in-repository by
 material — no extracted scripts, screenshots, audio, fonts, video, helper
 dumps, private paths, or private keys.
 
-It feeds the capability_kaifuu_171 end-to-end contract harness in
+It feeds the KAIFUU-171 end-to-end contract harness in
 \`crates/kaifuu-delta/src/contract_scaffold.rs\`, which exercises the full
 encrypted-XP3 contract surface:
 

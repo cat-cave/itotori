@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "capabilityProfileId": "kaifuu-kirikiri-xp3-capability-profile",
-  "sourceNodeId": "capability_kaifuu_054",
+  "sourceNodeId": "KAIFUU-054",
   "engineFamily": "kiri_kiri_xp3",
   "entries": [
     {

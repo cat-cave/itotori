@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "fixtureId": "kirikiri-xp3-crypt-chain-fixture",
-  "sourceNodeId": "capability_kaifuu_072",
+  "sourceNodeId": "KAIFUU-072",
   "engineFamily": "kirikiri",
   "container": "xp3",
   "cryptoProfile": "xor-simple-crypt-fixture",

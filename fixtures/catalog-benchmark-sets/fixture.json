@@ -1,10 +1,10 @@
 {
   "schemaVersion": "itotori.benchmark_set_selector.fixture.v0.1",
-  "fixtureId": "capability_itotori_089-catalog-004-benchmark-set-selector",
+  "fixtureId": "itotori-089-catalog-004-benchmark-set-selector",
   "sourceFixtureIds": ["catalog-benchmark-seeds-catalog-004"],
   "selectedAt": "2026-06-27T12:10:00.000Z",
   "runParameters": {
-    "parameterSetId": "capability_itotori_089-repeatable-run-v1",
+    "parameterSetId": "itotori-089-repeatable-run-v1",
     "benchmarkProfileId": "catalog-004-alpha-benchmark",
     "providerFamily": "recorded-fixture",
     "modelId": "recorded-fixture/itotori-lqa-1",

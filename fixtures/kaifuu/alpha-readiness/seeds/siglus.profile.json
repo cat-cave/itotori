@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "profileId": "packed/siglus/alpha",
   "fixtureId": "alpha.readiness.siglus",
-  "sourceNodeId": "capability_kaifuu_056",
+  "sourceNodeId": "KAIFUU-056",
   "prerequisiteProof": "siglus_profile_proof",
   "engineFamily": "siglus",
   "capabilities": {

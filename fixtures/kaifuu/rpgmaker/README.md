@@ -1,26 +1,26 @@
-# the relevant capability — RPG Maker MV/MZ encrypted-media readiness fixtures
+# KAIFUU-039 — RPG Maker MV/MZ encrypted-media readiness fixtures
 
-> ## Sibling: `encrypted-image.json` (the relevant capability)
+> ## Sibling: `encrypted-image.json` (KAIFUU-115)
 >
-> `encrypted-image.json` is a **separate** path and is NOT a the relevant capability
-> readiness fixture. It backs the the relevant capability encrypted-IMAGE
+> `encrypted-image.json` is a **separate** path and is NOT a KAIFUU-039
+> readiness fixture. It backs the KAIFUU-115 encrypted-IMAGE
 > **decrypt + re-encrypt** path
 > (`kaifuu_core::mv_mz_encrypted_image`), which genuinely decrypts an
 > RPGMV-header image to its PNG plaintext and re-encrypts it with a
-> byte-correct round-trip — distinct from the relevant capability (which never
-> decrypts) and the relevant capability (JSON-text inventory). Its bytes are fully
+> byte-correct round-trip — distinct from KAIFUU-039 (which never
+> decrypts) and KAIFUU-108 (JSON-text inventory). Its bytes are fully
 > synthetic: a tiny in-module 1x1 PNG and a clearly-fake 16-byte key;
 > the fixture file itself stores only secret-refs + the named image
 > surface + a scenario tag. The matrix covers valid round-trip,
 > wrong-key, missing-key, unsupported-surface (audio), and
 > unsupported-variant (malformed header) entries. Encrypted audio is
-> owned by the sibling the relevant capability; JSON text stays with the relevant capability.
+> owned by the sibling KAIFUU-116; JSON text stays with KAIFUU-108.
 
-> ## Sibling: `encrypted-asset-replacement.json` (the relevant capability)
+> ## Sibling: `encrypted-asset-replacement.json` (KAIFUU-117)
 >
-> `encrypted-asset-replacement.json` is the the relevant capability encrypted-asset
+> `encrypted-asset-replacement.json` is the KAIFUU-117 encrypted-asset
 > **replacement** manifest (`kaifuu_core::mv_mz_encrypted_asset_replacement`).
-> Where the relevant capability/116 prove a byte-correct _identity_ round-trip, this
+> Where KAIFUU-115/116 prove a byte-correct _identity_ round-trip, this
 > path proves a genuine **replacement**: a new synthetic media asset is
 > encrypted with the game key (resolved via a declared secret ref) and
 > patched in, then the patch is VERIFIED — `decrypt(patched) ==
@@ -35,14 +35,14 @@ replacement`, the RPGMV header + non-replaced tail bytes are exact, the
 > commitment gate) and a tampered patch (decrypt no longer recovers the
 > replacement) are REJECTED with typed findings and publish no consumable
 > patch. All bytes are synthetic: the original media reuses the
-> the relevant capability/116 synthetic media, the replacement is a clearly-synthetic
+> KAIFUU-115/116 synthetic media, the replacement is a clearly-synthetic
 > signature-bearing blob, and the key is a clearly-fake 16-byte test key.
 > The MV/MZ asset-XOR crypto is the single shared
 > `kaifuu_core::mv_mz_asset_xor` core (image, audio, and replacement all
 > consume it — none re-implements the primitive).
 
 These fixtures back the `kaifuu rpgmaker encrypted-media-proof` command
-(the relevant capability). They are intentionally **synthetic**:
+(KAIFUU-039). They are intentionally **synthetic**:
 
 - Every "encrypted" media file carries the public RPGMV 16-byte
   header magic (`52 50 47 4D 56 00 00 00 00 03 01 00 00 00 00 00`)
@@ -54,7 +54,7 @@ These fixtures back the `kaifuu rpgmaker encrypted-media-proof` command
 
 ## Posture (load-bearing)
 
-the relevant capability is research-only. RPG Maker MV/MZ is a commercial product
+KAIFUU-039 is research-only. RPG Maker MV/MZ is a commercial product
 (KADOKAWA / Gotcha Gotcha Games). The proof:
 
 - **never decrypts** an encrypted asset,

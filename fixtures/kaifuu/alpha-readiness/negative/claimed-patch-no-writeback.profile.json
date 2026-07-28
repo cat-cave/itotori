@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "profileId": "packed/wolf/bad-patch",
   "fixtureId": "alpha.readiness.wolf-bad-patch",
-  "sourceNodeId": "capability_kaifuu_056",
+  "sourceNodeId": "KAIFUU-056",
   "prerequisiteProof": "wolf_archive_readiness_fixture",
   "engineFamily": "wolf",
   "capabilities": {

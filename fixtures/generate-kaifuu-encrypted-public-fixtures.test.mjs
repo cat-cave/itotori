@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// the relevant capability/166 regression: the public encrypted-matrix fixture generator must
+// KAIFUU-157/166 regression: the public encrypted-matrix fixture generator must
 // REGENERATE Siglus expected outputs from the current detector/parser commands
 // (never preserve stale hand-edited JSON), reproduce them byte-idempotently, keep
 // them public-safe, and fail `--check` when a committed Siglus expected output

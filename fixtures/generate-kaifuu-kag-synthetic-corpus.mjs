@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// the relevant capability: deterministic manifest generator for the CC0 synthetic KAG `.ks`
+// KAIFUU-203: deterministic manifest generator for the CC0 synthetic KAG `.ks`
 // corpus under `fixtures/public/kaifuu-kag-synthetic-corpus/`.
 //
 // The `.ks` files themselves are HAND-AUTHORED, original, CC0 KAG scenario
@@ -22,7 +22,7 @@ const corpusDir = resolve(repoRoot, corpusDirRel);
 const manifestPath = resolve(repoRoot, "fixtures/public/kaifuu-kag-synthetic-corpus.manifest.json");
 
 // The canonical KAG "profile-B" tag inventory this corpus is built to exercise
-// (the relevant capability spec). Every tag scanned from the corpus that is one of these is
+// (KAIFUU-203 spec). Every tag scanned from the corpus that is one of these is
 // reported as a profile-B tag; the corpus must cover >= 6 distinct ones.
 const PROFILE_B_TAGS = [
   "r",
@@ -101,7 +101,7 @@ function buildManifest() {
       license: {
         spdx: "CC0-1.0",
         evidence:
-          "All `.ks` scripts are original prose hand-authored in-repository for capability_kaifuu_203 and dedicated to the public domain (CC0-1.0); each file carries a `; SPDX-License-Identifier: CC0-1.0` header. No retail/game bytes.",
+          "All `.ks` scripts are original prose hand-authored in-repository for KAIFUU-203 and dedicated to the public domain (CC0-1.0); each file carries a `; SPDX-License-Identifier: CC0-1.0` header. No retail/game bytes.",
       },
       provenance: {
         author: "Itotori contributors",

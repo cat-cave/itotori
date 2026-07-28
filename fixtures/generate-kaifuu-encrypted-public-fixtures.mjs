@@ -89,7 +89,7 @@ Covered detector families:
 - BGI/Ethornell-like BURIKO container and encrypted marker signals.
 - Unknown archive-like aggregate signals and marker-only negative detector cases.
 
-The helper-result fixtures conform to the capability_kaifuu_085 helper result schema. The
+The helper-result fixtures conform to the KAIFUU-085 helper result schema. The
 negative key-profile fixtures intentionally fail validation and exist only to
 prove redacted diagnostics for raw-key-looking and private-path-looking refs.
 `,
@@ -146,7 +146,7 @@ writeJson(
     ],
     notes: [
       "Key labels are committed only because every payload is generated in-repository.",
-      "Manual key import and helper binary allowlist behavior are outside capability_kaifuu_051.",
+      "Manual key import and helper binary allowlist behavior are outside KAIFUU-051.",
     ],
   },
   "metadata",

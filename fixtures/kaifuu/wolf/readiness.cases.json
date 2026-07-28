@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "readinessSetId": "kaifuu-wolf-readiness-fixtures",
-  "sourceNodeId": "capability_kaifuu_040",
+  "sourceNodeId": "KAIFUU-040",
   "engineFamily": "wolf",
   "cases": [
     {

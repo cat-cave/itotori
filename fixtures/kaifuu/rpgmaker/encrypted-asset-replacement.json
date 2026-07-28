@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "pathId": "kaifuu-rpgmaker-mv-mz-asset-replacement",
-  "sourceNodeId": "capability_kaifuu_117",
+  "sourceNodeId": "KAIFUU-117",
   "engineFamily": "rpg_maker_mv_mz",
   "entries": [
     {

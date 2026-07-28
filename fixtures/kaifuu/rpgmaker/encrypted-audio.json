@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "pathId": "kaifuu-rpgmaker-mv-mz-encrypted-audio",
-  "sourceNodeId": "capability_kaifuu_116",
+  "sourceNodeId": "KAIFUU-116",
   "engineFamily": "rpg_maker_mv_mz",
   "entries": [
     {

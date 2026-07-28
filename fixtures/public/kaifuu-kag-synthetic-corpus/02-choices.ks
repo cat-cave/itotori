@@ -1,9 +1,9 @@
 ; kaifuu-kag-synthetic-corpus — 02-choices.ks
 ; SPDX-License-Identifier: CC0-1.0
 ; Original, hand-authored CC0 KAG (.ks) content. Contains NO copyrighted game
-; text. Authored for itotori capability_kaifuu_203.
+; text. Authored for itotori KAIFUU-203.
 ; Covers: a choice menu ([link]...[endlink] captions targeting labels) and a
-; [jump] to a label — the label/jump control-flow pair capability_kaifuu_009 exercises.
+; [jump] to a label — the label/jump control-flow pair KAIFUU-009 exercises.
 *crossroads|Which Lantern First
 #Maren
 Two lanterns are ready to be lit. Which one should we carry outside?[l]

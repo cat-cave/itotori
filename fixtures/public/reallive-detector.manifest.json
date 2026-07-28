@@ -5,7 +5,7 @@
     "id": "reallive-detector",
     "title": "RealLive Detector Fixtures",
     "kind": "synthetic",
-    "summary": "Synthetic RealLive detector fixtures for capability_kaifuu_172. Covers the positive synthetic-triple path, the Siglus-overlap and AVG32-lineage disambiguation negatives, the unknown-shape and corrupt-signal cases, and the not-RealLive baseline. Contains no copyrighted RealLive bytes.",
+    "summary": "Synthetic RealLive detector fixtures for KAIFUU-172. Covers the positive synthetic-triple path, the Siglus-overlap and AVG32-lineage disambiguation negatives, the unknown-shape and corrupt-signal cases, and the not-RealLive baseline. Contains no copyrighted RealLive bytes.",
     "sourceLocale": "ja-JP",
     "publicRedistribution": "allowed",
     "license": {
@@ -14,7 +14,7 @@
     },
     "provenance": {
       "author": "Itotori contributors",
-      "creationMethod": "Hand-authored synthetic SEEN.TXT envelope, Gameexe.ini key-prefix lines, SEEN.GAN/g00/ovk marker bytes, Siglus and AVG32 cross-check fixtures for capability_kaifuu_172 deterministic detection coverage.",
+      "creationMethod": "Hand-authored synthetic SEEN.TXT envelope, Gameexe.ini key-prefix lines, SEEN.GAN/g00/ovk marker bytes, Siglus and AVG32 cross-check fixtures for KAIFUU-172 deterministic detection coverage.",
       "rawAssetPolicy": "contains-no-copyrighted-game-assets"
     }
   },
@@ -223,7 +223,7 @@
     "engineKinds": [
       "reallive"
     ],
-    "notes": "Detector-only fixtures for capability_kaifuu_172; no text units or protected spans because no Scene/SEEN parsing, extraction, or patching is claimed."
+    "notes": "Detector-only fixtures for KAIFUU-172; no text units or protected spans because no Scene/SEEN parsing, extraction, or patching is claimed."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,
