@@ -208,6 +208,7 @@ describe("POST /api/patchback/produce — finalized CAS run, real Sweetie bytes"
       process.env.ITOTORI_FIELD_CIPHER_KEY ??= Buffer.alloc(32, 11).toString("base64");
       try {
         runKaifuuExtract({
+          engine: "reallive",
           gameRoot: root!,
           gameId: "sweetie-hd",
           gameVersion: "real",

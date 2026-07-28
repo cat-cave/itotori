@@ -7,9 +7,9 @@ package, no clone, no Nix/pnpm). The
 people changing itotori itself.
 
 > Start at the repo [README](../README.md) for the observed user flow:
-> install → `itotori init` → `extract` → `structure-export`. The current public
-> CLI has no observed archive-to-patch handoff; the README names the exact stop
-> and prerequisites. This document is the detailed install reference.
+> install → `itotori init` → extract → structure-export → production localize
+> → Studio **Produce patched build**. This document is the detailed install
+> reference; the RealLive runbook names the credential and byte-proof steps.
 
 ## User install (the package)
 
@@ -111,9 +111,10 @@ working. See [`alpha-readiness.md`](alpha-readiness.md) §2 and
 [`alpha-proof.md`](alpha-proof.md).
 
 The repository's public-fixture demo is the supported full proof in this
-checkout. A real-corpus CLI run currently stops after structure export until an
-operator supplies the encrypted-state and live-provider prerequisites; it does
-not currently provide a CLI-only localize-to-patch handoff.
+checkout. A real-corpus run additionally needs the encrypted-state and
+live-provider prerequisites. Its completed final accepted outputs are patched
+through Studio's production **Produce patched build** action; the redacted
+localize summary is not patch input.
 
 ### Run the readiness checklist
 

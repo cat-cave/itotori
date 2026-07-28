@@ -1,128 +1,153 @@
 # Localizing a RealLive corpus
 
-This is the operator runbook for the currently shipped RealLive surfaces. It
-deliberately distinguishes working commands from interfaces that are present in
-design notes but not exposed by the current CLI. Do not infer an end-to-end
-success from a command that merely exits zero.
+This is the operator runbook for the shipped RealLive production path. It is
+for a game the operator is entitled to modify, a read-only source tree, and a
+new writable build directory outside this repository. Do not put retail bytes,
+extracted text, provider credentials, or produced builds in the checkout.
 
-The observed, runnable front door currently ends after structure export:
+The working path is:
 
 ```text
-extract → structure-export
+extract → structure-export → wiki + localize → final accepted outputs in Postgres
+        → Studio “Produce patched build” → re-extract and verify
 ```
 
-`localize-game` does not exist. Use `itotori <command> --help` before a run for
-that command's required flags; the checked source parsers remain the authority.
+`localize` writes a redacted run summary, not a translated bridge. The summary
+is deliberately not a patch input. The production patchback loader instead
+loads the run's final accepted outputs from Postgres, decrypts them with the
+same field key, re-materializes the bridge and structure from the configured
+source tree, checks source hashes and complete scope coverage, and invokes the
+native Kaifuu patcher. Studio's **Produce patched build** action calls
+`POST /api/patchback/produce`, the owner of that path. It returns the playable
+build as a tar archive.
 
-## Before touching private bytes
+## 1. Prepare the local machine and private paths
 
-Use a read-only source tree and a private run directory outside the repository.
-Before every real-byte run, rebuild the two native binaries and make the CLI
-use those builds. This avoids drawing conclusions from an old extractor or
-runtime binary.
+Build the exact native programs the wrapper will drive, then point this shell
+at them. These commands are for a development checkout; an installed build
+uses its provisioned native binaries instead.
 
 ```sh
 cargo build -p kaifuu-cli -p utsushi-cli
 export ITOTORI_KAIFUU_BIN="${CARGO_TARGET_DIR:-target}/debug/kaifuu-cli"
 export ITOTORI_UTSUSHI_BIN="${CARGO_TARGET_DIR:-target}/debug/utsushi-cli"
-
-just doctor
 ```
 
-For a live draft, also configure the database, an OpenRouter key, and the
-required run configuration. `itotori init` writes the local configuration and
-`itotori db-migrate` applies the schema. A missing provider key fails loudly;
-there is no fake-provider fallback.
+Set `GAME_ROOT` to the directory that directly contains `REALLIVEDATA/`, and
+set `RUN_DIR` to a new private directory outside the repository. A containing
+download/extraction directory is accepted by `extract`, but it is **not** the
+value to use for `structure-export`: that command needs
+`$GAME_ROOT/REALLIVEDATA/Gameexe.ini` and `$GAME_ROOT/REALLIVEDATA/Seen.txt`.
 
-The private-manifest library has a single `ITOTORI_REAL_CORPUS_ROOT` setting,
-but the installed `itotori extract` command does not currently expose registry
-lookup. For the command flow below, provide `--game-root` directly (or the
-legacy `ITOTORI_REAL_GAME_ROOT` fallback). Do not invent a registry flag or
-per-engine environment variable for a live run.
+## 2. Prepare a disposable database and credentials
 
-## Extract
+Use a fresh, disposable Postgres database for this run. Migrate it before
+creating the wiki or localization run. `DATABASE_URL` must name that database.
 
-The RealLive extractor requires identity metadata, an output path, a source,
-and exactly one supported scope:
+For that **fresh disposable database only**, create the field-cipher key with
+the same deterministic 32-byte pattern used by the live-DB tests:
 
 ```sh
-itotori extract --engine reallive \
-  --game-root <read-only-game-root> \
-  --game-id <id> --game-version <version> \
-  --source-profile-id <profile> --source-locale <locale> \
-  --whole-seen --bundle-output <run-dir>/bridge.json
+export ITOTORI_FIELD_CIPHER_KEY="$(node -e 'process.stdout.write(Buffer.alloc(32, 11).toString("base64"))')"
+itotori db-migrate
 ```
 
-Use `--scene <0..65535>` for one scene, `--scenes <N,N,...>` for a selected
-set, or `--unit-range <START:END>` for an archive-order unit interval (end
-exclusive). Each scoped bridge carries a bound `sourceScope`; the subsequent
-structure export preserves it, so localize can consume a small run without
-mistaking it for a whole archive. The alternate source is
-`--vault-canonical-id <id>`; it and `--game-root` are mutually exclusive.
-`--decompile-report-output <path>` is optional.
+This key encrypts durable wiki, memo, and accepted-output records. Do not use
+this test key for an existing or retained database: changing its key makes its
+previous encrypted rows unreadable. Do not put the key on the command line or
+commit it.
 
-Whole-archive extraction is also the safe default for encrypted archives: the
-decoder can recover supported cross-scene encryption only after it sees the
-archive. If a decompile report records unknown opcodes, treat it as a decode
-gap; do not continue as if the bridge were complete.
-
-## Structure export
-
-Build structure from the bridge and the source's actual engine files:
+The OpenRouter provider key lives only in the main checkout's gitignored
+`.env`; it is never copied into a worktree, run directory, config artifact, or
+database. From that main checkout, load it into the current shell without
+printing it:
 
 ```sh
-itotori structure-export --engine reallive \
-  --gameexe <game-root>/REALLIVEDATA/Gameexe.ini \
-  --seen <game-root>/REALLIVEDATA/Seen.txt \
-  --bridge <run-dir>/bridge.json \
-  --output <run-dir>/structure.json
+set -a
+. ./.env
+set +a
 ```
 
-`--entry-scene <n>` selects a non-default entry point; `--max-scenes <n>`
-fails rather than silently truncating the archive.
+Before starting a production localization, supply the values the production
+configuration actually reads: `ITOTORI_TARGET_LOCALE`,
+`ITOTORI_DRAFT_SCHEMA_HASH`, `ITOTORI_DECODE_REVISION_HASH`,
+`ITOTORI_GLOSSARY_REVISION_HASH`, `ITOTORI_STYLE_REVISION_HASH`,
+`ITOTORI_LOCALIZE_MAX_ATTEMPT_EXPOSURE_USD`, and
+`ITOTORI_LOCALIZE_COST_CAP_USD`. The three revision values are
+`sha256:<64-lowercase-hex>` commitments for the approved run inputs; both cost
+values are non-negative decimal USD amounts. `OPENROUTER_API_KEY` comes from
+the main-checkout `.env` step above. These are required by the production
+configuration; no additional project-prefixed variable is a substitute for
+them.
 
-## The current stop: encrypted live state and patch handoff
+## 3. Extract and derive structure
 
-After a successful extract and structure export, both `wiki build` and
-`localize` refuse before work begins unless Postgres has been migrated and the
-existing `ITOTORI_FIELD_CIPHER_KEY` is set to a base64-encoded 256-bit key. The
-key is an operator-provisioned secret for durable encrypted records; do not put
-it on the command line, print it, or commit it.
+Run extraction first, then derive narrative structure from the exact bridge and
+the direct RealLive root:
 
-This checkout has not produced a localized bridge or patch from the public CLI
-on a real corpus. Even if the live wiki/localize prerequisites are supplied,
-`localize` writes a redacted run summary rather than the translated BridgeBundle
-that `patch` accepts. The CLI does not export the required accepted-output
-`NativePatchbackInput` either. This is an implementation gap, not a limitation
-of the source data. Obtain that input from the owning integration; do not pass
-`run-summary.json` to `itotori patch` or claim the archive-to-patch route works.
+```sh
+itotori extract --engine reallive --game-root "$GAME_ROOT" --game-id "$GAME_ID" --game-version "$GAME_VERSION" --source-profile-id "$SOURCE_PROFILE_ID" --source-locale ja-JP --whole-seen --bundle-output "$RUN_DIR/bridge.json"
+itotori structure-export --engine reallive --gameexe "$GAME_ROOT/REALLIVEDATA/Gameexe.ini" --seen "$GAME_ROOT/REALLIVEDATA/Seen.txt" --bridge "$RUN_DIR/bridge.json" --output "$RUN_DIR/structure.json"
+```
 
-## Real-byte gates
+Use `--scene`, `--scenes`, or `--unit-range` only for a deliberately scoped
+run. `--whole-seen` is the safe default for encrypted archives. A decompile
+report with unknown opcodes is a decode gap; do not call the run complete.
 
-`just ci` is synthetic and is not real-byte evidence. Use
-`just ci-real-bytes` for the strict staged-corpus lane, or
-`just real-bytes-oracle` for the periodic full oracle. Both must fail when a
-required corpus is absent; the first diagnostic to check is whether the lane
-ran zero tests. A zero-test success is a coverage failure, not a pass.
+At the next stage, build the source wiki and localize the same `bridge.json` +
+`structure.json` under production policy. The required identities and paths are
+shown by the installed command, which is the flag authority:
 
-Do not commit source bytes, extracted text, private manifests, screenshots, or
-private render output. Keep roots and reports local, and use aggregate hashes
-and counts for shareable evidence.
+```sh
+itotori localize --help
+```
 
-## Known boundaries
+The localization run is eligible for production patchback only when every unit
+in its selected output scope has a **final** accepted output, every accepted
+output belongs to the run's localization snapshot, and every source hash still
+matches the re-extracted source bytes. A redacted `run-summary.json` cannot be
+fed to `patch` or `patch produce`.
 
-- The corpus-manifest registry exists as an internal validation surface, but is
-  not a selector on the installed extract command.
-- The localizer's summary cannot be patched directly; no CLI export currently
-  bridges its durable accepted outputs to `patch produce` input.
+## 4. Produce the persistent patched build
 
-These are implementation gaps, not source-data limitations. Report them with
-the command, binary revision, and output artifact rather than guessing a flag
-or fabricating an end-to-end success.
+Use Studio's **Produce patched build** action for the completed run. It calls
+the production accepted-output loader described above and returns a tar of a
+new, writable game tree. Keep the source tree read-only. The returned receipt
+and manifest bind the source, translated bridge, native apply, and patch target
+by hash.
+
+`itotori patch produce` is also a persistent-build command, but it is the
+lower-level form for an already serialized `NativePatchbackInput`; its
+`--input` is not `run-summary.json`. Use its help when an owning integration
+has intentionally produced that input:
+
+```sh
+itotori patch produce --help
+```
+
+## 5. Verify the real bytes
+
+Re-extract the patched tree and compare it with the source bridge. Report the
+number of changed target units, unchanged unit texts, and protected spans
+preserved byte-for-byte. The first production run patched two units through this
+seam; re-extraction found 27,405 of 27,407 unit texts byte-identical and every
+protected span byte-exact. Those counts are evidence for that run, not a
+promise that another corpus or scope will have the same counts.
+
+## Boundaries and failure meaning
+
+- A missing provider key, field-cipher key, migration, final accepted output,
+  or matching source hash is a configuration or integrity failure, not a
+  successful no-op.
+- The source data does contain the script text needed by the patcher. A missing
+  final accepted output is an implementation/run-state gap, not a source-data
+  limitation.
+- A patch receipt proves persistent-build production. Runtime replay/render
+  validation is a separate step; do not claim it from a successful tar alone.
 
 ## References
 
 - [native dependency provisioning](native-deps-provisioning.md)
+- [secure provider env files](secure-external-env-file.md)
 - [private corpus policy](fixtures-and-corpora.md)
-- [real-byte oracle](real-bytes-periodic-oracle.md)
 - [runtime fidelity policy](utsushi-fidelity-policy.md)
