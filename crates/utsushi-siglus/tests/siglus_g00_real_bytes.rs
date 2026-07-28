@@ -35,20 +35,28 @@ fn two_real_siglus_titles_decode_layered_g00_and_capture_redacted_pngs() {
 }
 
 #[test]
-fn second_real_siglus_title_routes_a_type3_asset_to_the_jpeg_decoder() {
+fn second_real_siglus_title_decodes_type3_encrypted_jpeg_into_visible_background() {
     let Some(root) = corpus_root(SECOND_TITLE_ENV) else {
         return;
     };
     let logical_path = find_type3_asset(&root)
-        .expect("second real Siglus title must contain a type-3 JPEG G00 asset");
+        .expect("second real Siglus title must contain a type-3 encrypted-JPEG G00 asset");
     let bytes = fs::read(root.join(&logical_path)).expect("read selected type-3 G00 asset");
+    let image = decode_siglus_g00(&bytes).expect("decode real type-3 encrypted JPEG");
 
     assert!(
-        matches!(
-            decode_siglus_g00(&bytes),
-            Err(utsushi_siglus::SiglusG00Error::Jpeg { .. })
-        ),
-        "the real type-3 payload is not a directly decodable JPEG after the common G00 header; do not silently treat it as an absent or blank image"
+        matches!(image.kind, utsushi_siglus::SiglusG00Kind::Jpeg),
+        "the real type-3 payload must identify as a decoded JPEG canvas"
+    );
+    assert_eq!((image.width, image.height), (1920, 1080));
+    let non_white_pixels = image
+        .pixels_rgba
+        .chunks_exact(4)
+        .filter(|pixel| pixel[..3] != [255, 255, 255])
+        .count();
+    assert_eq!(
+        non_white_pixels, 2_073_087,
+        "the decoded real type-3 background pixel population regressed"
     );
 }
 

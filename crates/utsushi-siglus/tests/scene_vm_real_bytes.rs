@@ -71,9 +71,9 @@ fn two_real_corpora_report_the_execution_frontier_and_preserve_static_overlap() 
             one.instructions > 0,
             "{label}: no real instructions executed"
         );
-        let expected_instructions = match label {
-            "corpus 1" => 66_191,
-            "corpus 2" => 75_719,
+        let (expected_instructions, expected_messages, expected_static_text) = match label {
+            "corpus 1" => (66_191, 82, 56_020),
+            "corpus 2" => (75_719, 49, 31_404),
             _ => unreachable!("fixed real-corpus labels"),
         };
         assert_eq!(
@@ -83,6 +83,14 @@ fn two_real_corpora_report_the_execution_frontier_and_preserve_static_overlap() 
         assert_eq!(
             one.text, one.overlap,
             "{label}: execution emitted text outside the static sequence"
+        );
+        assert_eq!(
+            one.text, expected_messages,
+            "{label}: execution message count regressed"
+        );
+        assert_eq!(
+            one.static_text, expected_static_text,
+            "{label}: static text population regressed"
         );
         assert!(
             !one.blockers.is_empty(),
