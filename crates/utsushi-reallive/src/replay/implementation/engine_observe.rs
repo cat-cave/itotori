@@ -323,8 +323,19 @@ impl ReplayEngine {
             }
             let pc_before = vm.pc();
             let scene_before = vm.scene();
-            let Ok(step) = vm.step(&self.store, &handles.registry, scheduler) else {
-                break PassTermination::VmError;
+            let step = match vm.step(&self.store, &handles.registry, scheduler) {
+                Ok(step) => step,
+                // A scene replayed from its own entrypoint has no caller
+                // frame. Its final `ret` / `rtl` therefore reports an empty
+                // stack even though it reached the same natural return point
+                // a caller-driven replay would consume. Keep this aligned
+                // with `drive_branch_following`, which reports the condition
+                // as `BranchTerminus::ReturnedToCaller` rather than a fault.
+                Err(crate::VmError::EmptyStack {
+                    expected: "subroutine" | "far_call",
+                    ..
+                }) => break PassTermination::NaturalTerminus,
+                Err(_) => break PassTermination::VmError,
             };
             match step {
                 StepOutcome::Advanced { event } => {

@@ -77,6 +77,39 @@ fn port_observation_keeps_a_fatal_branch_status_even_when_catalogue_finishes() {
 }
 
 #[test]
+fn port_observation_treats_top_level_rtl_after_text_as_a_natural_terminus() {
+    // A standalone scene has no far-call frame to pop. The VM deliberately
+    // names that as `EmptyStack { expected: "far_call" }`; the observer must
+    // translate this expected standalone return into a natural terminus rather
+    // than making a structure export falsely report replay truncation.
+    let engine = top_level_rtl_after_text_engine();
+    let opts = ReplayOpts {
+        step_budget: 32,
+        stop_at_first_pause: false,
+    };
+
+    let observation = engine.observe_for_port(1, &opts);
+
+    assert_eq!(
+        observation.play_order_source,
+        PlayOrderSource::BranchFollowing
+    );
+    assert!(
+        observation.scene.reached_natural_terminus,
+        "top-level rtl is the natural return of a standalone far-call scene"
+    );
+    assert_eq!(
+        observation
+            .play_order_lines
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect::<Vec<_>>(),
+        vec!["text before standalone rtl"],
+        "the selected branch path must retain its text instead of falling back"
+    );
+}
+
+#[test]
 fn selected_port_pass_falls_back_to_linear_when_branch_spins() {
     // A headless select/redraw SPIN: the branch pass emitted many
     // (duplicated) prompt lines but never reached a natural terminus
