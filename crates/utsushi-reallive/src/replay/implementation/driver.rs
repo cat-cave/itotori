@@ -144,10 +144,10 @@ pub(super) fn snapshot_identity_loop(
         let step = match vm.step(store, registry, scheduler) {
             Ok(step) => step,
             Err(err) => {
-                break ReplayOutcome::FatalDiagnostic {
+                return Err(ReplayError::FatalTerminus {
                     code: vm_error_semantic_code(&err).to_string(),
                     byte_offset_in_scene: pc_before,
-                };
+                });
             }
         };
         // Drain warnings so the VM's internal buffer does not grow

@@ -32,6 +32,51 @@ fn selected_port_pass_keeps_prompt_trace_aligned_with_its_lines() {
 }
 
 #[test]
+fn selected_port_pass_rejects_empty_branch_when_catalogue_did_not_finish_naturally() {
+    let (lines, prompts, source) = select_port_pass(
+        Vec::new(),
+        vec![prompt(1, "branch-failed-before-text")],
+        PassTermination::VmError,
+        vec![line("catalogue-line")],
+        vec![prompt(2, "catalogue-line")],
+        PassTermination::VmError,
+    );
+
+    assert!(
+        lines.is_empty(),
+        "a fatal empty branch must not borrow text from a catalogue that also failed"
+    );
+    assert_eq!(prompts.len(), 1);
+    assert_eq!(source, PlayOrderSource::BranchFollowing);
+}
+
+#[test]
+fn port_observation_keeps_a_fatal_branch_status_even_when_catalogue_finishes() {
+    let engine = fatal_after_text_engine();
+    let opts = ReplayOpts {
+        step_budget: 32,
+        stop_at_first_pause: false,
+    };
+    let observation = engine.observe_for_port(1, &opts);
+
+    assert_eq!(
+        observation.play_order_source,
+        PlayOrderSource::BranchFollowing
+    );
+    assert!(
+        !observation.scene.reached_natural_terminus,
+        "the selected fatal branch must not inherit the catalogue's natural terminus"
+    );
+    let snapshot_error = engine
+        .verify_branch_snapshot_restore_each_tick(1, &opts, HeadlessChoicePolicy::AlwaysFirst)
+        .expect_err("a fatal branch must not return SnapshotIdentityReport success");
+    assert!(
+        matches!(snapshot_error, ReplayError::FatalTerminus { .. }),
+        "fatal snapshot traversal must be typed as FatalTerminus, got {snapshot_error:?}"
+    );
+}
+
+#[test]
 fn selected_port_pass_falls_back_to_linear_when_branch_spins() {
     // A headless select/redraw SPIN: the branch pass emitted many
     // (duplicated) prompt lines but never reached a natural terminus

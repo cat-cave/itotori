@@ -51,6 +51,17 @@ fn semantic_and_unimplemented_engine() -> ReplayEngine {
     ReplayEngine::from_store(store, HashSet::new())
 }
 
+/// A branch that emits text then lands on an invalid instruction boundary;
+/// the linear catalogue advances past the jump and finishes normally.
+fn fatal_after_text_engine() -> ReplayEngine {
+    let (text, text_len) = textout(0, "branch text before fault");
+    let (jump, _) = goto_command(text_len, 1);
+    let scene = Scene::new(1, vec![text, jump]).expect("fatal-after-text scene");
+    let mut store = InMemorySceneStore::new();
+    store.insert(scene);
+    ReplayEngine::from_store(store, HashSet::from([(1, 0)]))
+}
+
 // Helpers for objbtn chain's port-pass prompt-trace alignment tests.
 fn prompt(id: u64, line_id: &str) -> crate::rlop::module_sel::SelectionPrompt {
     crate::rlop::module_sel::SelectionPrompt {

@@ -1,5 +1,28 @@
 use super::*;
 
+fn reject_incomplete_frame(skipped_object_count: usize) -> Result<(), String> {
+    if skipped_object_count == 0 {
+        return Ok(());
+    }
+    Err(format!(
+        "incomplete frame: {skipped_object_count} object(s) dropped during render"
+    ))
+}
+
+fn deterministic_json_after_successful_replay(log: ReplayLog) -> Result<String, String> {
+    if !matches!(
+        log.final_outcome,
+        crate::replay::ReplayOutcome::EndOfScene { .. }
+    ) {
+        return Err(format!(
+            "deterministic replay did not complete successfully: {:?}",
+            log.final_outcome
+        ));
+    }
+    log.to_deterministic_json()
+        .map_err(|error| format!("deterministic replay serialise failed: {error}"))
+}
+
 impl UtsushiReallivePort {
     /// Render the terminal graphics stack into BOTH a full-fidelity
     /// PRIVATE frame and the publish-redacted public E2 frame through the
@@ -58,6 +81,7 @@ impl UtsushiReallivePort {
                 SceneEmit::frame(root, run_id, &throwaway, &private_dir, true),
             )
             .map_err(|error| format!("frame emit failed: {error}"))?;
+        reject_incomplete_frame(shots.skipped_objects.len())?;
         Ok(shots.public)
     }
 
@@ -220,26 +244,13 @@ impl EnginePort for UtsushiReallivePort {
             step_budget: DETERMINISM_PROOF_STEP_BUDGET,
             stop_at_first_pause: false,
         };
-        let first = self
-            .engine
-            .replay_from(self.entry_scene, &determinism_opts)
-            .to_deterministic_json()
-            .map_err(|error| {
-                Self::lifecycle_error(
-                    LifecycleStage::Launch,
-                    format!("deterministic replay serialise failed: {error}"),
-                )
-            })?;
-        let second = self
-            .engine
-            .replay_from(self.entry_scene, &determinism_opts)
-            .to_deterministic_json()
-            .map_err(|error| {
-                Self::lifecycle_error(
-                    LifecycleStage::Launch,
-                    format!("deterministic replay serialise failed: {error}"),
-                )
-            })?;
+        let first = deterministic_json_after_successful_replay(
+            self.engine.replay_from(self.entry_scene, &determinism_opts),
+        )
+        .map_err(|error| Self::lifecycle_error(LifecycleStage::Launch, error))?;
+        let second_log = self.engine.replay_from(self.entry_scene, &determinism_opts);
+        let second = deterministic_json_after_successful_replay(second_log)
+            .map_err(|error| Self::lifecycle_error(LifecycleStage::Launch, error))?;
         self.deterministic_replay_verified = first == second;
         if !self.deterministic_replay_verified {
             return Err(Self::lifecycle_error(
@@ -335,5 +346,35 @@ impl EnginePort for UtsushiReallivePort {
             self.shut_down = true;
             Ok(PortShutdownOutcome::clean())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{deterministic_json_after_successful_replay, reject_incomplete_frame};
+    use crate::ReplayLog;
+    use crate::replay::{REPLAY_LOG_SCHEMA_VERSION, ReplayEvent, ReplayOutcome};
+
+    #[test]
+    fn incomplete_frame_rejects_the_port_success_path() {
+        let error = reject_incomplete_frame(1)
+            .expect_err("a dropped object must not be published as a successful port frame");
+        assert_eq!(error, "incomplete frame: 1 object(s) dropped during render");
+        assert!(reject_incomplete_frame(0).is_ok());
+    }
+
+    #[test]
+    fn fatal_replay_cannot_satisfy_determinism_proof() {
+        let error = deterministic_json_after_successful_replay(ReplayLog {
+            schema_version: REPLAY_LOG_SCHEMA_VERSION.to_string(),
+            scene_id: 1,
+            events: Vec::<ReplayEvent>::new(),
+            final_outcome: ReplayOutcome::FatalDiagnostic {
+                code: "synthetic.vm.failure".to_string(),
+                byte_offset_in_scene: 0,
+            },
+        })
+        .expect_err("identical fatal logs are not successful deterministic replay proof");
+        assert!(error.contains("did not complete successfully"));
     }
 }

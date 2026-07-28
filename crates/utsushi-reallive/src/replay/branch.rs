@@ -259,7 +259,10 @@ pub(super) fn select_port_pass(
         && branch_lines_show_spin(&branch_lines)
         && linear_termination == PassTermination::NaturalTerminus
         && !linear_lines.is_empty();
-    if branch_lines.is_empty() || (branch_spun && !linear_lines.is_empty()) {
+    let linear_finished_naturally = linear_termination == PassTermination::NaturalTerminus;
+    if linear_finished_naturally
+        && (branch_lines.is_empty() || (branch_spun && !linear_lines.is_empty()))
+    {
         (
             linear_lines,
             linear_prompts,
