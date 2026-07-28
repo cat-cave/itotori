@@ -13,6 +13,8 @@ use utsushi_core::{
     SemanticEvent, StatePath, StateTree, StateValue, replay_in_fresh_process, replay_log, run,
 };
 
+const FRESH_PROCESS_WORKER_ARG: &str = "--utsushi-playability-fresh-process-worker";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ProgramPoint {
     Intro,
@@ -216,8 +218,9 @@ fn fresh_process_checkpoints() -> String {
             "--exact",
             "fresh_process_worker_emits_checkpoints",
             "--nocapture",
+            "--",
+            FRESH_PROCESS_WORKER_ARG,
         ])
-        .env("UTSUSHI_PLAYABILITY_CHILD", "1")
         .output()
         .expect("start fresh replay process");
     assert!(
@@ -235,7 +238,7 @@ fn fresh_process_checkpoints() -> String {
 
 #[test]
 fn fresh_process_worker_emits_checkpoints() {
-    if std::env::var_os("UTSUSHI_PLAYABILITY_CHILD").is_none() {
+    if !std::env::args().any(|arg| arg == FRESH_PROCESS_WORKER_ARG) {
         return;
     }
     let run = run(&TwoOptionProgram::live(), two_option_log(1))
