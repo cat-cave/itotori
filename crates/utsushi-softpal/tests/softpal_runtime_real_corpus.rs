@@ -3,12 +3,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use kaifuu_softpal::{PacArchive, ScriptScan, TextDat};
+use kaifuu_softpal::{OpcodeScan, PacArchive, ScriptScan, TextDat};
 use utsushi_softpal::{SceneStep, SoftpalScene};
 
 const CORPORA: [&str; 2] = ["/scratch/corpus/softpal-1", "/scratch/corpus/softpal-2"];
 
-fn inputs(root: &Path) -> Option<(Vec<u8>, Vec<u8>, Vec<u8>)> {
+fn inputs(root: &Path) -> Option<(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>)> {
     let archive_bytes = fs::read(root.join("data.pac")).ok()?;
     let archive = PacArchive::parse(&archive_bytes).ok()?;
     let extract = |name| {
@@ -21,6 +21,7 @@ fn inputs(root: &Path) -> Option<(Vec<u8>, Vec<u8>, Vec<u8>)> {
         extract("SCRIPT.SRC")?,
         extract("TEXT.DAT")?,
         extract("POINT.DAT")?,
+        extract("MEM.DAT")?,
     ))
 }
 
@@ -39,7 +40,7 @@ fn dialogue_offsets(scene: &SoftpalScene) -> Vec<usize> {
 fn executes_two_proven_native_state_transitions_before_the_next_visible_gap() {
     for (index, root) in CORPORA.iter().enumerate() {
         let root = PathBuf::from(root);
-        let Some((script, textdat, points)) = inputs(&root) else {
+        let Some((script, textdat, points, mem_dat)) = inputs(&root) else {
             eprintln!(
                 "SKIP corpus {}: missing data.pac or VM inputs at {}",
                 index + 1,
@@ -47,10 +48,20 @@ fn executes_two_proven_native_state_transitions_before_the_next_visible_gap() {
             );
             continue;
         };
-        let first = SoftpalScene::execute_with_points(&script, &textdat, Some(&points))
-            .expect("VM input decodes");
-        let second = SoftpalScene::execute_with_points(&script, &textdat, Some(&points))
-            .expect("repeat VM input decodes");
+        let first = SoftpalScene::execute_with_points_and_mem_dat(
+            &script,
+            &textdat,
+            Some(&points),
+            Some(&mem_dat),
+        )
+        .expect("VM input decodes");
+        let second = SoftpalScene::execute_with_points_and_mem_dat(
+            &script,
+            &textdat,
+            Some(&points),
+            Some(&mem_dat),
+        )
+        .expect("repeat VM input decodes");
         assert_eq!(
             first,
             second,
@@ -83,10 +94,27 @@ fn executes_two_proven_native_state_transitions_before_the_next_visible_gap() {
         );
         assert_eq!(observed.len(), 0, "executed setup must not invent text");
         let diagnostics = first.diagnostic_frequencies();
+        let terminal_offset = first.diagnostics[0].offset;
+        let terminal = OpcodeScan::parse(&script)
+            .expect("opcode scan")
+            .instructions
+            .into_iter()
+            .find(|instruction| instruction.offset == terminal_offset)
+            .expect("terminal instruction exists");
         eprintln!(
-            "[corpus {}] first diagnostic={:?} instructions={}",
+            "[corpus {}] first diagnostic={:?} terminal_opcode={:02x} terminal_operands={:08x?} moments={} text={} choice={} branch={} instructions={}",
             index + 1,
             first.diagnostics.first(),
+            terminal.opcode.id(),
+            terminal
+                .operands()
+                .iter()
+                .map(|operand| operand.raw)
+                .collect::<Vec<_>>(),
+            first.steps.len(),
+            first.stats.dialogue_count,
+            first.stats.text_bearing_choice_count,
+            first.stats.branch_count,
             first.stats.instructions_executed
         );
         assert_eq!(
@@ -101,20 +129,20 @@ fn executes_two_proven_native_state_transitions_before_the_next_visible_gap() {
         );
         assert_eq!(
             first.diagnostics[0].signature,
-            "operand_tag_01",
+            "unimplemented_call_0012_001e",
             "corpus {} names its next visible gap",
             index + 1
         );
         assert_eq!(
             first.diagnostics[0].offset,
-            [200, 280][index],
+            [43164, 32892][index],
             "corpus {} next visible gap offset",
             index + 1
         );
         assert_eq!(
             first.stats.instructions_executed,
-            [143, 159][index],
-            "corpus {} advances to the operand-memory boundary",
+            [191, 183][index],
+            "corpus {} advances to the open-file boundary",
             index + 1
         );
         assert!(

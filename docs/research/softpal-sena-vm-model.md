@@ -70,9 +70,64 @@ return contract; this is bounded by one call signature plus a real-bytes proof.
 
 After the startup native calls, both staged titles reach operand tag `0x1` at
 different byte offsets. Sena decodes it as indirect user memory:
-`user_mem[vars[lo]]` [operand.rs:27-43](/scratch/oracles/sena-rs/crates/pal-script/src/operand.rs#L27-L43),
-with reads returning zero for an invalid index [runtime.rs:2827-2836](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L2827-L2836)
-and writes updating that same indexed bank [runtime.rs:2902-2911](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L2902-L2911).
-The compact VM deliberately stops there: it has no `user_mem` bank or a
-proven allocation/range contract, so treating the operand as zero would be a
-silent invented state transition.
+`user_mem[vars[lo]]` [operand.rs:27-43](/scratch/oracles/sena-rs/crates/pal-script/src/operand.rs#L27-L43).
+It allocates the user bank as 65,536 zeroed `i32` cells, described as matching
+the original engine [runtime.rs:32](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L32)
+and instantiated at [runtime.rs:957](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L957).
+Sena's read/write implementation returns zero or ignores a write for an
+invalid index [runtime.rs:2827-2836](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L2827-L2836),
+[runtime.rs:2902-2911](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L2902-L2911).
+
+The compact runtime implements that fixed allocation and in-range read/write
+contract, but deliberately diverges at an invalid index: a negative value or
+value >= 65,536 stops with `user_mem_index_out_of_range`. This is the task's
+stricter no-silent-fallback boundary; it does not treat unproven real-byte
+control flow as zero.
+
+The next reached call is `0x0012:0x000f` (`system_task_value`). It pops no
+arguments and reports the task-data value only while the native system latch
+is active [extsig.rs:5065-5070](/scratch/oracles/sena-rs/crates/pal-script/src/extsig.rs#L5065-L5070).
+The reference's portable handler consumes zero arguments and returns `1` for
+that active-latch path [runtime.rs:11169-11176](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L11169-L11176),
+which the compact VM uses rather than fabricating the launcher-owned task data.
+
+The subsequent tag-`0x6` operands are direct `MEM.DAT` words, not another
+unknown integer form. The decoder identifies their low 16 bits as `lo` and
+the next 12 bits as `bank` [operand.rs:27-49](/scratch/oracles/sena-rs/crates/pal-script/src/operand.rs#L27-L49).
+The reference reads them from a writable shadow initialized from raw
+`MEM.DAT` bytes [runtime.rs:1119-1134](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L1119-L1134)
+at word `bank + vars[lo] + 4`, with the four-word offset skipping the
+16-byte file header [runtime.rs:3053-3066](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L3053-L3066).
+The compact runtime requires this real archive asset, uses its bytes as the
+initial shadow, visibly rejects a negative address, and applies the
+reference's extension-on-write behavior [runtime.rs:2950-2957](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L2950-L2957).
+
+The next reached native call, `0x0012:0x0006` (`string_alloc`), pops one
+ignored value, clears a selected dynamic-string slot, advances modulo 16, and
+returns `0x10000000 | slot` [extsig.rs:4200-4230](/scratch/oracles/sena-rs/crates/pal-script/src/extsig.rs#L4200-L4230).
+The compact VM preserves the same observable stack, slot-clear, cursor, and
+handle behavior [runtime.rs:11218-11235](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L11218-L11235).
+
+Tag `0x5` is temporary memory, addressed as
+`temp_mem[(bank != 0 ? bank + argument_base : 0) + vars[lo]]`
+[operand.rs:37-49](/scratch/oracles/sena-rs/crates/pal-script/src/operand.rs#L37-L49),
+[runtime.rs:2847-2869](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L2847-L2869).
+The reference initializes 65,536 cells [runtime.rs:957-959](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L957-L959)
+and extends it on a non-negative write [runtime.rs:2921-2947](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L2921-L2947).
+The compact VM preserves that allocation and write extension; a negative or
+read-beyond-end access is a visible `temp_mem_index_out_of_range` stop, not a
+silent zero.
+
+The next named gap is `0x0012:0x001e` (`openfile`) in both staged titles. The
+reference pops one name handle, resolves it through resource or script-string
+storage, opens the named asset, and returns an opaque handle (or zero on a
+genuine lookup failure) [extsig.rs:4407-4433](/scratch/oracles/sena-rs/crates/pal-script/src/extsig.rs#L4407-L4433),
+[runtime.rs:11499-11538](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L11499-L11538).
+
+This is **"the source contains it, but I did not implement the extraction"**:
+the compact VM has the call bytes and the PAC, but does not yet carry a
+resource resolver, dynamic-string resolution, or file-handle table. It must
+therefore stop visibly rather than return a fabricated handle or zero. The
+specific next step is one `openfile` implementation plus those three bounded
+state surfaces, then a real-byte proof that records the resolved name and
+whether it maps to an archive entry; it is not a dialogue-decoding claim.
