@@ -329,6 +329,9 @@ fn diagnostic(error: &VmError) -> (String, u32, usize) {
             *scene_id,
             *offset,
         ),
+        VmError::UnsupportedElementPath {
+            scene_id, offset, ..
+        } => ("unsupported-element-path".to_string(), *scene_id, *offset),
         VmError::UnsupportedStageObjectProperty {
             scene_id,
             offset,

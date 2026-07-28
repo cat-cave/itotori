@@ -38,6 +38,8 @@ const OBJECT_SET_SCALE: i32 = 49;
 const OBJECT_SET_ROTATE: i32 = 50;
 const OBJECT_SET_CENTER: i32 = 158;
 const OBJECT_SET_CLIP: i32 = 160;
+const OBJECT_LIST_GET_SIZE: i32 = 3;
+const OBJECT_LIST_RESIZE: i32 = 4;
 
 /// Player-visible geometry for one root-stage object.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,7 +118,13 @@ pub(super) struct StageObjectTarget {
     op: Option<i32>,
 }
 
-pub(super) fn target(values: &[Value]) -> Option<StageObjectTarget> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum StageTarget {
+    Object(StageObjectTarget),
+    ObjectList { stage: i32, op: i32 },
+}
+
+pub(super) fn target(values: &[Value]) -> Option<StageTarget> {
     let values = values
         .iter()
         .map(|value| match value {
@@ -124,6 +132,22 @@ pub(super) fn target(values: &[Value]) -> Option<StageObjectTarget> {
             _ => None,
         })
         .collect::<Option<Vec<_>>>()?;
+    if let [FORM_STAGE, STAGE_OBJECT, ELM_ARRAY, stage, op] = values.as_slice() {
+        // The installed corpus uses the compact root-stage list form. The
+        // reference parses this as ChildListOp for 3/4, not as a slot property:
+        // siglus_scene_vm/src/runtime/forms/stage.rs:262-281.
+        if matches!(*op, OBJECT_LIST_GET_SIZE | OBJECT_LIST_RESIZE) {
+            return Some(StageTarget::ObjectList {
+                stage: *stage,
+                op: *op,
+            });
+        }
+        return Some(StageTarget::Object(StageObjectTarget {
+            stage: *stage,
+            slot: 0,
+            op: Some(*op),
+        }));
+    }
     let (stage, slot, tail) = match values.as_slice() {
         [
             FORM_STAGE,
@@ -153,26 +177,43 @@ pub(super) fn target(values: &[Value]) -> Option<StageObjectTarget> {
         _ => return None,
     };
     match tail {
-        [] => Some(StageObjectTarget {
+        [] => Some(StageTarget::Object(StageObjectTarget {
             stage,
             slot,
             op: None,
-        }),
-        [op] => Some(StageObjectTarget {
+        })),
+        [op] => Some(StageTarget::Object(StageObjectTarget {
             stage,
             slot,
             op: Some(*op),
-        }),
+        })),
         _ => None,
     }
 }
 
 pub(super) fn read(
     state: &VmState,
-    target: StageObjectTarget,
+    target: StageTarget,
     offset: usize,
     scene_id: u32,
 ) -> Result<Value, VmError> {
+    let StageTarget::Object(target) = target else {
+        let StageTarget::ObjectList { stage, op } = target else {
+            unreachable!();
+        };
+        return (op == OBJECT_LIST_GET_SIZE)
+            .then(|| {
+                Value::Int(
+                    state
+                        .stage_object_list_sizes
+                        .get(&stage)
+                        .copied()
+                        .or_else(|| state.stage_objects.get(&stage).map(|slots| slots.len()))
+                        .unwrap_or(0) as i32,
+                )
+            })
+            .ok_or_else(|| unsupported(scene_id, offset, "stage-object-list-read"));
+    };
     let op = target
         .op
         .ok_or_else(|| unsupported(scene_id, offset, "stage-object-reference"))?;
@@ -192,11 +233,18 @@ pub(super) fn read(
 
 pub(super) fn assign(
     state: &mut VmState,
-    target: StageObjectTarget,
+    target: StageTarget,
     value: i32,
     offset: usize,
     scene_id: u32,
 ) -> Result<(), VmError> {
+    let StageTarget::Object(target) = target else {
+        return Err(unsupported(
+            scene_id,
+            offset,
+            "stage-object-list-assignment",
+        ));
+    };
     let op = target
         .op
         .ok_or_else(|| unsupported(scene_id, offset, "stage-object-reference"))?;
@@ -212,12 +260,30 @@ pub(super) fn assign(
 
 pub(super) fn command(
     state: &mut VmState,
-    target: StageObjectTarget,
+    target: StageTarget,
     args: &[Value],
     arg_list_id: i32,
     offset: usize,
     scene_id: u32,
 ) -> Result<Value, VmError> {
+    if let StageTarget::ObjectList { stage, op } = target {
+        if op != OBJECT_LIST_RESIZE {
+            return Err(unsupported(scene_id, offset, "stage-object-list-command"));
+        }
+        let size = int(args, 0, scene_id, offset)?;
+        let size = usize::try_from(size)
+            .map_err(|_| unsupported(scene_id, offset, "stage-object-list-size"))?;
+        state.stage_object_list_sizes.insert(stage, size);
+        state
+            .stage_objects
+            .entry(stage)
+            .or_default()
+            .retain(|slot, _| *slot >= 0 && (*slot as usize) < size);
+        return Ok(Value::Int(0));
+    }
+    let StageTarget::Object(target) = target else {
+        unreachable!();
+    };
     let op = target
         .op
         .ok_or_else(|| unsupported(scene_id, offset, "stage-object-reference"))?;
@@ -425,5 +491,49 @@ fn unsupported(scene_id: u32, offset: usize, operation: &'static str) -> VmError
         scene_id,
         offset,
         operation,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compact_stage_object_list_resize_keeps_its_stage_for_picture_creation() {
+        let resize = target(&[
+            Value::Int(FORM_STAGE),
+            Value::Int(STAGE_OBJECT),
+            Value::Int(ELM_ARRAY),
+            Value::Int(1),
+            Value::Int(OBJECT_LIST_RESIZE),
+        ])
+        .expect("reference compact stage-list path is recognised");
+        let mut state = VmState::default();
+        command(&mut state, resize, &[Value::Int(2)], 0, 18, 7)
+            .expect("the authored list resize must execute");
+        let create = target(&[
+            Value::Int(FORM_STAGE),
+            Value::Int(STAGE_OBJECT),
+            Value::Int(ELM_ARRAY),
+            Value::Int(1),
+            Value::Int(OBJECT_CREATE_PCT),
+        ])
+        .expect("the compact path's implicit slot zero is recognised");
+        command(
+            &mut state,
+            create,
+            &[Value::Text("BG01A01".to_string()), Value::Int(1)],
+            1,
+            19,
+            7,
+        )
+        .expect("the following authored picture creation must execute");
+
+        assert_eq!(state.stage_object_list_sizes.get(&1), Some(&2));
+        assert_eq!(
+            state.stage_objects[&1][&0].identity.as_deref(),
+            Some("BG01A01"),
+            "removing compact list-path dispatch prevents the real background identity from reaching the compositor"
+        );
     }
 }
