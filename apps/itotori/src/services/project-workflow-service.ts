@@ -182,21 +182,35 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       ...options.costDrilldown,
       ...(options.costDrilldown?.projectId === undefined ? { projectId } : {}),
     };
-    const [decisions, cost, telemetry, drilldown, benchmarks] = await Promise.all([
+    const journalOptions = options.journal;
+    const journalLimit = Math.min(journalOptions?.limit ?? 10, 100);
+    const journalOffset = journalOptions?.offset ?? 0;
+    const selectedBranchId =
+      journalOptions?.localeBranchId ??
+      status.selectedLocaleBranchId ??
+      status.localeBranches[0]?.localeBranchId ??
+      null;
+    const [decisions, cost, telemetry, drilldown, benchmarks, journalPage] = await Promise.all([
       this.getDashboardDecisions(projectId),
       this.getCostReport(projectId),
       this.getTelemetry(projectId),
       this.getCostDrilldown(costDrilldown),
       this.getBenchmarkReports(projectId),
+      this.deps.runs.listDashboardRuns(this.deps.actor, {
+        projectId,
+        localeBranchId: selectedBranchId,
+        limit: journalLimit,
+        offset: journalOffset,
+      }),
     ]);
     return await composeProjectOverviewReadModel({
-      actor: this.deps.actor,
       status,
       decisions,
       cost,
       telemetry,
       costDrilldown: drilldown,
       benchmarkReports: benchmarks,
+      journalPage,
       options: { ...options, projectId },
     });
   }

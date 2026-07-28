@@ -11,19 +11,25 @@ import type { ProjectOverviewReadModel } from "../../project-overview-read-model
 import { useCapsOptional } from "../caps-context.js";
 import { apiClient } from "../client.js";
 import { useApiQuery } from "../use-api-resource.js";
+import { formatMicrosUsd } from "../format.js";
 import { EmptyState, ErrorState, LoadingState } from "../states.js";
 import { useWorkflowHandoffToasts } from "../workflow-handoff-toasts.js";
 import "./PassLedgerPanel.css";
 
 export type JournalRunSummaryRow = {
   journalRunId: string;
-  targetLocale: string;
+  status: ProjectOverviewReadModel["journal"]["rows"][number]["status"];
+  attemptedUnitCount: number;
+  finalizedUnitCount: number;
+  patchedUnitCount: number;
+  wallClock: string;
   physicalCallCount: number;
   physicalCallLabel: string;
-  writtenOutcomeCount: number;
-  candidateCount: number;
-  qaFindingCount: number;
-  contextRefCount: number;
+  spentMicrosUsd: number;
+  reservedMicrosUsd: number;
+  servedPairs: string;
+  patchBuild: string;
+  failure: string | null;
 };
 
 /** Pure, lossless display projection over the journal overview rows. */
@@ -32,16 +38,30 @@ export function journalRunSummaryRows(
 ): JournalRunSummaryRow[] {
   return rows.map((row) => ({
     journalRunId: row.journalRunId,
-    targetLocale: row.targetLocale,
+    status: row.status,
+    attemptedUnitCount: row.attemptedUnitCount,
+    finalizedUnitCount: row.finalizedUnitCount,
+    patchedUnitCount: row.patchedUnitCount,
+    wallClock: formatWallClock(row.wallClockMs),
     physicalCallCount: row.physicalCallCount,
     physicalCallLabel:
-      row.failedPhysicalCallCount === 0
+      row.deadlineFailureCount === 0
         ? String(row.physicalCallCount)
-        : `${row.physicalCallCount} (${row.failedPhysicalCallCount} failed)`,
-    writtenOutcomeCount: row.writtenOutcomeCount,
-    candidateCount: row.candidateCount,
-    qaFindingCount: row.qaFindingCount,
-    contextRefCount: row.contextRefCount,
+        : `${row.physicalCallCount} (${row.deadlineFailureCount} deadline)`,
+    spentMicrosUsd: row.spentMicrosUsd,
+    reservedMicrosUsd: row.reservedMicrosUsd,
+    servedPairs:
+      row.servedPairs.length === 0
+        ? "Not captured"
+        : row.servedPairs.map((pair) => `${pair.provider} / ${pair.model}`).join(", "),
+    patchBuild:
+      row.patchVersionId === null
+        ? "No patched build"
+        : row.patchStatus === "playable"
+          ? "Patched build produced"
+          : `Patch ${row.patchStatus ?? "status unavailable"}`,
+    failure:
+      row.deadlineFailureCount > 0 ? "Deadline expired; cost reservation remains in-flight." : null,
   }));
 }
 
@@ -399,8 +419,9 @@ function PassLedgerPanelReady({ overview }: { overview: ProjectOverviewReadModel
       <div className="itotori-metric-row" aria-label="Execution journal aggregate">
         <StatReadout label="Runs" value={totals.runCount} />
         <StatReadout label="Physical calls" value={totals.physicalCallCount} />
-        <StatReadout label="Candidates" value={totals.candidateCount} />
-        <StatReadout label="QA findings" value={totals.qaFindingCount} />
+        <StatReadout label="Attempted units" value={totals.attemptedUnitCount} />
+        <StatReadout label="Finalized units" value={totals.finalizedUnitCount} />
+        <StatReadout label="Patched units" value={totals.patchedUnitCount} />
       </div>
       <DataTable
         caption="Execution journal"
@@ -410,7 +431,26 @@ function PassLedgerPanelReady({ overview }: { overview: ProjectOverviewReadModel
             header: "Run",
             render: (row) => <code>{row.journalRunId}</code>,
           },
-          { key: "locale", header: "Locale", render: (row) => row.targetLocale },
+          { key: "status", header: "Status", render: (row) => <Badge status={row.status} /> },
+          {
+            key: "attempted",
+            header: "Attempted",
+            align: "end",
+            render: (row) => row.attemptedUnitCount,
+          },
+          {
+            key: "finalized",
+            header: "Finalized",
+            align: "end",
+            render: (row) => row.finalizedUnitCount,
+          },
+          {
+            key: "patched",
+            header: "Patched",
+            align: "end",
+            render: (row) => row.patchedUnitCount,
+          },
+          { key: "wall", header: "Wall-clock", align: "end", render: (row) => row.wallClock },
           {
             key: "calls",
             header: "Physical calls",
@@ -418,23 +458,26 @@ function PassLedgerPanelReady({ overview }: { overview: ProjectOverviewReadModel
             render: (row) => row.physicalCallLabel,
           },
           {
-            key: "written",
-            header: "Written",
+            key: "cost",
+            header: "Cost / reserved",
             align: "end",
-            render: (row) => row.writtenOutcomeCount,
+            render: (row) =>
+              `${formatMicrosUsd(row.spentMicrosUsd)} / ${formatMicrosUsd(row.reservedMicrosUsd)}`,
           },
           {
-            key: "candidates",
-            header: "Candidates",
-            align: "end",
-            render: (row) => row.candidateCount,
+            key: "served",
+            header: "Actually served",
+            render: (row) => row.servedPairs,
           },
-          { key: "qa", header: "QA", align: "end", render: (row) => row.qaFindingCount },
           {
-            key: "context",
-            header: "Context refs",
-            align: "end",
-            render: (row) => row.contextRefCount,
+            key: "patch",
+            header: "Patched build",
+            render: (row) => row.patchBuild,
+          },
+          {
+            key: "failure",
+            header: "Failure",
+            render: (row) => row.failure ?? "—",
           },
         ]}
         rows={rows}
@@ -445,16 +488,24 @@ function PassLedgerPanelReady({ overview }: { overview: ProjectOverviewReadModel
   );
 }
 
+function formatWallClock(milliseconds: number): string {
+  const seconds = Math.floor(milliseconds / 1_000);
+  const minutes = Math.floor(seconds / 60);
+  return minutes === 0 ? `${seconds}s` : `${minutes}m ${seconds % 60}s`;
+}
+
 function computeJournalTotals(rows: JournalRunSummaryRow[]): {
   runCount: number;
   physicalCallCount: number;
-  candidateCount: number;
-  qaFindingCount: number;
+  attemptedUnitCount: number;
+  finalizedUnitCount: number;
+  patchedUnitCount: number;
 } {
   return {
     runCount: rows.length,
     physicalCallCount: rows.reduce((total, row) => total + row.physicalCallCount, 0),
-    candidateCount: rows.reduce((total, row) => total + row.candidateCount, 0),
-    qaFindingCount: rows.reduce((total, row) => total + row.qaFindingCount, 0),
+    attemptedUnitCount: rows.reduce((total, row) => total + row.attemptedUnitCount, 0),
+    finalizedUnitCount: rows.reduce((total, row) => total + row.finalizedUnitCount, 0),
+    patchedUnitCount: rows.reduce((total, row) => total + row.patchedUnitCount, 0),
   };
 }

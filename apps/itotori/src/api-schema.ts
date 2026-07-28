@@ -4965,30 +4965,42 @@ function assertProjectOverviewJournalRow(
     "journalRunId",
     "projectId",
     "localeBranchId",
-    "sourceRevisionId",
-    "targetLocale",
+    "status",
     "createdAt",
+    "updatedAt",
+    "wallClockMs",
+    "attemptedUnitCount",
+    "finalizedUnitCount",
+    "patchedUnitCount",
     "physicalCallCount",
-    "failedPhysicalCallCount",
-    "writtenOutcomeCount",
-    "candidateCount",
-    "qaFindingCount",
-    "contextRefCount",
-    "speakerLabelCount",
+    "deadlineFailureCount",
+    "spentMicrosUsd",
+    "reservedMicrosUsd",
+    "servedPairs",
+    "patchVersionId",
+    "patchStatus",
   ]);
   assertString(row.journalRunId, `${label}.journalRunId`);
   assertString(row.projectId, `${label}.projectId`);
   assertString(row.localeBranchId, `${label}.localeBranchId`);
-  assertString(row.sourceRevisionId, `${label}.sourceRevisionId`);
-  assertString(row.targetLocale, `${label}.targetLocale`);
+  assertString(row.status, `${label}.status`);
   assertDateLike(row.createdAt, `${label}.createdAt`);
+  assertDateLike(row.updatedAt, `${label}.updatedAt`);
+  assertNonNegativeInteger(row.wallClockMs, `${label}.wallClockMs`);
+  assertNonNegativeInteger(row.attemptedUnitCount, `${label}.attemptedUnitCount`);
+  assertNonNegativeInteger(row.finalizedUnitCount, `${label}.finalizedUnitCount`);
+  assertNonNegativeInteger(row.patchedUnitCount, `${label}.patchedUnitCount`);
   assertNonNegativeInteger(row.physicalCallCount, `${label}.physicalCallCount`);
-  assertNonNegativeInteger(row.failedPhysicalCallCount, `${label}.failedPhysicalCallCount`);
-  assertNonNegativeInteger(row.writtenOutcomeCount, `${label}.writtenOutcomeCount`);
-  assertNonNegativeInteger(row.candidateCount, `${label}.candidateCount`);
-  assertNonNegativeInteger(row.qaFindingCount, `${label}.qaFindingCount`);
-  assertNonNegativeInteger(row.contextRefCount, `${label}.contextRefCount`);
-  assertNonNegativeInteger(row.speakerLabelCount, `${label}.speakerLabelCount`);
+  assertNonNegativeInteger(row.deadlineFailureCount, `${label}.deadlineFailureCount`);
+  assertNonNegativeInteger(row.spentMicrosUsd, `${label}.spentMicrosUsd`);
+  assertNonNegativeInteger(row.reservedMicrosUsd, `${label}.reservedMicrosUsd`);
+  for (const [index, pair] of asArray(row.servedPairs, `${label}.servedPairs`).entries()) {
+    const served = asStrictRecord(pair, `${label}.servedPairs[${index}]`, ["model", "provider"]);
+    assertString(served.model, `${label}.servedPairs[${index}].model`);
+    assertString(served.provider, `${label}.servedPairs[${index}].provider`);
+  }
+  assertNullableString(row.patchVersionId, `${label}.patchVersionId`);
+  assertNullableString(row.patchStatus, `${label}.patchStatus`);
 }
 
 function assertProjectOverviewBenchmarkHeadline(

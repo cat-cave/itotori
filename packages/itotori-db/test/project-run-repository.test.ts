@@ -235,6 +235,56 @@ describe("ItotoriProjectRunRepository", () => {
     }
   });
 
+  it("reads attempted, finalized, patched, and in-flight reservation facts for the dashboard", async () => {
+    const fixture = await runFixture("dashboard-run");
+    try {
+      await fixture.runs.createRun(actor, runInput(fixture, "run-dashboard", 1_000));
+      const lease = await fixture.runs.acquireLease(
+        actor,
+        leaseInput(fixture, "run-dashboard", "dashboard-driver"),
+      );
+      await fixture.runs.recordProgress(
+        actor,
+        progressInput(lease, "unit-attempted", "localize", "decoded", 0, 0),
+      );
+      await fixture.runs.recordProgress(
+        actor,
+        progressInput(lease, "unit-finalized", "localize", "accepted", 12, 100),
+      );
+      await fixture.runs.recordProgress(
+        actor,
+        progressInput(lease, "unit-patched", "localize", "patched", 18, 100),
+      );
+      await fixture.runs.reserveCost(actor, {
+        lease,
+        reservationId: "dashboard-in-flight",
+        reservedMicrosUsd: 40,
+      });
+
+      const page = await fixture.runs.listDashboardRuns(actor, {
+        projectId: fixture.projectId,
+        localeBranchId: fixture.localeBranchId,
+        limit: 10,
+        offset: 0,
+      });
+
+      expect(page.total).toBe(1);
+      expect(page.rows).toHaveLength(1);
+      expect(page.rows[0]).toMatchObject({
+        runId: "run-dashboard",
+        attemptedUnitCount: 3,
+        finalizedUnitCount: 2,
+        patchedUnitCount: 1,
+        spentMicrosUsd: 0,
+        reservedMicrosUsd: 40,
+        servedPairs: [],
+        patchVersionId: null,
+      });
+    } finally {
+      await fixture.context.close();
+    }
+  });
+
   it("renews a lease, rejects a stale fence, and resumes with a newer fencing token", async () => {
     const fixture = await runFixture("lease");
     try {
