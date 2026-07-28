@@ -1,5 +1,4 @@
-// reason: shared engine-port test-support helpers; not every consumer test
-// uses every helper.
+// reason: shared engine-port test-support helpers.
 #![allow(dead_code)]
 
 use std::collections::HashSet;
@@ -51,9 +50,7 @@ impl TextSurfaceSink for CollectingTextSink {
 
 // Asset packages
 
-/// An [`AssetPackage`] that resolves nothing — for structural / synthetic
-/// tests where no g00 art is composited (an empty graphics stack renders a
-/// background + the localized text overlay).
+/// An [`AssetPackage`] that resolves nothing for structural / synthetic tests.
 #[derive(Debug)]
 pub struct NullAssetPackage;
 
@@ -97,18 +94,35 @@ impl AssetPackage for NullAssetPackage {
     }
 }
 
-/// Minimal [`AssetPackage`] that resolves `g00/<NAME>.g00` against a real
-/// on-disk g00 directory (case-sensitive; the caller supplies the on-disk
-/// stem verbatim). Mirrors the render-real-bytes test helper so a real
-/// RealLive port composites real g00 art.
+/// Minimal [`AssetPackage`] for a real on-disk g00 directory. RealLive
+/// filenames are case-insensitive, even on a case-sensitive host filesystem.
 #[derive(Debug)]
 pub struct OnDiskG00Package {
     g00_dir: PathBuf,
+    missing_opens: AtomicU64,
 }
 
 impl OnDiskG00Package {
     pub fn new(g00_dir: PathBuf) -> Self {
-        Self { g00_dir }
+        Self {
+            g00_dir,
+            missing_opens: AtomicU64::new(0),
+        }
+    }
+
+    pub fn missing_open_count(&self) -> u64 {
+        self.missing_opens.load(Ordering::Relaxed)
+    }
+
+    fn canonical_name(&self, logical: &str) -> Option<String> {
+        let requested = strip_g00_prefix(logical);
+        fs::read_dir(&self.g00_dir)
+            .ok()?
+            .flatten()
+            .find_map(|entry| {
+                let name = entry.file_name().into_string().ok()?;
+                name.eq_ignore_ascii_case(requested).then_some(name)
+            })
     }
 }
 
@@ -125,18 +139,21 @@ impl AssetPackage for OnDiskG00Package {
         PackageDescriptor {
             id: "reallive-port-g00".to_string(),
             kind: PackageKind::Plaintext,
-            case_rule: CaseRule::Sensitive,
+            case_rule: CaseRule::InsensitiveAscii,
             source: PackageSource::PublicName("reallive-port-g00".to_string()),
             revision: None,
         }
     }
 
     fn case_rule(&self) -> CaseRule {
-        CaseRule::Sensitive
+        CaseRule::InsensitiveAscii
     }
 
     fn resolve(&self, logical: &str) -> VfsResult<AssetId> {
-        AssetId::from_parts(self.id(), logical)
+        let logical = self
+            .canonical_name(logical)
+            .map_or_else(|| logical.to_string(), |name| format!("g00/{name}"));
+        AssetId::from_parts(self.id(), &logical)
     }
 
     fn exists(&self, id: &AssetId) -> VfsResult<bool> {
@@ -156,7 +173,10 @@ impl AssetPackage for OnDiskG00Package {
 
     fn open(&self, id: &AssetId) -> VfsResult<AssetBytes> {
         let path = self.g00_dir.join(strip_g00_prefix(id.path()));
-        let bytes = fs::read(&path).map_err(|_| VfsError::AssetMissing { id: id.clone() })?;
+        let bytes = fs::read(&path).map_err(|_| {
+            self.missing_opens.fetch_add(1, Ordering::Relaxed);
+            VfsError::AssetMissing { id: id.clone() }
+        })?;
         Ok(AssetBytes::from(bytes))
     }
 
@@ -165,14 +185,7 @@ impl AssetPackage for OnDiskG00Package {
     }
 }
 
-// Synthetic Seen.txt envelope
-//
-// One-scene envelope whose scene 1 emits a Shift-JIS textout run
-// ("あいうえお") followed by `msg.pause` — copied verbatim from the
-// `replay_scene_synthetic` builder so the engine-port smoke can drive REAL
-// decoded text (through the whole scene-index → header → AVG32-inflate →
-// bytecode-decode → dispatch chain) without a game corpus.
-
+// Synthetic Seen.txt envelope for the engine-port smoke.
 const SLOT_BYTE_LEN: usize = 8;
 const DIRECTORY_BYTE_LEN: usize = 80_000;
 const SCENE_HEADER_BYTE_LEN: usize = 0x1d0;
@@ -196,15 +209,7 @@ fn build_envelope(scene_id: u16, scene_blob: &[u8]) -> Vec<u8> {
     envelope
 }
 
-/// A synthetic multi-message single-scene [`ReplayEngine`]: scene 1 emits
-/// `count` DISTINCT Shift-JIS text lines, each followed by `msg.pause`, so
-/// [`ReplayEngine::observe_for_port`] yields `count` distinct play-order
-/// messages. Used to prove the playthrough sequence renders frame `i` ==
-/// play-order message `i` (a regression emitting one frame, or repeating
-/// message #0, fails the correspondence assertions). The messages differ in
-/// LENGTH (1, 2, 3 chars) so they render to distinct pixels — and thus
-/// distinct sha256 frame ids — independent of font glyph coverage. `count`
-/// must be in `1..=3`.
+/// A synthetic multi-message engine for playthrough-order assertions.
 pub fn synthetic_multi_message_engine(count: usize) -> ReplayEngine {
     let blob = build_scene_blob_from_bytecode(&multi_message_bytecode(count));
     let envelope = build_envelope(1, &blob);
@@ -212,13 +217,7 @@ pub fn synthetic_multi_message_engine(count: usize) -> ReplayEngine {
 }
 
 fn multi_message_bytecode(count: usize) -> Vec<u8> {
-    // Distinct hiragana messages of DISTINCT LENGTHS (1, 2, 3 chars). The
-    // RealLive text decoder recognises 2-byte Shift-JIS runs (0x82 lead) as
-    // text; ASCII bytes are not emitted as text, so hiragana it is. The
-    // The bundled Noto CJK face renders every source glyph. The messages also
-    // differ in LENGTH, so they necessarily paint different extents and yield
-    // distinct SHA-256 frame ids. This proves the playthrough renders a new
-    // play-order message rather than repeating message #0.
+    // Messages differ in length, forcing distinct frame pixels and hashes.
     const MESSAGES: [&[[u8; 2]]; 3] = [
         &[[0x82, 0xa0]],                             // あ (len 1)
         &[[0x82, 0xa9], [0x82, 0xab]],               // かき (len 2)
@@ -321,16 +320,14 @@ fn push_xor(out: &mut Vec<u8>, byte: u8, mask_idx: &mut u8, mask: &[u8]) {
     *mask_idx = mask_idx.wrapping_add(1);
 }
 
-/// A never-registered set for engines whose text offsets are computed by
-/// `from_seen_bytes` (kept for symmetry with `from_store` callers).
+/// A never-registered set for `from_seen_bytes` callers.
 pub fn empty_shift_jis() -> HashSet<(u16, u32)> {
     HashSet::new()
 }
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// A unique, freshly-created temp directory (no `tempfile` dev-dep in this
-/// crate). The caller may leave cleanup to the OS temp reaper.
+/// A unique, freshly-created temp directory.
 pub fn managed_temp_dir(tag: &str) -> PathBuf {
     let nonce = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!(
