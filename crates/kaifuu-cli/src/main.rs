@@ -60,6 +60,12 @@ pub(crate) use partial_adapter::{
     DetectOutcome, build_partial_adapter_report, detect_or_partial, registered_adapter_for_game,
     write_partial_adapter_report,
 };
+#[cfg(test)]
+use patch_commands::promote_patch_staging_dir;
+use patch_commands::{
+    allocate_patch_staging_dir, canonical_existing_prefix, lexical_absolute_path,
+    path_is_inside_root, remove_patch_staging_dir, validate_patch_target_root,
+};
 pub(crate) use readiness_commands::run_readiness_command;
 pub(crate) use reallive_commands::{run_extract_reallive_bundle, run_patch_reallive_bundle};
 pub(crate) use rpgmaker_commands::{
@@ -69,12 +75,6 @@ pub(crate) use siglus_commands::run_siglus_command;
 pub(crate) use softpal_commands::run_softpal_command;
 pub(crate) use wolf_commands::run_wolf_command;
 pub(crate) use xp3_commands::run_xp3_command;
-#[cfg(test)]
-use patch_commands::promote_patch_staging_dir;
-use patch_commands::{
-    allocate_patch_staging_dir, canonical_existing_prefix, lexical_absolute_path,
-    path_is_inside_root, remove_patch_staging_dir, validate_patch_target_root,
-};
 
 fn main() {
     if let Err(error) = run() {
