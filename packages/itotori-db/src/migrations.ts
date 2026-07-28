@@ -113,74 +113,26 @@ export async function migrate(databaseUrl?: string): Promise<void> {
 }
 
 export const migrations = [
-  {
-    id: "0001_hello_world",
-    file: "0001_hello_world.sql",
-  },
-  {
-    id: "0002_permissions",
-    file: "0002_permissions.sql",
-  },
-  {
-    id: "0003_persistence_v02",
-    file: "0003_persistence_v02.sql",
-  },
-  {
-    id: "0004_feedback_sources",
-    file: "0004_feedback_sources.sql",
-  },
-  {
-    id: "0005_event_queue_foundation",
-    file: "0005_event_queue_foundation.sql",
-  },
-  {
-    id: "0006_model_registry_cost_ledger",
-    file: "0006_model_registry_cost_ledger.sql",
-  },
-  {
-    id: "0007_runtime_evidence_ingestion",
-    file: "0007_runtime_evidence_ingestion.sql",
-  },
-  {
-    id: "0008_bridge_import_status",
-    file: "0008_bridge_import_status.sql",
-  },
-  {
-    id: "0009_catalog_foundation",
-    file: "0009_catalog_foundation.sql",
-  },
-  {
-    id: "0010_catalog_candidate_matches",
-    file: "0010_catalog_candidate_matches.sql",
-  },
-  {
-    id: "0011_catalog_crawler_jobs",
-    file: "0011_catalog_crawler_jobs.sql",
-  },
-  {
-    id: "0012_optional_provider_run_timing",
-    file: "0012_optional_provider_run_timing.sql",
-  },
-  {
-    id: "0013_queue_read_permission",
-    file: "0013_queue_read_permission.sql",
-  },
-  {
-    id: "0014_catalog_completeness_evidence",
-    file: "0014_catalog_completeness_evidence.sql",
-  },
-  {
-    id: "0015_style_guide_versions",
-    file: "0015_style_guide_versions.sql",
-  },
+  { id: "0001_hello_world", file: "0001_hello_world.sql" },
+  { id: "0002_permissions", file: "0002_permissions.sql" },
+  { id: "0003_persistence_v02", file: "0003_persistence_v02.sql" },
+  { id: "0004_feedback_sources", file: "0004_feedback_sources.sql" },
+  { id: "0005_event_queue_foundation", file: "0005_event_queue_foundation.sql" },
+  { id: "0006_model_registry_cost_ledger", file: "0006_model_registry_cost_ledger.sql" },
+  { id: "0007_runtime_evidence_ingestion", file: "0007_runtime_evidence_ingestion.sql" },
+  { id: "0008_bridge_import_status", file: "0008_bridge_import_status.sql" },
+  { id: "0009_catalog_foundation", file: "0009_catalog_foundation.sql" },
+  { id: "0010_catalog_candidate_matches", file: "0010_catalog_candidate_matches.sql" },
+  { id: "0011_catalog_crawler_jobs", file: "0011_catalog_crawler_jobs.sql" },
+  { id: "0012_optional_provider_run_timing", file: "0012_optional_provider_run_timing.sql" },
+  { id: "0013_queue_read_permission", file: "0013_queue_read_permission.sql" },
+  { id: "0014_catalog_completeness_evidence", file: "0014_catalog_completeness_evidence.sql" },
+  { id: "0015_style_guide_versions", file: "0015_style_guide_versions.sql" },
   {
     id: "0016_affected_work_invalidated_outbox",
     file: "0016_affected_work_invalidated_outbox.sql",
   },
-  {
-    id: "0017_catalog_demand_facts",
-    file: "0017_catalog_demand_facts.sql",
-  },
+  { id: "0017_catalog_demand_facts", file: "0017_catalog_demand_facts.sql" },
   {
     id: "0018_locale_branch_unit_style_guide_provenance",
     file: "0018_locale_branch_unit_style_guide_provenance.sql",
@@ -189,138 +141,51 @@ export const migrations = [
     id: "0019_catalog_edition_milestone_mapping",
     file: "0019_catalog_edition_milestone_mapping.sql",
   },
-  {
-    id: "0020_terminology_glossary",
-    file: "0020_terminology_glossary.sql",
-  },
-  {
-    id: "0021_glossary_review_items",
-    file: "0021_glossary_review_items.sql",
-  },
+  { id: "0020_terminology_glossary", file: "0020_terminology_glossary.sql" },
+  { id: "0021_glossary_review_items", file: "0021_glossary_review_items.sql" },
   {
     id: "0022_branch_policy_glossary_references",
     file: "0022_branch_policy_glossary_references.sql",
   },
-  {
-    id: "0023_translation_memory",
-    file: "0023_translation_memory.sql",
-  },
-  {
-    id: "0024_exact_search_documents",
-    file: "0024_exact_search_documents.sql",
-  },
-  {
-    id: "0025_context_artifacts",
-    file: "0025_context_artifacts.sql",
-  },
+  { id: "0023_translation_memory", file: "0023_translation_memory.sql" },
+  { id: "0024_exact_search_documents", file: "0024_exact_search_documents.sql" },
+  { id: "0025_context_artifacts", file: "0025_context_artifacts.sql" },
   {
     id: "0026_context_artifact_source_unit_retention",
     file: "0026_context_artifact_source_unit_retention.sql",
   },
-  {
-    id: "0027_translation_batches",
-    file: "0027_translation_batches.sql",
-  },
-  {
-    id: "0028_runtime_conformance_results",
-    file: "0028_runtime_conformance_results.sql",
-  },
-  {
-    id: "0029_scene_summaries",
-    file: "0029_scene_summaries.sql",
-  },
-  {
-    id: "0030_engine_capability_reports",
-    file: "0030_engine_capability_reports.sql",
-  },
-  {
-    id: "0031_character_relationships",
-    file: "0031_character_relationships.sql",
-  },
-  {
-    id: "0032_route_choice_maps",
-    file: "0032_route_choice_maps.sql",
-  },
-  {
-    id: "0033_terminology_candidates",
-    file: "0033_terminology_candidates.sql",
-  },
-  {
-    id: "0034_draft_jobs",
-    file: "0034_draft_jobs.sql",
-  },
-  {
-    id: "0035_draft_attempt_provider_ledger",
-    file: "0035_draft_attempt_provider_ledger.sql",
-  },
-  {
-    id: "0036_asset_localization_decisions",
-    file: "0036_asset_localization_decisions.sql",
-  },
-  {
-    id: "0037_audit_findings",
-    file: "0037_audit_findings.sql",
-  },
+  { id: "0027_translation_batches", file: "0027_translation_batches.sql" },
+  { id: "0028_runtime_conformance_results", file: "0028_runtime_conformance_results.sql" },
+  { id: "0029_scene_summaries", file: "0029_scene_summaries.sql" },
+  { id: "0030_engine_capability_reports", file: "0030_engine_capability_reports.sql" },
+  { id: "0031_character_relationships", file: "0031_character_relationships.sql" },
+  { id: "0032_route_choice_maps", file: "0032_route_choice_maps.sql" },
+  { id: "0033_terminology_candidates", file: "0033_terminology_candidates.sql" },
+  { id: "0034_draft_jobs", file: "0034_draft_jobs.sql" },
+  { id: "0035_draft_attempt_provider_ledger", file: "0035_draft_attempt_provider_ledger.sql" },
+  { id: "0036_asset_localization_decisions", file: "0036_asset_localization_decisions.sql" },
+  { id: "0037_audit_findings", file: "0037_audit_findings.sql" },
   {
     id: "0038_draft_attempt_provider_ledger_provider_id_required",
     file: "0038_draft_attempt_provider_ledger_provider_id_required.sql",
   },
-  {
-    id: "0039_drop_unknown_cost_kind",
-    file: "0039_drop_unknown_cost_kind.sql",
-  },
-  {
-    id: "0040_provider_ledger_routing_posture",
-    file: "0040_provider_ledger_routing_posture.sql",
-  },
-  {
-    id: "0041_ledger_real_cost_enforcement",
-    file: "0041_ledger_real_cost_enforcement.sql",
-  },
-  {
-    id: "0042_provider_ledger_cache_discount",
-    file: "0042_provider_ledger_cache_discount.sql",
-  },
-  {
-    id: "0043_reviewer_queue_items",
-    file: "0043_reviewer_queue_items.sql",
-  },
-  {
-    id: "0044_job_dependencies",
-    file: "0044_job_dependencies.sql",
-  },
-  {
-    id: "0045_reviewer_queue_deferred",
-    file: "0045_reviewer_queue_deferred.sql",
-  },
-  {
-    id: "0046_engine_capability_evidence",
-    file: "0046_engine_capability_evidence.sql",
-  },
-  {
-    id: "0047_provider_id_pair_integrity",
-    file: "0047_provider_id_pair_integrity.sql",
-  },
-  {
-    id: "0048_catalog_conflict_unknown_kind",
-    file: "0048_catalog_conflict_unknown_kind.sql",
-  },
+  { id: "0039_drop_unknown_cost_kind", file: "0039_drop_unknown_cost_kind.sql" },
+  { id: "0040_provider_ledger_routing_posture", file: "0040_provider_ledger_routing_posture.sql" },
+  { id: "0041_ledger_real_cost_enforcement", file: "0041_ledger_real_cost_enforcement.sql" },
+  { id: "0042_provider_ledger_cache_discount", file: "0042_provider_ledger_cache_discount.sql" },
+  { id: "0043_reviewer_queue_items", file: "0043_reviewer_queue_items.sql" },
+  { id: "0044_job_dependencies", file: "0044_job_dependencies.sql" },
+  { id: "0045_reviewer_queue_deferred", file: "0045_reviewer_queue_deferred.sql" },
+  { id: "0046_engine_capability_evidence", file: "0046_engine_capability_evidence.sql" },
+  { id: "0047_provider_id_pair_integrity", file: "0047_provider_id_pair_integrity.sql" },
+  { id: "0048_catalog_conflict_unknown_kind", file: "0048_catalog_conflict_unknown_kind.sql" },
   {
     id: "0049_provider_ledger_token_count_source",
     file: "0049_provider_ledger_token_count_source.sql",
   },
-  {
-    id: "0050_workspace_correction_edits",
-    file: "0050_workspace_correction_edits.sql",
-  },
-  {
-    id: "0051_source_unit_asset_tombstone",
-    file: "0051_source_unit_asset_tombstone.sql",
-  },
-  {
-    id: "0052_job_lifecycle_events",
-    file: "0052_job_lifecycle_events.sql",
-  },
+  { id: "0050_workspace_correction_edits", file: "0050_workspace_correction_edits.sql" },
+  { id: "0051_source_unit_asset_tombstone", file: "0051_source_unit_asset_tombstone.sql" },
+  { id: "0052_job_lifecycle_events", file: "0052_job_lifecycle_events.sql" },
   {
     id: "0053_style_guide_version_reference_integrity",
     file: "0053_style_guide_version_reference_integrity.sql",
@@ -333,26 +198,14 @@ export const migrations = [
     id: "0055_catalog_seed_target_inert_status",
     file: "0055_catalog_seed_target_inert_status.sql",
   },
-  {
-    id: "0056_style_guide_approve_permission",
-    file: "0056_style_guide_approve_permission.sql",
-  },
+  { id: "0056_style_guide_approve_permission", file: "0056_style_guide_approve_permission.sql" },
   {
     id: "0057_style_guide_draft_provenance_backfill",
     file: "0057_style_guide_draft_provenance_backfill.sql",
   },
-  {
-    id: "0058_localization_pass_ledger",
-    file: "0058_localization_pass_ledger.sql",
-  },
-  {
-    id: "0059_auth_principal_schema",
-    file: "0059_auth_principal_schema.sql",
-  },
-  {
-    id: "0060_auth_permission_set_model",
-    file: "0060_auth_permission_set_model.sql",
-  },
+  { id: "0058_localization_pass_ledger", file: "0058_localization_pass_ledger.sql" },
+  { id: "0059_auth_principal_schema", file: "0059_auth_principal_schema.sql" },
+  { id: "0060_auth_permission_set_model", file: "0060_auth_permission_set_model.sql" },
   {
     id: "0061_auth_authorization_boundary_hardening",
     file: "0061_auth_authorization_boundary_hardening.sql",
@@ -365,86 +218,41 @@ export const migrations = [
     id: "0063_translation_memory_check_constraints",
     file: "0063_translation_memory_check_constraints.sql",
   },
-  {
-    id: "0064_benchmark_runs",
-    file: "0064_benchmark_runs.sql",
-  },
-  {
-    id: "0065_auth_provider_claim_quarantine",
-    file: "0065_auth_provider_claim_quarantine.sql",
-  },
-  {
-    id: "0066_auth_sso_settings",
-    file: "0066_auth_sso_settings.sql",
-  },
-  {
-    id: "0067_auth_members_manage_permission",
-    file: "0067_auth_members_manage_permission.sql",
-  },
-  {
-    id: "0068_scene_localization_coverage",
-    file: "0068_scene_localization_coverage.sql",
-  },
+  { id: "0064_benchmark_runs", file: "0064_benchmark_runs.sql" },
+  { id: "0065_auth_provider_claim_quarantine", file: "0065_auth_provider_claim_quarantine.sql" },
+  { id: "0066_auth_sso_settings", file: "0066_auth_sso_settings.sql" },
+  { id: "0067_auth_members_manage_permission", file: "0067_auth_members_manage_permission.sql" },
+  { id: "0068_scene_localization_coverage", file: "0068_scene_localization_coverage.sql" },
   {
     id: "0069_auth_permissions_manage_permission",
     file: "0069_auth_permissions_manage_permission.sql",
   },
-  {
-    id: "0070_auth_session_admin_tools",
-    file: "0070_auth_session_admin_tools.sql",
-  },
-  {
-    id: "0071_wiki_brand_contexts",
-    file: "0071_wiki_brand_contexts.sql",
-  },
-  {
-    id: "0072_auth_account_billing_seats",
-    file: "0072_auth_account_billing_seats.sql",
-  },
-  {
-    id: "0073_model_routing_settings",
-    file: "0073_model_routing_settings.sql",
-  },
-  {
-    id: "0074_translation_scope_settings",
-    file: "0074_translation_scope_settings.sql",
-  },
-  {
-    id: "0075_localization_pass_run_configs",
-    file: "0075_localization_pass_run_configs.sql",
-  },
+  { id: "0070_auth_session_admin_tools", file: "0070_auth_session_admin_tools.sql" },
+  { id: "0071_wiki_brand_contexts", file: "0071_wiki_brand_contexts.sql" },
+  { id: "0072_auth_account_billing_seats", file: "0072_auth_account_billing_seats.sql" },
+  { id: "0073_model_routing_settings", file: "0073_model_routing_settings.sql" },
+  { id: "0074_translation_scope_settings", file: "0074_translation_scope_settings.sql" },
+  { id: "0075_localization_pass_run_configs", file: "0075_localization_pass_run_configs.sql" },
   {
     id: "0076_localization_attempt_outcome_journal",
     file: "0076_localization_attempt_outcome_journal.sql",
   },
-  {
-    id: "0077_retire_localization_pass_ledger",
-    file: "0077_retire_localization_pass_ledger.sql",
-  },
+  { id: "0077_retire_localization_pass_ledger", file: "0077_retire_localization_pass_ledger.sql" },
   {
     id: "0078_retire_draft_attempt_provider_ledger",
     file: "0078_retire_draft_attempt_provider_ledger.sql",
   },
-  {
-    id: "0079_invocation_supervisor_lifecycle",
-    file: "0079_invocation_supervisor_lifecycle.sql",
-  },
+  { id: "0079_invocation_supervisor_lifecycle", file: "0079_invocation_supervisor_lifecycle.sql" },
   {
     id: "0080_localization_run_leases_and_unit_claims",
     file: "0080_localization_run_leases_and_unit_claims.sql",
   },
-  {
-    id: "0081_atomic_cost_reservations",
-    file: "0081_atomic_cost_reservations.sql",
-  },
+  { id: "0081_atomic_cost_reservations", file: "0081_atomic_cost_reservations.sql" },
   {
     id: "0082_backfill_localization_run_cost_accounts",
     file: "0082_backfill_localization_run_cost_accounts.sql",
   },
-  {
-    id: "0083_context_entry_versions",
-    file: "0083_context_entry_versions.sql",
-  },
+  { id: "0083_context_entry_versions", file: "0083_context_entry_versions.sql" },
   {
     id: "0084_retire_legacy_semantic_agent_tables",
     file: "0084_retire_legacy_semantic_agent_tables.sql",
@@ -472,10 +280,7 @@ export const migrations = [
     file: "0088_playable_patch_idempotent_membership.sql",
     legacyIds: ["0086_playable_patch_idempotent_membership"],
   },
-  {
-    id: "0089_playtester_context_categories",
-    file: "0089_playtester_context_categories.sql",
-  },
+  { id: "0089_playtester_context_categories", file: "0089_playtester_context_categories.sql" },
   {
     // This shipped briefly as 0089 on the result-revision branch before
     // origin/main claimed that number for context categories. Its SQL is
@@ -489,22 +294,13 @@ export const migrations = [
     id: "0091_iterative_patch_versioning_and_playtest_feedback",
     file: "0091_iterative_patch_versioning_and_playtest_feedback.sql",
   },
-  {
-    id: "0092_retire_reviewer_queue",
-    file: "0092_retire_reviewer_queue.sql",
-  },
-  {
-    id: "0093_retire_glossary_review_items",
-    file: "0093_retire_glossary_review_items.sql",
-  },
+  { id: "0092_retire_reviewer_queue", file: "0092_retire_reviewer_queue.sql" },
+  { id: "0093_retire_glossary_review_items", file: "0093_retire_glossary_review_items.sql" },
   {
     id: "0094_retire_workspace_correction_history",
     file: "0094_retire_workspace_correction_history.sql",
   },
-  {
-    id: "0095_retire_reviewer_permission_seed",
-    file: "0095_retire_reviewer_permission_seed.sql",
-  },
+  { id: "0095_retire_reviewer_permission_seed", file: "0095_retire_reviewer_permission_seed.sql" },
   {
     id: "0096_retire_scene_localization_coverage",
     file: "0096_retire_scene_localization_coverage.sql",
@@ -525,42 +321,18 @@ export const migrations = [
     id: "0100_backfill_terminal_cost_reservations",
     file: "0100_backfill_terminal_cost_reservations.sql",
   },
-  {
-    id: "0101_rebuilt_llm_persistence",
-    file: "0101_rebuilt_llm_persistence.sql",
-  },
+  { id: "0101_rebuilt_llm_persistence", file: "0101_rebuilt_llm_persistence.sql" },
   {
     id: "0102_rebuilt_llm_history_truncate_guard",
     file: "0102_rebuilt_llm_history_truncate_guard.sql",
   },
-  {
-    id: "0103_llm_attempt_admission_exposure",
-    file: "0103_llm_attempt_admission_exposure.sql",
-  },
-  {
-    id: "0104_content_read_permission",
-    file: "0104_content_read_permission.sql",
-  },
-  {
-    id: "0105_llm_served_pair_quarantine",
-    file: "0105_llm_served_pair_quarantine.sql",
-  },
-  {
-    id: "0106_llm_transcript_snapshots",
-    file: "0106_llm_transcript_snapshots.sql",
-  },
-  {
-    id: "0107_runtime_artifact_uri_parity",
-    file: "0107_runtime_artifact_uri_parity.sql",
-  },
-  {
-    id: "0108_llm_explicit_unknown_quarantine",
-    file: "0108_llm_explicit_unknown_quarantine.sql",
-  },
-  {
-    id: "0109_wiki_snapshot_binding",
-    file: "0109_wiki_snapshot_binding.sql",
-  },
+  { id: "0103_llm_attempt_admission_exposure", file: "0103_llm_attempt_admission_exposure.sql" },
+  { id: "0104_content_read_permission", file: "0104_content_read_permission.sql" },
+  { id: "0105_llm_served_pair_quarantine", file: "0105_llm_served_pair_quarantine.sql" },
+  { id: "0106_llm_transcript_snapshots", file: "0106_llm_transcript_snapshots.sql" },
+  { id: "0107_runtime_artifact_uri_parity", file: "0107_runtime_artifact_uri_parity.sql" },
+  { id: "0108_llm_explicit_unknown_quarantine", file: "0108_llm_explicit_unknown_quarantine.sql" },
+  { id: "0109_wiki_snapshot_binding", file: "0109_wiki_snapshot_binding.sql" },
   {
     id: "0110_legacy_runtime_artifact_uri_parity",
     file: "0110_legacy_runtime_artifact_uri_parity.sql",
@@ -569,14 +341,8 @@ export const migrations = [
     id: "0111_retire_journal_finalizer_context_artifacts",
     file: "0111_retire_journal_finalizer_context_artifacts.sql",
   },
-  {
-    id: "0112_retire_benchmark_runs",
-    file: "0112_retire_benchmark_runs.sql",
-  },
-  {
-    id: "0113_project_engine_binding",
-    file: "0113_project_engine_binding.sql",
-  },
+  { id: "0112_retire_benchmark_runs", file: "0112_retire_benchmark_runs.sql" },
+  { id: "0113_project_engine_binding", file: "0113_project_engine_binding.sql" },
   {
     id: "0114_project_run_progress_cost_leases",
     file: "0114_project_run_progress_cost_leases.sql",
@@ -585,10 +351,7 @@ export const migrations = [
     id: "0115_one_active_project_run_per_branch",
     file: "0115_one_active_project_run_per_branch.sql",
   },
-  {
-    id: "0116_llm_provider_attribution_ledger",
-    file: "0116_llm_provider_attribution_ledger.sql",
-  },
+  { id: "0116_llm_provider_attribution_ledger", file: "0116_llm_provider_attribution_ledger.sql" },
   {
     id: "0117_release_terminal_project_run_cost_reservations",
     file: "0117_release_terminal_project_run_cost_reservations.sql",

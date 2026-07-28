@@ -21,7 +21,7 @@ if (process.argv[1] !== undefined && path.resolve(process.argv[1]) === scriptPat
 
 export function verifyEventQueueIndexAlignment(options = {}) {
   const paths = verifierPaths(options);
-  const schemaSource = readFileSync(paths.schemaPath, "utf8");
+  const schemaSource = readSchemaSource(paths.schemaPath);
   const migrationSources = readMigrationSources(paths.migrationsDir);
   const schemaIndexes = extractSchemaIndexes(schemaSource);
   const migrationIndexes = extractMigrationIndexes(migrationSources);
@@ -127,6 +127,20 @@ function readMigrationSources(migrationsDir) {
       file,
       source: readFileSync(path.join(migrationsDir, file), "utf8"),
     }));
+}
+
+function readSchemaSource(schemaPath) {
+  const facade = readFileSync(schemaPath, "utf8");
+  const modulePattern = /^export \* from "(\.\/[^"\n]+)";$/gmu;
+  const modules = [...facade.matchAll(modulePattern)].map((match) => match[1]);
+  if (modules.length === 0) return facade;
+
+  return [
+    facade,
+    ...modules.map((module) =>
+      readFileSync(path.resolve(path.dirname(schemaPath), module.replace(/\.js$/u, ".ts")), "utf8"),
+    ),
+  ].join("\n");
 }
 
 function extractPgTableCall(source, exportName) {
