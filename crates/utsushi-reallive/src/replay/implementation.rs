@@ -108,6 +108,16 @@ pub enum ReplayError {
         /// Reason string.
         reason: String,
     },
+    /// A VM diagnostic ended a proof traversal before it completed.
+    #[error(
+        "utsushi.reallive.replay.fatal_terminus: code={code} byte_offset_in_scene={byte_offset_in_scene}"
+    )]
+    FatalTerminus {
+        /// Stable semantic code from the VM diagnostic.
+        code: String,
+        /// Program counter at which the diagnostic occurred.
+        byte_offset_in_scene: u32,
+    },
     /// Deterministic JSON serialisation failed.
     #[error("utsushi.reallive.replay.serialize_failure: {reason}")]
     SerializeFailure {

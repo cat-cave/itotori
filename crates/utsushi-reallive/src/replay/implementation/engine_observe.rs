@@ -176,6 +176,12 @@ impl ReplayEngine {
             linear_prompts,
             linear_termination,
         );
+        // The terminal-status field describes the pass that supplied the
+        // port-facing text, never the other observation pass.
+        let reached_natural_terminus = match play_order_source {
+            PlayOrderSource::BranchFollowing => branch.reached_natural_terminus,
+            PlayOrderSource::LinearCatalogue => linear.reached_natural_terminus,
+        };
 
         let mut audio_events = branch.audio_events;
         audio_events.extend(linear.audio_events);
@@ -193,8 +199,7 @@ impl ReplayEngine {
                 audio_events,
                 graphics_stack,
                 steps: branch.steps.saturating_add(linear.steps),
-                reached_natural_terminus: branch.reached_natural_terminus
-                    || linear.reached_natural_terminus,
+                reached_natural_terminus,
             },
         }
     }
