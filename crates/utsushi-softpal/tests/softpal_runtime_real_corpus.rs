@@ -36,7 +36,7 @@ fn dialogue_offsets(scene: &SoftpalScene) -> Vec<usize> {
 }
 
 #[test]
-fn progresses_past_the_empty_native_registry_without_inventing_callbacks() {
+fn executes_two_proven_native_state_transitions_before_the_next_visible_gap() {
     for (index, root) in CORPORA.iter().enumerate() {
         let root = PathBuf::from(root);
         let Some((script, textdat, points)) = inputs(&root) else {
@@ -81,40 +81,39 @@ fn progresses_past_the_empty_native_registry_without_inventing_callbacks() {
             "corpus {} emitted dialogue remains an ordered oracle prefix",
             index + 1
         );
-        assert_eq!(observed.len(), 0, "empty native state must not invent text");
+        assert_eq!(observed.len(), 0, "state setup must not invent text");
         let diagnostics = first.diagnostic_frequencies();
         assert_eq!(
             first.stats.unresolved_construct_count,
             first.diagnostics.len()
         );
         assert_eq!(
-            diagnostics.get("native_callback_registry_population_unavailable"),
-            Some(&1),
-            "corpus {} records the unavailable launcher population",
+            first.diagnostics.len(),
+            1,
+            "corpus {} stops at one named unimplemented call",
             index + 1
         );
         assert_eq!(
-            diagnostics.get("debug_window_state_unavailable"),
-            Some(&1),
-            "corpus {} stops at the unshipped debug-window state",
+            first.diagnostics[0].signature,
+            "unimplemented_call_0009_0034",
+            "corpus {} names its next unimplemented call",
             index + 1
         );
         assert_eq!(
             first.diagnostics[0].offset,
-            [0x28, 0x88][index],
-            "corpus {} reaches the proven task-scheduler target",
+            [72, 168][index],
+            "corpus {} next unimplemented call offset",
             index + 1
         );
         assert_eq!(
             first.stats.instructions_executed,
-            [6, 14][index],
-            "corpus {} traverses the script after its empty native registry",
+            [7, 15][index],
+            "corpus {} advances beyond the former false blocker",
             index + 1
         );
-        assert_eq!(
-            first.diagnostics.len(),
-            2,
-            "corpus {} retains both the registry population and next native-call blockers",
+        assert!(
+            first.stats.work_process_attached,
+            "corpus {} records the modeled work-process attachment",
             index + 1
         );
         eprintln!(
