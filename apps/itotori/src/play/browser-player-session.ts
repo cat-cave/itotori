@@ -230,8 +230,9 @@ class LivePlayerChild {
       "--run-id",
       runId,
       "--redaction",
-      reveal ? "off" : "on",
+      "on",
     ];
+    if (reveal) args.push("--reveal");
     return new LivePlayerChild(
       spawn(resolved.command, args, { env: scrubLiveProviderSecrets(env), stdio: "pipe" }),
     );

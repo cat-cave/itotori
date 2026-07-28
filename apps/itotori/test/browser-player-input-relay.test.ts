@@ -30,6 +30,7 @@ import {
 const STUB_ENGINE = `#!/usr/bin/env node
 const args = process.argv.slice(2);
 const redaction = args[args.indexOf("--redaction") + 1] ?? "unset";
+const reveal = args.includes("--reveal");
 let pointer = 1000;
 let received = null;
 const emit = () => {
@@ -43,6 +44,7 @@ const emit = () => {
       frame: null,
       received,
       redaction,
+      reveal,
     }) + "\\n",
   );
 };
@@ -88,7 +90,11 @@ const START = {
   scene: 7,
 };
 
-type Relayed = { received: { type: string; index?: number } | null; redaction: string };
+type Relayed = {
+  received: { type: string; index?: number } | null;
+  redaction: string;
+  reveal: boolean;
+};
 
 describe("browser player input relay", () => {
   it("returns a distinct VM address for every input, never the opening state again", async () => {
@@ -128,15 +134,17 @@ describe("browser player input relay", () => {
     expect(state.received).toEqual({ type: "pointer" });
   });
 
-  it("launches the engine with the redaction posture selected by the server", async () => {
+  it("keeps the public artifact redacted even when the server authorizes a private frame", async () => {
     const manager = await managerWithStubEngine();
     const revealed = (await manager.start(START, true)) as unknown as Relayed;
     manager.close((revealed as unknown as { sessionId: string }).sessionId);
-    expect(revealed.redaction).toBe("off");
+    expect(revealed.redaction).toBe("on");
+    expect(revealed.reveal).toBe(true);
 
     const guarded = (await manager.start(START, false)) as unknown as Relayed;
     manager.close((guarded as unknown as { sessionId: string }).sessionId);
     expect(guarded.redaction).toBe("on");
+    expect(guarded.reveal).toBe(false);
   });
 
   it("refuses an input for a session it is not holding", async () => {
