@@ -8,8 +8,9 @@
 //! asks for. Disagree on any of them and the prompt finds nothing, advances
 //! past itself, and the branch after it reads a register nobody wrote.
 
-use super::{ButtonOptions, GraphicsLayer, GraphicsObject, GraphicsRuntime};
+use super::GraphicsRuntime;
 use crate::graphics_objects::GRAPHICS_OBJECT_SLOT_COUNT;
+use crate::graphics_objects::{ButtonOptions, GraphicsLayer, GraphicsObject};
 
 /// The button group a binding belongs to when the bytecode names none, and
 /// the group a selection asks for when it names none. Both the short

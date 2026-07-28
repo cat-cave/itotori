@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -73,6 +73,23 @@ test("a file at or below the threshold is never a violation", () => {
 test("a missing/empty whitelist makes the cap absolute (no file over threshold)", () => {
   assert.equal(evaluateCheck(counts({ [BIG]: 501 }), emptyWhitelist()).ok, false);
   assert.equal(evaluateCheck(counts({ "crates/x/src/ok.rs": 500 }), emptyWhitelist()).ok, true);
+});
+
+test("repository enforces the absolute cap with no grandfather file present", () => {
+  const repositoryWhitelist = join(here, "lint", "file-line-cap-whitelist.json");
+  assert.equal(existsSync(repositoryWhitelist), false);
+
+  const repository = runCli();
+  assert.equal(repository.code, 0);
+  assert.match(repository.stdout, /cap is absolute/u);
+
+  const dir = mkdtempSync(join(tmpdir(), "linecap-absolute-"));
+  const probe = join(dir, "big.rs");
+  const absentWhitelist = join(dir, "absent-whitelist.json");
+  writeFileSync(probe, `${"x\n".repeat(THRESHOLD + 1)}`);
+  const rejected = runCli("--whitelist", absentWhitelist, probe);
+  assert.equal(rejected.code, 1);
+  assert.match(rejected.stderr, /NEW/u);
 });
 
 test("--update refuses a NEW oversized entry (cannot grandfather growth)", () => {
