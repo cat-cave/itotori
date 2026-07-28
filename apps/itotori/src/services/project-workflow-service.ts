@@ -14,7 +14,6 @@ import type {
   LocaleBranchIdentity,
   ProjectCostReport,
   ProjectDashboardStatus,
-  ProjectRunPortfolioProgressSummary,
   ProjectTelemetryTimeseries,
   RuntimeDashboardStatus,
 } from "@itotori/db";
@@ -44,6 +43,7 @@ import type {
   FindingRecordResult,
   ItotoriProjectWorkflowPort,
   LaunchLocalizationPassResult,
+  ProjectPortfolioEntry,
   RuntimeIngestResult,
 } from "./project-operations-port.js";
 import { benchmarkArtifactInput } from "./project-workflow-benchmark.js";
@@ -72,11 +72,6 @@ export type ProjectWorkflowServiceDeps = {
   conformance: ItotoriConformanceRepositoryPort;
   decodeExtract?: DecodeExtractPort;
   defaultTargetLocale: string;
-};
-
-/** The existing dashboard status extended with the live cross-run rollup. */
-export type ProjectPortfolioEntry = ProjectDashboardStatus & {
-  progress: ProjectRunPortfolioProgressSummary;
 };
 
 /**
@@ -149,6 +144,10 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
   }
 
   async getDashboardStatus(projectId?: string): Promise<ProjectDashboardStatus> {
+    return await this.deps.projects.getDashboardStatus(projectId);
+  }
+
+  async getDashboardStatusForProject(projectId: string): Promise<ProjectDashboardStatus> {
     return await this.deps.projects.getDashboardStatus(projectId);
   }
 
