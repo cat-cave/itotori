@@ -1,7 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const databaseClient = {
+  connect: vi.fn(),
+  query: vi.fn(),
+  end: vi.fn(),
+};
+
+function MockDatabaseClient(): typeof databaseClient {
+  return databaseClient;
+}
+
+vi.mock("pg", () => ({
+  default: {
+    Client: MockDatabaseClient,
+  },
+}));
 
 import {
   AuditFindingsLoadError,
+  loadAuditFindingsByNode,
   rowsToByNode,
   type AuditFindingsByNode,
 } from "../src/db-audit-findings.js";
@@ -27,6 +44,38 @@ const provenance: Provenance = {
   commitsBehind: 0,
   originMainKnown: true,
 };
+
+afterEach(() => {
+  databaseClient.connect.mockReset();
+  databaseClient.query.mockReset();
+  databaseClient.end.mockReset();
+});
+
+describe("loadAuditFindingsByNode", () => {
+  it("surfaces a database shutdown failure after a successful query", async () => {
+    databaseClient.connect.mockResolvedValue(undefined);
+    databaseClient.query.mockResolvedValue({ rows: [] });
+    databaseClient.end.mockRejectedValue(new Error("forced shutdown failure"));
+
+    await expect(loadAuditFindingsByNode("postgres://audit-test")).rejects.toMatchObject({
+      code: "shutdown_failed",
+      message: "failed to close itotori_audit_findings database client: forced shutdown failure",
+    });
+    expect(databaseClient.end).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains the query failure when shutdown also fails", async () => {
+    databaseClient.connect.mockRejectedValue(new Error("forced connection failure"));
+    databaseClient.end.mockRejectedValue(new Error("forced shutdown failure"));
+
+    await expect(loadAuditFindingsByNode("postgres://audit-test")).rejects.toMatchObject({
+      code: "query_failed",
+      message:
+        "failed to query itotori_audit_findings: forced connection failure; database client shutdown also failed: forced shutdown failure",
+      shutdownError: new Error("forced shutdown failure"),
+    });
+  });
+});
 
 describe("rowsToByNode", () => {
   it("buckets rows by node_id and counts open findings per severity", () => {

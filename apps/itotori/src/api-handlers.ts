@@ -2084,9 +2084,8 @@ async function routeReadOnlyItotoriApiRequest(
       );
     }
     const localeBranch =
-      dashboard.localeBranches.find(
-        (branch: any) => branch.localeBranchId === scope.localeBranchId,
-      ) ?? null;
+      dashboard.localeBranches.find((branch) => branch.localeBranchId === scope.localeBranchId) ??
+      null;
     if (localeBranch === null) {
       return errorBody(
         404,

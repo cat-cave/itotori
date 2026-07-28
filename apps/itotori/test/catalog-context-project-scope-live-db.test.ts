@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import type { ProjectDashboardStatus } from "@itotori/db";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import { handleItotoriApiRequest } from "../src/api-handlers.js";
 import {
@@ -13,6 +14,11 @@ type CatalogContextProject = {
   localeBranchId: string;
   targetLocale: string;
 };
+
+const localeBranchIdentity: (branch: ProjectDashboardStatus["localeBranches"][number]) => string = (
+  branch,
+) => branch.localeBranchId;
+void localeBranchIdentity;
 
 const requestedProject: CatalogContextProject = {
   projectId: "catalog-context-requested",
@@ -31,7 +37,7 @@ postgresDescribe("catalog-context project scope", () => {
     process.env.ITOTORI_FIELD_CIPHER_KEY ??= Buffer.alloc(32, 11).toString("base64");
   });
 
-  it("uses the requested project's locale branch before loading catalog context", async () => {
+  it("selects the requested locale branch by identity before loading catalog context", async () => {
     const context = await isolatedMigratedContext();
     try {
       await withDatabaseItotoriServices({ databaseUrl: context.databaseUrl }, async (services) => {

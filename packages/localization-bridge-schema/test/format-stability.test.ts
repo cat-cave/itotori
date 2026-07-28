@@ -23,7 +23,6 @@ import {
   type FormatStabilityDeclaration,
   FormatVersionMismatchError,
   KAIFUU_DELTA_FORMAT_STABILITY,
-  PAIR_POLICY_FORMAT_STABILITY,
   PUBLIC_FORMAT_STABILITY,
   assertBridgeBundleV02,
   assertDeltaPackageMetadataV02,
@@ -45,7 +44,6 @@ describe("PUBLIC_FORMAT_STABILITY registry (beta-schema-stability-policy accepta
   const EXPECTED_FORMAT_IDS = [
     "localization-bridge-schema",
     "kaifuu-delta-package",
-    "pair-policy",
     "itotori-api-contract",
     "itotori-db-schema",
   ] as const;
@@ -75,14 +73,10 @@ describe("PUBLIC_FORMAT_STABILITY registry (beta-schema-stability-policy accepta
   it("the bridge and .kaifuu delta formats enumerate their known legacy versions", () => {
     expect(BRIDGE_FORMAT_STABILITY.knownLegacyVersions).toContain("0.1.0");
     expect(KAIFUU_DELTA_FORMAT_STABILITY.knownLegacyVersions).toContain("0.2.0");
-    expect(PAIR_POLICY_FORMAT_STABILITY.knownLegacyVersions).toEqual(
-      expect.arrayContaining([
-        "0.1",
-        "itotori.pair-policy.v0.1",
-        "0.2",
-        "itotori.pair-policy.v0.2",
-      ]),
-    );
+  });
+
+  it("does not publish the retired pair-policy format", () => {
+    expect(PUBLIC_FORMAT_STABILITY).not.toHaveProperty("pair-policy");
   });
 
   it("FORMAT_STABILITY_TIERS enumerates the documented tier ladder in order", () => {
