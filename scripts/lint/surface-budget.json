@@ -1,5 +1,5 @@
 {
-  "envVarNames": 82,
+  "envVarNames": 83,
   "justRecipes": 6,
-  "increaseJustification": ""
+  "increaseJustification": "Add UTSUSHI_PLAYABILITY_CHILD to isolate fresh-process replay workers."
 }
