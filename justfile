@@ -305,12 +305,18 @@ ci-real-bytes:
     # tree still runs the strict ground-truth suite for the five families
     # above; only the Softpal sub-lane is skipped (clean log line, no failure).
     SOFTPAL_PRESENT=0
-    if [ -d "${ITOTORI_SOFTPAL_RESEARCH_ROOT}/v21465" ] && \
-       [ -d "${ITOTORI_SOFTPAL_RESEARCH_ROOT}/v60663" ]; then
+    if { [ -d "${ITOTORI_SOFTPAL_RESEARCH_ROOT}/v21465" ] && \
+         [ -d "${ITOTORI_SOFTPAL_RESEARCH_ROOT}/v60663" ]; } || \
+       { [ -d "${ITOTORI_SOFTPAL_RESEARCH_ROOT}/kizuna-kirameku-koi-iroha.v21465" ] && \
+         [ -d "${ITOTORI_SOFTPAL_RESEARCH_ROOT}/dimension-totsu-lovers.v60663" ]; } || \
+       { [ -d "${ITOTORI_SOFTPAL_RESEARCH_ROOT}/artifacts/by-id/kizuna-kirameku-koi-iroha.v21465" ] && \
+         [ -d "${ITOTORI_SOFTPAL_RESEARCH_ROOT}/artifacts/by-id/dimension-totsu-lovers.v60663" ]; } || \
+       { [ -d "${ITOTORI_SOFTPAL_RESEARCH_ROOT}/softpal-1" ] && \
+         [ -d "${ITOTORI_SOFTPAL_RESEARCH_ROOT}/softpal-2" ]; }; then
       SOFTPAL_PRESENT=1
       export ITOTORI_SOFTPAL_RESEARCH_ROOT
     else
-      echo "ci-real-bytes: Softpal research root $ITOTORI_SOFTPAL_RESEARCH_ROOT missing v21465/ or v60663/;"
+      echo "ci-real-bytes: Softpal research root $ITOTORI_SOFTPAL_RESEARCH_ROOT lacks a complete v-version, title-version, vault, or staged pair;"
       echo "  skipping the Softpal sub-lane cleanly (skip-when-absent is legitimate for the periodic lane)."
     fi
     echo "ci-real-bytes: RealLive corpus-1 (Sweetie HD) = $ITOTORI_REAL_GAME_ROOT"

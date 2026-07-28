@@ -26,6 +26,9 @@ const RESEARCH_ROOT_ENV: &str = "ITOTORI_SOFTPAL_RESEARCH_ROOT";
 /// One game's opcode-catalog expectations. Counts are the measured ground truth.
 struct GameExpectation {
     subdir: &'static str,
+    /// Canonical vault directory name. Vault intake does not use a bare VNDB
+    /// version directory.
+    vault_dir: &'static str,
     /// `PAC ` entry count, used to select the right `data.pac`.
     pac_count: usize,
     /// TEXT-SHOW (dialogue) command count — must match [`ScriptScan`].
@@ -46,6 +49,7 @@ const GAMES: [GameExpectation; 2] = [
     // v21465 — Kizuna kirameku koi iroha.
     GameExpectation {
         subdir: "v21465",
+        vault_dir: "kizuna-kirameku-koi-iroha.v21465",
         pac_count: 417,
         text_show_count: 30165,
         select_count: 11,
@@ -57,6 +61,7 @@ const GAMES: [GameExpectation; 2] = [
     // v60663 — Dimension totsu lovers.
     GameExpectation {
         subdir: "v60663",
+        vault_dir: "dimension-totsu-lovers.v60663",
         pac_count: 160,
         text_show_count: 39832,
         select_count: 21,
@@ -81,10 +86,27 @@ fn find_data_pacs(dir: &Path, out: &mut Vec<PathBuf>) {
 
 /// Extract one named entry from the game's `data.pac` (selected by entry count).
 fn extract_entry(game: &GameExpectation, root: &Path, name: &str) -> Vec<u8> {
-    let game_dir = root.join(game.subdir);
     let mut pacs = Vec::new();
-    find_data_pacs(&game_dir, &mut pacs);
-    assert!(!pacs.is_empty(), "no data.pac under {}", game_dir.display());
+    // Support legacy `vNNNNN` research trees, title-dot-version vault intake,
+    // and staged game roots that are selected by their pinned PAC entry count.
+    for dir in [
+        root.join(game.subdir),
+        root.join(game.vault_dir),
+        root.join("artifacts").join("by-id").join(game.vault_dir),
+    ] {
+        if dir.is_dir() {
+            find_data_pacs(&dir, &mut pacs);
+        }
+    }
+    if pacs.is_empty() {
+        find_data_pacs(root, &mut pacs);
+    }
+    assert!(
+        !pacs.is_empty(),
+        "no data.pac for {} under {}; checked v-version, vault title-version, and root fallback",
+        game.subdir,
+        root.display()
+    );
     for pac_path in &pacs {
         let bytes = fs::read(pac_path).expect("read data.pac");
         let Ok(arc) = PacArchive::parse(&bytes) else {
@@ -99,8 +121,9 @@ fn extract_entry(game: &GameExpectation, root: &Path, name: &str) -> Vec<u8> {
         return arc.extract(&bytes, entry).expect("extract entry").to_vec();
     }
     panic!(
-        "no data.pac under {} parsed to {} entries",
-        game_dir.display(),
+        "no data.pac for {} under {} parsed to {} entries",
+        game.subdir,
+        root.display(),
         game.pac_count
     );
 }

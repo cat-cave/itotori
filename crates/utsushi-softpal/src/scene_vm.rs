@@ -28,6 +28,23 @@ pub(crate) struct Vm<'a> {
     work_process_attached: bool,
     /// Category `0x000f:0x0005` exchanges this PAL-owned mode value.
     debug_window_state: i32,
+    /// Category `0x0009:0x0034` cancels this native scene-skip latch.
+    ///
+    /// The compact VM has no scene-skip producer yet, but retaining the latch
+    /// makes this a state transition rather than an invisible pass-through.
+    scene_skip_active: bool,
+    /// Category `0x0009:0x0002` controls timer-based ADV progression.
+    text_auto_enabled: bool,
+    /// Category `0x0009:0x0000` controls user-triggered ADV skipping.
+    text_skip_enabled: bool,
+    /// Slots currently represented by the compact system-button model.
+    system_button_slots: std::collections::BTreeSet<i32>,
+    /// Category `0x0009:0x000e` clears this PAL-owned temporary work bank.
+    scene_scratch: BTreeMap<u32, i32>,
+    /// Active category-17 action counters in the compact scheduler model.
+    active_actions: std::collections::BTreeSet<i32>,
+    /// Live category-3 sprite slots known to the compact scene state.
+    sprite_slots: std::collections::BTreeSet<i32>,
     branches: usize,
     instruction_count: usize,
 }
@@ -64,6 +81,13 @@ impl<'a> Vm<'a> {
             diagnostics: Vec::new(),
             work_process_attached: false,
             debug_window_state: 0,
+            scene_skip_active: false,
+            text_auto_enabled: false,
+            text_skip_enabled: false,
+            system_button_slots: std::collections::BTreeSet::new(),
+            scene_scratch: BTreeMap::new(),
+            active_actions: std::collections::BTreeSet::new(),
+            sprite_slots: std::collections::BTreeSet::new(),
             branches: 0,
             instruction_count: 0,
         }
@@ -317,6 +341,111 @@ impl<'a> Vm<'a> {
                 let old_state = self.debug_window_state;
                 self.debug_window_state = new_state;
                 scene_vm_calls::write_call_result(self, instruction, old_state)
+            }
+            // Sena's category-9 handler 52 consumes no VM arguments, cancels
+            // its native scene-skip latch, and reports success to the extcall
+            // destination. The native save-point update remains intentionally
+            // unmodeled: it is conditional on a scene-skip state this compact
+            // VM does not otherwise represent.
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x0009, 0x0034) =>
+            {
+                self.scene_skip_active = false;
+                scene_vm_calls::write_call_result(self, instruction, 1)
+            }
+            // `auto_set` consumes the requested auto-advance flag, stores its
+            // boolean form in the ADV text state, and returns success.
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x0009, 0x0002) =>
+            {
+                let Some(enabled) = self.stack.pop() else {
+                    return self.bad("auto_set_stack_underflow", instruction.offset);
+                };
+                self.text_auto_enabled = enabled != 0;
+                scene_vm_calls::write_call_result(self, instruction, 1)
+            }
+            // `system_btn_release` consumes one slot id. The native wildcard
+            // `0xffff` releases every system button; compact state records the
+            // same removal even though it has no window renderer yet.
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x000c, 0x0001) =>
+            {
+                let Some(slot) = self.stack.pop() else {
+                    return self.bad("system_button_release_stack_underflow", instruction.offset);
+                };
+                if slot == 0xffff {
+                    self.system_button_slots.clear();
+                } else {
+                    self.system_button_slots.remove(&slot);
+                }
+                scene_vm_calls::write_call_result(self, instruction, 1)
+            }
+            // `system_btn_set` consumes source-order (slot, image, state).
+            // Compact state keeps the configured slot; image/window rendering
+            // is outside this scene VM, but a later release observes the slot.
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x000c, 0x0000) =>
+            {
+                let (Some(_state), Some(_image), Some(slot)) =
+                    (self.stack.pop(), self.stack.pop(), self.stack.pop())
+                else {
+                    return self.bad("system_button_set_stack_underflow", instruction.offset);
+                };
+                self.system_button_slots.insert(slot);
+                scene_vm_calls::write_call_result(self, instruction, 1)
+            }
+            // `skip_set` stores the requested boolean skip latch and reports
+            // success. The compact runtime has no input wait loop yet, so the
+            // latch is retained for the eventual dialogue-step scheduler.
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x0009, 0x0000) =>
+            {
+                let Some(enabled) = self.stack.pop() else {
+                    return self.bad("skip_set_stack_underflow", instruction.offset);
+                };
+                self.text_skip_enabled = enabled != 0;
+                scene_vm_calls::write_call_result(self, instruction, 1)
+            }
+            // Category 9:14 resets the native temporary work bank. Its
+            // contents have no operand producer in this compact VM yet, but
+            // retaining and clearing the bank preserves the reset boundary.
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x0009, 0x000e) =>
+            {
+                self.scene_scratch.clear();
+                scene_vm_calls::write_call_result(self, instruction, 1)
+            }
+            // `action_clear_count_over` clears the current counter for -1,
+            // otherwise the addressed counter. Scheduling is not present yet,
+            // but preserving this teardown prevents an invisible stack pass.
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x0011, 0x0003) =>
+            {
+                let Some(action_id) = self.stack.pop() else {
+                    return self.bad("action_clear_stack_underflow", instruction.offset);
+                };
+                if action_id == -1 {
+                    self.active_actions.clear();
+                } else {
+                    self.active_actions.remove(&action_id);
+                }
+                scene_vm_calls::write_call_result(self, instruction, 1)
+            }
+            // `sp_cls` destroys one sprite slot, with -1 as the native
+            // all-slots wildcard. This preserves renderer ownership without
+            // inventing an image for a slot this compact VM never created.
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x0003, 0x0005) =>
+            {
+                let Some(slot) = self.stack.pop() else {
+                    return self.bad("sprite_clear_stack_underflow", instruction.offset);
+                };
+                if slot == -1 {
+                    self.sprite_slots.clear();
+                } else {
+                    self.sprite_slots.remove(&slot);
+                }
+                scene_vm_calls::write_call_result(self, instruction, 1)
             }
             CommandFamily::Call { target } => self.bad(
                 &format!(
