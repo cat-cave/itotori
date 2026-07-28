@@ -216,7 +216,7 @@ function PlayFlagComposerForBranch({
       notifyHandoff({
         kind: "flag-sent",
         severity: result.data.severity,
-        category: result.data.category.length > 0 ? result.data.category : "playtest",
+        category: result.data.category ?? "playtest",
       });
       // A citation supplied this return path. The flag is durable before the
       // navigation runs, so the addressed object reloads with its receipt/
@@ -281,7 +281,7 @@ function PlayFlagComposerForBranch({
               className="play-flag__status"
             >
               Flag sent to correction · {outcome.response.severity}
-              {outcome.response.category.length > 0 ? ` · ${outcome.response.category}` : ""}
+              {outcome.response.category !== null ? ` · ${outcome.response.category}` : ""}
               {" · correction scheduled"}
             </p>
           )}

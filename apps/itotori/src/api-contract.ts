@@ -1221,6 +1221,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayFlagAnnotationResponse,
       properties: {
         severity: { enum: ["blocker", "critical", "warning", "note"] },
+        category: { anyOf: [{ type: "string" }, { type: "null" }] },
         contextCorrectionId: str,
         duplicate: bool,
       },
@@ -1250,7 +1251,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
         sceneId: { anyOf: [{ type: "string" }, { type: "null" }] },
         note: str,
         severity: str,
-        category: str,
+        category: { anyOf: [{ type: "string" }, { type: "null" }] },
         triageLabel: str,
         contextStatus: str,
         contextCorrectionId: str,

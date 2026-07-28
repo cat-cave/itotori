@@ -37,7 +37,13 @@ export function UnitBoundFeedbackList({
         return;
       }
       if (result.state === "empty") {
-        setLoad({ state: "ready", notes: [] });
+        // This route always returns its typed response envelope, including an
+        // empty persisted `notes` array. Treat a client-level empty result as
+        // a protocol failure rather than fabricating a green empty panel.
+        setLoad({
+          state: "error",
+          message: "Unit feedback response did not include the persisted notes list.",
+        });
         return;
       }
       setLoad({
