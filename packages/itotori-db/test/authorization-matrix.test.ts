@@ -564,6 +564,12 @@ const repositoryPermissionGateMatrix = [
     "source-unit-repository.test.ts source-unit scope coverage",
     (repo) => repo.loadSourceUnitsForScope(deniedActor, undefined as never),
   ),
+  sourceUnitGate(
+    "resolveAddressableBridgeUnits",
+    "catalogRead",
+    "unit-feedback-live-db.test.ts wiki entry source-unit resolution coverage",
+    (repo) => repo.resolveAddressableBridgeUnits(deniedActor, undefined as never),
+  ),
   translationBatchGate(
     "saveBatches",
     "draftWrite",
@@ -1470,6 +1476,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriSourceUnitRepository.loadSourceUnitsForScope",
           "requiredPermission": "catalog.read",
           "successFixture": "source-unit-repository.test.ts source-unit scope coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriSourceUnitRepository.resolveAddressableBridgeUnits",
+          "requiredPermission": "catalog.read",
+          "successFixture": "unit-feedback-live-db.test.ts wiki entry source-unit resolution coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
