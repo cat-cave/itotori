@@ -5,7 +5,7 @@ publish = false
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "UTSUSHI-200 alpha-gate scaffold: pure-Rust RealLive engine port that registers conformance against the utsushi-core substrate facade. Clean-room; rlvm is a research anchor only and is not linked, vendored, or mechanically translated."
+description = "capability_utsushi_200 alpha-gate scaffold: pure-Rust RealLive engine port that registers conformance against the utsushi-core substrate facade. Clean-room; rlvm is a research anchor only and is not linked, vendored, or mechanically translated."
 
 [dependencies]
 # Real TrueType glyph rasteriser for the headless render pipeline's

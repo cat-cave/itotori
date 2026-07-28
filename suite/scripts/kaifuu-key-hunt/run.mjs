@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /*
- * KAIFUU-067 — `pnpm exec vp run kaifuu:key-hunt`
+ * the relevant capability — `pnpm exec vp run kaifuu:key-hunt`
  *
- * Private-local key-hunting run workflow. Like KAIFUU-036's triage and
- * KAIFUU-094's Siglus validation renderer this is a FIRST-CLASS LOCAL workflow,
+ * Private-local key-hunting run workflow. Like the relevant capability's triage and
+ * the relevant capability's Siglus validation renderer this is a FIRST-CLASS LOCAL workflow,
  * ABSENT from public/per-gate CI (no `just check`/`ci` lane and no affected.mjs /
  * qd-full-ci.mjs selection references it). It reads operator private-local
  * key-hunt manifests (describing per-attempt helper outcomes) and emits ONLY a

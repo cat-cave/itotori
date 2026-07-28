@@ -1,5 +1,5 @@
 /*
- * KAIFUU-094 — deterministic unit + integration tests for the Siglus
+ * the relevant capability — deterministic unit + integration tests for the Siglus
  * private-local redacted validation summary renderer. `node --test`, no
  * network, no DB, no build, no private corpora: the no-corpus path and a MOCK
  * redacted manifest drive everything. Proves:

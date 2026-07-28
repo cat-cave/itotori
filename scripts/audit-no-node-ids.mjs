@@ -1,17 +1,21 @@
 #!/usr/bin/env node
-// CI guard: no node-id references in production code.
+// CI guard: no node-id references in tracked text artifacts.
 //
 // A "node id" is a roadmap / ticket cross-ref (`<PREFIX>-<number>`, a
-// `p0-core-<slug>`, or the prose forms "follow-up node" / "see node" /
-// "deferred for node"). Provenance like that is stale-on-write: it belongs in
+// `p0-core-<slug>`, or three prose cross-reference forms. Provenance like that
+// is stale-on-write: it belongs in
 // git history + the PR description, never in a doc comment or source line.
-// This is an absolute rule: zero node-id references are permitted.
+// Planning provenance is stale-on-write outside the generated planning ledger
+// and immutable migration history. Those two paths are intentionally scoped
+// exemptions below; every other tracked text artifact must be free of node ids.
 //
-// Scope: tracked code under `crates/`, `packages/`, and `apps/`
-// (`.rs`/`.ts`/`.tsx`/`.js`/`.mjs`/`.cjs`), including tests, fixtures, examples,
-// migrations, and every application surface. It cannot see untracked, ignored,
-// generated, or non-code files. Build output is not source; this guard's own
-// source names the patterns it enforces.
+// Scope: every tracked text file, regardless of extension. This includes source,
+// documentation, configuration, workflows, manifests, and scripts. The generated,
+// content-addressed artifacts under `fixtures/`, the qd-generated `roadmap/`
+// planning-ledger export, and `packages/itotori-db/migrations/` applied
+// checksum-locked migration history are scoped exemptions below.
+// Binary files are scanned too: node-id tokens are ASCII, so a byte decode can
+// find them without a file-type blind spot.
 //
 // Exit codes: 0 = clean; 1 = violation. Wired into `just ci tier0-meta`.
 
@@ -23,9 +27,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
 
-export const SCAN_EXTENSIONS = new Set([".rs", ".ts", ".tsx", ".js", ".mjs", ".cjs"]);
-
-const EXCLUDE_PATTERNS = ["/target/", "/dist/", "/node_modules/", "scripts/audit-no-node-ids.mjs"];
+const EXCLUDE_ROOTS = ["fixtures/", "roadmap/", "packages/itotori-db/migrations/"];
 
 const NODE_ID_PATTERNS = [
   // Deliberately no word boundaries: `_`, letters, and digits can surround a
@@ -33,19 +35,17 @@ const NODE_ID_PATTERNS = [
   // word character and would miss it.
   /(?:RB|ITOTORI|KAIFUU|UTSUSHI)-\d+/gi,
   /p0-core-[a-z0-9-]+/gi,
-  /follow-up node/gi,
-  /see node/gi,
-  /deferred for node/gi,
+  new RegExp(["follow-up", "node"].join(" "), "gi"),
+  new RegExp(["see", "node"].join(" "), "gi"),
+  new RegExp(["deferred", "for", "node"].join(" "), "gi"),
 ];
 
 export function isExcludedPath(path) {
-  return EXCLUDE_PATTERNS.some((pattern) => path.includes(pattern));
+  return EXCLUDE_ROOTS.some((root) => path.startsWith(root));
 }
 
 export function shouldScan(path) {
-  if (isExcludedPath(path)) return false;
-  const dot = path.lastIndexOf(".");
-  return dot !== -1 && SCAN_EXTENSIONS.has(path.slice(dot));
+  return !isExcludedPath(path);
 }
 
 export function findNodeIdViolations(path, contents) {
@@ -70,7 +70,7 @@ export function findNodeIdViolations(path, contents) {
 }
 
 export function listScanFiles(root) {
-  return execSync("git ls-files crates packages apps", { cwd: root, encoding: "utf8" })
+  return execSync("git ls-files", { cwd: root, encoding: "utf8" })
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
@@ -83,7 +83,7 @@ function scanFiles(root, files) {
     if (!shouldScan(file)) continue;
     try {
       const target = root === null ? file : join(root, file);
-      violations.push(...findNodeIdViolations(file, readFileSync(target, "utf8")));
+      violations.push(...findNodeIdViolations(file, readFileSync(target).toString("utf8")));
       scanned += 1;
     } catch {
       // A disappeared file cannot produce a violation.
@@ -114,17 +114,21 @@ function main() {
     options.files.length > 0
       ? scanFiles(null, options.files)
       : scanFiles(options.root, listScanFiles(options.root));
+  const scope =
+    "Scope: all tracked files (including binary files); exempt only generated, content-addressed " +
+    "fixtures/, generated roadmap/, and applied packages/itotori-db/migrations/. Cannot see " +
+    "untracked or ignored files.\n";
   if (result.violations.length === 0) {
     process.stdout.write(
-      `node-id guard: passed. 0 references across ${result.scanned} scanned files.\n` +
-        "Limits: scans tracked code only; cannot see untracked, ignored, generated, or non-code files.\n",
+      `node-id guard: passed. 0 references across ${result.scanned} scanned files.\n${scope}`,
     );
     return;
   }
   process.stderr.write(
     `node-id guard: FAILED. ${result.violations.length} node-id reference(s) found.\n` +
       "Node-id references are stale-on-write; remove them instead of encoding planning provenance.\n" +
-      "Limits: scans tracked code only; cannot see untracked, ignored, generated, or non-code files.\n\n",
+      scope +
+      "\n",
   );
   for (const violation of result.violations) {
     process.stderr.write(

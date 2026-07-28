@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// ITOTORI-121 honesty gate. FAILS (non-zero) when the @itotori/db repository
+// the relevant capability honesty gate. FAILS (non-zero) when the @itotori/db repository
 // test runner recorded a no-DATABASE_URL skip marker, so "I validated the DB
 // layer" can only be asserted when the DB-backed tests actually ran. A missing
 // marker means no skip was recorded (the tests ran, or were never invoked in

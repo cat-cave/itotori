@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /*
- * KAIFUU-094 — `pnpm exec vp run siglus:private-local-validation-render`
+ * the relevant capability — `pnpm exec vp run siglus:private-local-validation-render`
  *
- * Siglus private-local redacted VALIDATION SUMMARY renderer. Like KAIFUU-036's
+ * Siglus private-local redacted VALIDATION SUMMARY renderer. Like the relevant capability's
  * triage this is a FIRST-CLASS LOCAL workflow, ABSENT from public/per-gate CI
  * (no `just check`/`ci` lane and no affected.mjs / qd-full-ci.mjs selection
  * references it). It reads operator private-local Siglus validation manifests

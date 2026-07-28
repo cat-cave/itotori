@@ -1,16 +1,16 @@
 # Siglus Private-Local Redacted Validation Renderer
 
-`KAIFUU-094` renders **optional private-local Siglus validation summaries**
+`the relevant capability` renders **optional private-local Siglus validation summaries**
 through the **redacted boundary**. It is the Siglus analogue of
-[`KAIFUU-036`'s private-local encrypted corpus triage](kaifuu-private-local-triage.md):
+[`the relevant capability`'s private-local encrypted corpus triage](kaifuu-private-local-triage.md):
 a local operator records the outcomes of local Siglus validation runs (the
-[`KAIFUU-070`](../crates/kaifuu-siglus/src/known_key_smoke.rs) known-key
+[`the relevant capability`](../crates/kaifuu-siglus/src/known_key_smoke.rs) known-key
 Scene/Gameexe extract-patch-verify smoke and the broader `Scene.pck` /
 `Gameexe.dat` stack) as a redacted validation manifest, and the renderer emits
 only a **safe aggregate validation summary** that can be cited publicly by
 aggregate/hash metadata.
 
-It **reuses** the KAIFUU-036 redaction boundary — the `findSecretLeak`
+It **reuses** the the relevant capability redaction boundary — the `findSecretLeak`
 structural scan, the `assertNoSecrets`-style recursive deep scan, and the
 deterministic `stableStringify` serializer — and extends the leak scanner with
 Siglus-specific content categories.
@@ -85,7 +85,7 @@ Public-safe example input:
 ## Capability levels are honestly scoped
 
 `capabilityLevel` mirrors the crate's honest scope. `known-key-extract` and
-`known-key-patch-verify` are the real, narrow `KAIFUU-070` known-key tiers;
+`known-key-patch-verify` are the real, narrow `the relevant capability` known-key tiers;
 `broad-unsupported` marks the real broad `Scene.pck` / `Gameexe.dat` path that
 remains a skeleton stub (`siglus-04`/`siglus-06`). An aggregate can therefore
 **never** imply unsupported production capability, and a `helper_required` /
@@ -137,7 +137,7 @@ each of these categories:
 | `helper-raw-dump`                 | Control chars / newlines (redacted summary has none).      |
 
 The first three, plus absolute-path detection, are **reused directly** from the
-KAIFUU-036 `findSecretLeak` structural scanner; the last three are the
+the relevant capability `findSecretLeak` structural scanner; the last three are the
 Siglus-specific extensions.
 
 ## Diagnostics

@@ -1,10 +1,10 @@
-# Kaifuu Siglus Pure Extraction + Patching Adapter (KAIFUU-022)
+# Kaifuu Siglus Pure Extraction + Patching Adapter (the relevant capability)
 
 The **pure Siglus adapter**
 ([`crates/kaifuu-siglus/src/adapter.rs`](../crates/kaifuu-siglus/src/adapter.rs))
 EXTRACTS and PATCHES profiled `Scene.pck` / `Gameexe.dat` variants and OWNS the
 filesystem write for patch-back — while performing **no key discovery**. It is
-the KAIFUU-022 successor to the [`KAIFUU-070`](../crates/kaifuu-siglus/src/known_key_smoke.rs)
+the the relevant capability successor to the [`the relevant capability`](../crates/kaifuu-siglus/src/known_key_smoke.rs)
 known-key smoke: the smoke resolves its own (synthetic) key internally; the
 adapter is _handed_ an already-resolved key and re-validates it before use.
 
@@ -12,7 +12,7 @@ adapter is _handed_ an already-resolved key and re-validates it before use.
 
 The adapter **consumes** a `ResolvedSiglusKey`: a structured `secretRef`, the
 `KeyValidationProof` the discovery layer (the
-[`KAIFUU-069`](../crates/kaifuu-cli/tests/siglus_static_key.rs) static-key
+[`the relevant capability`](../crates/kaifuu-cli/tests/siglus_static_key.rs) static-key
 discovery / secret store) published, and the raw key material. It does **not**
 scan executables, recover keys, or contact helpers.
 

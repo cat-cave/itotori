@@ -1,4 +1,4 @@
-; tyranoscript synthetic scenario fixture (CC0) — authored for itotori KAIFUU-016
+; tyranoscript synthetic scenario fixture (CC0) — authored for itotori capability_kaifuu_016
 *start|オープニング
 [eval exp="f.count=0"]
 #アリス

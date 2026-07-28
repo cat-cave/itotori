@@ -298,7 +298,7 @@ The current `@itotori/db` repository test is the model: migrate, create a
 database context, reset test state, save an imported project, save drafts and
 runtime evidence, then assert the hello-world status read model.
 
-### Optional local skip vs. required DB validation (ITOTORI-121)
+### Optional local skip vs. required DB validation (the relevant capability)
 
 A missing-`DATABASE_URL` run must never be mistaken for actual DB validation.
 The `@itotori/db` test runner (`packages/itotori-db/scripts/run-tests.mjs`)

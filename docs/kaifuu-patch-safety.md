@@ -1,6 +1,6 @@
 # Kaifuu Patch Safety Policy
 
-KAIFUU-019 defines the minimum safety rules for Kaifuu patch writers,
+the relevant capability defines the minimum safety rules for Kaifuu patch writers,
 `.kaifuu` delta application, and future engine adapters. These rules apply to
 code that writes patched game assets, patch result metadata, generated
 profiles, and extracted package output.

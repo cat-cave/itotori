@@ -60,6 +60,17 @@ test("a fully-wired substrate DAG passes with no blocking findings", () => {
   }
 });
 
+test("the committed roadmap satisfies the canonical substrate mapping", () => {
+  const { ok, findings } = runChecklist();
+  assert.equal(
+    ok,
+    true,
+    blockingOf(findings)
+      .map((finding) => finding.message)
+      .join("\n"),
+  );
+});
+
 test("a missing hub node fails the gate", () => {
   const dag = dagFixture();
   dag.nodes = dag.nodes.filter((n) => n.id !== HUB_ID);

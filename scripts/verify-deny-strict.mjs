@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// KAIFUU-208: pin the supply-chain strictness of deny.toml so a future edit
+// the relevant capability: pin the supply-chain strictness of deny.toml so a future edit
 // cannot silently relax `bans.multiple-versions` back to "warn" or reopen
 // `bans.wildcards`, and so every accepted duplicate-version `[[bans.skip]]`
 // stays documented with a `# reason:` line. See docs/dev/dependency-policy.md.

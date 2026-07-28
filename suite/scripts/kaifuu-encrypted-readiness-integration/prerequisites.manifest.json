@@ -1,16 +1,16 @@
 {
   "schemaVersion": "itotori.kaifuu-encrypted-readiness-prerequisites.v0.1",
-  "description": "The EXPLICIT manifest of prerequisite surfaces, adapters, command evidence, and proof artifacts that KAIFUU-042 aggregates into alpha-readiness. KAIFUU-042 does NOT re-own these slices — it composes their committed proofs by content hash. Every artifact path is a committed PUBLIC synthetic fixture; no private corpora, no local paths.",
+  "description": "The EXPLICIT manifest of prerequisite surfaces, adapters, command evidence, and proof artifacts that capability_kaifuu_042 aggregates into alpha-readiness. capability_kaifuu_042 does NOT re-own these slices — it composes their committed proofs by content hash. Every artifact path is a committed PUBLIC synthetic fixture; no private corpora, no local paths.",
   "surfaces": [
     {
       "id": "packed-engine-readiness",
-      "sourceNodeId": "KAIFUU-103",
+      "sourceNodeId": "capability_kaifuu_103",
       "description": "Packed-engine readiness validator surface (posture/outcome authority)."
     },
     {
       "id": "alpha-encrypted-readiness-evidence",
-      "sourceNodeId": "KAIFUU-104",
-      "description": "Alpha public encrypted-readiness evidence generator that composes KAIFUU-103 output with synthetic patch artifacts."
+      "sourceNodeId": "capability_kaifuu_104",
+      "description": "Alpha public encrypted-readiness evidence generator that composes capability_kaifuu_103 output with synthetic patch artifacts."
     }
   ],
   "adapters": [
@@ -44,43 +44,43 @@
     {
       "id": "kirikiri-xp3.positive.profile",
       "kind": "readiness_profile",
-      "sourceNodeId": "KAIFUU-103",
+      "sourceNodeId": "capability_kaifuu_103",
       "path": "fixtures/kaifuu/alpha-encrypted/kirikiri-xp3.positive.profile.json"
     },
     {
       "id": "kirikiri-xp3.helper-required.profile",
       "kind": "readiness_profile",
-      "sourceNodeId": "KAIFUU-103",
+      "sourceNodeId": "capability_kaifuu_103",
       "path": "fixtures/kaifuu/alpha-encrypted/kirikiri-xp3.helper-required.profile.json"
     },
     {
       "id": "siglus.positive.profile",
       "kind": "readiness_profile",
-      "sourceNodeId": "KAIFUU-103",
+      "sourceNodeId": "capability_kaifuu_103",
       "path": "fixtures/kaifuu/alpha-encrypted/siglus.positive.profile.json"
     },
     {
       "id": "siglus.missing-key.profile",
       "kind": "readiness_profile",
-      "sourceNodeId": "KAIFUU-103",
+      "sourceNodeId": "capability_kaifuu_103",
       "path": "fixtures/kaifuu/alpha-encrypted/siglus.missing-key.profile.json"
     },
     {
       "id": "mv-mz-media.positive.profile",
       "kind": "readiness_profile",
-      "sourceNodeId": "KAIFUU-103",
+      "sourceNodeId": "capability_kaifuu_103",
       "path": "fixtures/kaifuu/alpha-encrypted/mv-mz-media.positive.profile.json"
     },
     {
       "id": "kirikiri-xp3.positive.patch",
       "kind": "readiness_patch_evidence",
-      "sourceNodeId": "KAIFUU-104",
+      "sourceNodeId": "capability_kaifuu_104",
       "path": "fixtures/kaifuu/alpha-encrypted/kirikiri-xp3.positive.patch.json"
     },
     {
       "id": "siglus.positive.patch",
       "kind": "readiness_patch_evidence",
-      "sourceNodeId": "KAIFUU-104",
+      "sourceNodeId": "capability_kaifuu_104",
       "path": "fixtures/kaifuu/alpha-encrypted/siglus.positive.patch.json"
     }
   ]

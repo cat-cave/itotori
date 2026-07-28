@@ -1,6 +1,6 @@
 # RealLive Engine Port — DAG Decomposition Proposal
 
-> Replaces the single UTSUSHI-146 ("RealLive runtime port — VFS handoff, Scene/SEEN replay,
+> Replaces the single the relevant capability ("RealLive runtime port — VFS handoff, Scene/SEEN replay,
 > headless render sink, deterministic clock/input, snapshot primitives") with 22 honest
 > sub-nodes anchored in observable Sweetie HD bytes.
 >
@@ -11,12 +11,12 @@
 > Path discipline:
 >
 > - `$GAME/` ≡ `/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版/`
-> - Node ids are placeholders (`UTSUSHI-146a` … `UTSUSHI-146v`); the orchestrator assigns
+> - Node ids are placeholders (`the relevant capabilitya` … `the relevant capabilityv`); the orchestrator assigns
 >   real ids when ingesting.
 >
 > Substrate-readiness column:
 >
-> - **substrate-ready** — UTSUSHI-120 facade suffices; no substrate change required.
+> - **substrate-ready** — the relevant capability facade suffices; no substrate change required.
 > - **substrate-gap** — the substrate honesty subagent should verify the named gap before
 >   this node is scheduled.
 
@@ -29,11 +29,11 @@ object stack, text system, sound system, save system) which gate the end-to-end
 replay node.
 
 A new crate `utsushi-reallive` lives alongside `kaifuu-reallive`. `kaifuu-reallive`
-keeps its current synthetic-fixture parser-boundary role (KAIFUU-172/173/174 are
+keeps its current synthetic-fixture parser-boundary role (the relevant capability/173/174 are
 already complete and serve the inventory pipeline). `utsushi-reallive` owns the
 real-bytes engine port.
 
-Replacement-aware: the existing UTSUSHI-146 acceptance criterion ("rlvm referenced
+Replacement-aware: the existing the relevant capability acceptance criterion ("rlvm referenced
 only as research anchor, never invoked as a binary") propagates onto every node
 below.
 
@@ -41,11 +41,11 @@ below.
 
 ### Foundation layer
 
-#### UTSUSHI-146a — utsushi-reallive crate skeleton + facade dependency
+#### the relevant capabilitya — utsushi-reallive crate skeleton + facade dependency
 
 - **Substrate-readiness:** substrate-ready.
 - **Title:** Create the `utsushi-reallive` crate (pure-Rust, GPL-incompatible-free)
-  importing only the UTSUSHI-120 substrate facade and `kaifuu-reallive` for
+  importing only the the relevant capability substrate facade and `kaifuu-reallive` for
   inventory cross-reference; no rlvm / siglus_rs / xclannad source.
 - **Acceptance criteria:**
   - `cargo new --lib crates/utsushi-reallive` shape with `forbid(unsafe_code)`,
@@ -57,7 +57,7 @@ below.
   - `EnginePortAdapter` impl stub returning `Unimplemented` for every lifecycle
     stage.
 - **Synthetic fixture acceptable.**
-- **Dependencies:** UTSUSHI-120 (complete), KAIFUU-174 (complete).
+- **Dependencies:** the relevant capability (complete), the relevant capability (complete).
 - **Verification:** `cargo test -p utsushi-reallive scaffold`, `cargo doc -p utsushi-reallive --no-deps`.
 - **Audit focus:** rlvm header / source leakage; facade bypass via
   `utsushi_core::vfs::*` direct import; placeholder `Ok(())` returns that hide
@@ -65,7 +65,7 @@ below.
 
 ---
 
-#### UTSUSHI-146b — Real Seen.txt directory parser
+#### the relevant capabilityb — Real Seen.txt directory parser
 
 - **Substrate-readiness:** substrate-ready.
 - **Title:** Implement the 10,000-slot directory format of `Seen.txt` (not the
@@ -85,7 +85,7 @@ byte_len=0xb42`. The scene-id range is verified to be 1..=9999 inclusive
     the synthetic envelope shape.
 - **Must verify against Sweetie HD byte 0x00000000..0x00013880 (the directory)
   and byte 0x00013880..0x00013e7a (scene 1 payload).**
-- **Dependencies:** UTSUSHI-146a.
+- **Dependencies:** the relevant capabilitya.
 - **Verification:** `cargo test -p utsushi-reallive scene_index_sweetie_hd_198_scenes`,
   `cargo test -p utsushi-reallive scene_index_first_last_offsets`.
 - **Audit focus:** thin-wrapper cheat — reusing `kaifuu-reallive::parse_archive`
@@ -94,7 +94,7 @@ byte_len=0xb42`. The scene-id range is verified to be 1..=9999 inclusive
 
 ---
 
-#### UTSUSHI-146c — Scene header parser
+#### the relevant capabilityc — Scene header parser
 
 - **Substrate-readiness:** substrate-ready.
 - **Title:** Decode the 0x1d0-byte scene header documented by RLDEV / rlvm
@@ -115,7 +115,7 @@ z_minus_two }`.
     header still parses.
 - **Must verify against Sweetie HD scene-blob bytes 0x13880..0x13a50 (first
   464 bytes of the scene-1 blob).**
-- **Dependencies:** UTSUSHI-146b.
+- **Dependencies:** the relevant capabilityb.
 - **Verification:** `cargo test -p utsushi-reallive scene1_header_matches_sweetie_hd`.
 - **Audit focus:** any field whose offset can't be cited from rlvm's
   `scenario.cc` header constructor (P) or the Sweetie HD bytes (V) — speculative
@@ -123,7 +123,7 @@ z_minus_two }`.
 
 ---
 
-#### UTSUSHI-146d — AVG32 LZ + XOR scene decompressor
+#### the relevant capabilityd — AVG32 LZ + XOR scene decompressor
 
 - **Substrate-readiness:** substrate-ready.
 - **Title:** Implement the AVG32 byte-by-byte XOR (256-byte mask) plus the
@@ -144,10 +144,10 @@ z_minus_two }`.
     the node ships with `xor_2_key = None` and emits
     `utsushi.reallive.xor2_key_unknown` Warning — the node does **not** silently
     skip the second pass and pretend success. Resolution of the actual key
-    happens in UTSUSHI-146t (research-only).
+    happens in the relevant capabilityt (research-only).
 - **Must verify against Sweetie HD scene-1 compressed payload at
   $GAME/REALLIVEDATA/Seen.txt byte 0x13a54..0x13e7a.**
-- **Dependencies:** UTSUSHI-146c.
+- **Dependencies:** the relevant capabilityc.
 - **Verification:**
   `cargo test -p utsushi-reallive scene1_decompress_yields_1660_bytes`,
   `cargo test -p utsushi-reallive lz_roundtrip_synthetic_cases`.
@@ -159,7 +159,7 @@ z_minus_two }`.
 
 ---
 
-#### UTSUSHI-146e — Bytecode element stream decoder
+#### the relevant capabilitye — Bytecode element stream decoder
 
 - **Substrate-readiness:** substrate-ready.
 - **Title:** Implement the lead-byte switch (`0x00`/`0x2C` comma,
@@ -174,15 +174,15 @@ z_minus_two }`.
     (`0x40`).
   - The element-stream byte ranges partition the 1660 uncompressed bytes
     completely (same partition guarantee as the existing parser-boundary
-    contract in KAIFUU-173).
+    contract in the relevant capability).
   - The first `CommandElement` decoded must have `command[0]=0x23` and
     expose `module_type` (byte 1), `module_id` (byte 2), `opcode` (u16 LE
     at bytes 3-4), `arg_count` (byte 5), `overload` (byte 6).
   - Selection-element option markers (`0x30`-`0x34`) are recognised and
     distinguished from default textout.
 - **Must verify against Sweetie HD scene #0001 decompressed bytes 0..1660
-  (requires UTSUSHI-146d to land first).**
-- **Dependencies:** UTSUSHI-146d.
+  (requires the relevant capabilityd to land first).**
+- **Dependencies:** the relevant capabilityd.
 - **Verification:** `cargo test -p utsushi-reallive scene1_element_stream_partition`,
   `cargo test -p utsushi-reallive scene1_first_command_header_decodes`.
 - **Audit focus:** "default branch" textout swallowing meta-marker bytes;
@@ -191,7 +191,7 @@ z_minus_two }`.
 
 ---
 
-#### UTSUSHI-146f — Expression evaluator
+#### the relevant capabilityf — Expression evaluator
 
 - **Substrate-readiness:** substrate-ready.
 - **Title:** Implement the RealLive expression byte-stream reader:
@@ -208,10 +208,10 @@ z_minus_two }`.
     `utsushi.reallive.unknown_expression_operator` Warning and the
     expression returns its partial result.
 - **Synthetic fixture acceptable** — does not require real Sweetie HD bytes
-  to verify (real expressions exercised once UTSUSHI-146g lands).
-- **Dependencies:** UTSUSHI-146e.
+  to verify (real expressions exercised once the relevant capabilityg lands).
+- **Dependencies:** the relevant capabilitye.
 - **Verification:** `cargo test -p utsushi-reallive expression_synthetic_50_cases`,
-  `cargo test -p utsushi-reallive expression_real_sweetie_hd_first_command_args` (gated on UTSUSHI-146g).
+  `cargo test -p utsushi-reallive expression_real_sweetie_hd_first_command_args` (gated on the relevant capabilityg).
 - **Audit focus:** sign extension of `i32 LE` constants; precedence
   ordering (RealLive expressions are flat / fully-parenthesised so there
   is no precedence; tests should fail loudly if a node tries to add C-style
@@ -219,7 +219,7 @@ z_minus_two }`.
 
 ---
 
-#### UTSUSHI-146g — Variable banks + store register
+#### the relevant capabilityg — Variable banks + store register
 
 - **Substrate-readiness:** substrate-ready.
 - **Title:** Define typed banks `intA`-`intZ` (13 letters per RLDEV; rlvm
@@ -227,7 +227,7 @@ z_minus_two }`.
   Expose `get(bank, idx) -> Value`, `set(bank, idx, value)`, and a
   `Snapshot` / `Restore` impl wired to the substrate
   `Inspectable`/`Restorable` traits so VM state snapshots flow through
-  UTSUSHI-023 unchanged.
+  the relevant capability unchanged.
 - **Acceptance criteria:**
   - `intA[0] = 42; snapshot; intA[0] = 99; restore; assert intA[0] == 42`
     round-trips through `SnapshotStore`.
@@ -238,7 +238,7 @@ z_minus_two }`.
   - String banks store as Shift-JIS bytes verbatim — not lossy UTF-8 round
     trip.
 - **Synthetic fixture acceptable.**
-- **Dependencies:** UTSUSHI-146a (substrate facade access).
+- **Dependencies:** the relevant capabilitya (substrate facade access).
 - **Verification:** `cargo test -p utsushi-reallive variable_banks_snapshot_restore`,
   `cargo test -p utsushi-reallive variable_banks_shift_jis_roundtrip`.
 - **Audit focus:** treating `intC` as identical to `intA` (the banks are
@@ -249,7 +249,7 @@ z_minus_two }`.
 
 ### Gameexe layer
 
-#### UTSUSHI-146h — Structured Gameexe.ini parser
+#### the relevant capabilityh — Structured Gameexe.ini parser
 
 - **Substrate-readiness:** substrate-ready.
 - **Title:** Replace the line-classifier in `kaifuu-reallive::gameexe`
@@ -276,7 +276,7 @@ z_minus_two }`.
   - Shift-JIS encoding is preserved on output; round-trip is exact for
     keys the parser recognises.
 - **Must verify against Sweetie HD `$GAME/REALLIVEDATA/Gameexe.ini`.**
-- **Dependencies:** UTSUSHI-146a.
+- **Dependencies:** the relevant capabilitya.
 - **Verification:** `cargo test -p utsushi-reallive gameexe_sweetie_hd_known_values`,
   `cargo test -p utsushi-reallive gameexe_dotted_path_lookup`.
 - **Audit focus:** Lossy UTF-8 conversion silently dropping high-byte
@@ -288,7 +288,7 @@ z_minus_two }`.
 
 ### VM execution layer
 
-#### UTSUSHI-146i — Bytecode VM (fetch / decode / dispatch / advance)
+#### the relevant capabilityi — Bytecode VM (fetch / decode / dispatch / advance)
 
 - **Substrate-readiness:** **substrate-gap (longop scheduler snapshot — see
   reallive-engine.md § K).** Substrate honesty subagent must verify
@@ -311,8 +311,8 @@ longop_queue }` with fetch/decode/dispatch/advance loop. Dispatch hooks
     `CommandElement` dispatch (the first command of the prologue)
     before hitting an `Unimplemented` opcode boundary — proves the
     VM can drive a real scene up to the opcode coverage frontier.
-- **Must verify against Sweetie HD scene #0001 once UTSUSHI-146d/e land.**
-- **Dependencies:** UTSUSHI-146e, UTSUSHI-146f, UTSUSHI-146g.
+- **Must verify against Sweetie HD scene #0001 once the relevant capabilityd/e land.**
+- **Dependencies:** the relevant capabilitye, the relevant capabilityf, the relevant capabilityg.
 - **Verification:** `cargo test -p utsushi-reallive vm_synthetic_goto_loop`,
   `cargo test -p utsushi-reallive vm_gosub_ret_returns`,
   `cargo test -p utsushi-reallive vm_steps_scene1_until_unimplemented`.
@@ -323,7 +323,7 @@ longop_queue }` with fetch/decode/dispatch/advance loop. Dispatch hooks
 
 ---
 
-#### UTSUSHI-146j — Text / messaging RLOperation family
+#### the relevant capabilityj — Text / messaging RLOperation family
 
 - **Substrate-readiness:** substrate-ready.
 - **Title:** Implement the text/messaging opcodes (module_msg equivalent):
@@ -347,8 +347,8 @@ longop_queue }` with fetch/decode/dispatch/advance loop. Dispatch hooks
     without aborting.
 - **Synthetic fixture acceptable for opcodes other than `text` + `pause`;
   `text` + `pause` must verify against the first textout in Sweetie HD
-  scene #0001 once UTSUSHI-146d/e/i land.**
-- **Dependencies:** UTSUSHI-146i.
+  scene #0001 once the relevant capabilityd/e/i land.**
+- **Dependencies:** the relevant capabilityi.
 - **Verification:** `cargo test -p utsushi-reallive msg_text_emits_textline`,
   `cargo test -p utsushi-reallive msg_pause_yields_until_input`,
   `cargo test -p utsushi-reallive msg_scene1_first_textout_matches_shift_jis_decoded`.
@@ -358,7 +358,7 @@ longop_queue }` with fetch/decode/dispatch/advance loop. Dispatch hooks
 
 ---
 
-#### UTSUSHI-146k — Control-flow RLOperation family
+#### the relevant capabilityk — Control-flow RLOperation family
 
 - **Substrate-readiness:** substrate-ready.
 - **Title:** `goto`, `goto_if`, `goto_unless`, `goto_on`, `goto_case`,
@@ -381,13 +381,13 @@ longop_queue }` with fetch/decode/dispatch/advance loop. Dispatch hooks
     stack-frame push for `rtl` return; targets must be valid scene
     entries in the `RealSceneIndex`.
   - System-call entry into Sweetie HD scene 9999 via the
-    `CANCELCALL=9999,10` route works once UTSUSHI-146n (system-call
+    `CANCELCALL=9999,10` route works once the relevant capabilityn (system-call
     dispatch) is in place; this node just exposes `farcall` for
-    UTSUSHI-146n to call.
+    the relevant capabilityn to call.
 - **Synthetic fixture acceptable for the abstract cases; the
   `farcall(9999, 10)` test path must verify against Sweetie HD's actual
   scene 9999 entry layout once decompression lands.**
-- **Dependencies:** UTSUSHI-146i.
+- **Dependencies:** the relevant capabilityi.
 - **Verification:**
   `cargo test -p utsushi-reallive ctl_goto_if_branches`,
   `cargo test -p utsushi-reallive ctl_gosub_with_parameter_passing`,
@@ -398,10 +398,10 @@ longop_queue }` with fetch/decode/dispatch/advance loop. Dispatch hooks
 
 ---
 
-#### UTSUSHI-146l — Choice (`select` / `select_s` / `select_w`) family
+#### the relevant capabilityl — Choice (`select` / `select_s` / `select_w`) family
 
 - **Substrate-readiness:** **substrate-gap (longop scheduler — same as
-  UTSUSHI-146i).**
+  the relevant capabilityi).**
 - **Title:** Implement `select`, `select_s`, `select_w`, `select_objbtn`.
   The choice mechanism is a longop: it suspends the VM, emits one
   `TextLine` per option (annotated as a choice), waits for an
@@ -417,19 +417,19 @@ longop_queue }` with fetch/decode/dispatch/advance loop. Dispatch hooks
     sel-module dispatch in the real bytecode) decodes its choice
     strings correctly. (If scene #0001 doesn't have a choice, this node's
     real-bytes test targets the first scene that does — discoverable once
-    UTSUSHI-146d/e land.)
+    the relevant capabilityd/e land.)
   - Choice strings honour `SELBTN.NNN.*` styling values from Gameexe.
 - **Must verify against the first `select`-bearing scene in Sweetie HD
   Seen.txt.**
-- **Dependencies:** UTSUSHI-146i, UTSUSHI-146h, UTSUSHI-146j.
+- **Dependencies:** the relevant capabilityi, the relevant capabilityh, the relevant capabilityj.
 - **Verification:** `cargo test -p utsushi-reallive choice_select_s_emits_three_options`,
   `cargo test -p utsushi-reallive choice_resume_writes_store_reg`.
 - **Audit focus:** longop coupling — the longop must use the substrate
-  scheduler (whatever UTSUSHI-146i settles on), not a private wait loop.
+  scheduler (whatever the relevant capabilityi settles on), not a private wait loop.
 
 ---
 
-#### UTSUSHI-146m — String / memory / arithmetic RLOperation families
+#### the relevant capabilitym — String / memory / arithmetic RLOperation families
 
 - **Substrate-readiness:** substrate-ready.
 - **Title:** Implement string ops (`strcpy`, `strcat`, `strlen`,
@@ -449,7 +449,7 @@ longop_queue }` with fetch/decode/dispatch/advance loop. Dispatch hooks
     upper); `hantozen("abc")` returns `"ａｂｃ"` (full-width); these are
     the documented half/full conversions per RLDEV.
 - **Synthetic fixture acceptable.**
-- **Dependencies:** UTSUSHI-146g.
+- **Dependencies:** the relevant capabilityg.
 - **Verification:** `cargo test -p utsushi-reallive str_ops_table`,
   `cargo test -p utsushi-reallive mem_setarray_stepped_table`,
   `cargo test -p utsushi-reallive sys_rnd_deterministic_under_logical_clock`.
@@ -461,14 +461,14 @@ longop_queue }` with fetch/decode/dispatch/advance loop. Dispatch hooks
 
 ### Subsystem layer
 
-#### UTSUSHI-146n — System-call dispatch wired to Gameexe
+#### the relevant capabilityn — System-call dispatch wired to Gameexe
 
 - **Substrate-readiness:** substrate-ready.
 - **Title:** Wire the eight Gameexe-declared system-call routes
   (`CANCELCALL`, `SYSTEMCALL_SAVE`/`LOAD`/`SYSTEM`,
   `MOUSEACTIONCALL.000`, `LOADCALL`, `EXAFTERCALL`, `WBCALL.000`-`007`)
   into the VM event loop. Each route is a `farcall(scene_id,
-entrypoint)` from UTSUSHI-146k triggered by the matching substrate
+entrypoint)` from the relevant capabilityk triggered by the matching substrate
   `InputEvent` kind.
 - **Acceptance criteria:**
   - Boot with Sweetie HD's `Gameexe.ini` loaded; the dispatcher reports
@@ -479,11 +479,11 @@ entrypoint)` from UTSUSHI-146k triggered by the matching substrate
     `(x=100, y=100)` does not.
   - `CANCELCALL_MOD=0` disables the cancel route entirely (mods
     interpreted per RLDEV).
-  - Routes call into UTSUSHI-146k's `farcall` — no private dispatch
+  - Routes call into the relevant capabilityk's `farcall` — no private dispatch
     path.
 - **Must verify against Sweetie HD `Gameexe.ini` lines 14-28 (the
   documented routes).**
-- **Dependencies:** UTSUSHI-146h, UTSUSHI-146k.
+- **Dependencies:** the relevant capabilityh, the relevant capabilityk.
 - **Verification:** `cargo test -p utsushi-reallive syscall_routes_match_sweetie_hd`,
   `cargo test -p utsushi-reallive mouseactioncall_hot_region_dispatches`.
 - **Audit focus:** routes that say "TODO" in unit tests but pretend to
@@ -491,7 +491,7 @@ entrypoint)` from UTSUSHI-146k triggered by the matching substrate
 
 ---
 
-#### UTSUSHI-146o — Graphics object stack (headless)
+#### the relevant capabilityo — Graphics object stack (headless)
 
 - **Substrate-readiness:** **substrate-gap (multi-artifact-per-tick emit
   cadence — see reallive-engine.md § K).** Substrate honesty subagent
@@ -515,9 +515,9 @@ entrypoint)` from UTSUSHI-146k triggered by the matching substrate
   - The frame artifact carries `frame_index`, `evidence_tier=E1`, and an
     `artifact_id` resolving to a PNG blob.
 - **Synthetic fixture acceptable** for the stack mechanics; the render
-  pass against a real g00 sprite requires UTSUSHI-146q to land first and
+  pass against a real g00 sprite requires the relevant capabilityq to land first and
   is gated as a follow-up test.
-- **Dependencies:** UTSUSHI-146a, UTSUSHI-146h.
+- **Dependencies:** the relevant capabilitya, the relevant capabilityh.
 - **Verification:** `cargo test -p utsushi-reallive graphics_object_stack_256_objects`,
   `cargo test -p utsushi-reallive render_wipe_solid_colour_deterministic_png`.
 - **Audit focus:** non-deterministic PNG output (timestamp metadata); the
@@ -525,9 +525,9 @@ entrypoint)` from UTSUSHI-146k triggered by the matching substrate
 
 ---
 
-#### UTSUSHI-146p — Graphics RLOperation family
+#### the relevant capabilityp — Graphics RLOperation family
 
-- **Substrate-readiness:** substrate-ready (assumes UTSUSHI-146o
+- **Substrate-readiness:** substrate-ready (assumes the relevant capabilityo
   resolves the multi-artifact-per-tick gap).
 - **Title:** Implement the rlvm module*grp + module_obj_management +
   module_obj_fg_bg subset: `allocDC`, `wipe`, `shake`, `load`/`open`/
@@ -537,17 +537,17 @@ entrypoint)` from UTSUSHI-146k triggered by the matching substrate
   `objSetLayer`, `objShow`/`objHide`. Target: ~25 opcodes of the ~150
   across rlvm's module_grp + module_obj*\*.
 - **Acceptance criteria:**
-  - Each opcode produces an observable mutation of UTSUSHI-146o's
+  - Each opcode produces an observable mutation of the relevant capabilityo's
     graphics object stack visible via a `state_snapshot` API.
   - `openBg("BG01A1")` reads `$GAME/REALLIVEDATA/g00/BG01A1.g00` via the
     substrate VFS and registers it as the bg plane background; the next
     render emits a 1280x720 PNG whose top-left pixel matches the
-    documented bg colour (after g00 type-0 decode lands in UTSUSHI-146q).
+    documented bg colour (after g00 type-0 decode lands in the relevant capabilityq).
   - `fade(target_alpha, ms)` schedules a longop that mutates the bg
     plane's alpha over `ms / clock_tick_period` ticks.
-- **Must verify against Sweetie HD's real `BG01A1.g00` once UTSUSHI-146q
+- **Must verify against Sweetie HD's real `BG01A1.g00` once the relevant capabilityq
   is available; gated as a follow-up test until then.**
-- **Dependencies:** UTSUSHI-146o, UTSUSHI-146q.
+- **Dependencies:** the relevant capabilityo, the relevant capabilityq.
 - **Verification:** `cargo test -p utsushi-reallive grp_openbg_bg01a1_registers_bg_plane`.
 - **Audit focus:** opcodes that mutate state but never produce a
   visible effect (graphics-object stack updates that don't render);
@@ -555,7 +555,7 @@ entrypoint)` from UTSUSHI-146k triggered by the matching substrate
 
 ---
 
-#### UTSUSHI-146q — g00 image decoder (types 0/1/2)
+#### the relevant capabilityq — g00 image decoder (types 0/1/2)
 
 - **Substrate-readiness:** substrate-ready.
 - **Title:** Decode the three g00 sub-formats: type 0 (raw 24-bpp BGR),
@@ -573,10 +573,10 @@ entrypoint)` from UTSUSHI-146k triggered by the matching substrate
     that type) — emit `utsushi.reallive.g00_no_type_N_in_corpus` for
     types not present.
   - Type 2 decoded files expose a `regions: Vec<G00Region { rect, name? }>`
-    list usable by `objLoadRegion` in UTSUSHI-146p.
+    list usable by `objLoadRegion` in the relevant capabilityp.
 - **Must verify against Sweetie HD `$GAME/REALLIVEDATA/g00/BACK.g00` and
   `BG01A1.g00`; full-corpus histogram against all 2,450 files.**
-- **Dependencies:** UTSUSHI-146a.
+- **Dependencies:** the relevant capabilitya.
 - **Verification:** `cargo test -p utsushi-reallive g00_type0_back_decodes`,
   `cargo test -p utsushi-reallive g00_corpus_histogram_sweetie_hd_2450_files`.
 - **Audit focus:** treating "BGR" as "RGB" silently; LZSS distance
@@ -585,7 +585,7 @@ entrypoint)` from UTSUSHI-146k triggered by the matching substrate
 
 ---
 
-#### UTSUSHI-146r — Audio system: NWA + OVK decoders + AudioEvent emitter
+#### the relevant capabilityr — Audio system: NWA + OVK decoders + AudioEvent emitter
 
 - **Substrate-readiness:** **substrate-gap (sub-sample addressing in
   AudioEvent payload — see reallive-engine.md § K).** Substrate honesty
@@ -613,7 +613,7 @@ sample 46` and emits `AudioEvent { kind: VoicePlay, archive_id:
   - No actual sample mixing required; the decoder just verifies header
     decode and emits metadata.
 - **Must verify against Sweetie HD `ASA.nwa`, `z0001.ovk`, `CHIME.nwa`.**
-- **Dependencies:** UTSUSHI-146h, UTSUSHI-146i.
+- **Dependencies:** the relevant capabilityh, the relevant capabilityi.
 - **Verification:** `cargo test -p utsushi-reallive nwa_asa_decodes_33M_frames`,
   `cargo test -p utsushi-reallive ovk_z0001_two_entries`,
   `cargo test -p utsushi-reallive koe_play_resolves_through_namae_table`.
@@ -623,7 +623,7 @@ sample 46` and emits `AudioEvent { kind: VoicePlay, archive_id:
 
 ---
 
-#### UTSUSHI-146s — Save / load (AVG-derived format)
+#### the relevant capabilitys — Save / load (AVG-derived format)
 
 - **Substrate-readiness:** substrate-ready.
 - **Title:** Implement read + write of `REALLIVE.sav` (per-slot system
@@ -645,7 +645,7 @@ sample 46` and emits `AudioEvent { kind: VoicePlay, archive_id:
     save state; on-disk write is a separate serialiser.
 - **Must verify against Sweetie HD `$GAME/SAVEDATA/*.sav` files (read
   only — no writes to the read-only mount).**
-- **Dependencies:** UTSUSHI-146g, UTSUSHI-146h.
+- **Dependencies:** the relevant capabilityg, the relevant capabilityh.
 - **Verification:** `cargo test -p utsushi-reallive save_reads_avg_system_save`,
   `cargo test -p utsushi-reallive save_reads_avg_global_save`,
   `cargo test -p utsushi-reallive save_read_flags_decodes_title`.
@@ -657,7 +657,7 @@ sample 46` and emits `AudioEvent { kind: VoicePlay, archive_id:
 
 ### Game-state-machine + replay layer
 
-#### UTSUSHI-146t — Sukara title XOR-2 key resolution (research-only)
+#### the relevant capabilityt — Sukara title XOR-2 key resolution (research-only)
 
 - **Substrate-readiness:** substrate-ready (no substrate work — this is
   a research node).
@@ -677,19 +677,19 @@ sample 46` and emits `AudioEvent { kind: VoicePlay, archive_id:
   - If the entropy is random (key on), the node ships with a known-bytes
     attack (RealLive scenes always start with a MetaElement opener byte
     `0x21` or `0x40` at offset 0 of the bytecode) and either recovers
-    the key or documents the recovery path for a follow-up node.
+    the key or documents the recovery path for later work.
   - Either outcome is acceptable; what is **not** acceptable is shipping
-    UTSUSHI-146d with a hardcoded "Key 09" guess and pretending it's
+    the relevant capabilityd with a hardcoded "Key 09" guess and pretending it's
     Sukara's.
 - **Must verify against Sweetie HD scene #0001 decompressed payload.**
-- **Dependencies:** UTSUSHI-146d.
+- **Dependencies:** the relevant capabilityd.
 - **Verification:** `cargo bench -p utsushi-reallive sukara_xor2_entropy_scan`.
 - **Audit focus:** silent acceptance of garbage decompressed bytes;
   using a Visual-Arts title key on a Sukara title.
 
 ---
 
-#### UTSUSHI-146u — End-to-end Sweetie HD scene-1 text-replay smoke
+#### the relevant capabilityu — End-to-end Sweetie HD scene-1 text-replay smoke
 
 - **Substrate-readiness:** substrate-ready (assumes 146i / 146o
   substrate-gap items are resolved).
@@ -708,7 +708,7 @@ sample 46` and emits `AudioEvent { kind: VoicePlay, archive_id:
   - Unimplemented opcodes emit Warnings (not Fatals) so the run reaches
     "first textual output" before any unknown stops it.
 - **Must verify against Sweetie HD `Seen.txt` scene #0001 end-to-end.**
-- **Dependencies:** UTSUSHI-146d through UTSUSHI-146t (everything).
+- **Dependencies:** the relevant capabilityd through the relevant capabilityt (everything).
 - **Verification:** `cargo test -p utsushi-reallive replay_scene1_emits_textline`,
   `cargo test -p utsushi-reallive replay_scene1_byte_deterministic`,
   `cargo test -p utsushi-reallive replay_scene1_snapshot_restore_identity`.
@@ -718,16 +718,16 @@ sample 46` and emits `AudioEvent { kind: VoicePlay, archive_id:
 
 ---
 
-#### UTSUSHI-146v — Cross-engine substrate conformance + Siglus lineage notes
+#### the relevant capabilityv — Cross-engine substrate conformance + Siglus lineage notes
 
-- **Substrate-readiness:** substrate-ready (UTSUSHI-147 already declares
+- **Substrate-readiness:** substrate-ready (the relevant capability already declares
   the cross-engine conformance fixture target).
-- **Title:** Tie the RealLive port into UTSUSHI-147's cross-engine
-  conformance fixture. Document which sub-nodes of UTSUSHI-146 will be
+- **Title:** Tie the RealLive port into the relevant capability's cross-engine
+  conformance fixture. Document which sub-nodes of the relevant capability will be
   reusable when the Siglus port lands (the AVG32 → RealLive → Siglus
   lineage Visual Arts documents).
 - **Acceptance criteria:**
-  - UTSUSHI-146a-u's facade usage is confirmed identical to a Siglus
+  - the relevant capabilitya-u's facade usage is confirmed identical to a Siglus
     minimal-port scaffold (only `utsushi_core::substrate::*` imports;
     no engine-specific facade exceptions).
   - Lineage notes in `docs/research/reallive-engine.md` (new appendix)
@@ -741,14 +741,14 @@ sample 46` and emits `AudioEvent { kind: VoicePlay, archive_id:
     - **RealLive-only:** rlvm-specific opcode catalogue, OVK voice
       archives (Siglus uses different containers), specific module
       identifiers.
-  - Any UTSUSHI-146 node whose acceptance criterion would break under a
+  - Any the relevant capability node whose acceptance criterion would break under a
     Siglus reuse claim emits a documented "engine-specific boundary"
     note instead of pretending portability.
 - **Synthetic fixture acceptable** (this is a documentation +
   conformance-pin node).
-- **Dependencies:** UTSUSHI-146u, UTSUSHI-147 (declared but planned).
+- **Dependencies:** the relevant capabilityu, the relevant capability (declared but planned).
 - **Verification:** `cargo test -p utsushi-siglus --test cross_engine_substrate_alignment`,
-  `just check`. (UTSUSHI-147 promoted the inline scaffold into the
+  `just check`. (the relevant capability promoted the inline scaffold into the
   `utsushi-siglus` sibling crate; the cross-engine fixture lives there
   now.)
 - **Audit focus:** "reusable" claims that haven't been proven against a
@@ -788,24 +788,24 @@ Across every node above:
 
 ### Substrate-gap claims (substrate honesty subagent verification points)
 
-1. **UTSUSHI-146i / UTSUSHI-146l:** can `SnapshotStore` serialise a paused
+1. **the relevant capabilityi / the relevant capabilityl:** can `SnapshotStore` serialise a paused
    longop, including its private state? Or must longop state live in named
    `StatePath` slots?
-2. **UTSUSHI-146o:** does `FrameArtifactSink` permit multiple artifacts per
+2. **the relevant capabilityo:** does `FrameArtifactSink` permit multiple artifacts per
    logical clock tick (for the text + sprite-change-in-same-pause case)?
-3. **UTSUSHI-146r:** does `AudioEventKind::VoicePlay` permit
+3. **the relevant capabilityr:** does `AudioEventKind::VoicePlay` permit
    `(archive_id, sample_id)` metadata in the payload, given the
    forbidden-key filter at `crates/utsushi-core/src/sink/audio.rs:245-260`?
-4. (Implicit) **UTSUSHI-146o:** the artifact store backing
+4. (Implicit) **the relevant capabilityo:** the artifact store backing
    `FrameArtifact::artifact_ref` — is it a runner concern or a substrate
    concern? If the engine port has to bring its own artifact-store
    implementation, that's not a gap; if the substrate is expected to
    provide one, the gap needs to be filled.
 
-### Replacement plan for the current UTSUSHI-146
+### Replacement plan for the current the relevant capability
 
-When the orchestrator ingests this proposal, UTSUSHI-146's status should
+When the orchestrator ingests this proposal, the relevant capability's status should
 move to **superseded**; its acceptance criteria are absorbed into 146u
-(the end-to-end smoke). UTSUSHI-147 ("Cross-engine substrate
-conformance fixture") keeps its dependency on UTSUSHI-146u (the
+(the end-to-end smoke). the relevant capability ("Cross-engine substrate
+conformance fixture") keeps its dependency on the relevant capabilityu (the
 end-to-end node), not on every 146x sub-node.

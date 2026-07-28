@@ -691,7 +691,7 @@ test("accepts qd export shape as the canonical roadmap file shape", () => {
   const normalized = normalizeDag(qdExportFixture());
   assert.equal(normalized.schemaVersion, "0.1.0");
   assert.deepEqual(normalized.nodes[1], {
-    id: "ITOTORI-300",
+    id: "capability_itotori_300",
     title: "Validate qd export roadmap gate",
     status: "planned",
     priority: "P0",
@@ -718,11 +718,11 @@ test("rejects done qd export acceptance and verification paths that are absent f
 
   assertError(
     errors,
-    "ITOTORI-300 acceptance references missing repo path scripts/missing-roadmap-validator.test.mjs",
+    "capability_itotori_300 acceptance references missing repo path scripts/missing-roadmap-validator.test.mjs",
   );
   assertError(
     errors,
-    "ITOTORI-300 verification[0].value references missing repo path scripts/missing-roadmap-validator.test.mjs",
+    "capability_itotori_300 verification[0].value references missing repo path scripts/missing-roadmap-validator.test.mjs",
   );
 });
 
@@ -786,9 +786,9 @@ test("rejects qd export placeholder spec, acceptance, and audit-focus text", () 
 
   const errors = validateDag(dag).errors;
 
-  assertError(errors, "ITOTORI-300 spec is placeholder text: test spec");
-  assertError(errors, "ITOTORI-300 acceptance is placeholder text: test acc");
-  assertError(errors, "ITOTORI-300 audit_focus[0] is placeholder text: test focus");
+  assertError(errors, "capability_itotori_300 spec is placeholder text: test spec");
+  assertError(errors, "capability_itotori_300 acceptance is placeholder text: test acc");
+  assertError(errors, "capability_itotori_300 audit_focus[0] is placeholder text: test focus");
 });
 
 test("rejects active qd audit-fix nodes with generic acceptance and empty evidence", () => {
@@ -852,8 +852,8 @@ test("rejects qd export CI reuse evidence that cites local qd log paths", () => 
   dag.runs.push(
     qdCiReuseRunFixture({
       summary:
-        "Covered by integrated qd-full-ci wave on main.\nEvidence: log_path=.qd/logs/ci-ITOTORI-300-2026-06-28T09-00-25-766Z.log",
-      log_path: ".qd/logs/ci-ITOTORI-300-2026-06-28T09-00-25-766Z.log",
+        "Covered by integrated qd-full-ci wave on main.\nEvidence: log_path=.qd/logs/ci-capability_itotori_300-2026-06-28T09-00-25-766Z.log",
+      log_path: ".qd/logs/ci-capability_itotori_300-2026-06-28T09-00-25-766Z.log",
     }),
     qdCiReuseRunFixture({
       node_id: "UNIV-000",
@@ -867,11 +867,11 @@ test("rejects qd export CI reuse evidence that cites local qd log paths", () => 
 
   assertError(
     errors,
-    "runs[0] ITOTORI-300 ci reuse evidence log_path must not point at local-only .qd state",
+    "runs[0] capability_itotori_300 ci reuse evidence log_path must not point at local-only .qd state",
   );
   assertError(
     errors,
-    "runs[0] ITOTORI-300 ci reuse evidence summary must not cite local-only .qd/logs paths",
+    "runs[0] capability_itotori_300 ci reuse evidence summary must not cite local-only .qd/logs paths",
   );
   assertError(
     errors,
@@ -905,11 +905,11 @@ test("rejects qd export passed-CI reuse wording that cites local qd log paths", 
 
   assertError(
     errors,
-    "runs[0] ITOTORI-300 ci reuse evidence log_path must be repo-relative, not absolute",
+    "runs[0] capability_itotori_300 ci reuse evidence log_path must be repo-relative, not absolute",
   );
   assertError(
     errors,
-    "runs[0] ITOTORI-300 ci reuse evidence summary must not cite local-only .qd/logs paths",
+    "runs[0] capability_itotori_300 ci reuse evidence summary must not cite local-only .qd/logs paths",
   );
   assertError(
     errors,
@@ -926,7 +926,7 @@ test("accepts qd export CI reuse evidence recorded as an external id", () => {
   dag.runs.push(
     qdCiReuseRunFixture({
       summary:
-        "Covered by integrated qd-full-ci wave on main.\nEvidence: external_id=local-qdfullci:ITOTORI-300:2026-06-28T09-00-25Z",
+        "Covered by integrated qd-full-ci wave on main.\nEvidence: external_id=local-qdfullci:capability_itotori_300:2026-06-28T09-00-25Z",
       log_path: null,
     }),
   );
@@ -950,9 +950,12 @@ test("rejects qd export alpha command verification that names missing recipes an
 
   assertError(
     errors,
-    "ITOTORI-300 verification[0] references missing just recipe missing-alpha-recipe",
+    "capability_itotori_300 verification[0] references missing just recipe missing-alpha-recipe",
   );
-  assertError(errors, "ITOTORI-300 verification[1] references missing vp task alpha:missing-task");
+  assertError(
+    errors,
+    "capability_itotori_300 verification[1] references missing vp task alpha:missing-task",
+  );
 });
 
 test("rejects qd export alpha P0/P1 app test passthrough commands", () => {
@@ -980,19 +983,19 @@ test("rejects qd export alpha P0/P1 app test passthrough commands", () => {
 
   assertError(
     errors,
-    'ITOTORI-300 verification[0] must use "pnpm --filter @itotori/app exec vitest run" instead of package "test --" passthrough',
+    'capability_itotori_300 verification[0] must use "pnpm --filter @itotori/app exec vitest run" instead of package "test --" passthrough',
   );
   assertError(
     errors,
-    'ITOTORI-300 verification[1] must use "pnpm --filter @itotori/app exec vitest run" instead of package "test --" passthrough',
+    'capability_itotori_300 verification[1] must use "pnpm --filter @itotori/app exec vitest run" instead of package "test --" passthrough',
   );
   assertError(
     errors,
-    "ITOTORI-300 verification[1] @itotori/app test path must be package-relative, not root-relative apps/itotori/test/openrouter-live.test.ts",
+    "capability_itotori_300 verification[1] @itotori/app test path must be package-relative, not root-relative apps/itotori/test/openrouter-live.test.ts",
   );
   assertError(
     errors,
-    "ITOTORI-300 verification[2] @itotori/app test path must be package-relative, not root-relative apps/itotori/test/openrouter-live.test.ts",
+    "capability_itotori_300 verification[2] @itotori/app test path must be package-relative, not root-relative apps/itotori/test/openrouter-live.test.ts",
   );
 });
 
@@ -1013,7 +1016,7 @@ test("rejects qd export alpha include-ignored cargo commands without exact test 
 
   assertError(
     errors,
-    "ITOTORI-300 verification[0] include-ignored command must name an exact cargo integration test target and test filter",
+    "capability_itotori_300 verification[0] include-ignored command must name an exact cargo integration test target and test filter",
   );
 });
 
@@ -1031,7 +1034,7 @@ test("accepts qd export alpha commands that name existing recipes, tasks, and ex
         {
           type: "command",
           value:
-            "ITOTORI_REAL_GAME_ROOT=/scratch/itotori-research/primary_corpus-hd/extracted direnv exec . cargo test -p utsushi-core --test engine_port_sinks_bridge_real_bytes engine_port_sinks_bridge_real_bytes_pushes_text_and_frame_for_ten_ticks -- --include-ignored",
+            "ITOTORI_REAL_GAME_ROOT=/scratch/itotori-research/sweetie-hd/extracted direnv exec . cargo test -p utsushi-core --test engine_port_sinks_bridge_real_bytes engine_port_sinks_bridge_real_bytes_pushes_text_and_frame_for_ten_ticks -- --include-ignored",
         },
       ],
     }),
@@ -1042,11 +1045,14 @@ test("accepts qd export alpha commands that name existing recipes, tasks, and ex
 
 test("rejects qd export edges that reference missing nodes", () => {
   const dag = qdExportFixture();
-  dag.edges.push({ from_node: "MISSING-001", to_node: "ITOTORI-300", type: "requires" });
+  dag.edges.push({ from_node: "MISSING-001", to_node: "capability_itotori_300", type: "requires" });
 
   const errors = validateDag(dag).errors;
 
-  assertError(errors, "edge MISSING-001 -> ITOTORI-300 references unknown from_node MISSING-001");
+  assertError(
+    errors,
+    "edge MISSING-001 -> capability_itotori_300 references unknown from_node MISSING-001",
+  );
 });
 
 test("flags a non-complete P1 real-game-testing-ready node that is not an ancestor of RGT-005", () => {
@@ -1338,7 +1344,7 @@ function qdExportFixture(overrides = {}) {
         audit_focus: ["Baseline drift"],
       },
       {
-        id: "ITOTORI-300",
+        id: "capability_itotori_300",
         title: "Validate qd export roadmap gate",
         kind: "feature",
         milestone: "continuous",
@@ -1358,7 +1364,7 @@ function qdExportFixture(overrides = {}) {
         ...overrides,
       },
     ],
-    edges: [{ from_node: "UNIV-000", to_node: "ITOTORI-300", type: "requires" }],
+    edges: [{ from_node: "UNIV-000", to_node: "capability_itotori_300", type: "requires" }],
     findings: [],
     runs: [],
     node_notes: [],
@@ -1395,7 +1401,7 @@ function qdPromotedAuditFixExport(overrides = {}) {
 function qdCiReuseRunFixture(overrides = {}) {
   return {
     id: "00000000-0000-4000-8000-000000000000",
-    node_id: "ITOTORI-300",
+    node_id: "capability_itotori_300",
     kind: "ci",
     status: "passed",
     worktree_path: null,
@@ -1403,7 +1409,7 @@ function qdCiReuseRunFixture(overrides = {}) {
     started_at: "2026-06-28T09:00:25.766Z",
     finished_at: "2026-06-28T09:00:25.766Z",
     summary:
-      "Covered by integrated qd-full-ci wave on main.\nEvidence: external_id=local-qdfullci:ITOTORI-300:2026-06-28T09-00-25Z",
+      "Covered by integrated qd-full-ci wave on main.\nEvidence: external_id=local-qdfullci:capability_itotori_300:2026-06-28T09-00-25Z",
     log_path: null,
     ...overrides,
   };

@@ -6,7 +6,7 @@
 > engine's runtime path, read that as the long-term contract; the alpha gate
 > is the 6-item list at the top of the readiness doc. Full runtime evidence on
 > the configured RealLive target via the 22-node decomposition
-> (`UTSUSHI-201..221`) is continuous-tier post-alpha.
+> (`the relevant capability..221`) is continuous-tier post-alpha.
 
 Utsushi exists to collect runtime evidence for Kaifuu and Itotori. It does not
 need to be a pixel-perfect commercial port of every engine before it is useful,
@@ -125,7 +125,7 @@ the resolved executable path or other raw private local paths.
 ## Sink Tier Rules
 
 Utsushi runtime ports emit observed evidence into three headless sink contracts
-defined in `utsushi_core::sink` (UTSUSHI-022). Each sink kind has a fixed
+defined in `utsushi_core::sink` (the relevant capability). Each sink kind has a fixed
 evidence-tier ceiling that is independent of the adapter's `evidenceTier`
 ceiling — a powerful adapter emitting into the text sink still only produces
 text-tier evidence. Per-sink ceiling violations surface as the stable semantic
@@ -180,8 +180,8 @@ MUST NOT be promoted to a higher tier on the basis of "no audio events found."
 ### Soft budget exhaustion
 
 The sink module reserves `utsushi.sink.budget_exhausted` for the soft-budget
-hook described under "Artifact Limits" below. UTSUSHI-022 defines the diagnostic
-without wiring it into a production hook; UTSUSHI-029 will route it from
+hook described under "Artifact Limits" below. the relevant capability defines the diagnostic
+without wiring it into a production hook; the relevant capability will route it from
 `RuntimeArtifactRoot::write_bytes` once an artifact-budget tracker exists.
 
 ## Runtime Environment Matrix
@@ -343,7 +343,7 @@ not a valid alpha path for those engines.
 ## Alpha Bar
 
 For alpha readiness, Utsushi must support synthetic fixture evidence through E2
-and the MV/MZ vertical must include `UTSUSHI-119` patched-output runtime proof:
+and the MV/MZ vertical must include `the relevant capability` patched-output runtime proof:
 
 1. Produce an E1 runtime trace for the patched fixture.
 2. Produce an E2 frame capture artifact for the patched fixture.

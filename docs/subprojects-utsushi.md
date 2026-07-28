@@ -3,12 +3,12 @@
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
 > of [`project-readiness.md`](project-readiness.md).
 > Alpha-ready means the architecture-proven dogfood point — substrate
-> extensions M.1–M.3 (`UTSUSHI-222`/`223`/`224`) plus a non-synthetic engine
-> port crate (`UTSUSHI-200`), validated against multi-engine real bytes.
+> extensions M.1–M.3 (`the relevant capability`/`223`/`224`) plus a non-synthetic engine
+> port crate (`the relevant capability`), validated against multi-engine real bytes.
 > Sections below that describe Utsushi as the "runtime evidence layer" or the
 > alpha runtime path for a specific engine describe the long-term contract,
 > not the alpha gate. Full runtime evidence on the configured RealLive target
-> via the 22-node decomposition (`UTSUSHI-201..221`) is continuous-tier
+> via the 22-node decomposition (`the relevant capability..221`) is continuous-tier
 > post-alpha.
 
 Utsushi owns runtime validation evidence: trace, replay, capture, smoke reports, and future playable review slices.
@@ -117,10 +117,10 @@ stronger product shape: cross-platform play, browser/WASM review, deterministic
 jump-to-moment, snapshots, recordings, agent-readable state, and patch validation
 without depending on a brittle host runtime.
 
-The substrate slices (`UTSUSHI-020` through `UTSUSHI-030`, plus `UTSUSHI-056`,
-`UTSUSHI-103`, and `UTSUSHI-120`) are alpha-tier: they are the load-bearing
+The substrate slices (`the relevant capability` through `the relevant capability`, plus `the relevant capability`,
+`the relevant capability`, and `the relevant capability`) are alpha-tier: they are the load-bearing
 render-fidelity and conformance track that every claimed engine depends on. The
-per-claimed-engine port slices (`UTSUSHI-031` through `UTSUSHI-039`, covering RPG
+per-claimed-engine port slices (`the relevant capability` through `the relevant capability`, covering RPG
 Maker MV/MZ, SiglusEngine, KiriKiri/KAG, and plain XP3) are likewise alpha-tier
 and co-equal product to Kaifuu adapters, not nice-to-have polish. Engine port
 work for unclaimed engines — Ren'Py, Wolf RPG Editor, BGI/Ethornell,
@@ -130,14 +130,14 @@ verticals rather than being deleted.
 
 The roadmap contains executable Rust-port specs:
 
-- `UTSUSHI-020` through `UTSUSHI-025` build the shared substrate in reviewable
+- `the relevant capability` through `the relevant capability` build the shared substrate in reviewable
   slices: VFS and asset packages, deterministic input and clocks, headless
   text/render/audio sinks, inspectable state and snapshots, WASM/embed ABI, and
   implementation-map validation.
-- `UTSUSHI-026` through `UTSUSHI-030` build the conformance layer: profile and
+- `the relevant capability` through `the relevant capability` build the conformance layer: profile and
   result schemas, trace and branch checks, snapshot checks, capture and
   recording artifact checks, and Itotori ingestion fixtures.
-- `UTSUSHI-031` through `UTSUSHI-061` create engine-specific executable slices
+- `the relevant capability` through `the relevant capability` create engine-specific executable slices
   for RPG Maker MV/MZ, Siglus, KiriKiri/KAG, Ren'Py, Wolf RPG Editor,
   BGI/Ethornell, TyranoScript, RPG Maker VX Ace/RGSS3, and bounded Unity
   capture profiles. The later nodes also add a shared runtime observation hook
@@ -164,8 +164,8 @@ Current engine-port strategy:
   handoff possible.
 - **RPG Maker MV/MZ** is the first instrument-existing-runtime proof because its
   browser/NW.js-shaped runtime can provide observation hooks and capture quickly.
-- **Ren'Py** starts with existing-runtime instrumentation (`UTSUSHI-041`).
-  Route replay (`UTSUSHI-040`) is a follow-up subset only after observed-runtime
+- **Ren'Py** starts with existing-runtime instrumentation (`the relevant capability`).
+  Route replay (`the relevant capability`) is a follow-up subset only after observed-runtime
   evidence boundaries are established.
 
 ## Runtime Evidence v0.2

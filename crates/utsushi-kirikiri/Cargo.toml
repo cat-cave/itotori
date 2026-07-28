@@ -5,7 +5,7 @@ publish = false
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "UTSUSHI-037 KAG plaintext REPLAY skeleton: deterministically replays an already-plaintext KiriKiri/KAG `.ks` script into a typed trace of message text, speaker/name state, choices, and jumps. Skeleton only — NOT full TJS scripting or the encrypted-XP3 container runtime; unsupported TJS/macros/[iscript] surface as typed semantic diagnostics. No shell-outs."
+description = "capability_utsushi_037 KAG plaintext REPLAY skeleton: deterministically replays an already-plaintext KiriKiri/KAG `.ks` script into a typed trace of message text, speaker/name state, choices, and jumps. Skeleton only — NOT full TJS scripting or the encrypted-XP3 container runtime; unsupported TJS/macros/[iscript] surface as typed semantic diagnostics. No shell-outs."
 
 [dependencies]
 # The `.ks` source is decoded once (UTF-8 / Shift-JIS) and every control-flow

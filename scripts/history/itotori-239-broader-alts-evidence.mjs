@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// ITOTORI-239 — Broader alternate-provider evidence capture.
+// the relevant capability — Broader alternate-provider evidence capture.
 //
-// Goal: ITOTORI-238 validated `deepinfra` as the only json-schema-capable
-// alternate, but UTSUSHI-231 retry 7 saw HTTP 429 from BOTH fireworks
+// Goal: the relevant capability validated `deepinfra` as the only json-schema-capable
+// alternate, but the relevant capability retry 7 saw HTTP 429 from BOTH fireworks
 // (primary) AND deepinfra (the sole alternate). With only one alternate
 // behind the primary, a quota-time co-incidence wipes the entire bundle.
 //
@@ -11,12 +11,12 @@
 // docs/openrouter-integration-evidence/2026-06-25.json call_5
 // metadata.available_providers) under Trevor's ZDR allow-list. We
 // exclude the already-validated set, the empirically-blocked `deepseek`
-// tag, and the candidates ITOTORI-238 already proved out:
+// tag, and the candidates the relevant capability already proved out:
 //
 //   primary:                          fireworks
 //   already-validated alternate:      deepinfra
-//   ZDR-blocked (per ITOTORI-224):    deepseek
-//   already-probed by ITOTORI-238:    lambda (404), novita (200 plain
+//   ZDR-blocked (per the relevant capability):    deepseek
+//   already-probed by the relevant capability:    lambda (404), novita (200 plain
 //                                       but 404 on json_schema), parasail
 //                                       (200 plain, 429 on json_schema —
 //                                       retry here)
@@ -35,7 +35,7 @@
 //   - provider.allow_fallbacks=false
 //   - provider.require_parameters=true
 //
-// Probe payload size: the ITOTORI-238 toy call was ~16 prompt tokens,
+// Probe payload size: the the relevant capability toy call was ~16 prompt tokens,
 // which is not representative of the agentic loop's actual workload
 // (QA + speaker-label stages send hundreds-to-thousands of tokens). The
 // task spec explicitly asks for "a slightly bigger prompt that
@@ -68,36 +68,36 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
 const EVIDENCE_DIR = resolve(REPO, "docs/openrouter-integration-evidence");
-const EVIDENCE_DATE = "2026-06-26-itotori-239";
+const EVIDENCE_DATE = "2026-06-26-capability_itotori_239";
 const EVIDENCE_PATH = resolve(EVIDENCE_DIR, `${EVIDENCE_DATE}.json`);
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY.length < 16) {
   console.error(
-    "ITOTORI-239 evidence capture aborted: OPENROUTER_API_KEY is not set in the environment.",
+    "capability_itotori_239 evidence capture aborted: OPENROUTER_API_KEY is not set in the environment.",
   );
   process.exit(1);
 }
 
 const REDACT = "Bearer sk-or-***REDACTED***";
 const BASE = "https://openrouter.ai/api/v1";
-const REFERER = "https://itotori.dev/itotori-239-broader-alts-evidence";
-const TITLE = "itotori-239-broader-alts-evidence";
+const REFERER = "https://itotori.dev/the relevant capability";
+const TITLE = "capability_itotori_239-broader-alts-evidence";
 
 const MODEL_ID = "deepseek/deepseek-v4-flash";
 
-// Catalog list from ITOTORI-224 call_5 metadata.available_providers
+// Catalog list from the relevant capability call_5 metadata.available_providers
 // (capture at docs/openrouter-integration-evidence/2026-06-25.json),
 // MINUS:
 //   - fireworks  (primary; already pinned)
 //   - deepinfra  (already validated alternate)
-//   - deepseek   (excluded from ZDR allow-list per ITOTORI-224 call_3)
+//   - deepseek   (excluded from ZDR allow-list per the relevant capability call_3)
 //   - novita     (already-probed: 200 plain but 404 on json_schema)
-//   - lambda     (not actually in the catalog list — ITOTORI-238 noted it
+//   - lambda     (not actually in the catalog list — the relevant capability noted it
 //                 returned "no allowed providers")
-// PLUS parasail (retry — ITOTORI-238 saw 429 transient on json_schema).
+// PLUS parasail (retry — the relevant capability saw 429 transient on json_schema).
 const CANDIDATE_PROVIDERS = [
-  "parasail", // retry — ITOTORI-238 json_schema 429 was transient
+  "parasail", // retry — the relevant capability json_schema 429 was transient
   "streamlake",
   "wafer",
   "gmicloud",
@@ -116,10 +116,10 @@ const CANDIDATE_PROVIDERS = [
 // A realistic agentic-loop-stage prompt. ~200 prompt tokens with
 // style guidance + a multi-line Japanese source block. This is
 // representative of the QA/speakerLabel stage that the alpha gate
-// actually exercises (vs the 16-token ITOTORI-238 toy call).
+// actually exercises (vs the 16-token the relevant capability toy call).
 const REAL_TRANSLATION_PROMPT =
   "You are an English localization assistant for a Japanese visual " +
-  "novel called primary_corpus HD. Style guidance: tone-register=playful, " +
+  "novel called Sweetie HD. Style guidance: tone-register=playful, " +
   "register=informal-feminine, preserve onomatopoeia in romaji, do not " +
   "invent character names not present in the source. The following " +
   "is a single scene of dialogue between Yumeko and Haruka in early " +
@@ -229,7 +229,7 @@ const HARD_CAP_USD = 0.15;
 for (const altProviderId of CANDIDATE_PROVIDERS) {
   if (accumulatedCost > HARD_CAP_USD) {
     console.error(
-      `[ITOTORI-239] HARD BUDGET CAP exceeded (USD ${accumulatedCost.toFixed(6)} > ${HARD_CAP_USD}); skipping remaining candidates.`,
+      `[capability_itotori_239] HARD BUDGET CAP exceeded (USD ${accumulatedCost.toFixed(6)} > ${HARD_CAP_USD}); skipping remaining candidates.`,
     );
     altSummaries[altProviderId] = {
       validated: false,
@@ -238,7 +238,7 @@ for (const altProviderId of CANDIDATE_PROVIDERS) {
     continue;
   }
   console.error(
-    `[ITOTORI-239] Probing candidate alternate (provider.only=['${altProviderId}'], zdr=true) with ~200-token prompt...`,
+    `[capability_itotori_239] Probing candidate alternate (provider.only=['${altProviderId}'], zdr=true) with ~200-token prompt...`,
   );
   const plainCall = await captureCall(`call_${altProviderId}_plain_realistic`, {
     path: "/chat/completions",
@@ -272,7 +272,7 @@ for (const altProviderId of CANDIDATE_PROVIDERS) {
   let conformingBody = false;
   if (status === 200 && upstreamProvider !== null) {
     console.error(
-      `[ITOTORI-239]   plain call OK — probing json_schema structured-output mode on ${altProviderId}...`,
+      `[capability_itotori_239]   plain call OK — probing json_schema structured-output mode on ${altProviderId}...`,
     );
     structuredCall = await captureCall(`call_${altProviderId}_json_schema_realistic`, {
       path: "/chat/completions",
@@ -347,8 +347,8 @@ for (const altProviderId of CANDIDATE_PROVIDERS) {
 }
 
 const payload = {
-  schemaVersion: "itotori-239-broader-alts-evidence/v0",
-  node: "ITOTORI-239",
+  schemaVersion: "capability_itotori_239-broader-alts-evidence/v0",
+  node: "capability_itotori_239",
   fetchedAt,
   redactionContract: {
     field: "headers.authorization",
@@ -361,25 +361,25 @@ const payload = {
   excludedFromCandidates: {
     fireworks: "Primary pair; already pinned.",
     deepinfra:
-      "Already validated as alternate by ITOTORI-238 (HTTP 200 plain + json_schema, body conforming).",
+      "Already validated as alternate by capability_itotori_238 (HTTP 200 plain + json_schema, body conforming).",
     deepseek:
-      "Excluded from Trevor's ZDR allow-list per ITOTORI-224 call_3/call_4 (HTTP 404 'No endpoints found matching your data policy'). Per user memory project_zdr_allowlist_excludes_deepseek_implicit_cache.",
+      "Excluded from Trevor's ZDR allow-list per capability_itotori_224 call_3/call_4 (HTTP 404 'No endpoints found matching your data policy'). Per user memory project_zdr_allowlist_excludes_deepseek_implicit_cache.",
     novita:
-      "ITOTORI-238 validated plain call (HTTP 200) but json_schema returned HTTP 404 'No endpoints found that can handle the requested parameters' — does not support response_format=json_schema for this model.",
+      "capability_itotori_238 validated plain call (HTTP 200) but json_schema returned HTTP 404 'No endpoints found that can handle the requested parameters' — does not support response_format=json_schema for this model.",
     lambda:
-      "ITOTORI-238 probe returned HTTP 404 'No allowed providers'; not present in the per-model endpoint catalog.",
+      "capability_itotori_238 probe returned HTTP 404 'No allowed providers'; not present in the per-model endpoint catalog.",
   },
   probePostureNote:
     "Each candidate gets a ~200-token translation prompt under provider.only=[<alt>] + zdr=true + allow_fallbacks=false + data_collection=deny + require_parameters=true. If plain succeeds, a json_schema-mode call follows with a representative multi-field QA schema. Validation is binary: 200 plain + 200 json_schema + conforming body = VALIDATED. Anything else = NOT VALIDATED and must NOT be added to alternateProviders[].",
   realisticPromptTokenEstimate:
-    "~200 prompt tokens (vs ITOTORI-238's 16-token toy call). Representative of agentic-loop QA + speakerLabel stage workloads.",
+    "~200 prompt tokens (vs capability_itotori_238's 16-token toy call). Representative of agentic-loop QA + speakerLabel stage workloads.",
   altProviderSummaries: altSummaries,
   calls: callRecords,
   accumulatedUsdCost: accumulatedCost,
   notes: [
-    "ITOTORI-239 broader-alternate validation: probes the ZDR-permitted candidates not covered by ITOTORI-238, plus a parasail retry (the json_schema 429 was transient quota, not a capability gap).",
+    "capability_itotori_239 broader-alternate validation: probes the ZDR-permitted candidates not covered by capability_itotori_238, plus a parasail retry (the json_schema 429 was transient quota, not a capability gap).",
     "Validation criterion: HTTP 200 on plain call + HTTP 200 on json_schema call + body conforming to the requested schema. All three required.",
-    "The presets/localize-primary_corpus-hd.pair-policy.json alternateProviders[] is updated ONLY for candidates that pass all three criteria, with each entry annotated with the evidenceRef pointing into this file.",
+    "The presets/localize-sweetie-hd.pair-policy.json alternateProviders[] is updated ONLY for candidates that pass all three criteria, with each entry annotated with the evidenceRef pointing into this file.",
   ],
 };
 
@@ -390,7 +390,7 @@ const written = readFileSync(EVIDENCE_PATH, "utf8");
 const SK_RE = /sk-or-[A-Za-z0-9_-]{40,}/;
 if (SK_RE.test(written)) {
   console.error(
-    `[ITOTORI-239] FATAL: API key pattern leaked into ${EVIDENCE_PATH}; deleting evidence file.`,
+    `[capability_itotori_239] FATAL: API key pattern leaked into ${EVIDENCE_PATH}; deleting evidence file.`,
   );
   writeFileSync(
     EVIDENCE_PATH,
@@ -401,12 +401,12 @@ if (SK_RE.test(written)) {
 }
 
 console.error(
-  `[ITOTORI-239] Evidence written to ${EVIDENCE_PATH} (size ${written.length} bytes; accumulated cost USD ${payload.accumulatedUsdCost.toFixed(8)}).`,
+  `[capability_itotori_239] Evidence written to ${EVIDENCE_PATH} (size ${written.length} bytes; accumulated cost USD ${payload.accumulatedUsdCost.toFixed(8)}).`,
 );
 const validatedAlternates = Object.entries(altSummaries)
   .filter(([, summary]) => summary.validated)
   .map(([id]) => id);
 console.error(
-  `[ITOTORI-239] Validated alternates: ${validatedAlternates.length ? validatedAlternates.join(", ") : "<NONE>"}`,
+  `[capability_itotori_239] Validated alternates: ${validatedAlternates.length ? validatedAlternates.join(", ") : "<NONE>"}`,
 );
-console.error("[ITOTORI-239] Done.");
+console.error("[capability_itotori_239] Done.");

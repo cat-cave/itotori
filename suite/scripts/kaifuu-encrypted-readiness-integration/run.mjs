@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /*
- * KAIFUU-042 — `pnpm exec vp run kaifuu:encrypted-readiness`
+ * the relevant capability — `pnpm exec vp run kaifuu:encrypted-readiness`
  *
  * Alpha encrypted-readiness evidence integration. COMPOSES the already-generated
- * encrypted-readiness EVIDENCE of the prerequisite slices (KAIFUU-103 packed
- * -engine readiness surface + KAIFUU-104 alpha-encrypted readiness evidence)
+ * encrypted-readiness EVIDENCE of the prerequisite slices (the relevant capability packed
+ * -engine readiness surface + the relevant capability alpha-encrypted readiness evidence)
  * into an alpha-readiness composed-evidence artifact, and — the key deliverable
  * — emits a deterministic REDACTED no-corpus artifact when NO private encrypted
  * corpus is configured.

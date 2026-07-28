@@ -1,4 +1,4 @@
-# Synthetic asset package fixture for UTSUSHI-020 integration tests.
+# Synthetic asset package fixture for the relevant capability integration tests.
 #
 # Drives the FixturePolicyPackage's diagnostic surface without requiring
 # real crypto or helper transport in the test crate. Per-path policy:

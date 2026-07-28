@@ -1,6 +1,6 @@
 # Kaifuu Archive And Encryption Detection Matrix
 
-KAIFUU-034 adds a core-owned detection matrix to the normal
+the relevant capability adds a core-owned detection matrix to the normal
 `kaifuu detect` report. The matrix is a triage surface, not an adapter support
 claim. It lets Kaifuu identify archive, encryption, protection, key, helper,
 and unknown-variant signals before a real engine adapter exists.

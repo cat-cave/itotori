@@ -15,7 +15,7 @@
 // patterns, skipping allow-listed paths (recorded fixtures preserve real
 // captured costs; this script itself documents the patterns it forbids).
 //
-// ITOTORI-134 — `provider_estimate` is RE-INTRODUCED as a legitimate,
+// the relevant capability — `provider_estimate` is RE-INTRODUCED as a legitimate,
 // narrowly-scoped deterministic cost-estimate state (derived from
 // cost_details or endpoint-pricing × tokens) and is therefore REMOVED from
 // the forbidden legacy-enum list. Only `unknown` and `local_estimate`
@@ -108,7 +108,7 @@ const COST_LITERAL_ALLOW = new Map([
   // cost is genuinely unknowable, so the amount is an ESTIMATE. These are
   // enumerated per-file because JSON cannot host a per-line marker; a NEW
   // un-listed schema fixture with a cost literal still fails the guard.
-  // (ITOTORI-134: `provider_estimate` is now a generally-allowed costKind for
+  // (the relevant capability: `provider_estimate` is now a generally-allowed costKind for
   // itotori's own OpenRouter spend too, but the synthetic AMOUNT here still
   // needs this per-file cost-literal exemption.)
   [
@@ -132,7 +132,7 @@ const COST_LITERAL_ALLOW = new Map([
 // LEGACY_ENUM_ALLOW — enumerated JSON fixtures permitted to carry the
 // `costKind: "local_estimate" | "unknown"` legacy-enum literal. Unlike
 // itotori's own OpenRouter spend (`provider_estimate` is re-introduced as a
-// legitimate deterministic estimate state by ITOTORI-134; `billed` /
+// legitimate deterministic estimate state by the relevant capability; `billed` /
 // `provider_estimate` / `zero` are all allowed everywhere), the cross-app
 // BENCHMARK cost schema (BenchmarkCostAmountV02) compares EXTERNAL third-party
 // systems. The `local_estimate` / `unknown` kinds are kept there for
@@ -145,7 +145,7 @@ const COST_LITERAL_ALLOW = new Map([
 // is NEVER eligible here — it carries a per-line marker.
 //
 // NB: the currently-enumerated benchmark fixtures use `costKind:
-// "provider_estimate"` (now generally allowed by ITOTORI-134), so this map is
+// "provider_estimate"` (now generally allowed by the relevant capability), so this map is
 // retained for completeness / future `local_estimate`/`unknown` benchmark
 // fixtures but is not currently load-bearing for the four listed files.
 const LEGACY_ENUM_ALLOW = new Map([
@@ -191,7 +191,7 @@ const FORBIDDEN_PATTERNS = [
     label: 'costKind: "unknown" / "local_estimate"',
     // Optional quotes around the key so the JSON form (`"costKind": "unknown"`)
     // is caught alongside the TS object-literal form (`costKind: "unknown"`).
-    // ITOTORI-134 — `provider_estimate` is REMOVED from this forbidden list: it
+    // the relevant capability — `provider_estimate` is REMOVED from this forbidden list: it
     // is re-introduced as a legitimate deterministic cost-estimate state
     // (derived from cost_details / endpoint pricing). Only the guess-based
     // `unknown` and `local_estimate` states remain forbidden. `legacyEnum`

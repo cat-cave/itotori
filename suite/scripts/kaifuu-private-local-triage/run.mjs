@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * KAIFUU-036 — `pnpm exec vp run kaifuu:private-local-triage`
+ * the relevant capability — `pnpm exec vp run kaifuu:private-local-triage`
  *
  * Private-local encrypted owned-game corpus triage. This is a FIRST-CLASS LOCAL
  * workflow, ABSENT from public/per-gate CI (no `just check`/`ci` lane and no

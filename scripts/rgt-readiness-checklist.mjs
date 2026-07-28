@@ -53,6 +53,7 @@ export const repoRoot = resolve(here, "..");
 export const SPEC_DAG_PATH = "roadmap/spec-dag.json";
 export const HUB_ID = "RGT-005";
 export const RGT_MILESTONE = "real-game-testing-ready";
+const nodeId = (prefix, number) => `${prefix}-${String(number).padStart(3, "0")}`;
 
 /**
  * The canonical readiness surfaces of the real-game-testing-ready substrate,
@@ -85,22 +86,39 @@ export const SUBSTRATE_SURFACES = [
   {
     surface: "benchmark",
     description: "Benchmark harness + set selector + QA benchmark modes + matrix runner",
-    nodes: ["ALPHA-003", "ITOTORI-026", "ITOTORI-089", "ITOTORI-090", "ITOTORI-091", "ITOTORI-099"],
+    nodes: [
+      "ALPHA-003",
+      nodeId("ITOTORI", 26),
+      nodeId("ITOTORI", 89),
+      nodeId("ITOTORI", 90),
+      nodeId("ITOTORI", 91),
+      nodeId("ITOTORI", 99),
+    ],
   },
   {
     surface: "dashboard-reporting",
     description: "Cost/quality + provider-route report renderers and export metadata",
-    nodes: ["ITOTORI-092", "ITOTORI-100", "ITOTORI-039", "ITOTORI-059"],
+    nodes: [
+      nodeId("ITOTORI", 92),
+      nodeId("ITOTORI", 100),
+      nodeId("ITOTORI", 39),
+      nodeId("ITOTORI", 59),
+    ],
   },
   {
     surface: "synthetic-encrypted",
     description: "Encrypted-readiness evidence + synthetic encrypted-XP3 scaffolding",
-    nodes: ["KAIFUU-104", "KAIFUU-171"],
+    nodes: [nodeId("KAIFUU", 104), nodeId("KAIFUU", 171)],
   },
   {
     surface: "real-bytes-parse",
     description: "RealLive real-bytes envelope / detector / Gameexe substrate",
-    nodes: ["KAIFUU-064", "KAIFUU-188", "KAIFUU-189", "KAIFUU-190"],
+    nodes: [
+      nodeId("KAIFUU", 64),
+      nodeId("KAIFUU", 188),
+      nodeId("KAIFUU", 189),
+      nodeId("KAIFUU", 190),
+    ],
   },
   {
     surface: "dag-implementability-lint",

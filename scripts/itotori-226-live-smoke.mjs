@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// ITOTORI-226 — live-smoke verification that the corrected DEV_PAIR slug
+// the relevant capability — live-smoke verification that the corrected DEV_PAIR slug
 // (deepseek/deepseek-v4-flash on fireworks) resolves to a billable
 // OpenRouter endpoint under the ZDR-only alpha routing posture.
 //
-// Pattern: same as scripts/itotori-224-evidence-capture.mjs — single
+// Pattern: same as scripts/the relevant capability.mjs — single
 // chat-completions call, full request+response captured, Authorization
 // header redacted, post-write API-key leak check before exit.
 //
@@ -31,15 +31,15 @@ const ARTIFACT_PATH = resolve(ARTIFACT_DIR, `${SMOKE_DATE}.json`);
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY.length < 16) {
   console.error(
-    "ITOTORI-226 live-smoke aborted: OPENROUTER_API_KEY is not set in the environment.",
+    "capability_itotori_226 live-smoke aborted: OPENROUTER_API_KEY is not set in the environment.",
   );
   process.exit(1);
 }
 
 const REDACT = "Bearer sk-or-***REDACTED***";
 const BASE = "https://openrouter.ai/api/v1";
-const REFERER = "https://itotori.dev/itotori-226-live-smoke";
-const TITLE = "itotori-226-live-smoke";
+const REFERER = "https://itotori.dev/the relevant capability";
+const TITLE = "capability_itotori_226-live-smoke";
 
 const MODEL_ID = "deepseek/deepseek-v4-flash";
 const PROVIDER_ID = "fireworks";
@@ -105,7 +105,7 @@ async function captureCall(label, { method = "POST", path, body }) {
 const fetchedAt = new Date().toISOString();
 
 console.error(
-  `[ITOTORI-226] Firing toy chat-completions against ${MODEL_ID} on provider.only=[${PROVIDER_ID}] + provider.zdr=true ...`,
+  `[capability_itotori_226] Firing toy chat-completions against ${MODEL_ID} on provider.only=[${PROVIDER_ID}] + provider.zdr=true ...`,
 );
 const call = await captureCall("call_1_dev_pair_corrected_slug_alpha_routing", {
   path: "/chat/completions",
@@ -131,8 +131,8 @@ const status = call.response.status;
 const providerEcho = call.response.body?.provider ?? null;
 
 const payload = {
-  schemaVersion: "itotori-226-live-smoke/v0",
-  node: "ITOTORI-226",
+  schemaVersion: "capability_itotori_226-live-smoke/v0",
+  node: "capability_itotori_226",
   fetchedAt,
   redactionContract: {
     field: "headers.authorization",
@@ -144,7 +144,7 @@ const payload = {
     modelId: MODEL_ID,
     providerId: PROVIDER_ID,
     rationale:
-      "ITOTORI-226 corrected DEV_PAIR.modelId to the catalog-correct deepseek/deepseek-v4-flash. This smoke proves the corrected pair resolves to a billable endpoint under provider.only=['fireworks'] + provider.zdr=true.",
+      "capability_itotori_226 corrected DEV_PAIR.modelId to the catalog-correct deepseek/deepseek-v4-flash. This smoke proves the corrected pair resolves to a billable endpoint under provider.only=['fireworks'] + provider.zdr=true.",
   },
   routingPostureUsed: PROVIDER_ROUTING_ALPHA,
   acceptanceCheck: {
@@ -167,7 +167,7 @@ const written = readFileSync(ARTIFACT_PATH, "utf8");
 const SK_RE = /sk-or-[A-Za-z0-9_-]{40,}/;
 if (SK_RE.test(written)) {
   console.error(
-    `[ITOTORI-226] FATAL: API key pattern leaked into ${ARTIFACT_PATH}; overwriting with abort sentinel.`,
+    `[capability_itotori_226] FATAL: API key pattern leaked into ${ARTIFACT_PATH}; overwriting with abort sentinel.`,
   );
   writeFileSync(
     ARTIFACT_PATH,
@@ -178,9 +178,11 @@ if (SK_RE.test(written)) {
 }
 
 console.error(
-  `[ITOTORI-226] Live smoke captured to ${ARTIFACT_PATH} (size ${written.length} bytes; pass=${payload.acceptanceCheck.pass}).`,
+  `[capability_itotori_226] Live smoke captured to ${ARTIFACT_PATH} (size ${written.length} bytes; pass=${payload.acceptanceCheck.pass}).`,
 );
 if (!payload.acceptanceCheck.pass) {
-  console.error("[ITOTORI-226] Acceptance check FAILED — see captured artifact for details.");
+  console.error(
+    "[capability_itotori_226] Acceptance check FAILED — see captured artifact for details.",
+  );
   process.exit(3);
 }

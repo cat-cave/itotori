@@ -168,7 +168,7 @@ KirikiriTools' `version.dll` trick lets the engine accept unencrypted XP3 withou
 reversing per-game keys [confirmed], but extracting the original encrypted archive still
 needs key discovery. So a plaintext-only KiriKiri adapter mostly reaches the **doujin /
 unpacked** subset; the commercial backlog needs the encryption boundary (Kaifuu
-KAIFUU-014 / 038) landed alongside it.
+the relevant capability / 038) landed alongside it.
 
 ---
 
@@ -273,7 +273,7 @@ tractability for Kaifuu_. The current adopted/deferred mapping lives in
 
 - **KiriKiri/KAG — strongly validated as #1 by volume** (4,046 JP VNs, 3,569 open).
   **But:** scope the adapter to land _with_ the XP3 encryption/key-discovery boundary
-  (KAIFUU-014/038), or it only reaches the doujin/unpacked subset and misses the
+  (the relevant capability/038), or it only reaches the doujin/unpacked subset and misses the
   commercial backlog that makes KiriKiri valuable. This is the single most important
   re-scope.
 - **RPG Maker MV/MZ (JSON)** — keep; Easy and it was the only early engine addressing the
@@ -289,7 +289,7 @@ tractability for Kaifuu_. The current adopted/deferred mapping lives in
   only 4% ever touched**, and **plaintext `.ks`/`.ksx` (HTML5/JS) → Easy**, reusing most
   of the KiriKiri-KAG plaintext machinery. At original publication, it was the largest
   greenfield in the catalog that had not yet been represented in the roadmap. It is now
-  mapped to `KAIFUU-016`, `UTSUSHI-052`, `UTSUSHI-053`, and `ALPHA-004`.
+  mapped to `the relevant capability`, `the relevant capability`, `the relevant capability`, and `ALPHA-004`.
 - **NScripter/ONScripter** — 1,264 JP VNs, 94% open, Moderate (simple XOR + Shift-JIS),
   mature open ecosystem. This remains useful historical evidence, but the live DAG does
   not currently adopt a dedicated NScripter/ONScripter adapter; see the deferred mapping

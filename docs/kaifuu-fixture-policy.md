@@ -10,7 +10,7 @@
 > rule, engine claims require validation against at least two real-world
 > games of that engine family.
 
-KAIFUU-000 defines how engine fixtures and reference implementations are
+the relevant capability defines how engine fixtures and reference implementations are
 sourced before parallel adapter work begins. It extends
 [fixtures-and-corpora.md](fixtures-and-corpora.md) and the dev doc
 [testing-standard.md](dev/testing-standard.md) for real engine adapters.
@@ -94,7 +94,7 @@ include SHA-256 hashes and byte lengths, and validate with
 variant they represent, the adapter support boundary they exercise, and whether
 the fixture is positive, negative, or round-trip evidence.
 
-The KAIFUU-051 encrypted-input fixture lane lives under
+The the relevant capability encrypted-input fixture lane lives under
 `fixtures/public/kaifuu-encrypted-matrix/` and is regenerated with:
 
 ```sh
@@ -216,7 +216,7 @@ Required artifacts before adapter work starts:
   tests when the committed bytes would otherwise imply real engine support.
   They must use synthetic marker bytes and assert aggregate evidence output,
   not raw source filenames, keys, decrypted text, helper dumps, or local paths.
-- Commands that run through the shared round-trip harness once KAIFUU-003
+- Commands that run through the shared round-trip harness once the relevant capability
   exists, or adapter-local commands until that harness lands.
 
 Adapters that cannot provide these artifacts stay research-only. They may add

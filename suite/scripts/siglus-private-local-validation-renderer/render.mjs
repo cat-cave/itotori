@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /*
- * KAIFUU-094 — Siglus private-local **redacted validation summary** renderer.
+ * the relevant capability — Siglus private-local **redacted validation summary** renderer.
  *
  * Pure, deterministic core for the `siglus:private-local-validation-render`
  * workflow. It turns operator-authored, ALREADY-REDACTED private-local Siglus
  * VALIDATION manifests (describing local known-key / decrypt / patch-verify
- * runs — the KAIFUU-070 known-key smoke and the broader Scene.pck / Gameexe.dat
+ * runs — the the relevant capability known-key smoke and the broader Scene.pck / Gameexe.dat
  * stack) into a SAFE AGGREGATE validation summary, and produces a deterministic
  * REDACTED no-corpus artifact when no private inputs exist.
  *
- * This is the SIGLUS analogue of KAIFUU-036's private-local encrypted corpus
+ * This is the SIGLUS analogue of the relevant capability's private-local encrypted corpus
  * triage: it REUSES that redaction boundary (`findSecretLeak` structural scan +
  * `assertNoSecrets`-style recursive walk + `stableStringify`), and extends the
  * leak scanner with Siglus-specific content categories.
@@ -36,7 +36,7 @@
  */
 "use strict";
 
-// Reuse the KAIFUU-036 redaction boundary directly: the structural secret
+// Reuse the the relevant capability redaction boundary directly: the structural secret
 // scanner and the deterministic serializer. The Siglus renderer composes the
 // base scanner with additional content categories below.
 import {
@@ -54,7 +54,7 @@ export const ENGINE_FAMILY = "siglus";
 
 // Honest Siglus validation capability tiers. Order is fixed so bins serialize
 // deterministically. These mirror the crate's honest scope: the narrow
-// KAIFUU-070 known-key smoke tiers are real; `broad-unsupported` marks the real
+// the relevant capability known-key smoke tiers are real; `broad-unsupported` marks the real
 // Scene.pck / Gameexe.dat broad path that remains a skeleton stub (siglus-04/06)
 // so an aggregate can NEVER imply unsupported production capability.
 export const CAPABILITY_LEVELS = [
@@ -123,7 +123,7 @@ const SHA256_RE = /^sha256:[0-9a-f]{64}$/u;
 
 // --- Extended Siglus leak scanner -------------------------------------------
 //
-// Composes the KAIFUU-036 structural scanner (absolute paths, raw key/hex runs,
+// Composes the the relevant capability structural scanner (absolute paths, raw key/hex runs,
 // PEM blocks, `local-secret:` refs) with Siglus content categories. The rendered
 // summary is ASCII logical-ids/enums/counts/hashes ONLY, so:
 //   - any non-ASCII string is decrypted script / source text leakage;
@@ -148,7 +148,7 @@ export function findSecretLeak(text) {
   if (typeof text !== "string") {
     return null;
   }
-  // KAIFUU-036 structural scan first: absolute-local-path, local-secret-ref,
+  // the relevant capability structural scan first: absolute-local-path, local-secret-ref,
   // pem-key-block, raw-key-or-hex-blob (sha256 proof tails allowed).
   const base = findBaseSecretLeak(text);
   if (base !== null) {

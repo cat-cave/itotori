@@ -4,7 +4,7 @@
 // this script catches schema/fixture drift in the JS toolchain.
 //
 // Wired into `just check` via the `impl-map-schema-validate` recipe.
-// See `.plan/UTSUSHI-025.md` §8.
+// See `.plan/the relevant capability.md` §8.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";

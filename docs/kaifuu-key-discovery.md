@@ -46,29 +46,29 @@ encrypted games actionable, plus one declared encrypted-profile vertical that
 proves detect, key/profile resolution, extraction, trivial patching, verify, and
 delta apply on public-safe fixture data:
 
-1. **Key-profile boundary**: complete in `KAIFUU-014`. Profiles name key
+1. **Key-profile boundary**: complete in `the relevant capability`. Profiles name key
    requirements and stable `secretRef` pointers without raw key material.
-2. **Archive/encryption detection**: complete in `KAIFUU-034`. Detection
+2. **Archive/encryption detection**: complete in `the relevant capability`. Detection
    classifies encrypted, packed, protected, helper-required, missing-key, and
    unknown-variant signals before adapters claim extraction support.
-3. **Redaction/error enforcement**: complete in `KAIFUU-035`. Helper, profile,
+3. **Redaction/error enforcement**: complete in `the relevant capability`. Helper, profile,
    CLI, report, layered access preflight, and adapter failures must be safe to
    persist and triage.
-4. **Local key resolver**: complete in `KAIFUU-050`. `local-secret:`,
+4. **Local key resolver**: complete in `the relevant capability`. `local-secret:`,
    `os-keychain:`, `secret-manager:`, and `prompt:` refs need a shared resolver
    and local-only secret store abstraction before helpers or private triage can
    be trusted.
-5. **Synthetic encrypted fixtures**: complete in `KAIFUU-051`. Public CI needs
+5. **Synthetic encrypted fixtures**: complete in `the relevant capability`. Public CI needs
    generated encrypted/key-required cases with public fixture keys so redaction,
    validation, helper-unavailable, and missing-key behavior is tested without
-   private games. The public KAIFUU-051 lane is
+   private games. The public the relevant capability lane is
    `fixtures/public/kaifuu-encrypted-matrix/`; private-local corpus validation
    remains an additional local workflow and is not a hidden CI dependency.
-6. **MV/MZ encrypted suffix detection**: complete in `KAIFUU-113`. The detector
+6. **MV/MZ encrypted suffix detection**: complete in `the relevant capability`. The detector
    matrix recognizes MV-style `.rpgmvp`/`.rpgmvm`/`.rpgmvo` and MZ-style
    `.png_`/`.m4a_`/`.ogg_` suffixes as encrypted media evidence without
    claiming decryption or replacement support.
-7. **MV/MZ fixture-key validation**: complete in `KAIFUU-114`. Public-safe
+7. **MV/MZ fixture-key validation**: complete in `the relevant capability`. Public-safe
    System.json and image evidence can validate fixture keys and produce
    semantic wrong-key or missing-key diagnostics without exposing private
    material.
@@ -76,42 +76,42 @@ delta apply on public-safe fixture data:
 The remaining alpha or follow-up work is narrower than the shipped safety
 foundation:
 
-- `KAIFUU-039`: MV/MZ encrypted media readiness command.
-- `KAIFUU-068`: MV/MZ encrypted asset decrypt and trivial replacement patch.
-- `KAIFUU-115`: MV/MZ encrypted image decrypt and re-encrypt fixture path.
-- `KAIFUU-059`: broader RPG Maker MV/MZ encrypted media localization support.
-- `KAIFUU-169`: CLI key-import validation parity with the RPG Maker fixture-key
+- `the relevant capability`: MV/MZ encrypted media readiness command.
+- `the relevant capability`: MV/MZ encrypted asset decrypt and trivial replacement patch.
+- `the relevant capability`: MV/MZ encrypted image decrypt and re-encrypt fixture path.
+- `the relevant capability`: broader RPG Maker MV/MZ encrypted media localization support.
+- `the relevant capability`: CLI key-import validation parity with the RPG Maker fixture-key
   path.
 
 The remaining planning boundaries for helper workflows and engine-specific
 expansion are:
 
-8. **Private-local corpus triage**: required in `KAIFUU-036`. Owned encrypted
+8. **Private-local corpus triage**: required in `the relevant capability`. Owned encrypted
    corpora get first-class local readiness reports while staying absent from
    public CI.
 9. **Platform-assisted helper harness**: required first as the shared result
-   contract in `KAIFUU-037`, then expanded through the execution and platform
-   slices `KAIFUU-064`, `KAIFUU-066`, `KAIFUU-088`, `KAIFUU-089`,
-   `KAIFUU-090`, and `KAIFUU-129`. Static, known-key import, Wine/local
+   contract in `the relevant capability`, then expanded through the execution and platform
+   slices `the relevant capability`, `the relevant capability`, `the relevant capability`, `the relevant capability`,
+   `the relevant capability`, and `the relevant capability`. Static, known-key import, Wine/local
    Windows, and manual-entry helpers use one structured result contract and
    never live inside pure adapters. Remote Windows helper hosts are optional
    continuous expansion; they must fit the same contract, but they are not an
    alpha readiness blocker.
-10. **Helper execution and allowlist policy**: required in `KAIFUU-064` and
-    `KAIFUU-066`. Wine/Windows helper execution must be bounded, redacted,
+10. **Helper execution and allowlist policy**: required in `the relevant capability` and
+    `the relevant capability`. Wine/Windows helper execution must be bounded, redacted,
     versioned, hash-pinned, and unable to run arbitrary commands.
-11. **Private-local key-hunting run workflow**: required in `KAIFUU-067`. Owned
+11. **Private-local key-hunting run workflow**: required in `the relevant capability`. Owned
     corpora can be scanned, attempted, validated, skipped, or failed through a
     redacted local-only workflow while public CI uses stub fixtures.
 12. **Engine-specific encrypted slices**: alpha readiness requires
-    `KAIFUU-015`, `KAIFUU-038` through `KAIFUU-041`, the encrypted/key-discovery
-    slices `KAIFUU-068`, `KAIFUU-070`, and `KAIFUU-072`, plus Wolf readiness
-    `KAIFUU-040`. These slices implement exact adapter/helper boundaries for
+    `the relevant capability`, `the relevant capability` through `the relevant capability`, the encrypted/key-discovery
+    slices `the relevant capability`, `the relevant capability`, and `the relevant capability`, plus Wolf readiness
+    `the relevant capability`. These slices implement exact adapter/helper boundaries for
     Siglus, KiriKiri/XP3, RPG Maker MV/MZ encrypted assets, Wolf RPG Editor,
-    and BGI/Ethornell triage. `KAIFUU-073` full Wolf encrypted archive patching
+    and BGI/Ethornell triage. `the relevant capability` full Wolf encrypted archive patching
     is continuous/future work, not required before first alpha localization
     readiness.
-13. **Encrypted readiness gate**: required in `KAIFUU-042`. Alpha readiness cannot
+13. **Encrypted readiness gate**: required in `the relevant capability`. Alpha readiness cannot
     pass unless the public fixture lane and private-local lane are both
     accounted for with safe evidence and no universal-decryption overclaim.
 14. **First encrypted-profile vertical**: required in `ALPHA-006`. The current
@@ -244,7 +244,7 @@ need.
   protected variant. Engine- and game-specific evidence is required before
   adding this for a claimed game (see the per-game evidence-first rule in the
   [engine playbook](kaifuu-engine-playbook.md)). Execution is bounded under
-  KAIFUU-064. Cross-OS coverage is provided through per-channel adapters (Wine
+  the relevant capability. Cross-OS coverage is provided through per-channel adapters (Wine
   wrapper, local Windows process, remote Windows host, VM passthrough, etc.)
   that implement a shared trait — each adapter is added only when a specific
   claimed game proves need, never pre-spec'd.
