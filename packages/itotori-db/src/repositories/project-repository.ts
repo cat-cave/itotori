@@ -3350,9 +3350,7 @@ function normalizeSourceBundle(project: ItotoriProjectRecord): NormalizedSourceB
             }
           : { knowledgeState: "not_applicable" },
         context:
-          unit.context === undefined
-            ? {}
-            : { route: { sceneId: unit.context.route.sceneId } },
+          unit.context === undefined ? {} : { route: { sceneId: unit.context.route.sceneId } },
         spans: unit.protectedSpans.map((span) => ({
           spanId: `${unit.bridgeUnitId}:${span.start}:${span.end}`,
           spanKind: "variable_placeholder",
