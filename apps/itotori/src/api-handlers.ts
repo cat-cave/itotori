@@ -291,7 +291,7 @@ export type PlayTesterResultRevisionApiPort = {
 };
 
 /**
- * ITOTORI-043 — the read/query dependencies exposed to the READ-ONLY (query)
+ * policy — the read/query dependencies exposed to the READ-ONLY (query)
  * API handlers. This is a least-privilege surface: it deliberately picks ONLY
  * the read methods of each shared service, so a query handler that receives an
  * {@link ItotoriReadOnlyApiServices} is *structurally* (type-level) unable to
@@ -354,7 +354,7 @@ export type ItotoriReadOnlyApiServices = {
     | "getBenchmarkReports"
   >;
   /**
-   * ITOTORI-047 — the queue-health read-model loader powering the
+   * policy — the queue-health read-model loader powering the
    * `queue.health` route (operator inspection of outbox/job lag, retries,
    * dead-letter). Read-only; gated on `queue.read` inside the repository.
    */
@@ -563,7 +563,7 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
 };
 
 /**
- * ITOTORI-043 — project the full API service surface down to the read-only
+ * policy — project the full API service surface down to the read-only
  * surface, copying ONLY the read methods. The result reuses the same
  * underlying shared service instances (each method delegates to
  * `services.*`); it never re-wires a repository. Because the returned object
@@ -671,7 +671,7 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
 }
 
 /**
- * ITOTORI-043 — the dependency shared by every permission helper: only the
+ * policy — the dependency shared by every permission helper: only the
  * authorization port is needed to gate a route, so both the read-only and the
  * full service surfaces satisfy it.
  */
@@ -699,7 +699,7 @@ export async function handleItotoriApiRequest(
 }
 
 /**
- * itotori-043-followup-transport-level-readonly-routing — the
+ * policy-followup-transport-level-readonly-routing — the
  * transport-level READ-ONLY entrypoint for GET requests. It receives ONLY
  * the {@link ItotoriReadOnlyApiServices} surface, so a GET served through
  * this entrypoint is STRUCTURALLY unable to reach a mutation service
@@ -731,7 +731,7 @@ export async function handleReadOnlyItotoriApiRequest(
 }
 
 /**
- * itotori-043-followup-transport-level-readonly-routing — the
+ * policy-followup-transport-level-readonly-routing — the
  * method-not-allowed / not-found response for a GET that did not match a
  * read route. It mirrors the wrong-method gating the mutation router
  * ({@link routeItotoriApiRequest}) applies, so a GET on a mutation path
@@ -792,7 +792,7 @@ async function routeItotoriApiRequest(
   request: ItotoriApiRequest,
   services: ItotoriApiServices,
 ): Promise<ApiJsonResponse> {
-  // ITOTORI-043 — read (query) routes are served by a handler that receives
+  // policy — read (query) routes are served by a handler that receives
   // ONLY the read-only dependency surface, so it is structurally unable to
   // reach a mutation service. It returns null when the request is not a read
   // route it owns, deferring to the mutation routing below.
@@ -1260,7 +1260,7 @@ async function routeItotoriApiRequest(
       const body = parseDraftBranchRequest(request.body);
       assertPathProject(projectRoute.projectId, body.project.projectId);
       await requireApiPermission(services, apiMutationPermissionGates.branchDraft);
-      // ITOTORI-050 — derive the branch scope from the SERVER-SIDE ownership
+      // policy — derive the branch scope from the SERVER-SIDE ownership
       // lookup; a client-supplied ProjectState carrying a foreign/forged
       // localeBranchId is refused here before the new pipeline runs.
       const scope = await requireOwnedBranchScope(services.projectWorkflow, {
@@ -1333,7 +1333,7 @@ async function routeItotoriApiRequest(
     case "findings": {
       const body = parseRecordFindingRequest(request.body);
       await requireApiPermission(services, apiMutationPermissionGates.findingRecord);
-      // ITOTORI-050 — verify the project (and, when supplied, the branch)
+      // policy — verify the project (and, when supplied, the branch)
       // server-side before recording; a foreign/forged branch id is refused.
       const scope = await resolveProjectMutationScope(services.projectWorkflow, {
         projectId: projectRoute.projectId,
@@ -1346,7 +1346,7 @@ async function routeItotoriApiRequest(
     case "benchmarks": {
       const body = parseRecordBenchmarkRequest(request.body);
       await requireApiPermission(services, apiMutationPermissionGates.benchmarkRecord);
-      // ITOTORI-050 — the benchmark self-identifies its branch (the parser
+      // policy — the benchmark self-identifies its branch (the parser
       // already rejects a report without one); verify that branch is
       // server-side owned by the project before recording.
       const benchmarkLocaleBranchId = body.benchmarkReport.localeBranchId;
@@ -1366,7 +1366,7 @@ async function routeItotoriApiRequest(
       const body = parseRuntimeEvidenceRequest(request.body);
       assertPathProject(projectRoute.projectId, body.project.projectId);
       await requireApiPermission(services, apiMutationPermissionGates.runtimeEvidenceIngest);
-      // ITOTORI-050 — verify the client-supplied ProjectState's branch is
+      // policy — verify the client-supplied ProjectState's branch is
       // server-side owned by the project; write with the authoritative branch
       // id so a forged ProjectState cannot ingest evidence into a foreign
       // branch.
@@ -1385,7 +1385,7 @@ async function routeItotoriApiRequest(
       // ovw-launch-pass-action — drive the next pass via the driver.
       // `canSteer`-gated (draft.write). The locale branch is
       // VERIFIED server-side against the project's ownership set (a forged
-      // branch is refused before the driver runs — ITOTORI-050), then the
+      // branch is refused before the driver runs — policy), then the
       // authoritative branch id is handed to the driver.
       const body = parseLaunchPassRequest(request.body);
       await requireApiPermission(services, apiMutationPermissionGates.launchPass);
@@ -1672,7 +1672,7 @@ function principalPermissionSetGrantResponseBody(input: {
 }
 
 /**
- * ITOTORI-043 — the READ-ONLY (query) route handler. It receives ONLY the
+ * policy — the READ-ONLY (query) route handler. It receives ONLY the
  * read-only dependency surface, so it is structurally unable to reach a
  * mutation service. It returns an {@link ApiJsonResponse} for every read route
  * it owns (including the `method not allowed` responses for the pure-GET read
@@ -3568,7 +3568,7 @@ function errorResponse(error: unknown): ApiJsonResponse {
   if (error instanceof AuthorizationError) {
     return errorBody(403, "forbidden", error.message);
   }
-  // ITOTORI-050 — a mutation targeting a project/branch outside the server-side
+  // policy — a mutation targeting a project/branch outside the server-side
   // ownership scope is refused as forbidden (broken object-level authorization),
   // distinct from a bad request or a missing-permission denial.
   if (error instanceof ProjectMutationScopeError) {
@@ -3662,7 +3662,7 @@ function assertPathProject(pathProjectId: string, bodyProjectId: string): void {
 }
 
 /**
- * ITOTORI-050 — rewrite a record request's client-supplied `localeBranchId`
+ * policy — rewrite a record request's client-supplied `localeBranchId`
  * to the server-side authoritative value once ownership is verified. When the
  * client supplied no branch (`serverLocaleBranchId === null`, a project-scoped
  * record) the body is returned unchanged.

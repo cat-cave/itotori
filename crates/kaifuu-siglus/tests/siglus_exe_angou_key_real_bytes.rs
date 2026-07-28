@@ -27,7 +27,7 @@ const SECOND_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
 
 /// One-way sha256 commitments to the two known-good exe-angou keys. These are
 /// hashes, not keys: they pin *which* key was recovered without disclosing any
-/// key byte. (karetoshi, gamekoi respectively.)
+/// key byte. (siglus_corpus_one, siglus_corpus_two respectively.)
 const KNOWN_KEY_SHA256: [&str; 2] = [
     "6a58a38a2d8ec8c955fc6f1f38ab4543ddff2512625fc11530d80f2ffa73d136",
     "aeae9a1bc37aa88a9baa545f3efe6fb3bbc115086ce486e5755225f79aab1c0e",

@@ -14,7 +14,7 @@ pub(super) fn scene_blob_bytes(seen_bytes: &[u8], entry: &SceneEntry) -> Vec<u8>
 /// Resolve a scene by id from a Seen.txt archive and return its
 /// AVG32-decompressed, `xor_2`-DECRYPTED bytecode (the plaintext layer the
 /// opcode parser consumes).
-/// Sweetie HD (compiler_version 110002) is encrypted-at-rest: both the source
+/// primary_corpus HD (compiler_version 110002) is encrypted-at-rest: both the source
 /// archive and the patchback output carry the second-level `xor_2` cipher over
 /// `[256, 513)` of every `use_xor_2` scene. This helper mirrors the read
 /// pipeline — decompress, then decrypt with the per-game key recovered

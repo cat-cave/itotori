@@ -23,7 +23,7 @@
 //!
 //! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE.
 //! These `#[ignore]`-d suites run only in the periodic ground-truth oracle
-//! (`ITOTORI_REAL_GAME_ROOT=<sweetie> ITOTORI_REAL_GAME_ROOT_2=<kanon>`).
+//! (`ITOTORI_REAL_GAME_ROOT=<primary_corpus> ITOTORI_REAL_GAME_ROOT_2=<kanon>`).
 
 use std::fs;
 

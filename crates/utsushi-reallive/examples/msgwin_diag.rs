@@ -30,7 +30,7 @@
 //! either way; only the message CONTENT is staged, exactly as
 //! `render_diag.rs` stages its opening line.
 //!
-//! The `use_xor_2` recovery (encrypted titles, e.g. Sweetie HD) is staged
+//! The `use_xor_2` recovery (encrypted titles, e.g. primary_corpus HD) is staged
 //! via the dev-only `kaifuu-reallive`; it is a no-op for plaintext titles
 //! (Kanon).
 
@@ -227,7 +227,7 @@ fn main() {
     );
 
     // Render at the game's own screen size so the box matches the engine
-    // geometry (Kanon 640x480 vs. the rlvm oracle; Sweetie 1280x720).
+    // geometry (Kanon 640x480 vs. the rlvm oracle; primary_corpus 1280x720).
     let frame_size = screen_size;
 
     // --- Real play-order message stream (branch-following, single pass). ---

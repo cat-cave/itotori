@@ -6,7 +6,7 @@
 //! root is absent the test panics with a named `REAL-BYTES SKIP` receipt.
 //!
 //! When both are present it proves, for every scene of both owned titles
-//! (karetoshi = 298, gamekoi = 278):
+//! (siglus_corpus_one = 298, siglus_corpus_two = 278):
 //!   1. the decompressed scene payload partitions into a fully-covering,
 //!      exactly-offset instruction stream with **no panic** (fuzz-safe walking);
 //!   2. a per-opcode histogram is produced (counts + Unknown count/positions);

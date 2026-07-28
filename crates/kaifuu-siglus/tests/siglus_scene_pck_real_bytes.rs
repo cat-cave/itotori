@@ -13,8 +13,8 @@
 //! companion `siglus_exe_angou_key_real_bytes` proof). Wiring the recovered key
 //! into [`decode_scene_pack`] decodes every scene through the documented
 //! `exe-key XOR -> constant scene-table XOR -> LZSS` pipeline. This test proves:
-//!   1. every scene decodes to a non-empty payload (karetoshi = 298 scenes,
-//!      gamekoi = 278 scenes), the histogram accounts for every one, and the
+//!   1. every scene decodes to a non-empty payload (siglus_corpus_one = 298 scenes,
+//!      siglus_corpus_two = 278 scenes), the histogram accounts for every one, and the
 //!      sanitized report carries only counts / sizes / sha256 prefixes / the
 //!      key's secret-ref + one-way commitment — never raw scene or key bytes;
 //!   2. a **wrong** key fails scene 0 with the typed `compressed_size_mismatch`
@@ -35,7 +35,7 @@ const FIRST_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
 const SECOND_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
 
 /// The two owned titles' expected scene counts (order-independent across the
-/// two env vars). karetoshi packs 298 scenes, gamekoi 278.
+/// two env vars). siglus_corpus_one packs 298 scenes, siglus_corpus_two 278.
 const EXPECTED_SCENE_COUNTS: [usize; 2] = [298, 278];
 
 /// Resolve a game root env var to `(SiglusEngine.exe, Scene.pck)` paths, or a

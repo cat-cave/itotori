@@ -1,13 +1,13 @@
 //! real-bytes integration test for the 10,000-slot SEEN.TXT
 //! envelope parser. Anchors the parser against the only RealLive corpus
-//! currently staged (Sweetie HD) and exercises the truncation path on
+//! currently staged (primary_corpus HD) and exercises the truncation path on
 //! synthetic 10,001-slot bytes.
 //! **Multi-game validation status.** Per the itotori operating model
 //! (`docs/dev/orchestration-operating-model.md`), a parser that targets a
 //! real engine substrate must be exercised against at least two real
 //! corpora before its node is merged-complete. The MV/MZ and KAG corpora
 //! are different engines and do not contain a `Seen.txt`. Single
-//! RealLive corpus (Sweetie HD) until a second RealLive title is
+//! RealLive corpus (primary_corpus HD) until a second RealLive title is
 //! sourced. Per the multi-game-validation rule, 's status
 //! remains `planned` until the second RealLive corpus is staged and
 //! exercised by an additional `parse_archive_second_reallive_real_bytes.rs`
@@ -44,16 +44,16 @@ fn parses_primary_corpus_seen_txt_into_198_populated_scene_entries() {
     let bytes = fs::read(&seen_path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
     let index = parse_archive(&bytes).expect(
-        "Sweetie HD REALLIVEDATA/Seen.txt must parse cleanly; \
+        "primary_corpus HD REALLIVEDATA/Seen.txt must parse cleanly; \
          silent zero-state on real bytes is the bug  fixes",
     );
 
-    // Acceptance: the documented populated-slot count for Sweetie HD is 198
+    // Acceptance: the documented populated-slot count for primary_corpus HD is 198
     // (`docs/research/reallive-engine.md` §C).
     assert_eq!(
         index.entries.len(),
         198,
-        "expected 198 populated slots in Sweetie HD Seen.txt; got {}",
+        "expected 198 populated slots in primary_corpus HD Seen.txt; got {}",
         index.entries.len()
     );
 
@@ -66,7 +66,7 @@ fn parses_primary_corpus_seen_txt_into_198_populated_scene_entries() {
     );
     assert_eq!(
         first.byte_len, 0x5fa,
-        "first scene payload size matches the documented Sweetie HD value"
+        "first scene payload size matches the documented primary_corpus HD value"
     );
 
     // Scene-id range bounds: 1..=9999. Per the research doc, we assert

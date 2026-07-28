@@ -49,7 +49,7 @@ fn synthetic_seen_txt() -> Vec<u8> {
     // (110001, not 110002/1110002): stamping an `xor_2` version would make the
     // extract try to recover an `xor_2` key from unencrypted bytes and abort
     // (`xor2.key_region_unsampled`). The real `xor_2` path is covered by the
-    // real Sweetie HD real-bytes tests.
+    // real primary_corpus HD real-bytes tests.
     header[4..8].copy_from_slice(&110_001u32.to_le_bytes());
     header[0x20..0x24].copy_from_slice(&(SCENE_HEADER_BYTE_LEN as u32).to_le_bytes());
     header[0x24..0x28].copy_from_slice(&(plaintext.len() as u32).to_le_bytes());

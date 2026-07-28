@@ -1,5 +1,5 @@
 //! Live Siglus corpus proof against the real read-only `/archive/vault`.
-//! Both Karetoshi and Gamekoi are held as **portable installs** (bare
+//! Both siglus_corpus_one and siglus_corpus_two are held as **portable installs** (bare
 //! `by-id` artifacts), bypassing DVD copy protection entirely. This proof
 //! is the same materialize path the RealLive corpus uses: resolve each
 //! title BY-ID and extract its plaintext Siglus game tree into scratch,
@@ -27,10 +27,10 @@ use kaifuu_vault_source::{
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-/// "Karetoshi" — Kareshi Inai Reki = Nenrei... (portable install, VJ007329).
+/// "siglus_corpus_one" — Kareshi Inai Reki = Nenrei... (portable install, VJ007329).
 const FIRST_SIGLUS_CORPUS_CANONICAL_ID: &str =
     "kareshi-inai-reki-nenrei-ja-doushite-ikenai-no-yo-sei-torea-gakuen-ren-ai-kinshi-rei.vj007329";
-/// "Gamekoi" — Game ~ Eroge Mitai na Suteki na Koi ga Shitai (portable, VJ015134).
+/// "siglus_corpus_two" — Game ~ Eroge Mitai na Suteki na Koi ga Shitai (portable, VJ015134).
 const SECOND_SIGLUS_CORPUS_CANONICAL_ID: &str =
     "game-eroge-mitai-na-suteki-na-koi-ga-shitai.vj015134";
 
@@ -389,8 +389,16 @@ fn materializes_both_siglus_titles_to_plaintext_trees_and_records_manifest() {
     let scratch = scratch_base();
 
     let titles = vec![
-        materialize_confirm_siglus("karetoshi", FIRST_SIGLUS_CORPUS_CANONICAL_ID, &scratch),
-        materialize_confirm_siglus("gamekoi", SECOND_SIGLUS_CORPUS_CANONICAL_ID, &scratch),
+        materialize_confirm_siglus(
+            "siglus_corpus_one",
+            FIRST_SIGLUS_CORPUS_CANONICAL_ID,
+            &scratch,
+        ),
+        materialize_confirm_siglus(
+            "siglus_corpus_two",
+            SECOND_SIGLUS_CORPUS_CANONICAL_ID,
+            &scratch,
+        ),
     ];
 
     for title in &titles {

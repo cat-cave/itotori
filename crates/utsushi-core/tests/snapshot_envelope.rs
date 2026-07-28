@@ -55,12 +55,12 @@ fn manifest_carries_envelope_class_field_for_each_tier() {
     }
 }
 
-// 2. Medium-class round trip on a simulated RealLive Sweetie HD scene-1
+// 2. Medium-class round trip on a simulated RealLive primary_corpus HD scene-1
 //    state shape: int bank (1000 entries × i32) + str bank
 //    (200 entries × ~32-char String) + 4 graphics layers with
 //    {asset_id, affine transform, blend_mode}.
 
-const REALLIVE_INSPECTABLE_ID: &str = "reallive-sweetie-hd";
+const REALLIVE_INSPECTABLE_ID: &str = "reallive-primary-corpus-hd";
 const REALLIVE_INT_BANK_ENTRIES: usize = 1000;
 const REALLIVE_STR_BANK_ENTRIES: usize = 200;
 const REALLIVE_STR_LEN: usize = 32;
@@ -154,17 +154,17 @@ fn reallive_primary_corpus_scene_1_round_trips_byte_equal_through_medium_envelop
     let observed = bytes_a.len();
     assert!(
         observed >= 64 * 1024,
-        "RealLive Sweetie HD scene-1 snapshot below 64 KiB floor: observed={observed}"
+        "RealLive primary_corpus HD scene-1 snapshot below 64 KiB floor: observed={observed}"
     );
     assert!(
         observed <= SnapshotEnvelope::Medium.max_bytes(),
-        "RealLive Sweetie HD scene-1 snapshot above Medium ceiling: observed={observed} ceiling={}",
+        "RealLive primary_corpus HD scene-1 snapshot above Medium ceiling: observed={observed} ceiling={}",
         SnapshotEnvelope::Medium.max_bytes()
     );
 
     // Print the byte count so the test log reports the actual figure.
     eprintln!(
-        "reallive_sweetie_hd_scene_1 medium snapshot size = {observed} bytes \
+        "reallive_primary_corpus_hd_scene_1 medium snapshot size = {observed} bytes \
          (floor=65536, ceiling={})",
         SnapshotEnvelope::Medium.max_bytes()
     );

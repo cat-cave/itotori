@@ -59,16 +59,19 @@ test("catches node ids embedded in snake_case, camelCase, and digit identifiers"
   );
 });
 
-test("scope excludes immutable, fixture, and prose paths", () => {
-  assert.equal(isExcludedPath("crates/x/tests/fixtures/seed.rs"), true);
-  assert.equal(isExcludedPath("packages/itotori-db/migrations/0035_ledger.sql"), true);
-  assert.equal(isExcludedPath("apps/itotori/src/llm/dispatch.ts"), true);
+test("scope includes app, fixture, migration, and prose-adjacent code paths", () => {
+  assert.equal(isExcludedPath("crates/x/tests/fixtures/seed.rs"), false);
+  assert.equal(isExcludedPath("packages/itotori-db/migrations/record.ts"), false);
+  assert.equal(isExcludedPath("apps/itotori/src/llm/dispatch.ts"), false);
+  assert.equal(isExcludedPath("docs/research/note.mjs"), false);
   assert.equal(isExcludedPath("packages/x/dist/index.js"), true);
   assert.equal(isExcludedPath("crates/foo/target/debug/x.rs"), true);
-  assert.equal(isExcludedPath("docs/research/note.md"), true);
+  assert.equal(isExcludedPath("packages/x/node_modules/lib/index.js"), true);
+  assert.equal(isExcludedPath("scripts/audit-no-node-ids.mjs"), true);
   assert.equal(shouldScan("crates/foo/src/lib.rs"), true);
   assert.equal(shouldScan("packages/itotori-db/src/repositories/x.ts"), true);
-  assert.equal(shouldScan("packages/itotori-db/migrations/0035_ledger.sql"), false);
+  assert.equal(shouldScan("packages/itotori-db/migrations/record.ts"), true);
+  assert.equal(shouldScan("apps/itotori/test/probe.test.ts"), true);
 });
 
 test("CLI rejects every planted violation without a whitelist escape hatch", () => {

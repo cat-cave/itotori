@@ -1,4 +1,4 @@
-// ITOTORI-025 — `export-patch-v2` CLI command.
+// policy — `export-patch-v2` CLI command.
 //
 // Fixture-mode entry point for the current patch-export pipeline. The
 // existing `export-patch` command (v0.1) is unchanged and continues to

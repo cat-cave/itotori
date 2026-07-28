@@ -3,7 +3,7 @@
 // Q1 never accepts a caller-invented source line or neighbor window as its
 // grounding.  It reads the candidate's decoded unit, its source neighbors,
 // applicable glossary facts, and already-accepted target neighbors through the
-// RB-025 surface.  The localized bible is supplied by the wiki-first resolver
+// policy surface.  The localized bible is supplied by the wiki-first resolver
 // as exact rendering text because it is a localized artifact rather than a
 // decode fact.  This keeps the reviewer blind to the author while making every
 // factual datum traceable to a snapshot-pinned result.
@@ -36,7 +36,7 @@ const MAX_ROWS = 100_000;
 const MAX_BYTES = 8_388_608;
 const Q1_ROLE = "Q1" as const;
 
-/** The run-scoped, non-author identity Q1 needs to call RB-025 tools. */
+/** The run-scoped, non-author identity Q1 needs to call policy tools. */
 export interface Q1ReadContext {
   readonly routeVisibility: RouteScope;
   readonly localeBranchId: string;
@@ -66,7 +66,7 @@ export class Q1ReadContextError extends Error {
   }
 }
 
-/** The fixed RB-025 caller identity for Q1. No author/model/provider metadata
+/** The fixed policy caller identity for Q1. No author/model/provider metadata
  * is part of the envelope. */
 export function q1ReadCaller(context: Q1ReadContext): ReadToolCaller {
   return {

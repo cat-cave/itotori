@@ -140,7 +140,7 @@ fn span_report_for_corpus(corpus: &RealCorpus) -> SpanReport {
         });
     }
 
-    // Stage 2: archive-wide second-level xor_2 recovery (Sweetie HD only;
+    // Stage 2: archive-wide second-level xor_2 recovery (primary_corpus HD only;
     // Kanon's compiler version leaves every scene untouched).
     let _ = recover_and_decrypt_archive(&mut scenes);
 

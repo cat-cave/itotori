@@ -10,7 +10,7 @@
 //!    the layer-ordering audit-focus pin against the real headless
 //!    render pipeline.
 //! 2. Real-bytes gated: `grp_openbg_bg01a1_registers_bg_plane` reads
-//!    Sweetie HD's `$GAME/REALLIVEDATA/g00/BG01A1.g00` through a
+//!    primary_corpus HD's `$GAME/REALLIVEDATA/g00/BG01A1.g00` through a
 //!    typed [`AssetPackage`] and pins that the `openBg` opcode
 //!    registers the bg plane background with a typed
 //!    `(width=1280, height=720)` canvas.
@@ -19,7 +19,7 @@
 //!
 //! Per the itotori operating model, a parser that targets a real
 //! engine substrate must be exercised against at least two real corpora
-//! before its node is merged-complete. Sweetie HD is the only RealLive
+//! before its node is merged-complete. primary_corpus HD is the only RealLive
 //! title currently staged. This crate's sibling parsers landed under
 //! the same single-corpus posture, and this module's acceptance
 //! contract explicitly accepts the multi-game gap. The commit message
@@ -55,7 +55,7 @@ fn real_g00_dir() -> Option<PathBuf> {
 /// Synthetic [`AssetPackage`] that resolves `g00/<NAME>.g00` against a
 /// real on-disk directory. Only used by the gated real-bytes test —
 /// the substrate-honest VFS surface gets exercised end-to-end without
-/// dragging in a Sweetie-specific composite package.
+/// dragging in a primary_corpus-specific composite package.
 #[derive(Debug)]
 struct OnDiskG00Package {
     g00_dir: PathBuf,

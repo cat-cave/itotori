@@ -1,4 +1,4 @@
-// ITOTORI-041 — public surface of the asset-localization drafting / QA /
+// policy — public surface of the asset-localization drafting / QA /
 // patch-export loop.
 
 export {

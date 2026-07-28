@@ -45,21 +45,21 @@ const sampleMarkdown = `# Sample audit doc
 Some narrative prose before any structured block. The parser must skip
 this and only pick up structured findings.
 
-### Finding: UTSUSHI-200 [P1] load-bearing
+### Finding: SAMPLE-200 [P1] load-bearing
 **summary:** non-synthetic engine port crate must not depend on author fixtures
 The current AC permits a wrapper around the 8-opcode parser, which
 would satisfy the AC without actually proving the substrate boundary.
 **file_ref:** crates/utsushi-reallive/src/lib.rs:1
-**proposed_dag_node:** UTSUSHI-200
+**proposed_dag_node:** SAMPLE-200
 
 More prose between findings. The parser should not treat this as
 detail or as a stray field.
 
-### Finding: KAIFUU-188 [P0] honest-prototype
+### Finding: SAMPLE-188 [P0] honest-prototype
 **summary:** 10000-slot envelope must come from a real Seen.txt run, not a fixture
 **file_ref:** crates/kaifuu-reallive/src/lib.rs:62
 
-### Finding: ITOTORI-202 [P2] fixture-shaped
+### Finding: SAMPLE-202 [P2] fixture-shaped
 **summary:** DB-suite failure discipline missing for the audit-findings table
 `;
 
@@ -70,10 +70,10 @@ describe("audit-findings bootstrap", () => {
       markdown: sampleMarkdown,
     });
     expect(parsed).toHaveLength(3);
-    expect(parsed.map((row) => row.nodeId)).toEqual(["UTSUSHI-200", "KAIFUU-188", "ITOTORI-202"]);
+    expect(parsed.map((row) => row.nodeId)).toEqual(["SAMPLE-200", "SAMPLE-188", "SAMPLE-202"]);
     expect(parsed[0]!.severity).toBe("P1");
     expect(parsed[0]!.fileRef).toBe("crates/utsushi-reallive/src/lib.rs:1");
-    expect(parsed[0]!.proposedDagNode).toBe("UTSUSHI-200");
+    expect(parsed[0]!.proposedDagNode).toBe("SAMPLE-200");
     expect(parsed[0]!.detail).toContain("substrate boundary");
     expect(parsed[1]!.detail).toBeNull();
     expect(parsed[2]!.fileRef).toBeNull();
@@ -94,9 +94,9 @@ describe("audit-findings bootstrap", () => {
     });
     expect(records).toHaveLength(3);
     expect(recorded.map((row) => row.input.nodeId)).toEqual([
-      "UTSUSHI-200",
-      "KAIFUU-188",
-      "ITOTORI-202",
+      "SAMPLE-200",
+      "SAMPLE-188",
+      "SAMPLE-202",
     ]);
     expect(recorded[0]!.input.severity).toBe("P1");
     expect(recorded[0]!.input.category).toBe("load-bearing");
@@ -120,7 +120,7 @@ describe("audit-findings bootstrap", () => {
     expect(() =>
       parseAuditMarkdown({
         auditReportId: "docs/audits/bad-severity.md",
-        markdown: "### Finding: UTSUSHI-200 [P9] category\n**summary:** garbage\n",
+        markdown: "### Finding: SAMPLE-200 [P9] category\n**summary:** garbage\n",
       }),
     ).toThrow(AuditFindingParseError);
   });
@@ -129,7 +129,7 @@ describe("audit-findings bootstrap", () => {
     expect(() =>
       parseAuditMarkdown({
         auditReportId: "docs/audits/missing-summary.md",
-        markdown: "### Finding: UTSUSHI-200 [P1] category\n**file_ref:** x.rs:1\n",
+        markdown: "### Finding: SAMPLE-200 [P1] category\n**file_ref:** x.rs:1\n",
       }),
     ).toThrow(AuditFindingParseError);
   });

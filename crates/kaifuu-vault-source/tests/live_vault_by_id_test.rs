@@ -4,7 +4,7 @@
 //! ITOTORI_VAULT_ROOT=/archive/vault \
 //! cargo test -p kaifuu-vault-source \
 //! --test live_vault_by_id_test -- --ignored --nocapture
-//! Resolves Oshioki Sweetie HD and Kanon BY-ID, materialises their RealLive
+//! Resolves primary_corpus primary_corpus HD and Kanon BY-ID, materialises their RealLive
 //! trees into a throwaway scratch dir, and asserts the extracted `Seen.txt`
 //! per-file sha256 (NEVER the archive/repack sha). Strictly read-only: a
 //! scratch override keeps every write outside the vault.
@@ -21,7 +21,7 @@ use kaifuu_vault_source::{
 use sha2::{Digest, Sha256};
 
 const PRIMARY_CORPUS_CANONICAL_ID: &str =
-    "oshioki-sweetie-koi-suru-onee-san-wa-urahara-desu.vj013077.v1-0.ja";
+    "primary_corpus-primary_corpus-koi-suru-onee-san-wa-urahara-desu.vj013077.v1-0.ja";
 const PRIMARY_CORPUS_SEEN_SHA256: &str =
     "903f538b821a9b1e6cb3d399582915c0bcf73b0a058ecc907caf6017a4fa209f";
 const KANON_CANONICAL_ID: &str = "kanon.v33";
@@ -148,10 +148,10 @@ fn resolves_primary_corpus_by_id_and_seen_txt_matches_known_bytes() {
     let scratch = scratch_base();
     let sha = materialize_and_hash_seen(PRIMARY_CORPUS_CANONICAL_ID, &scratch);
     let _ = std::fs::remove_dir_all(&scratch);
-    eprintln!("[sweetie] by-id -> Seen.txt sha256 = {sha}");
+    eprintln!("[primary_corpus] by-id -> Seen.txt sha256 = {sha}");
     assert_eq!(
         sha, PRIMARY_CORPUS_SEEN_SHA256,
-        "Sweetie HD by-id Seen.txt sha256 must equal the known direct-path bytes"
+        "primary_corpus HD by-id Seen.txt sha256 must equal the known direct-path bytes"
     );
 }
 

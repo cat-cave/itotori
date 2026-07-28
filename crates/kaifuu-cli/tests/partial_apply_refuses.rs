@@ -18,7 +18,7 @@
 //!    Real-bytes preferred: the partial extract envelope is the
 //!    schema-stable v0.1.0 PartialAdapterReport shape — same shape the
 //!    regression test in `partial_extract.rs` already produces
-//!    for the synthetic Sweetie HD fixture, so this test piggy-backs on
+//!    for the synthetic primary_corpus HD fixture, so this test piggy-backs on
 //!    that established envelope shape.
 
 use std::fs;

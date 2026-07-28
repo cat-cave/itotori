@@ -245,7 +245,7 @@ fn main() {
     }
 
     // Real-shaped Gameexe: the sel-window box is #DEFAULT_SEL_WINDOW →
-    // #WINDOW.031 (Sweetie-HD-shaped), fully config-driven.
+    // #WINDOW.031 (primary_corpus-HD-shaped), fully config-driven.
     let ini = b"#SCREENSIZE_MOD=0,1280,720\r\n\
         #DEFAULT_SEL_WINDOW=031\r\n\
         #WINDOW.031.POS=0:120,200\r\n\

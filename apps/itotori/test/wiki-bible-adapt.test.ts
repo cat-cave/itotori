@@ -59,7 +59,7 @@ function source(objectId: string, routeId: string | null): WikiSourceObjectView 
   };
 }
 
-describe("wiki bible RB-035 adapters", () => {
+describe("wiki bible policy adapters", () => {
   it("builds overview readiness and route facets from wiki.list", () => {
     const overview = overviewFromWikiList({
       schemaVersion: "itotori.wiki.objects.v1",

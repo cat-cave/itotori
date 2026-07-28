@@ -1,4 +1,4 @@
-// p0-core-result-revision-hitl — play-tester target edit service.
+// planning-item — play-tester target edit service.
 //
 // A non-source-speaker play tester edits one delivered TARGET line. This
 // service is a thin typed shell over

@@ -1,4 +1,4 @@
-// ITOTORI-025 — PatchExportPreflight.
+// policy — PatchExportPreflight.
 //
 // Deterministic check battery the patch-export service runs before it
 // emits a `PatchExportBundle`. Each check is a discrete method that
@@ -29,7 +29,7 @@ import type {
 
 /**
  * Minimal-shape projection of a QA score report. The full scored
- * findings report from ITOTORI-021 is not integrated yet (the task
+ * findings report from policy is not integrated yet (the task
  * spec calls this out explicitly). When present, the preflight asserts
  * `overall >= threshold`; when absent, the check passes with status
  * `pass` and `detail: 'no_report_provided'`.

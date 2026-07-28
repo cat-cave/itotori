@@ -1,4 +1,4 @@
-// Env-gated real-Sweetie oracle for the native patchback + translated-byte replay.
+// Env-gated real-primary_corpus oracle for the native patchback + translated-byte replay.
 //
 // Runs only when `ITOTORI_REAL_GAME_ROOT` points at a real RealLive install
 // (never committed). It drives the REAL native seams end to end:
@@ -36,7 +36,7 @@ import {
   replayObserve,
 } from "../src/patchback/index.js";
 
-/** The documented 129-unit output scope for the Sweetie min-root. */
+/** The documented 129-unit output scope for the primary_corpus min-root. */
 const SCOPED_SCENE = 1017;
 const REALLIVE_SLOTS = 10_000;
 
@@ -86,7 +86,7 @@ function sceneBlobs(seen: Buffer): Map<number, { off: number; len: number }> {
 
 const corpus = realCorpus();
 
-describe("native patchback + replay (env-gated real Sweetie byte oracle)", () => {
+describe("native patchback + replay (env-gated real primary_corpus byte oracle)", () => {
   it.skipIf(!corpus)(
     "applies accepted targets byte-exactly and Utsushi observes the target from the patched bytes",
     () => {

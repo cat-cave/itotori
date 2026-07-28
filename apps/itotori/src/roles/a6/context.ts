@@ -1,8 +1,8 @@
 // The Cultural Adaptation Analyst's bounded source context.
 //
-// Candidate selection remains a deterministic RB-024 pre-pass. Before A6 asks
+// Candidate selection remains a deterministic policy pre-pass. Before A6 asks
 // the model to describe an adaptation strategy, however, it must READ the
-// selected unit and its immediate setup/payoff through the RB-025 surface. The
+// selected unit and its immediate setup/payoff through the policy surface. The
 // role therefore never treats an in-memory candidate as its whole context: the
 // exact unit, neighbor window, and any matching operator reference excerpts are
 // returned by the typed, visibility-checked tools below.
@@ -34,7 +34,7 @@ export class AdaptationContextError extends Error {
   }
 }
 
-/** The exact RB-025 pages A6 consumed for one candidate. Keeping the envelopes
+/** The exact policy pages A6 consumed for one candidate. Keeping the envelopes
  * makes the source of every prompt fact inspectable by callers and tests. */
 export interface AdaptationReadContext {
   readonly unit: DecodeGetUnitsResult["facts"][number];

@@ -106,7 +106,7 @@ const secondCorpus = realCorpus(process.env.ITOTORI_REAL_GAME_ROOT_2);
 
 const actor = { userId: "produce-test", permissions: [] } as unknown as AuthorizationActor;
 
-describe("produce playable build (env-gated real Sweetie byte oracle)", () => {
+describe("produce playable build (env-gated real primary_corpus byte oracle)", () => {
   it.skipIf(!corpus)(
     "drives the real native apply and archives a real, non-empty patched build",
     async () => {
@@ -233,7 +233,7 @@ describe("produce playable build (env-gated real Sweetie byte oracle)", () => {
     "drives itotori patch produce through the native producer for two distinct RealLive games",
     async () => {
       const corpora = [
-        { label: "sweetie", corpus: corpus! },
+        { label: "primary_corpus", corpus: corpus! },
         { label: "kanon", corpus: secondCorpus! },
       ];
       expect(new Set(corpora.map(({ corpus: current }) => current.gameRoot)).size).toBe(2);

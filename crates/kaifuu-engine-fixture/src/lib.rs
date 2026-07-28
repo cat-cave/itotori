@@ -102,7 +102,7 @@ const SIGLUS_SUPPORT_BOUNDARY: &str = "Siglus detector profile identifies synthe
 // Real (non-synthetic) Siglus signature recognition.
 // Provenance: these constants encode the publicly observable file shape of
 // real Siglus Scene.pck / Gameexe.dat archives, cross-checked against owned
-// Siglus titles (Karetoshi, Gamekoi) and the documented `0x5C` header anchor
+// Siglus titles (siglus_corpus_one, siglus_corpus_two) and the documented `0x5C` header anchor
 // carried by `kaifuu_siglus::archive::SCENE_PCK_HEADER_BYTE_LEN`. No
 // copyrighted bytes are embedded — only the structural signature is encoded,
 // and recognition stays at identify/inventory level (the Scene.pck parser,
@@ -117,7 +117,7 @@ const SIGLUS_SUPPORT_BOUNDARY: &str = "Siglus detector profile identifies synthe
 const SIGLUS_SCENE_REAL_HEADER_SIZE: u32 = 0x5C;
 // Require a strong leading run of ascending, in-bounds index-section offsets
 // so a file that merely opens with `5c 00 00 00` cannot false-positive.
-// Real Karetoshi/Gamekoi expose 10; 8 keeps a two-section margin.
+// Real siglus_corpus_one/siglus_corpus_two expose 10; 8 keeps a two-section margin.
 const SIGLUS_SCENE_REAL_MIN_ASCENDING_OFFSETS: usize = 8;
 // Real Gameexe.dat opens with a zero dword then a `1` version dword, followed
 // by an encrypted (high-entropy) payload.
@@ -138,7 +138,7 @@ const REALLIVE_GAMEEXE_INI_PATH: &str = "Gameexe.ini";
 const REALLIVE_XOR2_VALIDATION_ASSET_REF: &str = "REALLIVEDATA/Seen.txt";
 // nested-data-dir-resolved evidence code. Emitted whenever the
 // detector walks past the game root and locates a nested REALLIVEDATA/
-// subdirectory (e.g. Sweetie HD ships its REALLIVEDATA under a
+// subdirectory (e.g. primary_corpus HD ships its REALLIVEDATA under a
 // Japanese-named title subdir). The evidence carries the on-disk path
 // relative to the game root so downstream `extract` / `profile` /
 // `verify` can re-use the resolved data dir without re-walking. The

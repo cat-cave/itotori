@@ -1,6 +1,6 @@
 //! Sample-frame emitter for the P0 render fix
 //! (`utsushi-render-frame-is-visually-broken-not-proof`). Renders a real
-//! Sweetie HD background through the fixed pipeline and writes the two
+//! primary_corpus HD background through the fixed pipeline and writes the two
 //! frames the orchestrator VISUALLY verifies:
 //!
 //!   * `fix-01-private-full.png` — full-fidelity PRIVATE frame: the real

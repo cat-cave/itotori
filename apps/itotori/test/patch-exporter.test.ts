@@ -1,4 +1,4 @@
-// ITOTORI-025 — PatchExporter integration tests.
+// policy — PatchExporter integration tests.
 //
 // Verifies the exporter:
 //   1. Assembles a PatchExportBundle when every preflight check
@@ -32,7 +32,7 @@ import { prepareKaifuuPatchPayload } from "../src/patch-export/kaifuu-handoff.js
 import type { SourceBridgeUnit, SourceBridgeView } from "../src/patch-export/source-bridge-view.js";
 
 const ACTOR: AuthorizationActor = { userId: "exporter-test-actor" };
-const PROJECT_ID = "project-itotori-025";
+const PROJECT_ID = "project-policy";
 const LOCALE_BRANCH_ID = "locale-branch-en-US";
 const TARGET_LOCALE = "en-US";
 const SOURCE_BRIDGE_HASH = "sha256:bridge-001";

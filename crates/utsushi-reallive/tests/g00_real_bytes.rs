@@ -1,7 +1,7 @@
 //! Real-bytes integration tests for the g00 image-format
 //! decoder.
 //!
-//! Pins the decoder against the Sweetie HD `$GAME/REALLIVEDATA/g00/`
+//! Pins the decoder against the primary_corpus HD `$GAME/REALLIVEDATA/g00/`
 //! corpus (2,450 files) following the same pattern as
 //! `decompressor_real_bytes.rs` / `scene_header_real_bytes.rs`: the
 //! tests are `#[ignore]`-gated and only run when
@@ -11,7 +11,7 @@
 //!
 //! # Acceptance criteria pinned here
 //!
-//! 1. `g00_type0_back_decodes` — Sweetie HD's
+//! 1. `g00_type0_back_decodes` — primary_corpus HD's
 //!    `$GAME/REALLIVEDATA/g00/BACK.g00` (type 0) decodes with non-zero
 //!    width, a typed pixel buffer whose length equals
 //!    `width * height * 4`, and a first pixel whose RGBA bytes do not
@@ -27,7 +27,7 @@
 //!    `G00CorpusHistogram` and a `Vec<G00Warning>` containing one
 //!    `NoTypeNInCorpus` entry per documented type that is absent in
 //!    the corpus.
-//! 3. `g00_type2_btn000_decodes_header_and_regions` — Sweetie HD's
+//! 3. `g00_type2_btn000_decodes_header_and_regions` — primary_corpus HD's
 //!    `$GAME/REALLIVEDATA/g00/btn000.g00` (type 2) decodes its
 //!    header + region table cleanly. The region rectangles must be
 //!    non-degenerate so the `objLoadRegion` opcode at can
@@ -38,7 +38,7 @@
 //! Per the itotori operating model
 //! (`docs/dev/orchestration-operating-model.md`), a parser that targets a
 //! real engine substrate must be exercised against at least two real
-//! corpora before its node is merged-complete. Sweetie HD is the only
+//! corpora before its node is merged-complete. primary_corpus HD is the only
 //! RealLive title currently staged. The g00 module mirrors the pattern
 //! its sibling parsers landed: real-bytes pinned
 //! against the only staged corpus today, with the second-corpus
@@ -57,7 +57,7 @@ use utsushi_reallive::{
     probe_g00_pattern_geometry, validate_g00_lzss_content,
 };
 
-// Relative path under the Sweetie HD extraction root to the
+// Relative path under the primary_corpus HD extraction root to the
 // `g00` directory.
 
 /// File name of the type-0 BACK.g00 image pinned by the
@@ -69,7 +69,7 @@ const PRIMARY_CORPUS_TYPE0_BACK_FILENAME: &str = "BACK.g00";
 /// alphabetically first type-2 file in the corpus.
 const PRIMARY_CORPUS_TYPE2_BTN_FILENAME: &str = "btn000.g00";
 
-/// Expected number of `.g00` files in the Sweetie HD corpus (pinned by
+/// Expected number of `.g00` files in the primary_corpus HD corpus (pinned by
 /// the acceptance block).
 const PRIMARY_CORPUS_G00_CORPUS_SIZE: u64 = 2450;
 
@@ -77,7 +77,7 @@ const PRIMARY_CORPUS_G00_CORPUS_SIZE: u64 = 2450;
 const PRIMARY_CORPUS_BACK_WIDTH: u32 = 1280;
 const PRIMARY_CORPUS_BACK_HEIGHT: u32 = 720;
 
-/// Resolve the Sweetie HD g00 directory under
+/// Resolve the primary_corpus HD g00 directory under
 /// `ITOTORI_REAL_GAME_ROOT`. Returns `None` when the env var is
 /// unset so each test can skip with a documented diagnostic (no silent
 /// pass).
@@ -489,10 +489,10 @@ fn g00_corpus_histogram_real_bytes_2450_files() {
     assert_eq!(
         histogram.total(),
         PRIMARY_CORPUS_G00_CORPUS_SIZE,
-        "Sweetie HD g00 corpus size is pinned at {PRIMARY_CORPUS_G00_CORPUS_SIZE} files in 's acceptance block",
+        "primary_corpus HD g00 corpus size is pinned at {PRIMARY_CORPUS_G00_CORPUS_SIZE} files in 's acceptance block",
     );
     eprintln!(
-        "Sweetie HD g00 lead-byte histogram: type0={} type1={} type2={} unknown={} unreadable={}",
+        "primary_corpus HD g00 lead-byte histogram: type0={} type1={} type2={} unknown={} unreadable={}",
         histogram.type0_count,
         histogram.type1_count,
         histogram.type2_count,
@@ -501,14 +501,14 @@ fn g00_corpus_histogram_real_bytes_2450_files() {
     );
 
     let warnings = histogram.missing_type_warnings();
-    // For Sweetie HD specifically: byte-0 spot-check observed
+    // For primary_corpus HD specifically: byte-0 spot-check observed
     // 2145 type-0, 0 type-1, 305 type-2 files. So the only missing
     // type is type 1, and the warnings vec must contain exactly one
     // NoTypeNInCorpus for `G00Type::PalettedLzss`.
     assert_eq!(
         warnings.len(),
         1,
-        "Sweetie HD must surface exactly one missing-type warning (type 1); got: {warnings:?}",
+        "primary_corpus HD must surface exactly one missing-type warning (type 1); got: {warnings:?}",
     );
     assert!(
         matches!(
@@ -517,7 +517,7 @@ fn g00_corpus_histogram_real_bytes_2450_files() {
                 g00_type: G00Type::PalettedLzss
             }
         ),
-        "missing-type warning must point at PalettedLzss for Sweetie HD; got: {:?}",
+        "missing-type warning must point at PalettedLzss for primary_corpus HD; got: {:?}",
         warnings[0],
     );
     let rendered = warnings[0].to_string();
@@ -528,15 +528,15 @@ fn g00_corpus_histogram_real_bytes_2450_files() {
 
     assert!(
         histogram.type0_count > 0,
-        "Sweetie HD must carry at least one type-0 file (BACK.g00 is the documented type-0 pin)",
+        "primary_corpus HD must carry at least one type-0 file (BACK.g00 is the documented type-0 pin)",
     );
     assert!(
         histogram.type2_count > 0,
-        "Sweetie HD must carry at least one type-2 file (btn000.g00 is the documented type-2 pin)",
+        "primary_corpus HD must carry at least one type-2 file (btn000.g00 is the documented type-2 pin)",
     );
     assert_eq!(
         histogram.type1_count, 0,
-        "Sweetie HD's spot-check observed zero type-1 files; the typed warning above pins this",
+        "primary_corpus HD's spot-check observed zero type-1 files; the typed warning above pins this",
     );
 }
 

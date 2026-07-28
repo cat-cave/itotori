@@ -74,12 +74,12 @@ function candidateEvidence(
     .join("\n");
   return [
     ...deterministicEvidence,
-    `RB-025 exact source fact: ${context.unit.factId} (snapshot ${context.unitPage.snapshotId}).`,
+    `policy exact source fact: ${context.unit.factId} (snapshot ${context.unitPage.snapshotId}).`,
     `Source skeleton (fixed; preserve its placeholders and protected spans): ${context.unit.value.sourceSkeleton}`,
     `Protected placeholders (fixed; never rewrite or re-encode SJIS/source bytes): ${JSON.stringify(context.unit.value.protectedPlaceholders)}`,
-    "RB-025 setup/payoff window (fixed source skeletons):",
+    "policy setup/payoff window (fixed source skeletons):",
     neighborSkeletons,
-    "RB-025 matching operator references (may be empty; never invent one):",
+    "policy matching operator references (may be empty; never invent one):",
     referenceExcerpts.length > 0 ? referenceExcerpts : "(none)",
   ].join("\n");
 }

@@ -7,10 +7,10 @@
 //! background/sprite ops fell through to the catalog `Advance` stub and the
 //! terminal graphics stack was EMPTY.
 //!
-//! Two titles (Sweetie HD + Kanon). Env-gated + STRICT (an absent corpus is
+//! Two titles (primary_corpus HD + Kanon). Env-gated + STRICT (an absent corpus is
 //! a HARD failure); these `#[ignore]`-d suites run in the periodic
 //! ground-truth oracle. Run with:
-//! `ITOTORI_REAL_GAME_ROOT=<sweetie> ITOTORI_REAL_GAME_ROOT_2=<kanon>
+//! `ITOTORI_REAL_GAME_ROOT=<primary_corpus> ITOTORI_REAL_GAME_ROOT_2=<kanon>
 //!  cargo test -p utsushi-reallive --test render_opcode_semantics_real_bytes -- --ignored --nocapture`.
 
 #[path = "support/real_corpus.rs"]

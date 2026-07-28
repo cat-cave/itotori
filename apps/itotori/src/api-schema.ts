@@ -183,7 +183,7 @@ export type ItotoriApiRouteId =
   | "play.targetEdit"
   // p0-result-revision — inspect the selected delivered patch for a run.
   | "play.delivery"
-  // p0-core-iterative-patch-versioning-and-playtest-feedback — historical
+  // planning-item — historical
   // version play surface, exact observed sessions, persisted feedback inbox,
   // and refinement launch all share the node-11 coordinator.
   | "patchIteration.versions"
@@ -659,7 +659,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
 export type ItotoriStrictApiBodyName = keyof typeof ITOTORI_STRICT_API_BODY_KEYS;
 
 /**
- * ITOTORI-051 — assert an {@link ApiErrorResponse} body. Error responses are
+ * policy — assert an {@link ApiErrorResponse} body. Error responses are
  * not tied to a single route id (every route may emit one), so they are
  * validated independently of {@link assertItotoriApiResponse}. The MSW
  * mutation contract handlers + tests use this so a typed error-shape change
@@ -696,7 +696,7 @@ export type ApiBenchmarkReportsResponse = {
   reports: BenchmarkReportSummary[];
 };
 
-/** ITOTORI-047 — typed queue-health read-model (outbox lag, job/retry/dead-letter). */
+/** policy — typed queue-health read-model (outbox lag, job/retry/dead-letter). */
 export type ApiQueueHealthResponse = QueueHealthReadModel;
 
 export type ApiDashboardDecisionsResponse = DashboardDecisionReadModel;
@@ -1919,7 +1919,7 @@ export function parseRecordBenchmarkRequest(body: unknown): ApiRecordBenchmarkRe
   return parseRequest("ApiRecordBenchmarkRequest", () => {
     const request = asRecord(body, "ApiRecordBenchmarkRequest");
     assertBenchmarkReportV02(request.benchmarkReport);
-    // ITOTORI-059 — the recorded benchmark MUST self-identify its locale
+    // policy — the recorded benchmark MUST self-identify its locale
     // branch. There is no separate envelope channel and no project-level
     // fallback: a report that omits localeBranchId is rejected so cost +
     // benchmark records can never be attributed to the wrong branch.
@@ -4191,7 +4191,7 @@ function assertApiBenchmarkReportsResponse(
   }
 }
 
-/** ITOTORI-047 — assert a {@link QueueHealthReadModel} (the queue.health body). */
+/** policy — assert a {@link QueueHealthReadModel} (the queue.health body). */
 export function assertQueueHealthReadModel(
   value: unknown,
   label = "QueueHealthReadModel",
@@ -4544,7 +4544,7 @@ export function assertProjectCostReport(
         `${tokenTotalLabel} must cover promptTokens, completionTokens, and reasoningTokens`,
       );
     }
-    // ITOTORI-230 — every run row carries the captured OR routing
+    // policy — every run row carries the captured OR routing
     // posture (the `provider: { order, allow_fallbacks, data_collection,
     // zdr, require_parameters }` block that hit the wire) on
     // `routing_posture`. Pre-migration rows carry the sentinel
@@ -4726,7 +4726,7 @@ export function assertProjectCostDrilldownResponse(
 }
 
 function assertCostDrilldownRowCost(value: unknown, label: string): void {
-  // ITOTORI-053 — zero and unknown are DISTINCT states, never collapsed. The
+  // policy — zero and unknown are DISTINCT states, never collapsed. The
   // `state` discriminator carries the distinction (there is intentionally no
   // `costKind: "unknown"` — that is the deleted, audit-forbidden ledger enum).
   const record = asRecord(value, label);
@@ -5087,7 +5087,7 @@ export function assertDashboardDecisionReadModel(
       `${label}.pendingDecisions[${index}].runtimeStatus`,
     );
     assertString(decision.createdAt, `${label}.pendingDecisions[${index}].createdAt`);
-    // ITOTORI-114 — KIND-SPECIFIC nullable-field invariants (fail-closed).
+    // policy — KIND-SPECIFIC nullable-field invariants (fail-closed).
     // A read-model row whose fields contradict its decisionKind is a
     // corrupt/mislabelled record; reject it rather than surface (and
     // mis-count) an internally-inconsistent decision on the dashboard.

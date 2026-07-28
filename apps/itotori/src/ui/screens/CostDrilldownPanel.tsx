@@ -18,7 +18,7 @@
 // provider — when they differ the requested pair is surfaced alongside so the
 // mismatch is visible, never hidden. The three cost states are never collapsed
 // (`zero` is a real $0.00 billed record; `unknown` is an UNRECORDED cost —
-// structurally distinct, per ITOTORI-053).
+// structurally distinct, per policy).
 //
 // Each view settles into loading / empty / error / populated INDEPENDENTLY so
 // one failed read degrades only its view. className-based, ds tokens, no

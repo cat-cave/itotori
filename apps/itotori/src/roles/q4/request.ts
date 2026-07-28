@@ -60,7 +60,7 @@ export function assertContinuityOnlyToolGrant(): void {
   }
 }
 
-/** Thrown when a Q4 call drifts from its RB-019 reviewer profile. Test-dev is
+/** Thrown when a Q4 call drifts from its policy reviewer profile. Test-dev is
  * intentionally not an escape hatch: the certified route is required before
  * every physical continuity-review call. */
 export class Q4RouteError extends Error {

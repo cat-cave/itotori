@@ -174,7 +174,7 @@ export function buildRepairCall(input: BuildRepairCallInput): RepairCall {
 
 export type RepairRuntimeBase = Omit<DispatchRuntime, "readPayload">;
 
-/** Bind P3 to its RB-019 profile and the account-wide ZDR fallback policy in
+/** Bind P3 to its policy profile and the account-wide ZDR fallback policy in
  * every run mode. The shared dispatcher deliberately relaxes its route check in
  * test-dev, so this guard is the role-level proof that a forged P3 call cannot
  * reach a provider in any mode. */

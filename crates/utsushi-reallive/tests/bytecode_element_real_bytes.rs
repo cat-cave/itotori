@@ -2,7 +2,7 @@
 //! stream decoder.
 //!
 //! Pins [`utsushi_reallive::decode_bytecode_stream`] against the
-//! Sweetie HD corpus supplied via `ITOTORI_REAL_GAME_ROOT`. The full →
+//! primary_corpus HD corpus supplied via `ITOTORI_REAL_GAME_ROOT`. The full →
 //! → → chain is exercised
 //! end-to-end so that a regression earlier in the chain surfaces here
 //! as a chain-level diagnostic.
@@ -10,7 +10,7 @@
 //! **Multi-game validation status.** Per the itotori operating model
 //! (`docs/dev/orchestration-operating-model.md`), a parser that targets a
 //! real engine substrate must be exercised against at least two real
-//! corpora before its node is merged-complete. Sweetie HD is the only
+//! corpora before its node is merged-complete. primary_corpus HD is the only
 //! RealLive title currently staged. mirrors the pattern
 //! its predecessors landed: the node stays
 //! `planned` until a second RealLive corpus is sourced and exercised
@@ -31,10 +31,10 @@ use utsushi_reallive::{
     SELECTION_OPTION_MARKER_MAX, SELECTION_OPTION_MARKER_MIN, SceneHeader, decode_bytecode_stream,
 };
 
-// Relative path under the Sweetie HD extraction root that holds the
+// Relative path under the primary_corpus HD extraction root that holds the
 // raw `Seen.txt` envelope.
 
-/// Documented decompressed-output values for Sweetie HD scene #0001.
+/// Documented decompressed-output values for primary_corpus HD scene #0001.
 /// Sourced from
 /// `RealLive encryption research notes` §1 and
 /// re-validated by the real-bytes test.
@@ -57,7 +57,7 @@ const PRIMARY_CORPUS_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE: u32 = 1660;
 const ELEMENT_COUNT_MIN: usize = 50;
 const ELEMENT_COUNT_MAX: usize = 300;
 
-/// Exact number of recognised `SelectionOption` markers in the Sweetie
+/// Exact number of recognised `SelectionOption` markers in the primary_corpus
 /// HD scene #0001 element stream. The real bytes carry 8 markers
 /// (`0x30`×6, `0x31`×1, `0x34`×1 — see the per-element `eprintln!`
 /// trace), matching the `selection_option: 8` row of the per-variant
@@ -82,10 +82,10 @@ fn scene1_element_stream_partition_and_first_command_header() {
     // Walk through the -> -> chain
     // before exercising the lexer.
     let index = RealSceneIndex::parse(&bytes)
-        .expect("Sweetie HD Seen.txt must parse through the  directory parser");
+        .expect("primary_corpus HD Seen.txt must parse through the  directory parser");
     let entry = index
         .lookup(1)
-        .expect("Sweetie HD must contain a populated scene 1 entry");
+        .expect("primary_corpus HD must contain a populated scene 1 entry");
 
     let blob_start =
         usize::try_from(entry.byte_offset).expect("file offset must fit in usize on this platform");
@@ -102,7 +102,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
     );
 
     let (header, _header_warnings) = SceneHeader::parse(blob)
-        .expect("Sweetie HD scene 1 must produce a typed SceneHeader ( anchor)");
+        .expect("primary_corpus HD scene 1 must produce a typed SceneHeader ( anchor)");
 
     let bytecode_offset = header.bytecode_offset as usize;
     let bytecode_compressed_size = header.bytecode_compressed_size as usize;
@@ -118,7 +118,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
             None,
             header.compiler_version,
         )
-        .expect("Sweetie HD scene 1 must decompress cleanly ( anchor)");
+        .expect("primary_corpus HD scene 1 must decompress cleanly ( anchor)");
 
     assert_eq!(
         decompressed.len(),
@@ -127,8 +127,9 @@ fn scene1_element_stream_partition_and_first_command_header() {
     );
 
     // === surface under test ===
-    let elements = decode_bytecode_stream(&decompressed)
-        .expect("Sweetie HD scene 1 decompressed bytes must lex into a BytecodeElement stream");
+    let elements = decode_bytecode_stream(&decompressed).expect(
+        "primary_corpus HD scene 1 decompressed bytes must lex into a BytecodeElement stream",
+    );
 
     let element_count = elements.len();
     // -- Per-variant element histogram (eprintln so CI logs surface
@@ -139,7 +140,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
         *counts.entry(element.variant_name()).or_insert(0) += 1;
     }
     eprintln!(
-        "[ real-bytes] Sweetie HD scene #0001: {element_count} elements (range {ELEMENT_COUNT_MIN}..={ELEMENT_COUNT_MAX} expected) \
+        "[ real-bytes] primary_corpus HD scene #0001: {element_count} elements (range {ELEMENT_COUNT_MIN}..={ELEMENT_COUNT_MAX} expected) \
          — per-variant counts {counts:?}",
     );
     // Surface the selection-option offsets for later work
@@ -158,7 +159,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
     // -- Element count bound (acceptance criterion #0) --
     assert!(
         (ELEMENT_COUNT_MIN..=ELEMENT_COUNT_MAX).contains(&element_count),
-        "Sweetie HD scene #0001 must produce between {ELEMENT_COUNT_MIN} and \
+        "primary_corpus HD scene #0001 must produce between {ELEMENT_COUNT_MIN} and \
          {ELEMENT_COUNT_MAX} BytecodeElements (typical RealLive density for a 1660-byte \
          payload); got {element_count}",
     );
@@ -241,7 +242,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
             _ => None,
         })
         .expect(
-            "Sweetie HD scene #0001 must contain at least one Command element (research doc \
+            "primary_corpus HD scene #0001 must contain at least one Command element (research doc \
              pins one at offset 0x001e)",
         );
     let (
@@ -310,7 +311,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
         })
         .count();
     eprintln!(
-        "[ real-bytes] Sweetie HD scene #0001 selection-option marker count = \
+        "[ real-bytes] primary_corpus HD scene #0001 selection-option marker count = \
          {selection_marker_count} (markers in 0x{SELECTION_OPTION_MARKER_MIN:02x}..=0x{SELECTION_OPTION_MARKER_MAX:02x})",
     );
     // STRICT positive assertion: scene #0001 carries exactly 8
@@ -323,7 +324,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
     // marker.
     assert_eq!(
         selection_marker_count, PRIMARY_CORPUS_SCENE_ONE_SELECTION_MARKER_COUNT,
-        "Sweetie HD scene #0001 must yield exactly {PRIMARY_CORPUS_SCENE_ONE_SELECTION_MARKER_COUNT} \
+        "primary_corpus HD scene #0001 must yield exactly {PRIMARY_CORPUS_SCENE_ONE_SELECTION_MARKER_COUNT} \
          recognised SelectionOption markers (0x{SELECTION_OPTION_MARKER_MIN:02x}..=\
          0x{SELECTION_OPTION_MARKER_MAX:02x}); got {selection_marker_count} of {element_count} \
          total elements",

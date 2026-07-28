@@ -548,7 +548,7 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: ["runId"],
     responseSchema: "ApiPlayDeliveryResponse",
   },
-  // p0-core-iterative-patch-versioning-and-playtest-feedback — exact-version
+  // planning-item — exact-version
   // iteration topology. Historical versions are readable/playable; feedback
   // and refinement mutations remain resource-scoped to the observed base.
   "patchIteration.versions": {

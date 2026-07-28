@@ -8,7 +8,7 @@ import {
 } from "../src/services/project-mutation-scope.js";
 
 /**
- * ITOTORI-050 — the scoping policy is exercised entirely against a synthetic,
+ * policy — the scoping policy is exercised entirely against a synthetic,
  * in-memory ownership oracle (no DB): the same `listLocaleBranchIdentities`
  * contract the repository fulfils via `where project_id = <projectId>`. The
  * DB-backed lookup is covered separately by the repository integration tests.
@@ -31,7 +31,7 @@ function ownershipLookup(ownedByProject: Record<string, string[]>): ProjectBranc
   };
 }
 
-describe("resolveProjectMutationScope (ITOTORI-050)", () => {
+describe("resolveProjectMutationScope (policy)", () => {
   it("rejects an unknown / out-of-scope project (no server-side branches)", async () => {
     const lookup = ownershipLookup({ "project-1": ["locale-1"] });
 
@@ -108,7 +108,7 @@ describe("resolveProjectMutationScope (ITOTORI-050)", () => {
   });
 });
 
-describe("requireOwnedBranchScope (ITOTORI-050)", () => {
+describe("requireOwnedBranchScope (policy)", () => {
   it("returns a non-null branch scope for an in-scope id", async () => {
     const lookup = ownershipLookup({ "project-1": ["locale-1"] });
 

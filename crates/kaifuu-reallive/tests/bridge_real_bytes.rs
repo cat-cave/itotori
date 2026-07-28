@@ -1,6 +1,6 @@
 //! real-bytes integration test for the v0.2 BridgeBundle producer (the
 //! binary-vs-dialogue surface split + the speaker-identity oracle). Reads
-//! Sweetie HD from `ITOTORI_REAL_GAME_ROOT` and exercises two scenes:
+//! primary_corpus HD from `ITOTORI_REAL_GAME_ROOT` and exercises two scenes:
 //! - **Scene 1** — system/boundary: every Textout run is embedded binary
 //!   data, so the producer must surface ZERO translatable units and return
 //!   `NoTextUnits` (surfacing e.g. the 214-byte op[72] block would let
@@ -27,9 +27,9 @@ use kaifuu_reallive::{
     scene_bundle_namespace,
 };
 
-const PRIMARY_CORPUS_GAME_ID: &str = "sweetie-hd";
-const PRIMARY_CORPUS_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
-/// A known dialogue-bearing scene in Sweetie HD's `Seen.txt` that decodes
+const PRIMARY_CORPUS_GAME_ID: &str = "primary_corpus-hd";
+const PRIMARY_CORPUS_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-primary_corpus-hd";
+/// A known dialogue-bearing scene in primary_corpus HD's `Seen.txt` that decodes
 /// 100% clean (readable dialogue + binary catch-all runs + real
 /// `module_sel` select-block Choice options + kidoku + NAMAE speakers).
 const DIALOGUE_SCENE_ID: u16 = 1018;
@@ -195,7 +195,7 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
     // staged-but-unreadable corpus skip every speaker assertion behind
     // `if namae_entries > 0` — a green-on-broken hole. Read it or fail loud.
     let gameexe_path =
-        real_gameexe_ini_path().expect("staged Sweetie HD corpus must carry a Gameexe.ini");
+        real_gameexe_ini_path().expect("staged primary_corpus HD corpus must carry a Gameexe.ini");
     let gameexe_bytes = fs::read(&gameexe_path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", gameexe_path.display()));
     let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
@@ -210,12 +210,12 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
         })
         .count();
     eprintln!("Gameexe NAMAE entries observed: {namae_entries}");
-    // Sweetie HD's Gameexe.ini declares exactly 11 `#NAMAE` speaker rows
+    // primary_corpus HD's Gameexe.ini declares exactly 11 `#NAMAE` speaker rows
     // (including the `？？？／<name>` censored rows). Pin it so an empty /
     // truncated inventory can never masquerade as "no speakers to check".
     assert_eq!(
         namae_entries, 11,
-        "Sweetie HD Gameexe.ini must expose its 11 real #NAMAE rows; got {namae_entries}"
+        "primary_corpus HD Gameexe.ini must expose its 11 real #NAMAE rows; got {namae_entries}"
     );
 
     let opts = bridge_opts(scene.header.kidoku_count);
@@ -333,7 +333,7 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
             "speaker knowledge states on real bytes: known={known} reader_unknown={reader_unknown} parser_unknown={parser_unknown} not_applicable={not_applicable}"
         );
 
-        // EXACT, honestly re-measured Sweetie HD scene 1018 outcome (the prior
+        // EXACT, honestly re-measured primary_corpus HD scene 1018 outcome (the prior
         // "known=100" claim was inflated by the removed fabrication paths).
         // Pinning the vector makes a 1-true/103-false producer FAIL.
         assert_eq!(

@@ -225,7 +225,7 @@ fn ctl_farcall_emits_far_call_outcome() {
 
 #[test]
 fn ctl_farcall_scene9999_entrypoint10() {
-    // Sweetie HD `CANCELCALL=9999,10` system-call entry shape.
+    // primary_corpus HD `CANCELCALL=9999,10` system-call entry shape.
     let mut vm = Vm::new(1, 0);
     let outcome = FarcallOp.dispatch(
         &mut vm,

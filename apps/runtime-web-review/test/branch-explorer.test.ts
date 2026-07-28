@@ -61,7 +61,7 @@ async function collectAllPages(
   return pages;
 }
 
-describe("branch explorer API (UTSUSHI-067)", () => {
+describe("branch explorer API (policy)", () => {
   it("serves records with all six required fields plus managed artifact links", async () => {
     const response = await fetchBranchCoveragePage(BRANCH_EXPLORER_TEST_ENDPOINT, {
       pageSize: 100,
@@ -169,7 +169,7 @@ describe("branch explorer API (UTSUSHI-067)", () => {
     );
   });
 
-  it("exposes the UTSUSHI-009 seed read model without a live runtime", () => {
+  it("exposes the policy seed read model without a live runtime", () => {
     // Pure + synchronous: the page builder derives everything from the joined
     // read model — no network, browser, or screenshot.
     const page = buildBranchCoveragePage(seedBranchCoverageReadModel());

@@ -44,7 +44,7 @@ fn temp_artifact_root(tag: &str) -> RuntimeArtifactRoot {
     root
 }
 
-// Default name of the Sweetie HD title directory inside the
+// Default name of the primary_corpus HD title directory inside the
 // extraction root. Mirrors the existing
 // `gameexe_real_bytes.rs` / `syscall_routes_real_bytes.rs`
 // constant.
@@ -142,7 +142,7 @@ fn graphics_object_stack_256_objects() {
 /// two render passes with the same state produce byte-identical PNGs.
 #[test]
 fn render_wipe_solid_colour_deterministic_png() {
-    // Sweetie HD-shaped framebuffer dimensions
+    // primary_corpus HD-shaped framebuffer dimensions
     // (`SCREENSIZE_MOD=999,1280,720`).
     let mut pass_a = RenderPass::with_dimensions(1280, 720).expect("non-zero screen");
     let mut pass_b = RenderPass::with_dimensions(1280, 720).expect("non-zero screen");
@@ -236,7 +236,7 @@ fn render_wipe_solid_colour_deterministic_png() {
     let _ = fs::remove_dir_all(root_b.path());
 }
 
-/// Real-bytes pin (env-gated): with the Sweetie HD `Gameexe.ini`
+/// Real-bytes pin (env-gated): with the primary_corpus HD `Gameexe.ini`
 /// loaded, [`utsushi_reallive::SyscallDispatcher::screen_size`] reports
 /// `width=1280, height=720`, and [`utsushi_reallive::RenderPass::new`]
 /// honours those dimensions verbatim. Pin for the
@@ -251,12 +251,12 @@ fn graphics_pipeline_honours_reallive_real_bytes_gameexe_screen_size() {
         );
         return;
     };
-    let bytes = fs::read(&gameexe_path).expect("Sweetie HD Gameexe.ini readable");
-    let gameexe = Gameexe::parse(&bytes).expect("Sweetie HD Gameexe.ini parses");
+    let bytes = fs::read(&gameexe_path).expect("primary_corpus HD Gameexe.ini readable");
+    let gameexe = Gameexe::parse(&bytes).expect("primary_corpus HD Gameexe.ini parses");
     let dispatcher = SyscallDispatcher::from_gameexe(&gameexe).expect("dispatcher builds");
     let screen_size = dispatcher
         .screen_size()
-        .expect("Sweetie HD declares SCREENSIZE_MOD=999,1280,720");
+        .expect("primary_corpus HD declares SCREENSIZE_MOD=999,1280,720");
     assert_eq!(screen_size.mode, 999);
     assert_eq!(screen_size.width, 1280);
     assert_eq!(screen_size.height, 720);

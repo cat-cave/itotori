@@ -314,8 +314,8 @@ describe("A6 clause 2 — function + bounded options, never a replacement transl
       candidate.unitFactId,
     );
     expect(result.context.referencesPage.tool).toBe("references_search");
-    expect(storedPrompts.join("\n")).toContain(`RB-025 exact source fact: ${candidate.unitFactId}`);
-    expect(storedPrompts.join("\n")).toContain("RB-025 setup/payoff window");
+    expect(storedPrompts.join("\n")).toContain(`policy exact source fact: ${candidate.unitFactId}`);
+    expect(storedPrompts.join("\n")).toContain("policy setup/payoff window");
     // The byte-derived flag is surfaced authoritatively, not the model's guess.
     expect(result.evidence.markers).toEqual(["先輩"]);
     // The body carries NO replacement / target field — it is function + options.

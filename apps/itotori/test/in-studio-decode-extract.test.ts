@@ -29,7 +29,7 @@ import {
 import { assertItotoriApiResponse, parseProjectDecodeExtractRequest } from "../src/api-schema.js";
 
 const IDENTITY = {
-  gameId: "sweetie",
+  gameId: "primary_corpus",
   gameVersion: "1.0",
   sourceProfileId: "profile-1",
   sourceLocale: "ja-JP",
@@ -74,7 +74,7 @@ describe("in-studio decode/extract runner drives the REAL kaifuu extract seam", 
 
     const outcome = await runner.runDecodeExtract({
       ...REALLIVE,
-      gameRoot: "/games/sweetie",
+      gameRoot: "/games/primary_corpus",
       scene: 2031,
     });
 
@@ -86,7 +86,7 @@ describe("in-studio decode/extract runner drives the REAL kaifuu extract seam", 
     expect(argv.slice(extractIndex)).toEqual(
       buildExtractArgs({
         ...REALLIVE,
-        gameRoot: "/games/sweetie",
+        gameRoot: "/games/primary_corpus",
         scene: 2031,
         bundleOutputPath: bundleOutput,
       }),
@@ -104,13 +104,15 @@ describe("in-studio decode/extract runner drives the REAL kaifuu extract seam", 
 
     const outcome = await runner.runDecodeExtract({
       ...REALLIVE,
-      vaultCanonicalId: "vault-sweetie",
+      vaultCanonicalId: "vault-primary_corpus",
       wholeSeen: true,
     });
 
     expect(capture.argv).toContain("--whole-seen");
     expect(capture.argv).not.toContain("--scene");
-    expect(capture.argv![capture.argv!.indexOf("--vault-canonical-id") + 1]).toBe("vault-sweetie");
+    expect(capture.argv![capture.argv!.indexOf("--vault-canonical-id") + 1]).toBe(
+      "vault-primary_corpus",
+    );
     expect(outcome.mode).toBe("whole-seen");
     expect(outcome.bridge.units.length).toBeGreaterThan(0);
   });
@@ -149,13 +151,13 @@ describe("in-studio decode/extract runner drives the REAL kaifuu extract seam", 
     });
 
     await expect(
-      runner.runDecodeExtract({ ...REALLIVE, gameRoot: "/games/sweetie", scene: 1 }),
+      runner.runDecodeExtract({ ...REALLIVE, gameRoot: "/games/primary_corpus", scene: 1 }),
     ).rejects.toBeInstanceOf(KaifuuExtractError);
   });
 });
 
 describe("parseProjectDecodeExtractRequest (wire contract)", () => {
-  const base = { ...REALLIVE, gameRoot: "/games/sweetie", wholeSeen: true } as const;
+  const base = { ...REALLIVE, gameRoot: "/games/primary_corpus", wholeSeen: true } as const;
 
   it("accepts a valid whole-seen game-root request", () => {
     expect(parseProjectDecodeExtractRequest(base)).toEqual(base);
@@ -234,12 +236,12 @@ describe("parseProjectDecodeExtractRequest (wire contract)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// ENV-GATED real-Sweetie proof — the runner drives the REAL kaifuu-cli.
+// ENV-GATED real-primary_corpus proof — the runner drives the REAL kaifuu-cli.
 // ---------------------------------------------------------------------------
 
 const REAL_CORPUS_ROOT = process.env.ITOTORI_REAL_CORPUS_ROOT;
 
-describe("in-studio decode/extract runner (env-gated real-Sweetie byte proof)", () => {
+describe("in-studio decode/extract runner (env-gated real-primary_corpus byte proof)", () => {
   it.skipIf(!REAL_CORPUS_ROOT)(
     "produces a REAL v0.2 bridge from a real game root via the real kaifuu-cli (per-scene)",
     async () => {
@@ -249,9 +251,9 @@ describe("in-studio decode/extract runner (env-gated real-Sweetie byte proof)", 
       const runner = createDecodeExtractRunner();
       const outcome = await runner.runDecodeExtract({
         engine: "reallive",
-        gameId: "sweetie-real",
+        gameId: "primary_corpus-real",
         gameVersion: "1.0",
-        sourceProfileId: "sweetie-hd-real",
+        sourceProfileId: "primary_corpus-hd-real",
         sourceLocale: "ja-JP",
         gameRoot: REAL_CORPUS_ROOT,
         scene,

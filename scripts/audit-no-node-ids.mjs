@@ -7,11 +7,11 @@
 // git history + the PR description, never in a doc comment or source line.
 // This is an absolute rule: zero node-id references are permitted.
 //
-// Scope: tracked source under `crates/` (`.rs`) and `packages/`
-// (`.ts`/`.tsx`/`.js`/`.mjs`/`.cjs`). Excluded as immutable/prose/delete-zone:
-// `apps/itotori/**`, `**/fixtures/**`, `**/target/**`, `**/dist/**`,
-// `**/migrations/**/*.sql` (checksum-locked historical SQL), `docs/**`,
-// `roadmap/**`, `.qd/**`, `.plan/**`, and `CHANGELOG*`.
+// Scope: tracked code under `crates/`, `packages/`, and `apps/`
+// (`.rs`/`.ts`/`.tsx`/`.js`/`.mjs`/`.cjs`), including tests, fixtures, examples,
+// migrations, and every application surface. It cannot see untracked, ignored,
+// generated, or non-code files. Build output is not source; this guard's own
+// source names the patterns it enforces.
 //
 // Exit codes: 0 = clean; 1 = violation. Wired into `just ci tier0-meta`.
 
@@ -25,18 +25,7 @@ const repoRoot = join(here, "..");
 
 export const SCAN_EXTENSIONS = new Set([".rs", ".ts", ".tsx", ".js", ".mjs", ".cjs"]);
 
-const EXCLUDE_PATTERNS = [
-  "apps/itotori/",
-  "migrations/",
-  "/fixtures/",
-  "/target/",
-  "/dist/",
-  "docs/",
-  "roadmap/",
-  ".qd/",
-  ".plan/",
-  "CHANGELOG",
-];
+const EXCLUDE_PATTERNS = ["/target/", "/dist/", "/node_modules/", "scripts/audit-no-node-ids.mjs"];
 
 const NODE_ID_PATTERNS = [
   // Deliberately no word boundaries: `_`, letters, and digits can surround a
@@ -81,7 +70,7 @@ export function findNodeIdViolations(path, contents) {
 }
 
 export function listScanFiles(root) {
-  return execSync("git ls-files crates packages", { cwd: root, encoding: "utf8" })
+  return execSync("git ls-files crates packages apps", { cwd: root, encoding: "utf8" })
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
@@ -127,13 +116,15 @@ function main() {
       : scanFiles(options.root, listScanFiles(options.root));
   if (result.violations.length === 0) {
     process.stdout.write(
-      `node-id guard: passed. 0 references across ${result.scanned} scanned files.\n`,
+      `node-id guard: passed. 0 references across ${result.scanned} scanned files.\n` +
+        "Limits: scans tracked code only; cannot see untracked, ignored, generated, or non-code files.\n",
     );
     return;
   }
   process.stderr.write(
     `node-id guard: FAILED. ${result.violations.length} node-id reference(s) found.\n` +
-      "Node-id references are stale-on-write; remove them instead of encoding planning provenance.\n\n",
+      "Node-id references are stale-on-write; remove them instead of encoding planning provenance.\n" +
+      "Limits: scans tracked code only; cannot see untracked, ignored, generated, or non-code files.\n\n",
   );
   for (const violation of result.violations) {
     process.stderr.write(

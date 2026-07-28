@@ -95,7 +95,7 @@ function staticProvider(hits: readonly RawWebHit[]): {
 
 const fixedNow = () => new Date("2026-07-15T12:00:00.000Z");
 
-describe("RB-026 clause 1 — web_search is absent from every allowlist except A7", () => {
+describe("policy clause 1 — web_search is absent from every allowlist except A7", () => {
   it("grants web egress to exactly A7 across all 19 roles", () => {
     const allowed = ALL_ROLES.filter((role) => webEgressAllowed(role, ENABLED));
     expect(allowed).toEqual(["A7"]);
@@ -122,7 +122,7 @@ describe("RB-026 clause 1 — web_search is absent from every allowlist except A
   });
 });
 
-describe("RB-026 clause 2 — uncallable unless the operator explicitly enables egress", () => {
+describe("policy clause 2 — uncallable unless the operator explicitly enables egress", () => {
   it("DISABLED by default: A7's query fails closed with ZERO network egress", async () => {
     const spy = interceptedProvider();
     const tool = createWebSearchTool({
@@ -152,7 +152,7 @@ describe("RB-026 clause 2 — uncallable unless the operator explicitly enables 
   });
 });
 
-describe("RB-026 clause 3 — enabled results carry full web provenance at confidence <= medium", () => {
+describe("policy clause 3 — enabled results carry full web provenance at confidence <= medium", () => {
   it("seals url, retrieval date, content hash, web provenance, and low confidence", async () => {
     const source = staticProvider([RAW_HIT]);
     const tool = createWebSearchTool({
@@ -220,7 +220,7 @@ describe("RB-026 clause 3 — enabled results carry full web provenance at confi
   });
 });
 
-describe("RB-026 clause 3/RB-027 — web claims can never override decode/same-game facts", () => {
+describe("policy clause 3/policy — web claims can never override decode/same-game facts", () => {
   const rinSubject: EntityRef = { kind: "character", id: "nam-17" };
   const rinFact: SameGameFact = {
     factId: "decode:character:nam-17:name",
@@ -278,7 +278,7 @@ describe("RB-026 clause 3/RB-027 — web claims can never override decode/same-g
   });
 });
 
-describe("RB-026 clause 4 — qualifying-run posture disables egress with no boundary crossing", () => {
+describe("policy clause 4 — qualifying-run posture disables egress with no boundary crossing", () => {
   it("A7 web egress fails closed during a qualifying run with zero network egress", async () => {
     const spy = interceptedProvider();
     const tool = createWebSearchTool({

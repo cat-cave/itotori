@@ -88,6 +88,26 @@ test("mutation ids are unique and reference a known real-bytes guard family", ()
   }
 });
 
+test("strict RealLive opcode corpus tests remain opt-in outside the synthetic mutation lane", () => {
+  const source = readFileSync(
+    join(repoRoot, "crates/utsushi-reallive/tests/msg_opcode_table_real_bytes.rs"),
+    "utf8",
+  );
+  for (const name of [
+    "decoder_reports_the_msg_opcode_inventory_from_both_real_archives",
+    "every_decoded_msg_command_resolves_in_both_real_archives",
+  ]) {
+    assert.match(
+      source,
+      new RegExp(
+        `#\\[ignore = "strict real-bytes proof; requires two staged RealLive archives"\\]\\nfn ${name}`,
+        "u",
+      ),
+      `${name} must run only through the strict --ignored real-bytes recipe`,
+    );
+  }
+});
+
 test("the mutation set covers each representative real-regression class", () => {
   const cats = MUTATIONS.map((m) => m.category)
     .join(" | ")

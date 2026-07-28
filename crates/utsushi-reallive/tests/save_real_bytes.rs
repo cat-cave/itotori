@@ -1,10 +1,10 @@
 //! Real-bytes integration test for the AVG-derived save
-//! format against Sweetie HD's `SAVEDATA/` directory.
+//! format against primary_corpus HD's `SAVEDATA/` directory.
 //!
 //! This file is **opt-in and env-gated**: the private-corpus assertions
 //! are `#[ignore]`-gated and only run with `--include-ignored` when the
 //! environment variable `ITOTORI_REAL_GAME_ROOT` is set, pointing at
-//! the audit-grade Sweetie HD extraction root (the parent of the
+//! the audit-grade primary_corpus HD extraction root (the parent of the
 //! game-title directory). The presence of that env var is the same gate
 //! used elsewhere in the workspace for "real Shift-JIS save bytes are
 //! available locally". Public CI therefore records these assertions as
@@ -13,7 +13,7 @@
 //! # Audit focus
 //!
 //! - **Writing to the read-only research mount must be banned at the
-//!   test layer.** The Sweetie HD `SAVEDATA/` directory is mounted
+//!   test layer.** The primary_corpus HD `SAVEDATA/` directory is mounted
 //!   read-only (`dr-x------`, `-r--r--r--` for the `.sav` files). A
 //!   regression that introduced a `fs::write` against the research
 //!   mount would silently fail at runtime (because the mount is
@@ -56,24 +56,24 @@ use utsushi_reallive::{
     SystemSave,
 };
 
-// Default name of the Sweetie HD title directory inside the
+// Default name of the primary_corpus HD title directory inside the
 // extraction root.
 
-/// Documented Sweetie HD `REALLIVE.sav` size (audit doc § J).
+/// Documented primary_corpus HD `REALLIVE.sav` size (audit doc § J).
 const PRIMARY_CORPUS_SYSTEM_SAVE_BYTES: usize = 24_876;
 
-/// Documented Sweetie HD `save999.sav` size (audit doc § J).
+/// Documented primary_corpus HD `save999.sav` size (audit doc § J).
 const PRIMARY_CORPUS_GLOBAL_SAVE_BYTES: usize = 6_748;
 
-/// Documented Sweetie HD `read.sav` size (audit doc § J).
+/// Documented primary_corpus HD `read.sav` size (audit doc § J).
 const PRIMARY_CORPUS_READ_FLAGS_BYTES: usize = 44_495;
 
-/// UTF-8 form of the Sweetie HD title (`オシオキSweetie＋Sweets!! HD Edition`
+/// UTF-8 form of the primary_corpus HD title (`primary corpusprimary_corpus＋Sweets!! HD Edition`
 /// plus IDEOGRAPHIC SPACE U+3000). The spec acceptance criterion writes
 /// the trailing code as the literal `\u{8140}` escape; on disk the two
 /// bytes are `81 40`, which is the Shift-JIS encoding of U+3000.
 /// `encoding_rs` round-trips the pair via U+3000, not U+8140.
-const PRIMARY_CORPUS_TITLE_UTF8: &str = "オシオキSweetie＋Sweets!! HD Edition\u{3000}";
+const PRIMARY_CORPUS_TITLE_UTF8: &str = "primary corpusprimary_corpus＋Sweets!! HD Edition\u{3000}";
 
 fn resolve_savedata_path(file_name: &str) -> Option<PathBuf> {
     real_corpus::save_file_path(file_name)
@@ -104,7 +104,7 @@ fn save_real_bytes_are_ignored_without_private_corpus() {
         return;
     }
     eprintln!(
-        "ITOTORI_REAL_GAME_ROOT not set — Sweetie HD save real-bytes tests are \
+        "ITOTORI_REAL_GAME_ROOT not set — primary_corpus HD save real-bytes tests are \
          #[ignore]-gated and only run with ITOTORI_REAL_GAME_ROOT set.",
     );
 }
@@ -118,7 +118,7 @@ fn verify_system_save() {
     assert_eq!(
         bytes.len(),
         PRIMARY_CORPUS_SYSTEM_SAVE_BYTES,
-        "Sweetie HD REALLIVE.sav is documented as {PRIMARY_CORPUS_SYSTEM_SAVE_BYTES} bytes"
+        "primary_corpus HD REALLIVE.sav is documented as {PRIMARY_CORPUS_SYSTEM_SAVE_BYTES} bytes"
     );
 
     // Audit-focus: leading u32 must read as 24 876 / 0x0000_612C.
@@ -185,7 +185,7 @@ fn verify_global_save() {
     assert_eq!(bytes.len(), PRIMARY_CORPUS_GLOBAL_SAVE_BYTES);
 
     let save = GlobalSave::decode(&bytes).expect("save999.sav must decode");
-    // Sweetie HD's documented leading u32 is `A4 00 00 00`.
+    // primary_corpus HD's documented leading u32 is `A4 00 00 00`.
     assert_eq!(
         save.preamble.leading_u32, 0x0000_00A4,
         "save999.sav leading u32 is a per-format constant (0xA4), not the file size"

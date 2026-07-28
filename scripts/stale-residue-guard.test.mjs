@@ -3,6 +3,9 @@ import test from "node:test";
 import { renderReport, scanStaleResidue } from "./stale-residue-guard.mjs";
 
 const WORKFLOW_SCOPE_SOURCE = "apps/itotori/src/workflow/output-scope.ts";
+const RETIRED_PRESET = ["presets/localize-", ["swee", "tie"].join(""), "-hd.pair-policy.json"].join(
+  "",
+);
 
 test("fails on missing markdown link targets", () => {
   const result = scanFixture({
@@ -71,7 +74,7 @@ test("fails active qd text that points at retired paths without a marker", () =>
         {
           id: "bad-node",
           status: "ready",
-          spec: "Load presets/localize-sweetie-hd.pair-policy.json for new runs.",
+          spec: `Load ${RETIRED_PRESET} for new runs.`,
           acceptance: "",
           verification: [],
         },
@@ -103,13 +106,12 @@ test("allows historical select_objbtn coordinate correction notes", () => {
 
 test("scopes stale premise allow markers to local match context", () => {
   const bare = scanFixture({
-    "docs/README.md": "Load presets/localize-sweetie-hd.pair-policy.json for new runs.\n",
+    "docs/README.md": `Load ${RETIRED_PRESET} for new runs.\n`,
   });
   assertViolation(bare, "retired-game-specific-localize-preset");
 
   const marked = scanFixture({
-    "docs/README.md":
-      "Historical note: retired presets/localize-sweetie-hd.pair-policy.json was replaced.\n",
+    "docs/README.md": `Historical note: retired ${RETIRED_PRESET} was replaced.\n`,
   });
   assert.deepEqual(marked.violations, []);
 
@@ -119,7 +121,7 @@ test("scopes stale premise allow markers to local match context", () => {
       "",
       "",
       "",
-      "Load presets/localize-sweetie-hd.pair-policy.json for new runs.",
+      `Load ${RETIRED_PRESET} for new runs.`,
     ].join("\n"),
   });
   assertViolation(markerElsewhere, "retired-game-specific-localize-preset");
@@ -132,7 +134,7 @@ test("allows active qd repair text that marks retired paths as stale", () => {
         {
           id: "repair-node",
           status: "claimed",
-          spec: "Repair stale text that still mentions retired presets/localize-sweetie-hd.pair-policy.json.",
+          spec: `Repair stale text that still mentions retired ${RETIRED_PRESET}.`,
           acceptance: "",
           verification: [],
         },

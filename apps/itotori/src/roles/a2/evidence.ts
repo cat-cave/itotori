@@ -31,7 +31,7 @@ export interface CiteableTermOccurrence {
   readonly sourceText: string;
 }
 
-/** The exact RB-025 result A2 consumes before it reasons about the candidate. */
+/** The exact policy result A2 consumes before it reasons about the candidate. */
 export interface TermOccurrenceEvidence {
   readonly occurrencePages: readonly DecodeGetUnitsResult[];
   readonly occurrences: readonly CiteableTermOccurrence[];
@@ -48,7 +48,7 @@ const MAX_OCCURRENCES_PER_READ = 256;
 
 /**
  * Read exactly the candidate's byte-derived occurrence units through the
- * RB-025 source read surface. The candidate's ordered keys determine the
+ * policy source read surface. The candidate's ordered keys determine the
  * labels; no text search, alias grouping, or count is performed here.
  */
 export function readTermOccurrenceEvidence(

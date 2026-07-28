@@ -235,7 +235,7 @@ describe("A2 clause 1 — reasons ONLY over the ambiguous candidates the index f
 });
 
 describe("A2 role configuration — analyst shape and certified route", () => {
-  it("PROOF: the RB-040 manifest entry is the immutable A2 analyst and its semantic validator runs", () => {
+  it("PROOF: the policy manifest entry is the immutable A2 analyst and its semantic validator runs", () => {
     const a2 = ROSTER.A2;
     expect(a2).toMatchObject({
       roleId: "A2",
@@ -310,7 +310,7 @@ describe("A2 role configuration — analyst shape and certified route", () => {
     expect(reached).toBe(false);
   });
 
-  it("PROOF: A2 reads exactly the pre-pass occurrence keys through RB-025", () => {
+  it("PROOF: A2 reads exactly the pre-pass occurrence keys through policy", () => {
     const { model } = fixture();
     const candidate = aiCandidate(model);
     const evidence = readTermOccurrenceEvidence(model, candidate);

@@ -55,7 +55,7 @@ export interface AdaptationNoteResult {
   readonly note: AdaptationNoteObject;
   readonly spec: CallSpec;
   readonly served: CallResult["served"];
-  /** The typed RB-025 pages read before this note was authored. */
+  /** The typed policy pages read before this note was authored. */
   readonly context: AdaptationReadContext;
   readonly evidence: ReturnType<typeof flagEvidence>;
 }
@@ -82,7 +82,7 @@ export async function runAdaptationNote(
   // wordplay flag with no ruby span, is refused before a call is spent.
   assertFlagByteDerived(candidate, deps.readModel);
   // The deterministic pre-pass selects the subject; the role then obtains its
-  // authoring context through RB-025's typed, visibility-checked read tools.
+  // authoring context through policy's typed, visibility-checked read tools.
   const context = readAdaptationContext(deps.readModel, candidate);
 
   const prompt = composeAdaptationPrompt(request, candidate, context);

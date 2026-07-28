@@ -1,7 +1,7 @@
 // P1 Whole-Scene Localizer — agentic role types.
 //
 // P1 reads its complete source scene and localized-bible entries through the
-// RB-025 local tools, then realizes one whole scene or measured overlapping
+// policy local tools, then realizes one whole scene or measured overlapping
 // chunks. The model's terminal object is only an untrusted draft carrier: this
 // role re-stamps all deterministic source facts, citations, dependencies, and
 // provenance before exposing a provisional translation WikiObject.
@@ -58,7 +58,7 @@ export interface P1SceneInput {
   readonly overlapUnits: number;
 }
 
-/** Deterministic context P1 read through RB-025 before it can call a model. */
+/** Deterministic context P1 read through policy before it can call a model. */
 export interface P1ReadScene {
   readonly sceneId: string;
   readonly units: readonly UnitFact[];

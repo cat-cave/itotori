@@ -1,4 +1,4 @@
-//! Static sel-family scan (`multi-work-carve-live-sweetie-real-bytes-validation`).
+//! Static sel-family scan (`multi-work-carve-live-primary_corpus-real-bytes-validation`).
 //!
 //! Finds the archive's GAME-SELECT — the first-screen base-vs-fandisk pick —
 //! by STATICALLY decoding every scene and reporting its `module_sel` (0,2,x)

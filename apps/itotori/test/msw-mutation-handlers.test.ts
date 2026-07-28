@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 //
-// ITOTORI-051 — the project MUTATION contract test suite.
+// policy — the project MUTATION contract test suite.
 //
 // The dashboard SPA mutation layer POSTs to project mutation routes
 // (`imports.bridge`, `branches.draft`, `findings.record`,
-// `benchmarks.record`, `runtimeEvidence.ingest`). Before ITOTORI-051 the MSW
+// `benchmarks.record`, `runtimeEvidence.ingest`). Before policy the MSW
 // handler suite covered only the READ routes + the import workflow fixtures;
 // a mutation API shape change (a renamed response field, a narrowed enum, a
 // new required request field) would silently diverge between the mock and
@@ -22,7 +22,7 @@
 //                           shape every mutation emits is contract-valid.
 //   3. PERMISSION DENIAL  — the typed `forbidden` error response shape every
 //                           mutation emits (permission gate OR the
-//                           ITOTORI-050 server-side ownership scope refusal)
+//                           policy server-side ownership scope refusal)
 //                           is contract-valid.
 //
 // Plus a contract-DRIFT test per route: a deliberate response shape change
@@ -133,7 +133,7 @@ async function postJson(url: string, body: unknown): Promise<Response> {
   });
 }
 
-describe("ITOTORI-051 MSW project mutation contract handlers", () => {
+describe("policy MSW project mutation contract handlers", () => {
   describe("SUCCESS — every project mutation route returns a contract-valid success body", () => {
     it.each(apiMutationContract)(
       "$routeId — POSTs the success request fixture and returns 200 + an asserter-valid body",
@@ -193,7 +193,7 @@ describe("ITOTORI-051 MSW project mutation contract handlers", () => {
     it.each(apiMutationContract)(
       "$routeId — the denial MSW handler returns 403 + a contract-valid forbidden body",
       async (entry) => {
-        // The denial handlers model BOTH ITOTORI-050 refusal paths: a missing
+        // The denial handlers model BOTH policy refusal paths: a missing
         // permission (AuthorizationError → 403 forbidden) AND a server-side
         // project/branch ownership scope refusal (ProjectMutationScopeError
         // → 403 forbidden). Both surface as the SAME typed error shape.
@@ -247,7 +247,7 @@ describe("ITOTORI-051 MSW project mutation contract handlers", () => {
     );
   });
 
-  // ITOTORI-051 acceptance — literal demo: a mutation API shape change FAILS
+  // policy acceptance — literal demo: a mutation API shape change FAILS
   // a dashboard contract test instead of silently diverging. The parameter-
   // drifted blocks above already prove this in bulk; this block is the
   // single, easy-to-point-at proof on a representative route (findings.record)
@@ -260,7 +260,7 @@ describe("ITOTORI-051 MSW project mutation contract handlers", () => {
 
       // 2. A deliberate shape change (the backend renames / drops / widens
       //    `findingId`) MUST fail the contract test. This is the silent-
-      //    divergence guard ITOTORI-051 adds.
+      //    divergence guard policy adds.
       const drifted: Record<string, unknown> = { ...recordFindingResponseFixture };
       delete drifted.findingId;
       expect(() => apiJson("findings.record", drifted as never)).toThrow("findingId");

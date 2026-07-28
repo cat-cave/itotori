@@ -21,14 +21,14 @@ const RAW_SOURCE_PROSE = "「またお前か……この街で何をしている
 // surface them (that is the identity a non-source-reader asked for). These are
 // structured catalog fields, not scene prose.
 const CANONICAL_TITLE = "おしおきスイーティー";
-const ALIAS_TITLE = "Oshioki Sweetie — Deluxe";
+const ALIAS_TITLE = "primary_corpus primary_corpus — Deluxe";
 
 const seedRow: CatalogBenchmarkSeedRow = {
   workId: "019ed065-0000-7000-8000-0000000000aa",
   canonicalTitle: CANONICAL_TITLE,
   originalLanguage: "ja",
   sourceIds: [
-    { catalogSource: "vndb", sourceId: "v60663", externalIdKind: "source_record" },
+    { catalogSource: "vndb", sourceId: "softpal_corpus_two", externalIdKind: "source_record" },
     { catalogSource: "dlsite", sourceId: "RJ123456", externalIdKind: "store_product" },
   ],
   completenessPool: "no_english",
@@ -218,7 +218,7 @@ describe("renderCatalogContextPanel", () => {
     // Identity + source IDs.
     expect(root.textContent).toContain(CANONICAL_TITLE);
     expect(root.textContent).toContain(seedRow.workId);
-    expect(root.textContent).toContain("v60663");
+    expect(root.textContent).toContain("softpal_corpus_two");
     expect(root.textContent).toContain("RJ123456");
     expect(root.textContent).toContain("source_record");
 

@@ -1,6 +1,6 @@
 //! Real-bytes acceptance test for `replay_scene`.
 //!
-//! Drives the full → chain against Sweetie HD
+//! Drives the full → chain against primary_corpus HD
 //! scene #0001 via [`replay_scene`] and asserts the four acceptance
 //! criteria:
 //!
@@ -28,7 +28,7 @@ use utsushi_reallive::{
     restore_into_fresh_vm,
 };
 
-// Relative path under the Sweetie HD extraction root that holds the
+// Relative path under the primary_corpus HD extraction root that holds the
 // raw `Seen.txt` envelope. Mirrors the..
 // real-bytes integration tests in this crate.
 
@@ -47,7 +47,7 @@ fn reallive_real_bytes_scene_one_replay_emits_textline() {
     };
 
     let opts = ReplayOpts::default();
-    let log = replay_scene(&seen_path, 1, &opts).expect("replay Sweetie HD scene 1");
+    let log = replay_scene(&seen_path, 1, &opts).expect("replay primary_corpus HD scene 1");
 
     eprintln!(
         "[ real-bytes] events={} text_lines={} unknown_opcodes={} outcome={:?}",
@@ -82,7 +82,7 @@ fn reallive_real_bytes_scene_one_replay_emits_textline() {
         })
         .expect(
             "real-bytes acceptance #0: ReplayLog MUST carry at least one TextLine event \
-             for Sweetie HD scene 1",
+             for primary_corpus HD scene 1",
         );
     assert!(
         !first_text_event.1.is_empty(),

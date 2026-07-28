@@ -193,7 +193,7 @@ function tarEntry(bytes: Buffer, wantedPath: string): Buffer | null {
   return null;
 }
 
-describe("POST /api/patchback/produce — finalized CAS run, real Sweetie bytes", () => {
+describe("POST /api/patchback/produce — finalized CAS run, real primary_corpus bytes", () => {
   it.skipIf(!canRun)(
     "loads final accepted outputs and returns a real patched tar through production composition",
     async () => {
@@ -210,9 +210,9 @@ describe("POST /api/patchback/produce — finalized CAS run, real Sweetie bytes"
         runKaifuuExtract({
           engine: "reallive",
           gameRoot: root!,
-          gameId: "sweetie-hd",
+          gameId: "primary_corpus-hd",
           gameVersion: "real",
-          sourceProfileId: "sweetie-hd",
+          sourceProfileId: "primary_corpus-hd",
           sourceLocale: "ja-JP",
           wholeSeen: true,
           bundleOutputPath: bridgePath,
@@ -246,7 +246,7 @@ describe("POST /api/patchback/produce — finalized CAS run, real Sweetie bytes"
               project_id, workspace_id, project_key, name, source_locale, status,
               game_id, game_version, source_profile_id
             ) values ($1, 'workspace-patchback-real', 'patchback-real', 'Patchback real', 'ja-JP',
-              'active', 'sweetie-hd', 'real', 'sweetie-hd')
+              'active', 'primary_corpus-hd', 'real', 'primary_corpus-hd')
           `,
           [projectId],
         );

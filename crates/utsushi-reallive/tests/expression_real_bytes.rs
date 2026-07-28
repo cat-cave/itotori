@@ -1,17 +1,17 @@
 //! Real-bytes integration test.
 //!
 //! Drives the → 202 → 203 → 204 → 205 chain end-to-end
-//! against the Sweetie HD corpus, lifts the 20
+//! against the primary_corpus HD corpus, lifts the 20
 //! [`utsushi_reallive::BytecodeElement::Expression`] elements out of
 //! the scene #0001 decompressed bytecode, and runs
 //! [`utsushi_reallive::parse_expression`] over each.
 //!
-//! The single real RealLive corpus currently staged is Sweetie HD; the
+//! The single real RealLive corpus currently staged is primary_corpus HD; the
 //! test is `#[ignore]`-gated and reads its asset root from
 //! `ITOTORI_REAL_GAME_ROOT`. The acceptance bound is STRICT: every one
 //! of the 20 Expression elements must parse without any
 //! [`utsushi_reallive::ExpressionWarning`] (0 `UnknownOperator`) and
-//! with zero hard failures. The Sweetie HD scene #0001 Expression
+//! with zero hard failures. The primary_corpus HD scene #0001 Expression
 //! stream uses only the documented operator table (all 20 are
 //! `\x1E`-shifted assignments over `$`-tokens), so the clean-parse rate
 //! is exactly 20/20 — the earlier 85 % floor masked nothing here.
@@ -35,7 +35,7 @@ use utsushi_reallive::{
     evaluate_assignment, parse_expression_with_warnings,
 };
 
-// Relative path under the Sweetie HD extraction root that holds the
+// Relative path under the primary_corpus HD extraction root that holds the
 // raw `Seen.txt` envelope. Mirrors
 // `tests/bytecode_element_real_bytes.rs` so a change to the
 // upstream fixture surfaces in both tests.
@@ -67,10 +67,10 @@ fn scene1_expression_elements_parse_and_evaluate() {
     // Walk the → 202 → 203 → 204 chain to recover the
     // decompressed scene-1 bytecode and lex its element stream.
     let index = RealSceneIndex::parse(&bytes)
-        .expect("Sweetie HD Seen.txt must parse through the  directory parser");
+        .expect("primary_corpus HD Seen.txt must parse through the  directory parser");
     let entry = index
         .lookup(1)
-        .expect("Sweetie HD must contain a populated scene 1 entry");
+        .expect("primary_corpus HD must contain a populated scene 1 entry");
 
     let blob_start =
         usize::try_from(entry.byte_offset).expect("file offset must fit in usize on this platform");
@@ -86,7 +86,7 @@ fn scene1_expression_elements_parse_and_evaluate() {
     );
 
     let (header, _header_warnings) = SceneHeader::parse(blob)
-        .expect("Sweetie HD scene 1 must produce a typed SceneHeader ( anchor)");
+        .expect("primary_corpus HD scene 1 must produce a typed SceneHeader ( anchor)");
 
     let bytecode_offset = header.bytecode_offset as usize;
     let bytecode_compressed_size = header.bytecode_compressed_size as usize;
@@ -102,10 +102,10 @@ fn scene1_expression_elements_parse_and_evaluate() {
             None,
             header.compiler_version,
         )
-        .expect("Sweetie HD scene 1 must decompress cleanly ( anchor)");
+        .expect("primary_corpus HD scene 1 must decompress cleanly ( anchor)");
 
     let elements = decode_bytecode_stream(&decompressed)
-        .expect("Sweetie HD scene 1 decompressed bytes must lex ( anchor)");
+        .expect("primary_corpus HD scene 1 decompressed bytes must lex ( anchor)");
 
     // === surface under test ===
     let expression_raw_bytes: Vec<(usize, Vec<u8>)> = elements
@@ -121,7 +121,7 @@ fn scene1_expression_elements_parse_and_evaluate() {
         .collect();
 
     eprintln!(
-        "[ real-bytes] Sweetie HD scene #0001: found {} Expression elements \
+        "[ real-bytes] primary_corpus HD scene #0001: found {} Expression elements \
          (expected {})",
         expression_raw_bytes.len(),
         SCENE_ONE_EXPECTED_EXPRESSION_COUNT,
@@ -236,17 +236,17 @@ fn scene1_expression_elements_parse_and_evaluate() {
 
     // -- Clean-parse rate (STRICT acceptance criterion) --
     // Every Expression element on the real bytes must parse with zero
-    // ExpressionWarnings. The Sweetie HD scene #0001 stream uses only
+    // ExpressionWarnings. The primary_corpus HD scene #0001 stream uses only
     // the documented operator table, so the exact rate is 20/20.
     assert_eq!(
         warning_parse_count, 0,
-        "STRICT: no Sweetie HD scene #0001 Expression element may emit an ExpressionWarning; \
+        "STRICT: no primary_corpus HD scene #0001 Expression element may emit an ExpressionWarning; \
          got with_warnings={warning_parse_count} (clean={clean_parse_count})",
     );
     assert_eq!(
         clean_parse_count, REQUIRED_CLEAN_PARSE_COUNT,
         "STRICT: all {REQUIRED_CLEAN_PARSE_COUNT} of {SCENE_ONE_EXPECTED_EXPRESSION_COUNT} \
-         Sweetie HD scene #0001 Expression elements must parse without warnings; got \
+         primary_corpus HD scene #0001 Expression elements must parse without warnings; got \
          clean={clean_parse_count}, with_warnings={warning_parse_count}",
     );
 

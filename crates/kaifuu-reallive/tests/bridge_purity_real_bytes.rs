@@ -9,7 +9,7 @@
 //! characters masquerade as dialogue, and a kidoku-table marker could land on
 //! such a bogus unit.
 //! This test produces the v0.2 BridgeBundle for **every populated scene of
-//! BOTH staged corpora** (Sweetie HD and Kanon; Sweetie HD is first decrypted
+//! BOTH staged corpora** (primary_corpus HD and Kanon; primary_corpus HD is first decrypted
 //! by the in-process second-level `xor_2` decryptor, exactly as the
 //! multi-game decompiler harness does) and asserts a single hard invariant on
 //! every emitted unit's `sourceText`:
@@ -21,7 +21,7 @@
 //!   Per the data rule, the test asserts only on byte-category invariants and
 //!   reports counts / categories — never decoded dialogue strings.
 //!   Env-gated like the rest of the real-bytes suite and STRICT: needs
-//!   `ITOTORI_REAL_GAME_ROOT` (Sweetie HD) and `ITOTORI_REAL_GAME_ROOT_2`
+//!   `ITOTORI_REAL_GAME_ROOT` (primary_corpus HD) and `ITOTORI_REAL_GAME_ROOT_2`
 //!   (Kanon). Without them an absent corpus is an unconditional HARD FAILURE
 //!   (no opt-out). These `#[ignore]`-d suites run only in the periodic
 //!   ground-truth oracle (`just test real-bytes-oracle`), where corpora are staged.

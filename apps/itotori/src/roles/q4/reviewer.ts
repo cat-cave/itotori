@@ -58,7 +58,7 @@ export async function runQ4Review(
   const parsed = parseQ4ReviewInput(input);
   const spec = buildQ4CallSpec(parsed, refs);
   // Re-assert at the last public boundary before the injected production
-  // dispatcher receives the request. Every mode retains the RB-019 ZDR route.
+  // dispatcher receives the request. Every mode retains the policy ZDR route.
   assertCertifiedContinuityRoute(spec);
   const callResult = await deps.dispatch(spec);
   if (callResult.status !== "success") {

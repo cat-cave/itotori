@@ -15,12 +15,17 @@ export const defaultForbiddenTokens = [
   {
     id: "concrete-title-token",
     label: "concrete title token",
-    tokens: [["swe", "etie"].join(""), "oshioki", "オシオキ"],
+    tokens: [
+      ["swe", "etie"].join(""),
+      ["kare", "toshi"].join(""),
+      ["game", "koi"].join(""),
+      ["オシ", "オキ"].join(""),
+    ],
   },
   {
     id: "concrete-vendor-token",
     label: "concrete vendor token",
-    tokens: ["sukara"],
+    tokens: [["suka", "ra"].join("")],
   },
   {
     id: "title-derived-env",
@@ -76,7 +81,7 @@ export const historicalResearchSurfaces = [
     reason: "engine-fixture crate",
   },
   // Alpha-target / pilot config data records. Presets encode the alpha target
-  // (Sweetie HD) preserved AS DATA — a named target record + its pinned
+  // (primary_corpus HD) preserved AS DATA — a named target record + its pinned
   // pair-policy — not generalized runtime defaults.
   {
     id: "presets",

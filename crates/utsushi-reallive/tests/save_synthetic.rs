@@ -1,7 +1,7 @@
 //! Synthetic-byte round-trip tests for the AVG-derived
 //! save format.
 //!
-//! These tests do **not** require the Sweetie HD research mount;
+//! These tests do **not** require the primary_corpus HD research mount;
 //! every byte they consume is produced by the
 //! [`SaveRoundTrip`](utsushi_reallive::SaveRoundTrip) builder. They
 //! exercise the spec acceptance criteria that don't depend on the
@@ -9,8 +9,8 @@
 //!
 //! - The `SystemSave` round-trip (`encode(decode(bytes)) == bytes`).
 //! - The `GlobalSave` round-trip.
-//! - The `ReadFlags` round-trip, including the Sweetie HD title bytes
-//!   decoded from Shift-JIS.
+//! - The `ReadFlags` round-trip, including a neutral Japanese title decoded
+//!   from Shift-JIS.
 //! - The substrate `SnapshotStore` round-trip for the in-memory
 //!   `SaveState` backing.
 //!
@@ -32,28 +32,28 @@ use utsushi_reallive::{
     SystemSave,
 };
 
-/// Sweetie HD's `REALLIVE.sav` total byte length (audit doc § J).
+/// primary_corpus HD's `REALLIVE.sav` total byte length (audit doc § J).
 const PRIMARY_CORPUS_SYSTEM_SAVE_BYTES: usize = 24_876;
 
-/// Sweetie HD's `save999.sav` total byte length (audit doc § J).
+/// primary_corpus HD's `save999.sav` total byte length (audit doc § J).
 const PRIMARY_CORPUS_GLOBAL_SAVE_BYTES: usize = 6_748;
 
-/// Sweetie HD's `read.sav` total byte length (audit doc § J).
+/// primary_corpus HD's `read.sav` total byte length (audit doc § J).
 const PRIMARY_CORPUS_READ_FLAGS_BYTES: usize = 44_495;
 
-/// Sweetie HD title bytes embedded at offset 0x18 of `read.sav`. The
-/// 38-byte Shift-JIS string before the null terminator.
-fn reallive_real_bytes_title_bytes() -> Vec<u8> {
-    vec![
-        0x83, 0x49, 0x83, 0x56, 0x83, 0x49, 0x83, 0x4c, 0x53, 0x77, 0x65, 0x65, 0x74, 0x69, 0x65,
-        0x81, 0x7b, 0x53, 0x77, 0x65, 0x65, 0x74, 0x73, 0x21, 0x21, 0x20, 0x48, 0x44, 0x20, 0x45,
-        0x64, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x81, 0x40,
-    ]
-}
+/// A neutral, Shift-JIS-encodable title used to exercise the same variable
+/// title field as a game save without embedding a game name in source.
+const NEUTRAL_SHIFT_JIS_TITLE_UTF8: &str = "合成題名\u{3000}";
 
-/// UTF-8 form of the Sweetie HD title (`オシオキSweetie＋Sweets!! HD Edition`
-/// IDEOGRAPHIC SPACE U+3000).
-const PRIMARY_CORPUS_TITLE_UTF8: &str = "オシオキSweetie＋Sweets!! HD Edition\u{3000}";
+fn neutral_shift_jis_title_bytes() -> Vec<u8> {
+    let (encoded, _, had_replacements) =
+        encoding_rs::SHIFT_JIS.encode(NEUTRAL_SHIFT_JIS_TITLE_UTF8);
+    assert!(
+        !had_replacements,
+        "neutral title must be representable in Shift-JIS"
+    );
+    encoded.into_owned()
+}
 
 // `SystemSave` (REALLIVE.sav, `AVG_SYSTEM_SAVE`).
 
@@ -144,14 +144,14 @@ fn save_reads_avg_global_save_decode_rejects_wrong_magic() {
 
 #[test]
 fn save_read_flags_decodes_title_round_trips_shift_jis_bytes() {
-    let title_bytes = reallive_real_bytes_title_bytes();
+    let title_bytes = neutral_shift_jis_title_bytes();
     let payload_bytes = PRIMARY_CORPUS_READ_FLAGS_BYTES - 0x18 - title_bytes.len() - 1;
     let bytes = SaveRoundTrip::synthetic_read_flags(&title_bytes, payload_bytes);
     let flags = ReadFlags::decode(&bytes).expect("synthetic read flags must decode");
     assert_eq!(flags.title_bytes, title_bytes);
     assert_eq!(
-        flags.title, PRIMARY_CORPUS_TITLE_UTF8,
-        "Shift-JIS title must decode to the documented UTF-8 string"
+        flags.title, NEUTRAL_SHIFT_JIS_TITLE_UTF8,
+        "Shift-JIS title must decode to the expected UTF-8 string"
     );
     let re_encoded = flags.encode();
     assert_eq!(re_encoded, bytes);
@@ -163,7 +163,7 @@ fn save_read_flags_decodes_title_preserves_non_utf8_bytes_verbatim() {
     // Acceptance criterion: the Shift-JIS title decode round-trips.
     // Use bytes that are NOT valid UTF-8 directly to prove the raw-byte
     // round-trip path doesn't lose anything.
-    let title_bytes = reallive_real_bytes_title_bytes();
+    let title_bytes = neutral_shift_jis_title_bytes();
     let bytes = SaveRoundTrip::synthetic_read_flags(&title_bytes, 16);
     let flags = ReadFlags::decode(&bytes).expect("decode");
     // Re-encoding must reproduce the input verbatim — including every
@@ -195,7 +195,7 @@ fn save_preamble_round_trips_reallive_real_bytes_shaped_values() {
         tail: 0x02DC,
     };
     let bytes = preamble.encode();
-    // Audit-focus: byte-for-byte match against the documented Sweetie HD
+    // Audit-focus: byte-for-byte match against the documented primary_corpus HD
     // header prefix.
     assert_eq!(&bytes[0x00..0x04], &[0x2C, 0x61, 0x00, 0x00]);
     assert_eq!(&bytes[0x04..0x08], &[0x12, 0x27, 0x00, 0x00]);

@@ -34,7 +34,7 @@ import {
 import { runUtsushiStructureExport } from "../src/structure-export/utsushi-structure-seam.js";
 import type { NarrativeStructure } from "../src/structure/types.js";
 
-/** Recursively locate the REALLIVEDATA dir (Sweetie HD nests it under a
+/** Recursively locate the REALLIVEDATA dir (primary_corpus HD nests it under a
  * title-named subfolder) and return the game root that contains it. */
 function findRealliveRoot(
   root: string,
@@ -83,7 +83,7 @@ function speakerStates(snapshot: FactSnapshot, sceneId: number): Record<string, 
   return counts;
 }
 
-describe("buildFactSnapshot (env-gated real Sweetie byte oracle)", () => {
+describe("buildFactSnapshot (env-gated real primary_corpus byte oracle)", () => {
   const corpus = realCorpus();
   it.skipIf(!corpus)(
     "drives the real extract + structure seams and proves the pre-pass guarantees",

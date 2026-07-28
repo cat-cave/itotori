@@ -1,7 +1,7 @@
 //! regression: nested `REALLIVEDATA/` resolution surfaced as
 //! evidence.
 //! When a RealLive title ships its engine assets under a nested
-//! `REALLIVEDATA/` subdirectory (the observed Sweetie HD shape,
+//! `REALLIVEDATA/` subdirectory (the observed primary_corpus HD shape,
 //! `<install-root>/<title subdir>/REALLIVEDATA/`) rather than at the game
 //! root, the detector walks past the root to find the SEEN.TXT / Gameexe.ini
 //! markers. makes the resolved data dir *observable* in the

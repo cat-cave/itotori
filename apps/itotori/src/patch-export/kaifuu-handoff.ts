@@ -1,4 +1,4 @@
-// ITOTORI-025 — Kaifuu handoff helper.
+// policy — Kaifuu handoff helper.
 //
 // Pure data transformation from a `PatchExportBundle` into the
 // payload shape Kaifuu's `patch` command expects. Kaifuu must never
@@ -8,7 +8,7 @@
 //
 // The actual write goes through `cargo run -p kaifuu-cli -- patch ...`
 // by a caller that owns the emitted artifact — this module only assembles JSON.
-// Kaifuu invocation remains downstream and out of scope for ITOTORI-025 (the
+// Kaifuu invocation remains downstream and out of scope for policy (the
 // roadmap node is itotori-side).
 
 import type {

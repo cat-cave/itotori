@@ -8,7 +8,7 @@
 //! is absent the test panics with a named `REAL-BYTES SKIP` receipt.
 //!
 //! With both present it proves, for every scene of both owned titles
-//! (karetoshi = 298, gamekoi = 278):
+//! (siglus_corpus_one = 298, siglus_corpus_two = 278):
 //!   1. **Named coverage** — every instruction decodes to a named statement, so
 //!      the family histogram carries **zero** `unknown`, and every listed opcode
 //!      family (`text`, `name`, `jump`, `assign`, `arith`, `command`) is present.

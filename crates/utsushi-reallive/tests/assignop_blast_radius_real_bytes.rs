@@ -15,7 +15,7 @@
 //! collapses to `0`. This corrupts assignment-driven state ENGINE-WIDE, not
 //! only the choice discriminant that first surfaced the bug.
 //!
-//! # What this suite proves, on REAL bytes (Sweetie HD + Kanon)
+//! # What this suite proves, on REAL bytes (primary_corpus HD + Kanon)
 //!
 //! 1. **Blast radius.** Walk every populated scene in both corpora, lift every
 //!    `Expression` element that parses to an `Assignment`, and diff the

@@ -1,4 +1,4 @@
-//! Real-bytes fixtures captured from Sweetie HD's `Seen.txt`, used by the
+//! Real-bytes fixtures captured from primary_corpus HD's `Seen.txt`, used by the
 //! `decode_dialogue_textout` surface-selection tests in [`crate::bridge`]
 //! and [`crate::patchback`].
 //! These are verbatim Textout-run bodies recovered by decompressing a real
@@ -9,7 +9,7 @@
 //! `bridge_real_bytes` / `patchback_real_bytes` integration tests exercise
 //! the same predicate against the full live corpus.
 
-/// Sweetie HD scene-1 op[72]: 214 bytes of periodic 21-byte binary records
+/// primary_corpus HD scene-1 op[72]: 214 bytes of periodic 21-byte binary records
 /// (the embedded data table that sits after a 2nd `MetaEntrypoint`). The
 /// catch-all decoder returns this as a single `Textout`, but the bytes are
 /// NOT readable Shift-JIS — `encoding_rs::SHIFT_JIS.decode` reports 26
@@ -34,7 +34,7 @@ pub(crate) const SCENE1_BINARY_BLOCK_214B: &[u8] = &[
     0x1f, 0xe3, 0x7f, 0xb3, 0xd6, 0xd1,
 ];
 
-/// A real Sweetie HD scene-2011 dialogue Textout: `【和人】「‥‥‥‥！？」`
+/// A real primary_corpus HD scene-2011 dialogue Textout: `【和人】「‥‥‥‥！？」`
 /// (Shift-JIS, 24 bytes). It decodes cleanly (zero replacement characters)
 /// and carries no control bytes, so `decode_dialogue_textout` returns the
 /// decoded line and surfaces it as a translatable unit. The `【和人】` speaker

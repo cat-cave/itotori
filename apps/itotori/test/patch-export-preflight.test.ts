@@ -1,4 +1,4 @@
-// ITOTORI-025 — PatchExportPreflight tests.
+// policy — PatchExportPreflight tests.
 //
 // One positive + one negative case per check (five checks → ten
 // scenarios), plus a runAll integration scenario verifying the
@@ -18,7 +18,7 @@ import type {
   SourceBridgeView,
 } from "../src/patch-export/source-bridge-view.js";
 
-const PROJECT_ID = "project-itotori-025";
+const PROJECT_ID = "project-policy";
 const LOCALE_BRANCH_ID = "locale-branch-en-US";
 const TARGET_LOCALE = "en-US";
 const SOURCE_BRIDGE_HASH = "sha256:bridge-001";

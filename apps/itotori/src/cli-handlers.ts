@@ -99,7 +99,7 @@ export type ItotoriCliServices = {
    */
   assetDecisions?: AssetDecisionsCliPort;
   /**
-   * ITOTORI-047 — queue-health read-model loader powering the
+   * policy — queue-health read-model loader powering the
    * `queue-health` CLI command. Optional so unit suites that don't exercise
    * the queue command can omit it; the CLI handler raises a typed error when
    * missing.
@@ -1151,7 +1151,7 @@ function assertCapabilityLevelStatus(value: unknown, label: string): void {
   }
 }
 
-// ITOTORI-035: historic asset-localization decisions remain observable for
+// policy: historic asset-localization decisions remain observable for
 // patch export and diagnostics, but no longer expose a human decision write.
 
 async function runAssetDecisionsListHandler(
@@ -1177,7 +1177,7 @@ function requireAssetDecisionsPort(services: ItotoriCliServices): AssetDecisions
   return port;
 }
 
-// ITOTORI-047: queue-health inspection CLI command. Surfaces the typed
+// policy: queue-health inspection CLI command. Surfaces the typed
 // QueueHealthReadModel (outbox/job lag, pending counts by status, retry counts,
 // dead-letter review) via a validated typed API response — the SAME contract
 // the `queue.health` dashboard route emits.
