@@ -15,7 +15,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use utsushi_reallive::{Framebuffer, TextLayer, WipeColour, encode_png_rgba_deterministic};
-use utsushi_softpal::{SceneStep, SoftpalScene, point_entry_offsets};
+use utsushi_softpal::{SceneStep, SoftpalScene, encode_softpal_png, point_entry_offsets};
+
+use crate::softpal_visual_assets::{SceneArt, art_frame};
 
 const USAGE: &str = "usage: utsushi softpal-live-player --game-root <DIR> --point <N> --artifact-root <DIR> [--run-id <ID>] [--redaction on] [--reveal]";
 const FRAME_WIDTH: u32 = 800;
@@ -37,6 +39,7 @@ struct RenderedBoundary {
     public_path: PathBuf,
     private_sha256: String,
     public_sha256: String,
+    source_assets: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -80,7 +83,9 @@ pub(crate) fn run_softpal_live_player_command(args: &[String]) -> Result<(), Box
         point_id,
     )?;
     let overlap = verify_ordered_oracle_overlap(&inputs.script, &inputs.textdat, &scene)?;
-    let boundaries = render_boundaries(&scene, &artifact_root, run_id)?;
+    let art = SceneArt::load(&game_root)
+        .map_err(|error| format!("softpal-live-player scene art: {error}"))?;
+    let boundaries = render_boundaries(&scene, &artifact_root, run_id, &art)?;
     if boundaries.is_empty() {
         return Err(
             "softpal-live-player point entry emitted no renderable decoded dialogue".into(),
@@ -227,6 +232,7 @@ fn render_boundaries(
     scene: &SoftpalScene,
     artifact_root: &Path,
     run_id: &str,
+    art: &SceneArt,
 ) -> Result<Vec<RenderedBoundary>, Box<dyn Error>> {
     let private_root = artifact_root
         .with_extension("private-softpal-live-player")
@@ -244,7 +250,7 @@ fn render_boundaries(
         else {
             continue;
         };
-        let private = render_decoded_text(speaker.as_deref(), text, 24, WipeColour::WHITE)?;
+        let private = encode_softpal_png(&art_frame(art, speaker.as_deref(), text)?)?;
         // The managed browser frame retains only a sparse glyph projection.
         // It is derived from the same decoded characters (not a placeholder or
         // window shape), while the readable 24px frame is written solely to
@@ -266,6 +272,7 @@ fn render_boundaries(
             public_sha256: sha256(&public),
             private_path,
             public_path,
+            source_assets: art.description(),
         });
     }
     Ok(boundaries)
@@ -331,7 +338,7 @@ fn response(
         "ended": ended,
         "terminalDiagnostic": if ended { terminal_diagnostic } else { None },
         "oracleOverlap": {"executed": overlap.executed, "ordered": overlap.ordered, "static": overlap.static_count},
-        "frame": {"path": path, "artifactId": artifact_id, "width": FRAME_WIDTH, "height": FRAME_HEIGHT},
+        "frame": {"path": path, "artifactId": artifact_id, "width": FRAME_WIDTH, "height": FRAME_HEIGHT, "sourceAssets": boundary.source_assets},
     })
 }
 

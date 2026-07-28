@@ -20,6 +20,8 @@ mod rpgmaker_mv_capture;
 mod runtime_skip;
 mod siglus_live_player;
 mod softpal_live_player;
+mod softpal_pgd;
+mod softpal_visual_assets;
 mod staged_replay;
 mod structure;
 mod trace_kag;
