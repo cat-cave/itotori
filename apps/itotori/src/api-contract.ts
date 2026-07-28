@@ -1270,6 +1270,37 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       additionalProperties: false,
       schemaVersion: "itotori.play.unit-feedback.v0",
     }),
+  ApiPlayAddressableUnitResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayAddressableUnitResponse,
+      properties: {
+        unit: {
+          oneOf: [
+            object({
+              required: ["bridgeUnitId", "state", "sceneId", "sourceUnitKey"],
+              properties: {
+                bridgeUnitId: str,
+                state: { const: "resolved" },
+                sceneId: str,
+                sourceUnitKey: str,
+              },
+              additionalProperties: false,
+            }),
+            object({
+              required: ["bridgeUnitId", "state", "reason"],
+              properties: {
+                bridgeUnitId: str,
+                state: { const: "unresolvable" },
+                reason: { enum: ["not_imported_in_branch", "scene_coordinate_missing"] },
+              },
+              additionalProperties: false,
+            }),
+          ],
+        },
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.play.addressable-unit.v0",
+    }),
 
   // p0-result-revision — target-only play-tester edit and selected delivery
   // inspection. Actor identity, source text, and artifact-root paths are

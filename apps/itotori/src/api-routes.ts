@@ -517,6 +517,16 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: ["projectId", "localeBranchId"],
     responseSchema: "ApiPlayUnitFeedbackResponse",
   },
+  "play.addressableUnit": {
+    method: "GET",
+    pathTemplate:
+      "/api/projects/{projectId}/locale-branches/{localeBranchId}/addressable-units/{bridgeUnitId}",
+    operationId: "playAddressableUnit",
+    summary:
+      "Resolve one cited bridge unit against the imported branch and its producer-declared scene.",
+    pathParams: ["projectId", "localeBranchId", "bridgeUnitId"],
+    responseSchema: "ApiPlayAddressableUnitResponse",
+  },
   // p0-result-revision — a target-only play-tester edit creates a selected,
   // delivered child patch revision. The parent patch is path-scoped so the
   // body cannot fabricate patch identity, actor identity, or artifact paths.

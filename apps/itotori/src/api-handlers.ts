@@ -92,6 +92,7 @@ import {
   type ApiPlayRouteMapResponse,
   type ApiPlayFlagAnnotationResponse,
   type ApiPlayUnitFeedbackResponse,
+  type ApiPlayAddressableUnitResponse,
   type ApiPlayTargetEditResponse,
   type ApiPlayDeliveryResponse,
   type ApiPatchIterationDeliveryResponse,
@@ -395,6 +396,22 @@ export type ItotoriReadOnlyApiServices = {
   playRouteMap: RouteMapReadModelPort;
   /** Unit-bound feedback list — notes written by the play flag path. */
   unitFeedback: Pick<ManualFeedbackImportPort, "listUnitFeedback">;
+  /** Resolve cited bridge units only within the current imported branch. */
+  addressableUnits: {
+    resolveAddressableBridgeUnits(
+      actor: { userId: string },
+      input: { projectId: string; localeBranchId: string; bridgeUnitIds: readonly string[] },
+    ): Promise<
+      readonly (
+        | { bridgeUnitId: string; sourceUnitKey: string; state: "resolved"; sceneId: string }
+        | {
+            bridgeUnitId: string;
+            state: "unresolvable";
+            reason: "not_imported_in_branch" | "scene_coordinate_missing";
+          }
+      )[]
+    >;
+  };
   /** p0-result-revision — read only the selected production delivery export. */
   playTesterResultRevision: Pick<
     PlayTesterResultRevisionApiPort,
@@ -634,6 +651,10 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     },
     unitFeedback: {
       listUnitFeedback: (query) => services.unitFeedback.listUnitFeedback(query),
+    },
+    addressableUnits: {
+      resolveAddressableBridgeUnits: (actor, input) =>
+        services.addressableUnits.resolveAddressableBridgeUnits(actor, input),
     },
     playTesterResultRevision: {
       loadSelectedExport: (input) => services.playTesterResultRevision.loadSelectedExport(input),
@@ -912,6 +933,22 @@ async function routeItotoriApiRequest(
       localeBranchId: flagRoute.localeBranchId,
     });
     const actorUserId = body.actorUserId ?? "local-user";
+    const [target] = await services.addressableUnits.resolveAddressableBridgeUnits(
+      { userId: actorUserId },
+      {
+        projectId: scope.projectId,
+        localeBranchId: scope.localeBranchId,
+        bridgeUnitIds: [body.bridgeUnitId],
+      },
+    );
+    if (target === undefined || target.state !== "resolved") {
+      throw new ApiValidationError(
+        "play flag requires an imported bridge unit with a producer-declared scene coordinate",
+      );
+    }
+    if (body.sceneId !== undefined && body.sceneId !== target.sceneId) {
+      throw new ApiValidationError("play flag scene does not match the imported bridge unit");
+    }
     const importInput = buildPlayFlagFeedbackInput({
       projectId: scope.projectId,
       localeBranchId: scope.localeBranchId,
@@ -923,7 +960,7 @@ async function routeItotoriApiRequest(
       ...(body.sourceUnitKey === undefined ? {} : { sourceUnitKey: body.sourceUnitKey }),
       ...(body.sourceBundleId === undefined ? {} : { sourceBundleId: body.sourceBundleId }),
       ...(body.sourceRevisionId === undefined ? {} : { sourceRevisionId: body.sourceRevisionId }),
-      ...(body.sceneId === undefined ? {} : { sceneId: body.sceneId }),
+      sceneId: target.sceneId,
       ...(body.suggestedEdit === undefined ? {} : { suggestedEdit: body.suggestedEdit }),
       ...(body.actorDisplayName === undefined ? {} : { actorDisplayName: body.actorDisplayName }),
     });
@@ -2009,6 +2046,29 @@ async function routeReadOnlyItotoriApiRequest(
     return ok("play.unitFeedback", response);
   }
 
+  const addressableUnitRoute = parsePlayAddressableUnitApiRoute(request.pathname);
+  if (request.method === "GET" && addressableUnitRoute !== null) {
+    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+      projectId: addressableUnitRoute.projectId,
+      localeBranchId: addressableUnitRoute.localeBranchId,
+    });
+    const [unit] = await services.addressableUnits.resolveAddressableBridgeUnits(
+      { userId: "local-user" },
+      {
+        projectId: scope.projectId,
+        localeBranchId: scope.localeBranchId,
+        bridgeUnitIds: [addressableUnitRoute.bridgeUnitId],
+      },
+    );
+    if (unit === undefined) throw new ApiValidationError("addressable bridge unit is required");
+    return ok("play.addressableUnit", {
+      schemaVersion: "itotori.play.addressable-unit.v0",
+      projectId: scope.projectId,
+      localeBranchId: scope.localeBranchId,
+      unit,
+    });
+  }
+
   const catalogContextRoute = parseCatalogContextPanelApiRoute(request.pathname);
   if (request.method === "GET" && catalogContextRoute !== null) {
     const scope = await requireOwnedBranchScope(services.projectWorkflow, {
@@ -2774,6 +2834,30 @@ function parsePlayUnitFeedbackApiRoute(pathname: string): {
   };
 }
 
+function parsePlayAddressableUnitApiRoute(pathname: string): {
+  projectId: string;
+  localeBranchId: string;
+  bridgeUnitId: string;
+} | null {
+  const match =
+    /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/addressable-units\/([^/]+)\/?$/u.exec(
+      pathname,
+    );
+  if (
+    match === null ||
+    match[1] === undefined ||
+    match[2] === undefined ||
+    match[3] === undefined
+  ) {
+    return null;
+  }
+  return {
+    projectId: decodeApiPathSegment(match[1], "projectId"),
+    localeBranchId: decodeApiPathSegment(match[2], "localeBranchId"),
+    bridgeUnitId: decodeApiPathSegment(match[3], "bridgeUnitId"),
+  };
+}
+
 function nonEmptySearchParam(search: string, key: string): string | null {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   const value = params.get(key);
@@ -3357,6 +3441,7 @@ function ok(routeId: "projects.launchPass", body: ApiLaunchPassResponse): ApiJso
 function ok(routeId: "play.routeMap", body: ApiPlayRouteMapResponse): ApiJsonResponse;
 function ok(routeId: "play.flagAnnotation", body: ApiPlayFlagAnnotationResponse): ApiJsonResponse;
 function ok(routeId: "play.unitFeedback", body: ApiPlayUnitFeedbackResponse): ApiJsonResponse;
+function ok(routeId: "play.addressableUnit", body: ApiPlayAddressableUnitResponse): ApiJsonResponse;
 function ok(routeId: "play.targetEdit", body: ApiPlayTargetEditResponse): ApiJsonResponse;
 function ok(routeId: "play.delivery", body: ApiPlayDeliveryResponse): ApiJsonResponse;
 function ok(

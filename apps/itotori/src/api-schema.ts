@@ -177,6 +177,7 @@ export type ItotoriApiRouteId =
   // Unit-bound feedback retrieval — list notes for one bridge unit (same
   // ManualFeedbackImport ledger the flag composer writes).
   | "play.unitFeedback"
+  | "play.addressableUnit"
   // p0-result-revision — a play tester replaces one delivered target line,
   // creating and selecting a child delivered patch revision.
   | "play.targetEdit"
@@ -562,6 +563,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "bridgeUnitId",
     "notes",
   ],
+  ApiPlayAddressableUnitResponse: ["schemaVersion", "projectId", "localeBranchId", "unit"],
   ApiPlayFlagAnnotationResponse: [
     "schemaVersion",
     "projectId",
@@ -1391,6 +1393,21 @@ export type ApiPlayUnitFeedbackResponse = {
   notes: ApiPlayUnitFeedbackNote[];
 };
 
+/** A cited bridge unit resolved against the active imported bridge, never a
+ * browser guess from an engine-specific source key. */
+export type ApiPlayAddressableUnitResponse = {
+  schemaVersion: "itotori.play.addressable-unit.v0";
+  projectId: string;
+  localeBranchId: string;
+  unit:
+    | { bridgeUnitId: string; state: "resolved"; sceneId: string; sourceUnitKey: string }
+    | {
+        bridgeUnitId: string;
+        state: "unresolvable";
+        reason: "not_imported_in_branch" | "scene_coordinate_missing";
+      };
+};
+
 /**
  * p0-result-revision — the play-tester mutation accepts exactly one target
  * line. The parent delivered patch is the URL resource; actor provenance and
@@ -1732,6 +1749,7 @@ export type ItotoriApiResponseBody =
   | ApiPlayRouteMapResponse
   | ApiPlayFlagAnnotationResponse
   | ApiPlayUnitFeedbackResponse
+  | ApiPlayAddressableUnitResponse
   | ApiPlayTargetEditResponse
   | ApiPlayDeliveryResponse
   | ApiPatchIterationVersionsResponse
@@ -2334,6 +2352,9 @@ export function assertItotoriApiResponse(
       return;
     case "play.unitFeedback":
       assertPlayUnitFeedbackResponse(value);
+      return;
+    case "play.addressableUnit":
+      assertPlayAddressableUnitResponse(value);
       return;
     case "play.targetEdit":
       assertPlayTargetEditResponse(value);
@@ -6580,6 +6601,36 @@ export function assertPlayUnitFeedbackResponse(
   for (const [index, note] of response.notes.entries()) {
     assertPlayUnitFeedbackNote(note, `ApiPlayUnitFeedbackResponse.notes[${index}]`);
   }
+}
+
+function assertPlayAddressableUnitResponse(
+  value: unknown,
+): asserts value is ApiPlayAddressableUnitResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPlayAddressableUnitResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPlayAddressableUnitResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.play.addressable-unit.v0",
+    "ApiPlayAddressableUnitResponse.schemaVersion",
+  );
+  assertString(response.projectId, "ApiPlayAddressableUnitResponse.projectId");
+  assertString(response.localeBranchId, "ApiPlayAddressableUnitResponse.localeBranchId");
+  const unit = asRecord(response.unit, "ApiPlayAddressableUnitResponse.unit");
+  assertString(unit.bridgeUnitId, "ApiPlayAddressableUnitResponse.unit.bridgeUnitId");
+  if (unit.state === "resolved") {
+    assertString(unit.sceneId, "ApiPlayAddressableUnitResponse.unit.sceneId");
+    assertString(unit.sourceUnitKey, "ApiPlayAddressableUnitResponse.unit.sourceUnitKey");
+    return;
+  }
+  assertLiteral(unit.state, "unresolvable", "ApiPlayAddressableUnitResponse.unit.state");
+  assertEnum(
+    unit.reason,
+    ["not_imported_in_branch", "scene_coordinate_missing"] as const,
+    "ApiPlayAddressableUnitResponse.unit.reason",
+  );
 }
 
 function assertPlayUnitFeedbackNote(value: unknown, label: string): void {

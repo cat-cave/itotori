@@ -70,10 +70,41 @@ function sceneObject(): WikiSourceObjectView {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
 });
 
 describe("wiki entry deep-link panel → player landing", () => {
-  it("renders entry-level deep-links and lands on the addressed ScenePlayer target", () => {
+  it("renders only the branch-verified producer scene and lands on its addressed unit", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (url: string) =>
+          new Response(
+            JSON.stringify(
+              url.includes("addressable-units")
+                ? {
+                    schemaVersion: "itotori.play.addressable-unit.v0",
+                    projectId: PROJECT_ID,
+                    localeBranchId: LOCALE_BRANCH_ID,
+                    unit: {
+                      bridgeUnitId: "unit-42",
+                      state: "resolved",
+                      sceneId: "scene-2031",
+                      sourceUnitKey: "opaque-producer-unit-key",
+                    },
+                  }
+                : {
+                    schemaVersion: "itotori.play.unit-feedback.v0",
+                    projectId: PROJECT_ID,
+                    localeBranchId: LOCALE_BRANCH_ID,
+                    bridgeUnitId: "unit-42",
+                    notes: [],
+                  },
+            ),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
     const object = sceneObject();
     render(
       <WikiEntryDeepLinkPanel
@@ -86,7 +117,7 @@ describe("wiki entry deep-link panel → player landing", () => {
       />,
     );
 
-    const panel = screen.getByTestId("wiki-entry-deeplink-panel");
+    const panel = await screen.findByTestId("wiki-entry-deeplink-panel");
     expect(panel).toHaveAttribute("data-entry-primary-kind", "scene");
     expect(panel).toHaveAttribute("data-entry-primary-id", "scene-2031");
 
@@ -110,10 +141,10 @@ describe("wiki entry deep-link panel → player landing", () => {
       expect(location).not.toBeNull();
       render(<AddressableFocusScreen location={location!} />);
       const target = screen.getByRole("region", {
-        name: "Focused player scene scene-2031",
+        name: "Focused player unit unit-42",
       });
       const scenePlayer = within(target).getByRole("region", { name: "Scene player" });
-      expect(within(scenePlayer).getByText("scene-2031")).toBeInTheDocument();
+      expect(within(scenePlayer).getByText("unit-42")).toBeInTheDocument();
       expect(scenePlayer).toHaveClass("itotori-scene-player--highlighted");
       expect(target).toHaveFocus();
       expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" });
