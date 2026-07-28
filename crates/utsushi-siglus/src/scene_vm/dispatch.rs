@@ -1,6 +1,7 @@
 //! Command, text, and selection dispatch.
 
 use super::model::{ChoicePolicy, Moment, SceneVm, Value, VmError};
+use super::stage;
 
 impl SceneVm<'_> {
     pub(super) fn command(
@@ -12,6 +13,16 @@ impl SceneVm<'_> {
     ) -> Result<(), VmError> {
         let args = self.pop_n(offset, arg_count)?;
         let values = self.frame(offset)?;
+        if self.stage_objects_enabled
+            && let Some(target) = stage::target(&values)
+        {
+            let args = self.stage_arguments(offset, args)?;
+            let result = stage::command(self.state, target, &args, offset, self.scene_id)?;
+            if ret_form != 0 {
+                self.values.push(result);
+            }
+            return Ok(());
+        }
         if let Some(result) = self.string_command(offset, &values, &args)? {
             if ret_form != 0 {
                 self.values.push(result);
@@ -125,6 +136,21 @@ impl SceneVm<'_> {
             _ => return Ok(None),
         };
         Ok(Some(result))
+    }
+
+    fn stage_arguments(&self, offset: usize, args: Vec<Value>) -> Result<Vec<Value>, VmError> {
+        args.into_iter()
+            .map(|value| match value {
+                Value::Str(index) => self
+                    .program()
+                    .strings
+                    .get(&index)
+                    .cloned()
+                    .map(Value::Text)
+                    .ok_or(self.operation(offset, "stage-object-string")),
+                value => Ok(value),
+            })
+            .collect()
     }
 
     fn select(&mut self, offset: usize, args: Vec<Value>) -> Result<Value, VmError> {

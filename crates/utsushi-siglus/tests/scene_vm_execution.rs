@@ -2,7 +2,8 @@
 
 use kaifuu_siglus::SiglusIncludedCommand;
 use utsushi_siglus::scene_vm::{
-    Moment, SceneProgram, TitleProgram, VmState, execute_scene, execute_title_scene,
+    Moment, SceneProgram, TitleProgram, VmState, execute_scene, execute_scene_with_stage_objects,
+    execute_title_scene,
 };
 
 #[test]
@@ -280,6 +281,59 @@ fn preserves_structured_system_assignment_for_a_later_branch() {
     );
 }
 
+#[test]
+fn stage_object_commands_and_properties_populate_slot_geometry_and_order() {
+    let mut code = Vec::new();
+    stage_path(&mut code, 1, 4, 38);
+    push_str(&mut code, 0);
+    command(&mut code, 1, 0);
+    stage_assign(&mut code, 1, 4, 3, 640);
+    stage_assign(&mut code, 1, 4, 4, 360);
+    stage_assign(&mut code, 1, 4, 55, 12);
+    stage_assign(&mut code, 1, 4, 2, 3);
+    stage_path(&mut code, 1, 4, 49);
+    push_int(&mut code, 1200);
+    push_int(&mut code, 800);
+    command(&mut code, 2, 0);
+    stage_path(&mut code, 1, 4, 160);
+    push_int(&mut code, 10);
+    push_int(&mut code, 20);
+    push_int(&mut code, 110);
+    push_int(&mut code, 220);
+    command(&mut code, 4, 0);
+    stage_path(&mut code, 1, 5, 38);
+    push_str(&mut code, 1);
+    command(&mut code, 1, 0);
+    stage_path(&mut code, 1, 5, 36);
+    command(&mut code, 0, 0);
+    code.push(0x16);
+
+    let program = SceneProgram::from_payload(10, &payload(&code, &[], &["one", "two"]))
+        .expect("stage-object payload compiles");
+    let mut state = VmState::default();
+    execute_scene_with_stage_objects(&program, &mut state).expect("stage-object program executes");
+
+    let object = state
+        .stage_objects
+        .get(&1)
+        .and_then(|slots| slots.get(&4))
+        .expect("created object is retained at its real element slot");
+    assert_eq!(object.identity.as_deref(), Some("one"));
+    assert!(object.active);
+    assert!(object.visible);
+    assert_eq!((object.order, object.layer), (12, 3));
+    assert_eq!((object.geometry.x, object.geometry.y), (640, 360));
+    assert_eq!(
+        (object.geometry.scale_x, object.geometry.scale_y),
+        (1200, 800)
+    );
+    assert_eq!(object.geometry.clip, Some((10, 20, 110, 220)));
+    assert!(
+        !state.stage_objects[&1][&5].active,
+        "free must erase the lifecycle state instead of leaving a stale object",
+    );
+}
+
 fn payload(code: &[u8], labels: &[i32], strings: &[&str]) -> Vec<u8> {
     payload_with_z_labels(code, labels, &[0], strings)
 }
@@ -367,6 +421,17 @@ fn assign(out: &mut Vec<u8>) {
     word(out, 10);
     word(out, 10);
     word(out, 0);
+}
+fn stage_path(out: &mut Vec<u8>, stage: i32, slot: i32, operation: i32) {
+    elm(out);
+    for value in [49, -1, stage, 2, -1, slot, operation] {
+        push_int(out, value);
+    }
+}
+fn stage_assign(out: &mut Vec<u8>, stage: i32, slot: i32, operation: i32, value: i32) {
+    stage_path(out, stage, slot, operation);
+    push_int(out, value);
+    assign(out);
 }
 fn goto(out: &mut Vec<u8>, label: i32) {
     out.push(0x10);

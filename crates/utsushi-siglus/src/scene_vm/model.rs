@@ -1,6 +1,7 @@
 //! Observable VM data and private execution state.
 
 use super::program::{SceneProgram, TitleProgram};
+use super::stage::StageObject;
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 
@@ -31,6 +32,8 @@ pub struct VmState {
     pub indexed_globals: BTreeMap<(i32, i32), i32>,
     pub indexed_strings: BTreeMap<(i32, i32), i32>,
     pub system_properties: BTreeMap<(i32, i32), i32>,
+    /// Root-stage object arrays keyed by stage index and object slot.
+    pub stage_objects: BTreeMap<i32, BTreeMap<i32, StageObject>>,
     pub(super) structured_system: BTreeMap<(u32, Vec<i32>), Value>,
 }
 
@@ -128,6 +131,7 @@ pub struct SceneVm<'a> {
     pub(super) pc: usize,
     pub(super) moments: Vec<Moment>,
     pub(super) policy: ChoicePolicy,
+    pub(super) stage_objects_enabled: bool,
     pub(super) instructions_executed: usize,
     pub(super) scenes_entered: BTreeSet<u32>,
 }

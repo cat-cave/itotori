@@ -11,10 +11,15 @@ mod execute;
 mod flow;
 mod model;
 mod program;
+mod stage;
 mod state;
 
-pub use execute::{execute_scene, execute_title_scene, execute_title_scene_observed};
+pub use execute::{
+    execute_scene, execute_scene_with_stage_objects, execute_title_scene,
+    execute_title_scene_observed, execute_title_scene_with_stage_objects_observed,
+};
 pub use model::{
     ChoicePolicy, ExecutionOutcome, ExecutionReport, Moment, SceneVm, VmError, VmState,
 };
 pub use program::{SceneProgram, SceneProgramError, TitleProgram, TitleProgramError};
+pub use stage::{StageGeometry, StageObject};
