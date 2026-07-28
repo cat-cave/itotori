@@ -29,6 +29,7 @@ import {
  */
 const STUB_ENGINE = `#!/usr/bin/env node
 const args = process.argv.slice(2);
+const engineCommand = args[0];
 const redaction = args[args.indexOf("--redaction") + 1] ?? "unset";
 const reveal = args.includes("--reveal");
 let pointer = 1000;
@@ -45,6 +46,7 @@ const emit = () => {
       received,
       redaction,
       reveal,
+      engineCommand,
     }) + "\\n",
   );
 };
@@ -94,6 +96,7 @@ type Relayed = {
   received: { type: string; index?: number } | null;
   redaction: string;
   reveal: boolean;
+  engineCommand: string;
 };
 
 describe("browser player input relay", () => {
@@ -145,6 +148,23 @@ describe("browser player input relay", () => {
     manager.close((guarded as unknown as { sessionId: string }).sessionId);
     expect(guarded.redaction).toBe("on");
     expect(guarded.reveal).toBe(false);
+  });
+
+  it("launches Siglus through its real-byte player command while retaining the redacted artifact", async () => {
+    const manager = await managerWithStubEngine();
+    const state = (await manager.start(
+      {
+        engine: "siglus",
+        gameRoot: "/descriptor/siglus",
+        artifactRoot: "/descriptor/artifacts",
+        scene: 7,
+      },
+      true,
+    )) as unknown as Relayed;
+    manager.close((state as unknown as { sessionId: string }).sessionId);
+    expect(state.engineCommand).toBe("siglus-live-player");
+    expect(state.redaction).toBe("on");
+    expect(state.reveal).toBe(true);
   });
 
   it("refuses an input for a session it is not holding", async () => {

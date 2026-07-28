@@ -45,7 +45,21 @@ pub struct ExecutionReport {
     pub scenes_entered: BTreeSet<u32>,
     pub instructions_executed: usize,
     pub moments: Vec<Moment>,
+    /// Renderable stage state at explicitly requested text/choice boundaries.
+    /// Ordinary archive scans leave this empty rather than cloning title state
+    /// for every message.
+    pub stage_snapshots: Vec<StageSnapshot>,
     pub halted: bool,
+}
+
+/// A real VM boundary with the stage state which produced it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StageSnapshot {
+    pub scene_id: u32,
+    pub offset: usize,
+    pub instruction_pointer: usize,
+    pub moment: Moment,
+    pub state: VmState,
 }
 
 /// The observable work completed before a VM either reached its terminus or
@@ -104,6 +118,14 @@ pub enum VmError {
         offset: usize,
         operation: &'static str,
     },
+    #[error(
+        "utsushi.siglus.vm.unsupported_stage_object_property: scene {scene_id} offset {offset} property {property}"
+    )]
+    UnsupportedStageObjectProperty {
+        scene_id: u32,
+        offset: usize,
+        property: i32,
+    },
     #[error("utsushi.siglus.vm.step_limit: scene {scene_id} after {steps} instructions")]
     StepLimit { scene_id: u32, steps: usize },
 }
@@ -132,6 +154,8 @@ pub struct SceneVm<'a> {
     pub(super) moments: Vec<Moment>,
     pub(super) policy: ChoicePolicy,
     pub(super) stage_objects_enabled: bool,
+    pub(super) capture_stage_snapshots: bool,
+    pub(super) stage_snapshots: Vec<StageSnapshot>,
     pub(super) instructions_executed: usize,
     pub(super) scenes_entered: BTreeSet<u32>,
 }

@@ -168,7 +168,7 @@ impl SceneVm<'_> {
         let chosen = match self.policy {
             ChoicePolicy::First => 0,
         };
-        self.moments.push(Moment::Choice {
+        self.record_moment(Moment::Choice {
             scene_id: self.scene_id,
             offset,
             options,
@@ -188,7 +188,7 @@ impl SceneVm<'_> {
             Value::Text(text) => text,
             _ => return Err(self.operation(offset, "computed-text")),
         };
-        self.moments.push(Moment::Text {
+        self.record_moment(Moment::Text {
             scene_id: self.scene_id,
             offset,
             speaker: self.speaker.clone(),
