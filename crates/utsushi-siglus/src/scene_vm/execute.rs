@@ -19,13 +19,22 @@ pub fn execute_scene(
     vm.run()
 }
 
+/// Execute one scene while materializing root-stage object state.
+pub fn execute_scene_with_stage_objects(
+    program: &SceneProgram,
+    state: &mut VmState,
+) -> Result<ExecutionReport, VmError> {
+    let mut vm = SceneVm::new_with_stage_objects(program, state, ChoicePolicy::First, true);
+    vm.run()
+}
+
 /// Execute an entry scene with the archive-level shared command table.
 pub fn execute_title_scene(
     program: &TitleProgram,
     scene_id: u32,
     state: &mut VmState,
 ) -> Result<ExecutionReport, VmError> {
-    let mut vm = SceneVm::for_title(program, scene_id, state, ChoicePolicy::First)?;
+    let mut vm = SceneVm::for_title(program, scene_id, state, ChoicePolicy::First, false)?;
     vm.run()
 }
 
@@ -36,13 +45,33 @@ pub fn execute_title_scene_observed(
     scene_id: u32,
     state: &mut VmState,
 ) -> Result<ExecutionOutcome, VmError> {
-    let mut vm = SceneVm::for_title(program, scene_id, state, ChoicePolicy::First)?;
+    let mut vm = SceneVm::for_title(program, scene_id, state, ChoicePolicy::First, false)?;
+    Ok(vm.run_observed())
+}
+
+/// Execute an entry scene while materializing root-stage object state and
+/// retaining work completed before a terminal diagnostic.
+pub fn execute_title_scene_with_stage_objects_observed(
+    program: &TitleProgram,
+    scene_id: u32,
+    state: &mut VmState,
+) -> Result<ExecutionOutcome, VmError> {
+    let mut vm = SceneVm::for_title(program, scene_id, state, ChoicePolicy::First, true)?;
     Ok(vm.run_observed())
 }
 
 impl<'a> SceneVm<'a> {
     /// Construct a scene-entry VM with fresh operand and call stacks.
     pub fn new(program: &'a SceneProgram, state: &'a mut VmState, policy: ChoicePolicy) -> Self {
+        Self::new_with_stage_objects(program, state, policy, false)
+    }
+
+    fn new_with_stage_objects(
+        program: &'a SceneProgram,
+        state: &'a mut VmState,
+        policy: ChoicePolicy,
+        stage_objects_enabled: bool,
+    ) -> Self {
         Self {
             source: ProgramSource::Scene(program),
             entry_scene_id: program.scene_id,
@@ -56,6 +85,7 @@ impl<'a> SceneVm<'a> {
             pc: 0,
             moments: Vec::new(),
             policy,
+            stage_objects_enabled,
             instructions_executed: 0,
             scenes_entered: [program.scene_id].into_iter().collect(),
         }
@@ -66,6 +96,7 @@ impl<'a> SceneVm<'a> {
         scene_id: u32,
         state: &'a mut VmState,
         policy: ChoicePolicy,
+        stage_objects_enabled: bool,
     ) -> Result<Self, VmError> {
         if program.scene(scene_id).is_none() {
             return Err(VmError::UnsupportedScriptFunction {
@@ -87,6 +118,7 @@ impl<'a> SceneVm<'a> {
             pc: 0,
             moments: Vec::new(),
             policy,
+            stage_objects_enabled,
             instructions_executed: 0,
             scenes_entered: [scene_id].into_iter().collect(),
         })

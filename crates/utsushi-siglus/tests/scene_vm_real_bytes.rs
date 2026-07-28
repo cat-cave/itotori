@@ -9,7 +9,7 @@ use kaifuu_siglus::{
 };
 use utsushi_siglus::scene_vm::{
     ExecutionOutcome, Moment, SceneProgram, TitleProgram, VmError, VmState,
-    execute_title_scene_observed,
+    execute_title_scene_observed, execute_title_scene_with_stage_objects_observed,
 };
 
 const FIRST: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
@@ -27,6 +27,11 @@ struct Totals {
     entered_from_transfer: BTreeSet<u32>,
     depths: BTreeMap<u32, SceneDepth>,
     blockers: BTreeMap<String, Blocker>,
+    stage_slots: usize,
+    active_stage_objects: usize,
+    identified_stage_objects: usize,
+    geometry_stage_objects: usize,
+    nondefault_position_stage_objects: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +71,15 @@ fn two_real_corpora_report_the_execution_frontier_and_preserve_static_overlap() 
             one.instructions > 0,
             "{label}: no real instructions executed"
         );
+        let expected_instructions = match label {
+            "corpus 1" => 66_191,
+            "corpus 2" => 75_719,
+            _ => unreachable!("fixed real-corpus labels"),
+        };
+        assert_eq!(
+            one.instructions, expected_instructions,
+            "{label}: stage state must not alter the pinned narrative execution total"
+        );
         assert_eq!(
             one.text, one.overlap,
             "{label}: execution emitted text outside the static sequence"
@@ -73,6 +87,14 @@ fn two_real_corpora_report_the_execution_frontier_and_preserve_static_overlap() 
         assert!(
             !one.blockers.is_empty(),
             "{label}: the VM must report terminal diagnostics rather than silently skipping them"
+        );
+        assert!(
+            one.active_stage_objects > 0,
+            "{label}: no active stage object was produced from real bytes"
+        );
+        assert_eq!(
+            one.active_stage_objects, one.identified_stage_objects,
+            "{label}: every active stage object needs source identity"
         );
         print_report(label, &one);
     }
@@ -146,7 +168,32 @@ fn execute_title(root: &Path, label: &str) -> Totals {
             &static_offsets,
         );
     }
+    let mut stage_state = VmState::default();
+    for entry in &index.entries {
+        execute_title_scene_with_stage_objects_observed(&program, entry.scene_id, &mut stage_state)
+            .expect("entry scene is present");
+    }
+    record_stage_objects(&mut totals, &stage_state);
     totals
+}
+
+fn record_stage_objects(totals: &mut Totals, state: &VmState) {
+    let objects = state
+        .stage_objects
+        .values()
+        .flat_map(|slots| slots.values());
+    totals.stage_slots = objects.clone().count();
+    let active = objects.filter(|object| object.active).collect::<Vec<_>>();
+    totals.active_stage_objects = active.len();
+    totals.identified_stage_objects = active
+        .iter()
+        .filter(|object| object.identity.is_some())
+        .count();
+    totals.geometry_stage_objects = active.len();
+    totals.nondefault_position_stage_objects = active
+        .iter()
+        .filter(|object| object.geometry.x != 0 || object.geometry.y != 0 || object.geometry.z != 0)
+        .count();
 }
 
 fn record(
@@ -286,7 +333,7 @@ fn print_report(label: &str, totals: &Totals) {
         std::cmp::Reverse((blocker.unreached_instructions, blocker.unreached_bytes))
     });
     eprintln!(
-        "REAL {label} frontier: direct_scenes_entered={}/{} transfer_scenes_entered={} instructions={} messages={} choices={} overlap={}/{}",
+        "REAL {label} frontier: direct_scenes_entered={}/{} transfer_scenes_entered={} instructions={} messages={} choices={} overlap={}/{} stage_slots={} active_objects={} identities={}/{} geometry={}/{} nondefault_position={}/{}",
         totals.entered.len(),
         totals.scenes,
         totals.entered_from_transfer.len(),
@@ -295,13 +342,20 @@ fn print_report(label: &str, totals: &Totals) {
         totals.choices,
         totals.overlap,
         totals.static_text,
+        totals.stage_slots,
+        totals.active_stage_objects,
+        totals.identified_stage_objects,
+        totals.active_stage_objects,
+        totals.geometry_stage_objects,
+        totals.active_stage_objects,
+        totals.nondefault_position_stage_objects,
+        totals.active_stage_objects,
     );
     eprintln!(
         "REAL {label} depth_distribution: instructions={:?} messages={:?}",
         distribution(totals.depths.values().map(|depth| depth.instructions)),
         distribution(totals.depths.values().map(|depth| depth.messages)),
     );
-    eprintln!("REAL {label} depth_by_entry: {:?}", totals.depths);
     for (reason, blocker) in ranked {
         eprintln!(
             "REAL {label} blocker={reason} scenes={} first_stops={} unreached_instructions={} unreached_bytes={} offsets={:?}",

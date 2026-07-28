@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use super::model::{CallFrame, CallProperty, SceneVm, Value, VmError};
+use super::stage;
 
 impl SceneVm<'_> {
     pub(super) fn resolve_element(
@@ -10,6 +11,11 @@ impl SceneVm<'_> {
         offset: usize,
         values: Vec<Value>,
     ) -> Result<Value, VmError> {
+        if self.stage_objects_enabled
+            && let Some(target) = stage::target(&values)
+        {
+            return stage::read(self.state, target, offset, self.scene_id);
+        }
         match values.as_slice() {
             [Value::Int(raw)] if owner(*raw) == 127 => Ok(Value::Int(
                 *self.state.globals.get(&(*raw & 0x00ff_ffff)).unwrap_or(&0),
@@ -86,6 +92,17 @@ impl SceneVm<'_> {
     pub(super) fn assign(&mut self, offset: usize) -> Result<(), VmError> {
         let value = self.pop(offset)?;
         let values = self.frame(offset)?;
+        if self.stage_objects_enabled
+            && let Some(target) = stage::target(&values)
+        {
+            return stage::assign(
+                self.state,
+                target,
+                self.expect_int(offset, value)?,
+                offset,
+                self.scene_id,
+            );
+        }
         match values.as_slice() {
             [Value::Int(raw)] if owner(*raw) == 127 => {
                 let value = self.expect_int(offset, value)?;
