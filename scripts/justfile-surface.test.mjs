@@ -80,7 +80,10 @@ function capturedDelegateShell(delegate, selector) {
   const tempRoot = mkdtempSync(join(tmpdir(), "itotori-justfile-surface-"));
   const capturePath = join(tempRoot, "shell-script");
   const bashPath = join(tempRoot, "bash");
-  writeFileSync(bashPath, '#!/bin/sh\nprintf "%s" "$5" > "$ITOTORI_CAPTURE_FILE"\n');
+  writeFileSync(
+    bashPath,
+    `#!/bin/sh\nprintf "%s" "$5" > '${capturePath.replaceAll("'", "'\"'\"")}'\n`,
+  );
   chmodSync(bashPath, 0o755);
 
   try {
@@ -92,7 +95,6 @@ function capturedDelegateShell(delegate, selector) {
         encoding: "utf8",
         env: {
           ...process.env,
-          ITOTORI_CAPTURE_FILE: capturePath,
           PATH: `${tempRoot}${delimiter}${process.env.PATH ?? ""}`,
         },
       },
