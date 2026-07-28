@@ -16,13 +16,15 @@ const defaultPortSpan = 2000;
 if (import.meta.url === pathToMainUrl(process.argv[1])) {
   if (process.argv.includes("--print-database-url")) {
     process.stdout.write(`${resolveDatabaseUrl(process.env)}\n`);
+  } else if (process.argv.includes("--print-compose-env-path")) {
+    process.stdout.write(`${resolveComposeEnvPath(process.env)}\n`);
   } else {
     await writeComposeEnv(process.env);
   }
 }
 
 async function writeComposeEnv(env) {
-  const outputPath = env.ITOTORI_DB_COMPOSE_ENV_PATH || defaultComposeEnvPath;
+  const outputPath = resolveComposeEnvPath(env);
   const values = composeEnvValues(env);
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, renderComposeEnvFile(values));
@@ -64,6 +66,10 @@ export function resolveDatabaseUrl(env = process.env) {
   if (env.DATABASE_URL) return env.DATABASE_URL;
   const port = deriveHostPort(resolveWorktreeRoot(env), env);
   return `postgres://itotori:itotori@127.0.0.1:${port}/itotori`;
+}
+
+export function resolveComposeEnvPath(env = process.env) {
+  return env.ITOTORI_DB_COMPOSE_ENV_PATH || defaultComposeEnvPath;
 }
 
 // Map a canonical worktree root to a stable host port, mirroring the

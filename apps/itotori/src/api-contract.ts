@@ -1752,6 +1752,7 @@ const ERROR_STATUS_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "403": "Permission denied (forbidden).",
   "404": "Route or resource not found (not_found).",
   "405": "Method not allowed (method_not_allowed).",
+  "503": "Database is unreachable (database_unreachable).",
   "500": "Internal error (internal_error).",
 };
 

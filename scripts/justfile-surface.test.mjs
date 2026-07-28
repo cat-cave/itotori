@@ -139,3 +139,10 @@ test("public CI and all-test delegates retain their complete execution paths", (
   assert.match(testScript, /^pnpm exec vp run ts:test$/mu);
   assert.match(testScript, /^cargo test --workspace$/mu);
 });
+
+test("tier0 CI selector runs every tier0 constituent gate", () => {
+  const ciScript = capturedDelegateShell("ci", "tier0");
+  for (const lane of ["tier0-meta", "tier0-ts", "tier0-rust", "tier0-manifest"]) {
+    assert.match(ciScript, new RegExp(`^node scripts/developer-command\\.mjs ci ${lane}$`, "mu"));
+  }
+});
