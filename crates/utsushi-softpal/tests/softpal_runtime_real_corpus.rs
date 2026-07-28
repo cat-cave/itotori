@@ -53,7 +53,7 @@ fn dialogue_offsets(scene: &SoftpalScene) -> Vec<usize> {
 }
 
 #[test]
-fn executes_pac_backed_file_setup_until_the_next_named_native_gap() {
+fn reaches_the_named_work_process_boundary_without_fabricating_static_text() {
     for (index, root) in CORPORA.iter().enumerate() {
         let root = PathBuf::from(root);
         let Some(inputs) = inputs(&root) else {
@@ -99,7 +99,23 @@ fn executes_pac_backed_file_setup_until_the_next_named_native_gap() {
             .iter()
             .map(|line| line.command_offset)
             .collect();
+        assert_eq!(
+            expected.len(),
+            [30_165, 39_832][index],
+            "corpus {} static dialogue oracle remains available",
+            index + 1
+        );
+        assert_eq!(
+            linear.text_bearing_choice_count(),
+            [11, 16][index],
+            "corpus {} static choice oracle remains available",
+            index + 1
+        );
         let observed = dialogue_offsets(&first);
+        let observed_speakers = first
+            .dialogue_lines()
+            .filter(|(speaker, _)| speaker.is_some())
+            .count();
         let overlap = observed
             .iter()
             .zip(&expected)
@@ -110,25 +126,26 @@ fn executes_pac_backed_file_setup_until_the_next_named_native_gap() {
             "corpus {} emitted dialogue remains an ordered oracle prefix",
             index + 1
         );
-        assert_eq!(observed.len(), 0, "executed setup must not invent text");
         let diagnostics = first.diagnostic_frequencies();
-        let terminal_offset = first.diagnostics[0].offset;
-        let terminal = OpcodeScan::parse(&inputs.script)
-            .expect("opcode scan")
-            .instructions
-            .into_iter()
-            .find(|instruction| instruction.offset == terminal_offset)
-            .expect("terminal instruction exists");
+        let terminal = first.diagnostics.first().and_then(|diagnostic| {
+            OpcodeScan::parse(&inputs.script)
+                .expect("opcode scan")
+                .instructions
+                .into_iter()
+                .find(|instruction| instruction.offset == diagnostic.offset)
+        });
         eprintln!(
-            "[corpus {}] first diagnostic={:?} terminal_opcode={:02x} terminal_operands={:08x?} moments={} text={} choice={} branch={} instructions={}",
+            "[corpus {}] first diagnostic={:?} terminal={:?} moments={} text={} choice={} branch={} instructions={}",
             index + 1,
             first.diagnostics.first(),
-            terminal.opcode.id(),
-            terminal
-                .operands()
-                .iter()
-                .map(|operand| operand.raw)
-                .collect::<Vec<_>>(),
+            terminal.map(|instruction| (
+                instruction.opcode.id(),
+                instruction
+                    .operands()
+                    .iter()
+                    .map(|operand| operand.raw)
+                    .collect::<Vec<_>>(),
+            )),
             first.steps.len(),
             first.stats.dialogue_count,
             first.stats.text_bearing_choice_count,
@@ -142,37 +159,37 @@ fn executes_pac_backed_file_setup_until_the_next_named_native_gap() {
         assert_eq!(
             first.diagnostics.len(),
             1,
-            "corpus {} stops at one named visible gap",
+            "corpus {} must stop at the missing native callback boundary",
             index + 1
         );
         assert_eq!(
             first.diagnostics[0].signature,
-            "unimplemented_call_000d_0015",
-            "corpus {} keeps the next gap named and visible",
+            "work_process_callback_unavailable",
+            "corpus {} exposes the unavailable callback rather than completing silently",
             index + 1
         );
         assert_eq!(
             first.diagnostics[0].offset,
-            [460, 540][index],
-            "corpus {} has the measured native-gap offset",
+            [576, 696][index],
+            "corpus {} names the root-level return that needs its native callback",
             index + 1
         );
         assert_eq!(
             first.steps.len(),
-            [134, 985][index],
-            "corpus {} executed-moment count",
+            [134, 986][index],
+            "corpus {} bootstrap moment count",
             index + 1
         );
         assert_eq!(
             first.stats.branch_count,
-            [137, 1401][index],
-            "corpus {} executed-branch count",
+            [137, 1403][index],
+            "corpus {} bootstrap branch count",
             index + 1
         );
         assert_eq!(
             first.stats.instructions_executed,
-            [3567, 13906][index],
-            "corpus {} advances through PAC-backed file setup",
+            [3578, 13919][index],
+            "corpus {} bootstrap instruction count",
             index + 1
         );
         assert!(
@@ -181,15 +198,17 @@ fn executes_pac_backed_file_setup_until_the_next_named_native_gap() {
             index + 1
         );
         eprintln!(
-            "[corpus {}] moments={} text={} speaker=0 choice={} branch={} instructions={} overlap={}/{} unresolved={:?}",
+            "[corpus {}] moments={} text={} speaker={} choice={} branch={} instructions={} overlap={}/{} static_text={} unresolved={:?}",
             index + 1,
             first.steps.len(),
             first.stats.dialogue_count,
+            observed_speakers,
             first.stats.text_bearing_choice_count,
             first.stats.branch_count,
             first.stats.instructions_executed,
             overlap,
             observed.len(),
+            expected.len(),
             diagnostics,
         );
     }

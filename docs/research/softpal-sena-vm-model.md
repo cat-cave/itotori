@@ -129,16 +129,34 @@ invalid handle is a named diagnostic and never a fake zero handle. This follows
 the reference's open/handle model [extsig.rs:4407-4496](/scratch/oracles/sena-rs/crates/pal-script/src/extsig.rs#L4407-L4496),
 [runtime.rs:11499-11644](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L11499-L11644).
 
-Measured result: corpus 1 reaches 3,567 instructions, 134 moments, and 137
-branches; corpus 2 reaches 13,906 instructions, 985 moments, and 1,401
-branches. Text, speaker, and text-bearing choice stay zero in both. The next
-named gap is `0x000d:0x0015` at offset 460 (corpus 1) / 540 (corpus 2).
+`0x000d:0x0015` (`set_bgv_volume`) pops one requested volume level, stores it,
+and returns `1`; its paired query (`0x000d:0x0016`) pops nothing and returns the
+stored level. This is established by the reference's named dispatch to text
+stub 69 [runtime.rs:3308-3313](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L3308-L3313)
+and its one-pop/store and zero-pop/query arms
+[runtime.rs:4383-4391](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L4383-L4391),
+[runtime.rs:4434-4436](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L4434-L4436).
+`0x0012:0x0023` (`set_last_process`) then pops one point id, stores native
+process bookkeeping, and returns `1`
+[extsig.rs:4552-4573](/scratch/oracles/sena-rs/crates/pal-script/src/extsig.rs#L4552-L4573).
 
-This is a branching-off point, not an implementation claim. The oracle's
-auto-generated signature identifies `0x000d:0x0015` as `set_bgv_volume`, but
-records a zero/unknown argument contract rather than a reversed handler
-([extsig_auto.rs:4111-4119](/scratch/oracles/sena-rs/crates/pal-script/src/extsig_auto.rs#L4111-L4119)). Therefore the source contains the call but does **not** yet establish
-its stack consumption or state effect. The next step is to recover that
-handler's pop count and volume state from the Game/PAL evidence, then add a
-stateful call test; cost is one focused audio-dispatch reversal, not further
-PAC work.
+**Measured result after those transitions:** corpus 1 completes its bootstrap
+at 3,578 instructions, 134 moments, and 137 branches; corpus 2 completes at
+13,919 instructions, 986 moments, and 1,403 branches. The next named gap is
+`work_process_callback_unavailable` at the root-level return offset 576
+(corpus 1) / 696 (corpus 2). Text, speaker, and text-bearing choice are still
+zero in both executions.
+
+This does **not** mean the source lacks text. The static byte decoder resolves
+30,165 dialogue records plus 11 text-bearing choices for corpus 1, and 39,832
+plus 16 for corpus 2; runtime output is checked as an ordered prefix of those
+decoded command offsets. It means the completed `SCRIPT.SRC` bootstrap only
+attaches the launcher-owned work-process pump. The reference establishes that
+attach calls `PalAttachWorkProcess(sub_44A080, PalTaskGetTaskData(0)+824)` and
+posts work to PAL
+[extsig.rs:4350-4381](/scratch/oracles/sena-rs/crates/pal-script/src/extsig.rs#L4350-L4381).
+That callback data and body are not operands in the archived script stream.
+The specific next step is a focused reverse of that callback's registration and
+initial task-data layout in the shipped game/PAL binaries, then a modeled
+callback driver that proves decoded messages in static order. Cost: native
+callback-route recovery, not another script-call signature.
