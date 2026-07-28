@@ -122,6 +122,34 @@ fn mounted_vfs_routes_through_internal_composite() {
     assert_eq!(bytes.as_slice(), b"hello world\n");
 }
 
+#[cfg(unix)]
+#[test]
+fn mounted_vfs_resolves_assets_when_plaintext_root_is_a_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let target = tempfile::tempdir().unwrap();
+    fs::write(target.path().join("Scene.pck"), b"scene bytes").unwrap();
+    let link_parent = tempfile::tempdir().unwrap();
+    let root_link = link_parent.path().join("staged-title");
+    symlink(target.path(), &root_link).unwrap();
+
+    let package = PlaintextDirPackage::new(
+        "siglus-title",
+        &root_link,
+        CaseRule::InsensitiveAscii,
+        PackageSource::PublicName("public-fixture:symlink-root".to_string()),
+    );
+    let mut vfs = MountedVfs::new(
+        "siglus-title",
+        PackageSource::PublicName("public-fixture:symlink-root".to_string()),
+    );
+    vfs.mount_plaintext_dir(package);
+
+    let id = vfs.resolve("scene.pck").unwrap();
+    assert_eq!(id.as_str(), "vfs://siglus-title/Scene.pck");
+    assert_eq!(vfs.open(&id).unwrap().as_slice(), b"scene bytes");
+}
+
 #[test]
 fn mounted_vfs_unknown_logical_returns_asset_missing() {
     let (_temp, package) = make_temp_package(CaseRule::Sensitive);
