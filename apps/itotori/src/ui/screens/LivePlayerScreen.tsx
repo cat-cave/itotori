@@ -22,6 +22,7 @@ type PlayerState = {
     | { type: "choice"; choiceCount: number; options: string[] }
     | null;
   ended: boolean;
+  terminalDiagnostic?: string | null;
   frame: { frameId: string; artifactId: string; width: number; height: number } | null;
 };
 
@@ -105,7 +106,7 @@ function LivePlayerSurface({ config }: { config: LivePlayerConfig | null }): Rea
     <main className="itotori-shell live-player" data-screen="live-player">
       <ShellHeader eyebrow="Play" title="Browser player">
         <p className="itotori-shell__lede">
-          A live RealLive VM renders this frame and waits for your next input.
+          A live game VM renders this frame and waits for your next input.
         </p>
       </ShellHeader>
       {config === null && (
@@ -175,7 +176,12 @@ function PlayerPanel({
         />
       )}
       {state.ended ? (
-        <p>The engine reached a terminal state.</p>
+        <p>
+          The engine reached a terminal state.
+          {state.terminalDiagnostic === null || state.terminalDiagnostic === undefined
+            ? ""
+            : ` ${state.terminalDiagnostic}`}
+        </p>
       ) : (
         <PlayerInput waitingFor={state.waitingFor} busy={busy} send={send} />
       )}

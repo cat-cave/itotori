@@ -10,6 +10,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::scene_vm::{ResourceAssets, Vm, point_offsets};
 
+/// Decode the one-based `POINT.DAT` entry table into script-byte offsets.
+///
+/// These are title-authored destinations, never caller-supplied raw offsets.
+///
+/// # Errors
+///
+/// Returns [`SoftpalRuntimeError::InvalidPointTable`] for a malformed table.
+pub fn point_entry_offsets(points: &[u8]) -> Result<Vec<usize>, SoftpalRuntimeError> {
+    point_offsets(points)
+}
+
 /// A visible moment in deterministic execution order.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "kind")]

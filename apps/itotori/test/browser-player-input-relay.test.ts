@@ -47,6 +47,7 @@ const emit = () => {
       redaction,
       reveal,
       engineCommand,
+      args,
     }) + "\\n",
   );
 };
@@ -97,6 +98,7 @@ type Relayed = {
   redaction: string;
   reveal: boolean;
   engineCommand: string;
+  args: string[];
 };
 
 describe("browser player input relay", () => {
@@ -165,6 +167,32 @@ describe("browser player input relay", () => {
     expect(state.engineCommand).toBe("siglus-live-player");
     expect(state.redaction).toBe("on");
     expect(state.reveal).toBe(true);
+  });
+
+  it("relays a trusted Softpal point entry to the real-byte player command", async () => {
+    const manager = await managerWithStubEngine();
+    const started = (await manager.start(
+      {
+        engine: "softpal",
+        gameRoot: "/descriptor/softpal",
+        artifactRoot: "/descriptor/artifacts",
+        pointId: 6543,
+      },
+      true,
+    )) as unknown as Relayed;
+    manager.close((started as unknown as { sessionId: string }).sessionId);
+
+    expect(started.redaction).toBe("on");
+    expect(started.args).toEqual(
+      expect.arrayContaining([
+        "softpal-live-player",
+        "--game-root",
+        "/descriptor/softpal",
+        "--point",
+        "6543",
+        "--reveal",
+      ]),
+    );
   });
 
   it("refuses an input for a session it is not holding", async () => {

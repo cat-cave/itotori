@@ -1,9 +1,8 @@
-// Server-held RealLive browser-player sessions.
+// Server-held engine browser-player sessions.
 //
-// A session is one long-lived `utsushi-cli live-player` child. The child owns
-// the VM; this service only serialises browser requests and relays its
-// redacted frame bytes. It never substitutes a cached image after an engine
-// failure.
+// A session is one long-lived Utsushi child. The child owns the VM; this
+// service only serialises browser requests and relays its redacted frame
+// bytes. It never substitutes a cached image after an engine failure.
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { readFile } from "node:fs/promises";
@@ -30,6 +29,14 @@ export type RealLiveBrowserPlayerLaunch = {
   scene: number;
 };
 
+/** Trusted Softpal launch data. Only a title-authored POINT.DAT entry executes. */
+export type SoftpalBrowserPlayerLaunch = {
+  engine: "softpal";
+  gameRoot: string;
+  artifactRoot: string;
+  pointId: number;
+};
+
 /** Trusted Siglus launch data. Full frames stay in the private sibling root. */
 export type SiglusBrowserPlayerLaunch = {
   engine: "siglus";
@@ -38,7 +45,10 @@ export type SiglusBrowserPlayerLaunch = {
   scene: number;
 };
 
-export type BrowserPlayerLaunch = RealLiveBrowserPlayerLaunch | SiglusBrowserPlayerLaunch;
+export type BrowserPlayerLaunch =
+  | RealLiveBrowserPlayerLaunch
+  | SiglusBrowserPlayerLaunch
+  | SoftpalBrowserPlayerLaunch;
 
 export type BrowserPlayerInput =
   | { type: "advance" }
@@ -241,6 +251,21 @@ class LivePlayerChild {
             "--redaction",
             "on",
           ]
+        : input.engine === "softpal"
+        ? [
+            ...resolved.prefixArgs,
+            "softpal-live-player",
+            "--game-root",
+            input.gameRoot,
+            "--point",
+            String(input.pointId),
+            "--artifact-root",
+            input.artifactRoot,
+            "--run-id",
+            runId,
+            "--redaction",
+            "on",
+          ]
         : [
             ...resolved.prefixArgs,
             "live-player",
@@ -320,14 +345,15 @@ class LivePlayerChild {
 
 function validateLaunch(input: BrowserPlayerLaunch): void {
   const paths =
-    input.engine === "siglus"
+    input.engine === "siglus" || input.engine === "softpal"
       ? [input.gameRoot, input.artifactRoot]
       : [input.seenPath, input.gameexePath, input.g00Dir, input.artifactRoot];
   for (const value of paths) {
     if (typeof value !== "string" || value.trim().length === 0)
       throw new BrowserPlayerSessionError("player launch paths are required");
   }
-  if (!Number.isInteger(input.scene) || input.scene < 1 || input.scene > 65_535)
+  const entry = input.engine === "softpal" ? input.pointId : input.scene;
+  if (!Number.isInteger(entry) || entry < 1 || entry > 65_535)
     throw new BrowserPlayerSessionError("player scene must be an integer between 1 and 65535");
 }
 
