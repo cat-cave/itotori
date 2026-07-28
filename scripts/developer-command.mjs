@@ -89,6 +89,8 @@ node --test scripts/audit-no-node-ids.test.mjs
 node scripts/audit-no-node-ids.mjs
 node --test scripts/audit-no-game-names.test.mjs
 node scripts/audit-no-game-names.mjs
+node --test scripts/audit-ci-input-pins.test.mjs
+node scripts/audit-ci-input-pins.mjs
 node --test scripts/validate-no-specific-game-references.test.mjs
 node scripts/validate-no-specific-game-references.mjs
 node --test scripts/file-line-cap-guard.test.mjs

@@ -41,17 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
-        with:
-          run_install: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - run: corepack enable
-      - run: pnpm install --frozen-lockfile
-      - run: sudo snap install just --classic
+      - uses: ./.github/actions/setup-itotori
       - run: just test real-bytes-oracle-drift
 
   # GROUND TRUTH — the FULL real-bytes suite + drift check against the real
@@ -72,22 +62,7 @@ jobs:
     runs-on: [self-hosted, itotori-corpora]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
-        with:
-          run_install: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
-        with:
-          toolchain: 1.97.0
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - run: corepack enable
-      - run: pnpm install --frozen-lockfile
-      - run: sudo snap install just --classic
+      - uses: ./.github/actions/setup-itotori
       # The full oracle: stage (A) real-bytes ground truth + stage (B) the
       # synthetic-vs-real drift check, both against the staged corpora. (The
       # hosted drift-check job re-runs (B) without corpora; the small overlap is
@@ -109,17 +84,14 @@ jobs:
     runs-on: [self-hosted, itotori-corpora]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
-        with:
-          run_install: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - run: corepack enable
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-itotori
       # Enter the nix devShell so the pinned nix-Chromium is exported
-      # (PLAYWRIGHT_CHROMIUM_BIN / UTSUSHI_BROWSER_BIN); `just` is provided by the
-      # devShell too, so it does not need a separate install here.
-      - run: nix develop --command just test browser
+      # (PLAYWRIGHT_CHROMIUM_BIN / UTSUSHI_BROWSER_BIN). Resolve `just` from the
+      # flake.lock-pinned browser shell rather than the runner environment.
+      - run: |
+          nix develop .#browser --command bash -c '
+            set -euo pipefail
+            just_bin="$(command -v just)"
+            case "$just_bin" in /nix/store/*) ;; *) echo "just is not nix-pinned: $just_bin" >&2; exit 1 ;; esac
+            exec "$just_bin" test browser
+          '

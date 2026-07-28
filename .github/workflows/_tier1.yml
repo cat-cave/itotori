@@ -171,16 +171,25 @@ jobs:
             "$bin" --version
             fc-match sans-serif
             fc-match monospace
-            # The devShell deliberately ships only the renderer; the JS toolchain
-            # is inherited from setup-itotori and must survive `nix develop`.
+            # The devShell deliberately ships only the renderer plus its
+            # flake.lock-pinned just derivation; the JS toolchain is inherited
+            # from setup-itotori and must survive `nix develop`.
             command -v pnpm >/dev/null
-            command -v just >/dev/null
+            just_bin="$(command -v just)"
+            case "$just_bin" in /nix/store/*) ;; *) echo "just is not nix-pinned: $just_bin" >&2; exit 1 ;; esac
+            "$just_bin" --version
             node --version
             echo "Tier-1 browser preflight ok: $bin"
           '
 
       - name: Run Tier-1 browser suite
-        run: nix develop .#browser --command just ci tier1-browser
+        run: |
+          nix develop .#browser --command bash -c '
+            set -euo pipefail
+            just_bin="$(command -v just)"
+            case "$just_bin" in /nix/store/*) ;; *) echo "just is not nix-pinned: $just_bin" >&2; exit 1 ;; esac
+            exec "$just_bin" ci tier1-browser
+          '
 
   alpha:
     name: Tier 1 / alpha proof
