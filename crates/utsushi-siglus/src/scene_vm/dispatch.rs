@@ -17,7 +17,14 @@ impl SceneVm<'_> {
             && let Some(target) = stage::target(&values)
         {
             let args = self.stage_arguments(offset, args)?;
-            let result = stage::command(self.state, target, &args, offset, self.scene_id)?;
+            let result = stage::command(
+                self.state,
+                target,
+                &args,
+                arg_list_id,
+                offset,
+                self.scene_id,
+            )?;
             if ret_form != 0 {
                 self.values.push(result);
             }
