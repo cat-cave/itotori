@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 
 use utsushi_siglus::build_siglus_structure;
 
-const FIRST_CORPUS_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
-const SECOND_CORPUS_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
+const FIRST_CORPUS_ENV: &str = "siglus/1/encrypted";
+const SECOND_CORPUS_ENV: &str = "siglus/2/encrypted";
 
 #[test]
 fn exports_nontrivial_structure_for_two_real_siglus_corpora() {
@@ -25,11 +25,11 @@ fn exports_nontrivial_structure_for_two_real_siglus_corpora() {
 }
 
 fn corpus_root(variable: &str) -> Option<PathBuf> {
-    let Some(value) = std::env::var_os(variable) else {
+    let Some(value) = corpus_registry::resolve_identity(variable).ok() else {
         eprintln!("SKIP Siglus structure real bytes: {variable} is unset");
         return None;
     };
-    let candidate = PathBuf::from(value);
+    let candidate = value;
     let root = if candidate.is_dir() {
         candidate
     } else {

@@ -111,7 +111,7 @@ fn profile_validation_reports_missing_required_fields() {
       "key": "archive_key",
       "status": "missing",
       "description": "archive key must be provided out of band",
-      "placeholder": "KAIFUU_ARCHIVE_KEY",
+      "placeholder": "ARCHIVE_KEY",
       "secret": true
     }
   ],
@@ -138,7 +138,7 @@ fn profile_validation_reports_missing_required_fields() {
         failure.code == "missing_requirement" && failure.field == "requirements.archive_key"
     }));
     let serialized = fs::read_to_string(&validation_path).unwrap();
-    assert!(serialized.contains("KAIFUU_ARCHIVE_KEY"));
+    assert!(serialized.contains("ARCHIVE_KEY"));
     assert!(!serialized.contains("actual-secret"));
 
     let _ = fs::remove_dir_all(root);

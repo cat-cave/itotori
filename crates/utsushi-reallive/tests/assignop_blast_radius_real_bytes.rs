@@ -32,7 +32,7 @@
 //!    visited / choices), which are downstream of assignment semantics.
 //!
 //! `#[ignore]`-gated for the periodic oracle; run with:
-//! `ITOTORI_CORPUS_ROOT=/path/to/corpora; see corpora/manifest.v1.json`
+//! `~/.config/itotori/inventory.toml` (or the platform-equivalent private inventory)
 //! `cargo test -p utsushi-reallive --test assignop_blast_radius_real_bytes -- --ignored`
 
 #[path = "support/real_corpus.rs"]
@@ -284,7 +284,7 @@ fn two_corpora_or_skip(test_name: &str) -> Option<Vec<real_corpus::RealCorpus>> 
     let corpora = real_corpus::corpora();
     if corpora.len() < 2 {
         eprintln!(
-            "REAL-BYTES SKIP {test_name}: need reallive/1/encrypted and reallive/2/plain; found {}. Set ITOTORI_CORPUS_ROOT=/path/to/corpora and configure both entries in corpora/manifest.v1.json to exercise real bytes.",
+            "REAL-BYTES SKIP {test_name}: need reallive/1/encrypted and reallive/2/plain; found {}. Configure both records in the private platform inventory to exercise real bytes.",
             corpora.len(),
         );
         return None;

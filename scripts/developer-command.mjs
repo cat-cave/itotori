@@ -137,18 +137,8 @@ node scripts/verify-deny-strict.mjs
 
 function softpalRealBytesCommand() {
   return `
-softpal_root="\${ITOTORI_SOFTPAL_RESEARCH_ROOT:-/scratch/softpal-research}"
-softpal_root_count=0
-if [ -d "$softpal_root" ]; then
-  softpal_root_count="$(find -L "$softpal_root" -mindepth 1 -maxdepth 6 -type f -name data.pac -printf '%h\\n' 2>/dev/null | sort -u | awk 'END { print NR + 0 }')"
-fi
-if [ "$softpal_root_count" -ge 2 ]; then
-  export ITOTORI_SOFTPAL_RESEARCH_ROOT="$softpal_root"
-  cargo test -p kaifuu-softpal -- --ignored
-  cargo test -p utsushi-softpal --test softpal_runtime_real_corpus --test softpal_dialogue_execution_analysis_real_corpus -- --ignored
-else
-  echo "test real-bytes: Softpal research root $softpal_root has $softpal_root_count staged data.pac root(s); at least two are required; skipping the Softpal sub-lane."
-fi
+cargo test -p kaifuu-softpal -- --ignored
+cargo test -p utsushi-softpal --test softpal_runtime_real_corpus --test softpal_dialogue_execution_analysis_real_corpus -- --ignored
 `;
 }
 
@@ -187,7 +177,7 @@ pnpm exec vp run ts:build
 pnpm --filter @itotori/app exec vitest run test/rpgmaker-production-real-bytes.test.ts --exclude '**/.direnv/**'
 pnpm --filter @itotori/app exec vitest run test/patchback-produce-build.test.ts --exclude '**/.direnv/**'
 cargo test -p kaifuu-core --test xp3_real_bytes_roundtrip
-cargo test -p kaifuu-reallive -p utsushi-reallive -p utsushi-siglus -p kaifuu-siglus -p kaifuu-cli -p utsushi-cli -p kaifuu-rpgmaker -p kaifuu-engine-fixture -- --ignored
+cargo test -p kaifuu-reallive -p utsushi-reallive -p utsushi-siglus -p kaifuu-siglus -p kaifuu-cli -p utsushi-cli -p kaifuu-rpgmaker -p kaifuu-engine-fixture -p kaifuu-nexas -- --ignored
 cargo test -p utsushi-core --test composite_asset_package_real_bytes
 cargo test -p kaifuu-vault-source --test live_vault_open_test --test live_vault_by_id_test --test live_vault_siglus_test -- --ignored
 ${softpalRealBytesCommand()}`,

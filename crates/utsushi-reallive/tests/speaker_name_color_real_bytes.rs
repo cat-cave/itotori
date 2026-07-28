@@ -1,15 +1,15 @@
-//! Real-bytes acceptance for the primary_corpus HD speaker name-box + per-speaker
+//! Real-bytes acceptance for the Sweetie HD speaker name-box + per-speaker
 //! text-colour decode fix
-//! (`investigate-primary_corpus-name-box-speaker-decode-gap`).
+//! (`investigate-sweetie-name-box-speaker-decode-gap`).
 //!
-//! The defect: primary_corpus HD shows speaker name boxes + per-speaker dialogue
+//! The defect: Sweetie HD shows speaker name boxes + per-speaker dialogue
 //! text colours in-game, but the decode extracted ZERO speakers — the
 //! `Textout` → `TextLine` path never parsed the inline full-width
 //! lenticular `【…】` name prefix (the `#NAMAE` lookup key), and the
 //! `#NAMAE` middle field was mislabelled as a voice slot rather than a
 //! `#COLOR_TABLE` row index.
 //!
-//! This test drives the REAL primary_corpus HD scenes with the `#NAMAE`
+//! This test drives the REAL Sweetie HD scenes with the `#NAMAE`
 //! `#COLOR_TABLE` resolver installed and asserts:
 //!
 //!   * NAMED lines now resolve a non-empty `TextLine.speaker` (count > 0
@@ -24,7 +24,7 @@
 //!     perturb opcode recognition).
 //!
 //! Env-gated + STRICT-BY-DEFAULT. Run with
-//! `ITOTORI_REAL_GAME_ROOT=<primary_corpus-hd>
+//! `private inventory row=<sweetie-hd>
 //! cargo test -p utsushi-reallive --test speaker_name_color_real_bytes -- --ignored`.
 
 #[path = "support/real_corpus.rs"]
@@ -74,7 +74,7 @@ fn staged_store(seen_bytes: &[u8]) -> (ReplayEngine, ReplayEngine) {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var (primary_corpus HD)"]
+#[ignore = "real-bytes; requires private inventory row env var (Sweetie HD)"]
 fn primary_corpus_named_lines_resolve_speaker_and_color_narration_none_zero_unknown_preserved() {
     let Some(corpus) = real_corpus::corpus_1() else {
         real_corpus::require_real_bytes(
@@ -84,11 +84,11 @@ fn primary_corpus_named_lines_resolve_speaker_and_color_narration_none_zero_unkn
     };
     let gameexe: Gameexe = corpus
         .gameexe()
-        .expect("primary_corpus HD Gameexe.ini must parse for #NAMAE + #COLOR_TABLE");
+        .expect("Sweetie HD Gameexe.ini must parse for #NAMAE + #COLOR_TABLE");
     let resolver = gameexe.namae_resolver();
     assert!(
         !resolver.is_empty(),
-        "primary_corpus HD #NAMAE table resolved zero speakers — resolver build regression"
+        "Sweetie HD #NAMAE table resolved zero speakers — resolver build regression"
     );
     // Spot-assert the two documented mappings straight off the resolver.
     assert_eq!(

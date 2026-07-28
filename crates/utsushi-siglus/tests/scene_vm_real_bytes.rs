@@ -12,8 +12,8 @@ use utsushi_siglus::scene_vm::{
     execute_title_scene_observed, execute_title_scene_with_stage_objects_observed,
 };
 
-const FIRST: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
-const SECOND: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
+const FIRST: &str = "siglus/1/encrypted";
+const SECOND: &str = "siglus/2/encrypted";
 
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Totals {
@@ -113,7 +113,7 @@ fn two_real_corpora_report_the_execution_frontier_and_preserve_static_overlap() 
 }
 
 fn root(variable: &str) -> Option<PathBuf> {
-    let root = std::env::var_os(variable).map(PathBuf::from)?;
+    let root = corpus_registry::resolve_identity(variable).ok()?;
     ["Scene.pck", "SiglusEngine.exe"]
         .iter()
         .all(|name| root.join(name).is_file())

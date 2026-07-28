@@ -1,18 +1,18 @@
 schema = "inventory/v1"
 
 [[corpus]]
-id = "corpus-reallive-a"
+id = "corpus-reallive-1-encrypted"
 engine = "engine-reallive"
-variant = "variant-a"
+variant = "variant-encrypted"
 root = "/private/corpora/reallive-a"
 content_address = "sha256:replace-with-local-content-address-a"
 tags = ["reallive", "strict"]
 access = "read-only"
 
 [[corpus]]
-id = "corpus-reallive-b"
+id = "corpus-reallive-2-plain"
 engine = "engine-reallive"
-variant = "variant-b"
+variant = "variant-plain"
 root = "/private/corpora/reallive-b"
 content_address = "sha256:replace-with-local-content-address-b"
 tags = ["reallive", "strict"]

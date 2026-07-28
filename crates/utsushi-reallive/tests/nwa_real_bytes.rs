@@ -1,8 +1,8 @@
 //! Real-bytes integration tests for the NWA decoder.
 //!
-//! Pins the decoder against primary_corpus HD's `REALLIVEDATA/bgm/ASA.nwa`
+//! Pins the decoder against Sweetie HD's `REALLIVEDATA/bgm/ASA.nwa`
 //! (18,317,046 bytes) and `REALLIVEDATA/wav/CHIME.nwa`. Mirrors the
-//! `g00_real_bytes.rs` env-gating pattern (`ITOTORI_REAL_GAME_ROOT`
+//! `g00_real_bytes.rs` env-gating pattern (`private inventory row`
 //! must be set for the `#[ignore]`-gated cases to execute).
 //!
 //! # Acceptance criteria pinned here
@@ -22,7 +22,7 @@
 //!    real-bytes-derived value; the typed audit assertion below names
 //!    the discrepancy explicitly so a future spec correction surfaces
 //!    here.
-//! 2. [`nwa_chime_decodes_raw_pcm_header`] — primary_corpus HD's
+//! 2. [`nwa_chime_decodes_raw_pcm_header`] — Sweetie HD's
 //!    `REALLIVEDATA/wav/CHIME.nwa` decodes to channels >= 1
 //!    bps == 16, sample_rate within the documented audio-grade band.
 //!    Acts as a second-file cross-reference inside the same corpus —
@@ -34,7 +34,7 @@
 //! Per the itotori operating model
 //! (`docs/dev/orchestration-operating-model.md`), a parser that targets a
 //! real engine substrate must be exercised against at least two real
-//! corpora before its node is merged-complete. primary_corpus HD is the only
+//! corpora before its node is merged-complete. Sweetie HD is the only
 //! RealLive title currently staged. The NWA module mirrors the pattern its
 //! sibling parsers landed: real-bytes pinned
 //! against the only staged corpus today (two distinct files within
@@ -52,7 +52,7 @@ use utsushi_reallive::{
     NWA_HEADER_BYTE_LEN, NwaCompressionMode, NwaDecodeError, decode_nwa, decode_nwa_header,
 };
 
-// Title directory under the primary_corpus HD extraction root. Mirrors the
+// Title directory under the Sweetie HD extraction root. Mirrors the
 // existing `gameexe_real_bytes.rs` / `g00_real_bytes.rs` constants.
 
 // Relative path under the title dir to the `bgm/` corpus.
@@ -80,19 +80,19 @@ const ASA_NWA_UNCOMPRESSED_BYTE_SIZE_REAL: u32 = 33_866_972;
 /// explicitly. Pinned so a future spec correction shows up here.
 const ASA_NWA_UNCOMPRESSED_BYTE_SIZE_SPEC: u32 = 33_818_820;
 
-/// Resolve the primary_corpus HD `bgm/` directory under
-/// `ITOTORI_REAL_GAME_ROOT`.
+/// Resolve the Sweetie HD `bgm/` directory under
+/// `private inventory row`.
 fn real_bgm_dir() -> Option<PathBuf> {
     real_corpus::reallivedata_subdir("bgm")
 }
 
-/// Resolve the primary_corpus HD `wav/` directory.
+/// Resolve the Sweetie HD `wav/` directory.
 fn real_wav_dir() -> Option<PathBuf> {
     real_corpus::reallivedata_subdir("wav")
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 // The test name is the spec verification handle quoted
 // verbatim (`cargo test -p utsushi-reallive nwa_asa_decodes_33M_frames`).
 // The `M` is upper-case because the spec quotes "33M" as the
@@ -183,7 +183,7 @@ fn nwa_asa_decodes_33M_frames() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn nwa_chime_decodes_raw_pcm_header() {
     let Some(wav_dir) = real_wav_dir() else {
         real_corpus::require_real_bytes("utsushi-reallive nwa_chime_decodes_raw_pcm_header");
@@ -227,8 +227,8 @@ fn nwa_real_bytes_skips_when_env_unset() {
         return;
     }
     eprintln!(
-        "ITOTORI_REAL_GAME_ROOT not set — NWA real-bytes tests are #[ignore]-gated and \
-         only run with ITOTORI_REAL_GAME_ROOT set.",
+        "reallive/1/encrypted not set — NWA real-bytes tests are #[ignore]-gated and \
+         only run with reallive/1/encrypted set.",
     );
 }
 

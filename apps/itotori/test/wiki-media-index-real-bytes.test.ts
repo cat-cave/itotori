@@ -1,7 +1,7 @@
 // Env-gated real-primary_corpus oracle: a real rendered frame resolves through the
 // EXISTING sanitized artifact server + the DEFAULT-REDACTED frame surface.
 //
-// Runs only when `ITOTORI_REAL_GAME_ROOT` points at a real RealLive install
+// Runs only when `private inventory row` points at a real RealLive install
 // (never committed). It drives the REAL image producer end to end:
 //   1. utsushi structure           -> the entry scene id
 //   2. utsushi render-validate      -> a real E2 screenshot (PUBLIC redacted PNG
@@ -28,6 +28,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
+import { resolvePrivateCorpus } from "../src/private-inventory.js";
 
 import { runNativeCli } from "../src/native-bin/cli-bin-resolver.js";
 import { runUtsushiStructureExport } from "../src/structure-export/utsushi-structure-seam.js";
@@ -71,7 +72,7 @@ function findCorpus(
 }
 
 function realCorpus(): { gameexe: string; seen: string; gameRoot: string } | undefined {
-  const root = process.env.ITOTORI_REAL_GAME_ROOT;
+  const root = resolvePrivateCorpus("reallive", 1, "encrypted");
   if (root === undefined || root.trim() === "") return undefined;
   return findCorpus(root);
 }
@@ -87,9 +88,9 @@ describe("real-primary_corpus media ref resolution through the sanitized server"
   const corpus = realCorpus();
   const maybe = corpus ? it : it.skip;
   if (!corpus) {
-    it("SKIP: real corpus not staged (set ITOTORI_REAL_GAME_ROOT)", () => {
+    it("SKIP: real corpus not staged in the private inventory", () => {
       console.warn(
-        "[wiki-media-index-real-bytes] ITOTORI_REAL_GAME_ROOT not set — skipping the real-frame resolution oracle.",
+        "[wiki-media-index-real-bytes] private inventory has no selected corpus — skipping the real-frame resolution oracle.",
       );
       expect(true).toBe(true);
     });

@@ -206,16 +206,15 @@ fn encrypted_media_proof_command_unknown_key_profile_routes_to_unsupported() {
 /// test reads, classifies, and emits the redacted readiness report;
 /// it never decrypts, never extracts, and never claims patch_back
 /// or script capability on real bytes.
-/// The test no-ops when `ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ`
+/// The test no-ops when `private inventory row`
 /// is unset; the synthetic fixtures above are the load-bearing
 /// correctness coverage.
 #[test]
 fn encrypted_media_proof_command_real_bytes_rpgmaker_corpus_when_available() {
-    let Some(real_root) = std::env::var_os("ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ") else {
+    let Some(real_root) = corpus_registry::resolve_identity("rpg-maker-mv-mz/1/plain").ok() else {
         println!("encrypted-media real-bytes corpus root unset; skipping");
         return;
     };
-    let real_root = PathBuf::from(real_root);
     if !real_root.is_dir() {
         eprintln!("SKIP: RPG Maker MV/MZ corpus is not staged");
         return;

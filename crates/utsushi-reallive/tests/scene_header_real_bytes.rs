@@ -1,8 +1,8 @@
 //! Real-bytes integration test for the `utsushi-reallive`
 //! 0x1d0-byte scene header decoder.
 //!
-//! Pins the typed header parser against the primary_corpus HD corpus supplied
-//! via `ITOTORI_REAL_GAME_ROOT`
+//! Pins the typed header parser against the Sweetie HD corpus supplied
+//! via `private inventory row`
 //! using the documented field values from
 //! `docs/research/reallive-engine.md` §D plus the directory offsets
 //! confirmed by the
@@ -15,7 +15,7 @@
 //! corpora are different engines and do not carry a `Seen.txt`.
 //! `utsushi-reallive` is therefore in the same single-RealLive-corpus
 //! position as `kaifuu-reallive` was for and as
-//! `utsushi-reallive` was for: primary_corpus HD is the only
+//! `utsushi-reallive` was for: Sweetie HD is the only
 //! RealLive title currently staged. mirrors that pattern —
 //! the node stays `planned` until a second RealLive corpus is sourced
 //! and exercised by an additional
@@ -23,7 +23,7 @@
 //! must not approve completion until that happens.
 //!
 //! Until the second corpus is staged this test is `#[ignore]`-gated and
-//! only runs when `ITOTORI_REAL_GAME_ROOT` is set (the same env
+//! only runs when `private inventory row` is set (the same env
 //! var use, so a single export drives every
 //! real-bytes integration test in the workspace).
 
@@ -37,19 +37,19 @@ use utsushi_reallive::{
     COMPILER_VERSION_1_10, ENTRYPOINT_TABLE_LEN, RealSceneIndex, SCENE_HEADER_BYTE_LEN, SceneHeader,
 };
 
-// Relative path under the primary_corpus HD extraction root that holds the
+// Relative path under the Sweetie HD extraction root that holds the
 // raw `Seen.txt` envelope.
 
-/// primary_corpus HD scene #0001 file-offset pin. Verified by the
+/// Sweetie HD scene #0001 file-offset pin. Verified by the
 /// integration test. The scene blob starts here in the `Seen.txt`
 /// envelope.
 const PRIMARY_CORPUS_SCENE_ONE_FILE_OFFSET: u64 = 0x13880;
 
-/// Scene-blob byte length for primary_corpus HD scene #0001. Verified by
+/// Scene-blob byte length for Sweetie HD scene #0001. Verified by
 /// the integration test.
 const PRIMARY_CORPUS_SCENE_ONE_BLOB_LEN: u32 = 0x5fa;
 
-/// Documented scene-header field values for primary_corpus HD scene #0001
+/// Documented scene-header field values for Sweetie HD scene #0001
 /// drawn from `docs/research/reallive-engine.md` §D.
 const PRIMARY_CORPUS_SCENE_ONE_COMPILER_VERSION: u32 = 110002;
 const PRIMARY_CORPUS_SCENE_ONE_KIDOKU_OFFSET: u32 = 464;
@@ -62,7 +62,7 @@ const PRIMARY_CORPUS_SCENE_ONE_BYTECODE_COMPRESSED_SIZE: u32 = 1062;
 const PRIMARY_CORPUS_SCENE_ONE_Z_MINUS_TWO: u32 = 3;
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn scene1_header_matches_reallive_real_bytes() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(
@@ -79,10 +79,10 @@ fn scene1_header_matches_reallive_real_bytes() {
     // (rather than hard-coding the file offset) so a future
     // regression that silently dropped scene 1 would surface here too.
     let index = RealSceneIndex::parse(&bytes)
-        .expect("primary_corpus HD Seen.txt must parse through the  directory parser");
+        .expect("Sweetie HD Seen.txt must parse through the  directory parser");
     let entry = index
         .lookup(1)
-        .expect("primary_corpus HD must contain a populated scene 1 entry");
+        .expect("Sweetie HD must contain a populated scene 1 entry");
     assert_eq!(
         entry.byte_offset, PRIMARY_CORPUS_SCENE_ONE_FILE_OFFSET,
         "scene 1 file offset drift between  and  anchors",
@@ -107,13 +107,13 @@ fn scene1_header_matches_reallive_real_bytes() {
     );
 
     let (header, warnings) = SceneHeader::parse(blob).expect(
-        "primary_corpus HD scene 1 must produce a typed SceneHeader; silent zero-state on real \
+        "Sweetie HD scene 1 must produce a typed SceneHeader; silent zero-state on real \
          bytes is the bug  fixes",
     );
 
     assert!(
         warnings.is_empty(),
-        "primary_corpus HD scene 1 uses compiler_version 110002 which is documented; no warnings \
+        "Sweetie HD scene 1 uses compiler_version 110002 which is documented; no warnings \
          expected; got: {warnings:?}",
     );
 
@@ -123,7 +123,7 @@ fn scene1_header_matches_reallive_real_bytes() {
     );
     assert_eq!(
         header.compiler_version, COMPILER_VERSION_1_10,
-        "primary_corpus HD is RealLive 1.10 — the public constant must match the observed value",
+        "Sweetie HD is RealLive 1.10 — the public constant must match the observed value",
     );
     assert_eq!(
         header.kidoku_offset, PRIMARY_CORPUS_SCENE_ONE_KIDOKU_OFFSET,
@@ -197,7 +197,7 @@ fn scene1_header_matches_reallive_real_bytes() {
     );
     assert_eq!(
         first_entry.value, 0x06,
-        "primary_corpus HD scene #0001 starts the entrypoint lattice with the documented 0x06 marker \
+        "Sweetie HD scene #0001 starts the entrypoint lattice with the documented 0x06 marker \
          (docs/research/reallive-engine.md §D)",
     );
 }

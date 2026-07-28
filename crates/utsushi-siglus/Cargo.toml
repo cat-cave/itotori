@@ -57,6 +57,7 @@ linkage = "none"
 files-referenced = ["README.md", "docs/format-overview.md"]
 
 [dev-dependencies]
+corpus-registry = { path = "../corpus-registry" }
 # The cross-engine substrate-alignment fixture lives in this crate's
 # tests/ directory because the Siglus port is the *second* engine —
 # adding the RealLive port as a dev-dep here proves the substrate facade

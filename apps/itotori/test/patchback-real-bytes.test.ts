@@ -1,6 +1,6 @@
 // Env-gated real-primary_corpus oracle for the native patchback + translated-byte replay.
 //
-// Runs only when `ITOTORI_REAL_GAME_ROOT` points at a real RealLive install
+// Runs only when `private inventory row` points at a real RealLive install
 // (never committed). It drives the REAL native seams end to end:
 //   1. kaifuu extract --whole-seen        -> the v0.2 bridge
 //   2. utsushi structure --bridge         -> the narrative structure
@@ -23,6 +23,7 @@ import { join } from "node:path";
 
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import { describe, expect, it } from "vitest";
+import { resolvePrivateCorpus } from "../src/private-inventory.js";
 
 import { runKaifuuExtract } from "../src/extract/kaifuu-extract-seam.js";
 import { buildFactSnapshot, type FactSnapshot } from "../src/prepass/index.js";
@@ -68,7 +69,7 @@ function findRealliveRoot(
 }
 
 function realCorpus(): { gameRoot: string; gameexe: string; seen: string } | undefined {
-  const root = process.env.ITOTORI_REAL_GAME_ROOT;
+  const root = resolvePrivateCorpus("reallive", 1, "encrypted");
   if (root === undefined || root.length === 0 || !existsSync(root)) return undefined;
   return findRealliveRoot(root);
 }

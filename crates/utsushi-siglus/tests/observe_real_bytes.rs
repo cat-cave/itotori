@@ -16,8 +16,8 @@ use utsushi_core::{
 };
 use utsushi_siglus::UtsushiSiglusPort;
 
-const FIRST_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
-const SECOND_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
+const FIRST_TITLE_ENV: &str = "siglus/1/encrypted";
+const SECOND_TITLE_ENV: &str = "siglus/2/encrypted";
 
 #[derive(Default)]
 struct ExpectedSurfaces {
@@ -53,11 +53,11 @@ fn two_real_siglus_titles_emit_linked_e1_text_and_choice_surfaces() {
 }
 
 fn corpus_root(variable: &str) -> Option<PathBuf> {
-    let Some(value) = std::env::var_os(variable) else {
+    let Some(value) = corpus_registry::resolve_identity(variable).ok() else {
         eprintln!("SKIP Siglus observe real bytes: {variable} is unset");
         return None;
     };
-    let candidate = PathBuf::from(value);
+    let candidate = value;
     let root = if candidate.is_dir() {
         candidate
     } else {

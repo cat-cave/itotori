@@ -1,19 +1,28 @@
 schema = "inventory/v1"
 
 [[corpus]]
-id = "corpus-softpal-a"
+id = "corpus-softpal-1-plain"
 engine = "engine-softpal"
-variant = "variant-a"
+variant = "variant-plain"
 root = "/private/corpora/softpal-a"
 content_address = "sha256:replace-with-local-content-address-a"
 tags = ["softpal", "strict"]
 access = "read-only"
 
 [[corpus]]
-id = "corpus-softpal-b"
+id = "corpus-softpal-2-plain"
 engine = "engine-softpal"
-variant = "variant-b"
+variant = "variant-plain"
 root = "/private/corpora/softpal-b"
 content_address = "sha256:replace-with-local-content-address-b"
+tags = ["softpal", "strict"]
+access = "read-only"
+
+[[corpus]]
+id = "corpus-softpal-3-plain"
+engine = "engine-softpal"
+variant = "variant-plain"
+root = "/private/corpora/softpal-c"
+content_address = "sha256:replace-with-local-content-address-c"
 tags = ["softpal", "strict"]
 access = "read-only"

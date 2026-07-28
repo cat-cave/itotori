@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 
 export const CORPUS_MANIFEST_SCHEMA_VERSION = "itotori.private-corpus-manifest.v1";
-export const REAL_CORPUS_ROOT_ENV = "ITOTORI_REAL_CORPUS_ROOT";
+export const PRIVATE_INVENTORY_ROOT = "private inventory";
 
 export type Sha256 = `sha256:${string}`;
 

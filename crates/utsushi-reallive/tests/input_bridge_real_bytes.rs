@@ -23,7 +23,7 @@
 //!
 //! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE.
 //! These `#[ignore]`-d suites run only in the periodic ground-truth oracle
-//! (`ITOTORI_REAL_GAME_ROOT=<primary_corpus> ITOTORI_REAL_GAME_ROOT_2=<kanon>`).
+//! (`private inventory row=<sweetie> private inventory row=<kanon>`).
 
 use std::fs;
 
@@ -85,7 +85,7 @@ fn first_gating_scene(engine: &ReplayEngine, entry: Option<SceneId>) -> Option<S
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT and/or _2"]
+#[ignore = "real-bytes; requires private inventory row and/or _2"]
 fn capture_then_replay_reproduces_identical_real_scene_playthrough() {
     let corpora =
         corpora_or_skip("capture_then_replay_reproduces_identical_real_scene_playthrough");

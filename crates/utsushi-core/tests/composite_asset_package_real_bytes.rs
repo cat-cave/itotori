@@ -14,7 +14,6 @@
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
 
-use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -22,7 +21,7 @@ use utsushi_core::{
     AssetPackage, CaseRule, CompositeAssetPackage, PackageSource, PlaintextDirPackage,
 };
 
-const RPG_MAKER_MV_MZ_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ";
+const RPG_MAKER_MV_MZ_ROOT_ENV: &str = "rpg-maker-mv-mz/1/plain";
 
 /// Walk the host filesystem under `root` looking for the first directory
 /// matching `needle` (case-insensitive). Used because staged real
@@ -127,8 +126,8 @@ fn composite_asset_package_real_bytes_primary_corpus_realivedata() {
         // Visible-skip acceptance criteria.
         eprintln!(
             "SKIP composite_asset_package_real_bytes_primary_corpus_realivedata: {}; \
-             multi-engine validation needs both ITOTORI_REAL_GAME_ROOT and \
-             ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ to confirm cross-engine genericity",
+             multi-engine validation needs both reallive/1/encrypted and \
+             rpg-maker-mv-mz/1/plain to confirm cross-engine genericity",
             real_corpus::skip_message("RealLive composite asset package test")
         );
         return;
@@ -266,15 +265,21 @@ fn composite_asset_package_real_bytes_primary_corpus_realivedata() {
 
 #[test]
 fn composite_asset_package_real_bytes_lust_memory_www_data_system_json() {
-    let env_path = if let Ok(value) = env::var(RPG_MAKER_MV_MZ_ROOT_ENV) {
+    let env_path = if let Ok(value) = corpus_registry::resolve_identity(RPG_MAKER_MV_MZ_ROOT_ENV)
+        .map(|path| path.to_string_lossy().into_owned())
+    {
         PathBuf::from(value)
     } else {
         // Visible-skip acceptance criteria.
-        assert!(env::var(RPG_MAKER_MV_MZ_ROOT_ENV).is_err());
+        assert!(
+            corpus_registry::resolve_identity(RPG_MAKER_MV_MZ_ROOT_ENV)
+                .map(|path| path.to_string_lossy().into_owned())
+                .is_err()
+        );
         eprintln!(
             "SKIP composite_asset_package_real_bytes_lust_memory_www_data_system_json: \
              {RPG_MAKER_MV_MZ_ROOT_ENV} is unset; \
-             multi-engine validation needs both ITOTORI_REAL_GAME_ROOT and \
+             multi-engine validation needs both reallive/1/encrypted and \
              {RPG_MAKER_MV_MZ_ROOT_ENV} to confirm cross-engine genericity"
         );
         return;

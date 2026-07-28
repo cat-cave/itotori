@@ -91,13 +91,13 @@ fn staged_scene_bytecodes(corpus: &RealCorpus) -> Vec<Vec<u8>> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (+ ITOTORI_REAL_GAME_ROOT_2)"]
+#[ignore = "real-bytes; requires private inventory row (+ private inventory row)"]
 fn framing_is_byte_exact_and_round_trips_on_real_bytes() {
     let corpora = real_corpus::corpora();
     if corpora.is_empty() {
         real_corpus::require_real_bytes(
             "framing_is_byte_exact_and_round_trips_on_real_bytes \
-             (set ITOTORI_REAL_GAME_ROOT and ITOTORI_REAL_GAME_ROOT_2)",
+             (set reallive/1/encrypted and reallive/2/plain)",
         );
         return;
     }

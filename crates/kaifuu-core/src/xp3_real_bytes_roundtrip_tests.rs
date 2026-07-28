@@ -4,7 +4,7 @@
 //! against synthetic raw AND zlib-indexed plain-XP3 fixtures without
 //! requiring the separately licensed real corpus (the integration test
 //! `tests/xp3_real_bytes_roundtrip.rs` covers the real-archive case via the
-//! `KAIFUU_XP3_PROFILE_A_ARCHIVE` env gate). Splitting them out keeps the
+//! `private inventory archive` env gate). Splitting them out keeps the
 //! parent module file `xp3_real_bytes_roundtrip.rs` under the 500-line cap.
 
 use super::*;

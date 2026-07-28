@@ -21,7 +21,7 @@ const PROFILE_INIT_REDACTION_PROBES: &[(&str, &str)] = &[
 
 /// Committed golden for the redacted `profile init` output of
 /// [`ProfileInitRedactionAdapter`]. Regen by setting
-/// `KAIFUU_PROFILE_INIT_REDACTION_REGEN=1`.
+/// `REGENERATE_FIXTURES=1`.
 const PROFILE_INIT_REDACTION_GOLDEN: &str = r#"{
   "assets": [
     {
@@ -297,14 +297,14 @@ fn profile_init_redacted_output_matches_golden() {
     );
 
     let produced = fs::read_to_string(&output).unwrap();
-    if std::env::var_os("KAIFUU_PROFILE_INIT_REDACTION_REGEN").is_some() {
+    if std::env::var_os("REGENERATE_FIXTURES").is_some() {
         eprintln!(
-            "KAIFUU_PROFILE_INIT_REDACTION_REGEN is set; paste this into PROFILE_INIT_REDACTION_GOLDEN:\n{produced}"
+            "REGENERATE_FIXTURES is set; paste this into PROFILE_INIT_REDACTION_GOLDEN:\n{produced}"
         );
     }
     assert_eq!(
         produced, PROFILE_INIT_REDACTION_GOLDEN,
-        "profile init redacted output drifted from the committed golden; set KAIFUU_PROFILE_INIT_REDACTION_REGEN=1 and update PROFILE_INIT_REDACTION_GOLDEN"
+        "profile init redacted output drifted from the committed golden; set REGENERATE_FIXTURES=1 and update PROFILE_INIT_REDACTION_GOLDEN"
     );
     assert_profile_init_probes_redacted(&produced);
 

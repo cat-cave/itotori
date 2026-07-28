@@ -25,7 +25,7 @@ whole run (nonzero exit):
 - **(A) Ground truth** — re-runs the full real-bytes suite (`just
 ci-real-bytes`) against configured real corpora across the RealLive, RPG Maker
   MV/MZ, Siglus, and Softpal ADV engine families. Corpus roots are supplied by
-  local `ITOTORI_REAL_GAME_ROOT*` configuration and are always read-only; the
+  local `private inventory row*` configuration and are always read-only; the
   suite never copies copyrighted bytes. The app-level MV/MZ patch/apply
   byte-round-trip runs for each configured corpus. The Softpal sub-lane is the
   one exception to the missing-corpus hard-fail policy: because it uses a

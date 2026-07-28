@@ -26,8 +26,8 @@ use kaifuu_siglus::{
     ExeAngouKeyError, GameexeReadError, SiglusSecondLayerKey, read_gameexe_inventory,
 };
 
-const FIRST_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
-const SECOND_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
+const FIRST_TITLE_ENV: &str = "siglus/1/encrypted";
+const SECOND_TITLE_ENV: &str = "siglus/2/encrypted";
 
 /// Expected real entry count per root: the first root (`siglus_corpus_one`) parses 690
 /// entries, the second (`siglus_corpus_two`) 689. Structural counts, not content.
@@ -36,11 +36,13 @@ const EXPECTED_ENTRY_COUNT: [usize; 2] = [690, 689];
 /// Resolve a game-root env var to `(SiglusEngine.exe, Gameexe.dat)` paths, or a
 /// clean skip when the var is unset / the files are absent.
 fn title_paths(variable: &str) -> Option<(PathBuf, PathBuf)> {
-    let value = std::env::var_os(variable).or_else(|| {
-        eprintln!("SKIP siglus Gameexe.dat inventory real bytes: {variable} is unset");
-        None
-    })?;
-    let root = PathBuf::from(value);
+    let value = corpus_registry::resolve_identity(variable)
+        .ok()
+        .or_else(|| {
+            eprintln!("SKIP siglus Gameexe.dat inventory real bytes: {variable} is unset");
+            None
+        })?;
+    let root = value;
     let dir = if root.is_dir() {
         root
     } else {

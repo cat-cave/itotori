@@ -89,7 +89,7 @@ fn demo_bundle_matches_committed_golden_bytes() {
     assert_eq!(
         rendered, golden,
         "mvmz demo-bundle drifted from the committed golden; regenerate with \
-         UTSUSHI_U134_REGEN=1 if the change is intended"
+         REGENERATE_FIXTURES=1 if the change is intended"
     );
 }
 
@@ -257,11 +257,11 @@ fn unproven_patched_proof_invalidates_the_bundle() {
 /// Regenerate the committed demo-bundle golden from the committed
 /// upstream artifacts. Env-gated so it only writes when explicitly asked.
 #[test]
-#[ignore = "regenerates the committed demo-bundle golden; run manually with UTSUSHI_U134_REGEN=1"]
+#[ignore = "regenerates the committed demo-bundle golden; run manually with REGENERATE_FIXTURES=1"]
 fn regenerate_committed_demo_bundle_golden() {
-    if std::env::var("UTSUSHI_U134_REGEN").ok().as_deref() != Some("1") {
+    if std::env::var("REGENERATE_FIXTURES").ok().as_deref() != Some("1") {
         eprintln!(
-            "SKIP regenerate_committed_demo_bundle_golden: set UTSUSHI_U134_REGEN=1 to write"
+            "SKIP regenerate_committed_demo_bundle_golden: set REGENERATE_FIXTURES=1 to write"
         );
         return;
     }

@@ -1,10 +1,19 @@
 schema = "inventory/v1"
 
 [[corpus]]
-id = "corpus-kirikiri-xp3-a"
+id = "corpus-kirikiri-xp3-1-plain"
 engine = "engine-kirikiri-xp3"
-variant = "variant-a"
+variant = "variant-plain"
 root = "/private/corpora/kirikiri-xp3-a"
 content_address = "sha256:replace-with-local-content-address"
+tags = ["strict", "xp3"]
+access = "read-only"
+
+[[corpus]]
+id = "corpus-kirikiri-xp3-2-encrypted"
+engine = "engine-kirikiri-xp3"
+variant = "variant-encrypted"
+root = "/private/corpora/kirikiri-xp3-b"
+content_address = "sha256:replace-with-local-content-address-b"
 tags = ["strict", "xp3"]
 access = "read-only"

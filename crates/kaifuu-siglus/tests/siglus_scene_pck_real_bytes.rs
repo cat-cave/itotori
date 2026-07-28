@@ -31,8 +31,8 @@ use kaifuu_siglus::{
     decode_scene_pack, parse_scene_pck, recover_exe_angou_key,
 };
 
-const FIRST_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
-const SECOND_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
+const FIRST_TITLE_ENV: &str = "siglus/1/encrypted";
+const SECOND_TITLE_ENV: &str = "siglus/2/encrypted";
 
 /// The two owned titles' expected scene counts (order-independent across the
 /// two env vars). siglus_corpus_one packs 298 scenes, siglus_corpus_two 278.
@@ -41,11 +41,13 @@ const EXPECTED_SCENE_COUNTS: [usize; 2] = [298, 278];
 /// Resolve a game root env var to `(SiglusEngine.exe, Scene.pck)` paths, or a
 /// clean skip when the var is unset / the files are absent.
 fn title_paths(variable: &str) -> Option<(PathBuf, PathBuf)> {
-    let value = std::env::var_os(variable).or_else(|| {
-        eprintln!("SKIP siglus Scene.pck real bytes: {variable} is unset");
-        None
-    })?;
-    let root = PathBuf::from(value);
+    let value = corpus_registry::resolve_identity(variable)
+        .ok()
+        .or_else(|| {
+            eprintln!("SKIP siglus Scene.pck real bytes: {variable} is unset");
+            None
+        })?;
+    let root = value;
     // Accept either the game directory or a direct file inside it.
     let dir = if root.is_dir() {
         root

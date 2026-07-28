@@ -178,7 +178,7 @@ pub enum ExtractError {
 
 /// Walk a game's `www` directory and produce a bridge extraction bundle.
 /// `www_dir` is the directory that contains `data/` (the env var
-/// `ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ` points here for the LustMemory
+/// `private inventory row` points here for the LustMemory
 /// corpus). Engine identification reuses the shared archive detection; a
 /// directory that does not detect as RPG Maker MV/MZ is rejected rather
 /// than blindly parsed.

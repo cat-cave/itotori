@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { AuthorizationError } from "@itotori/db";
 import {
@@ -22,6 +23,7 @@ import { assertPrivacyRetentionEgressContract } from "./contracts/privacy.js";
 import { studioCapabilityPermissions } from "./auth.js";
 import { serveArtifactStoreRequest } from "./artifact-store.js";
 import { BrowserPlayerSessionManager } from "./play/browser-player-session.js";
+import { resolvePrivateCorpus } from "./private-inventory.js";
 import {
   isBrowserPlayerRoute,
   serveBrowserPlayerRequest,
@@ -80,7 +82,8 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
   const readOnlyServiceFactory =
     options.readOnlyServiceFactory ?? toReadOnlyServiceFactory(serviceFactory);
   const browserPlayerSessions = options.browserPlayerSessions ?? new BrowserPlayerSessionManager();
-  const browserPlayerLaunches = options.browserPlayerLaunches ?? browserPlayerLaunchesFromEnv();
+  const browserPlayerLaunches =
+    options.browserPlayerLaunches ?? browserPlayerLaunchesFromInventory();
   const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
     if (isItotoriApiPath(url.pathname)) {
@@ -297,12 +300,15 @@ async function canReveal(
   }
 }
 
-function browserPlayerLaunchesFromEnv(): BrowserPlayerLaunchRegistry {
-  const seenPath = process.env.ITOTORI_PLAYER_E2E_SEEN;
-  const gameexePath = process.env.ITOTORI_PLAYER_E2E_GAMEEXE;
-  const g00Dir = process.env.ITOTORI_PLAYER_E2E_G00_DIR;
-  const artifactRoot = process.env.ITOTORI_PLAYER_E2E_ARTIFACT_ROOT;
-  const scene = Number(process.env.ITOTORI_PLAYER_E2E_SCENE ?? "");
+function browserPlayerLaunchesFromInventory(): BrowserPlayerLaunchRegistry {
+  const root = resolvePrivateCorpus("reallive", 1, "encrypted");
+  if (root === undefined) return {};
+  const data = join(root, "REALLIVEDATA");
+  const seenPath = join(data, "Seen.txt");
+  const gameexePath = join(data, "Gameexe.ini");
+  const g00Dir = join(data, "G00");
+  const artifactRoot = join(tmpdir(), "itotori-browser-player-e2e");
+  const scene = 1;
   if (
     seenPath === undefined ||
     gameexePath === undefined ||
@@ -317,7 +323,7 @@ function browserPlayerLaunchesFromEnv(): BrowserPlayerLaunchRegistry {
     return {};
   }
   return {
-    [process.env.ITOTORI_PLAYER_E2E_SESSION_ID ?? "e2e"]: {
+    e2e: {
       seenPath,
       gameexePath,
       g00Dir,

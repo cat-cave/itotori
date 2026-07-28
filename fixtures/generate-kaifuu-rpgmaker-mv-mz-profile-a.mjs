@@ -14,8 +14,7 @@ const manifestPath = resolve(
   "fixtures/public/kaifuu-rpgmaker-mv-mz-profile-a.manifest.json",
 );
 const sourceRoot =
-  process.env.ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ ??
-  "/scratch/itotori-research/rpg-maker-mv-mz/extracted/LustMemory";
+  process.argv[2] ?? "/scratch/itotori-research/rpg-maker-mv-mz/extracted/LustMemory";
 const sourceDataDir = resolveDataDir(sourceRoot);
 const SPDX_ID = "LicenseRef-LustMemory-English-Public-Release";
 

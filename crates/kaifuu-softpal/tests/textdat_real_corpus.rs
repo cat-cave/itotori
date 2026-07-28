@@ -1,11 +1,11 @@
 //! Real-bytes validation of the Softpal `TEXT.DAT` codec against two owned
 //! titles, extracting the inner `TEXT.DAT` via the crate's own PAC reader.
-//! `#[ignore]`d and env-gated: set `ITOTORI_SOFTPAL_RESEARCH_ROOT` to the
+//! `#[ignore]`d and env-gated: set `private inventory row` to the
 //! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
 //! `--ignored`. **No raw copyrighted bytes live in this file** — only record
 //! counts, byte offsets, SJIS-valid-byte ratios, and SHA-256 hashes, which the
 //! codec must reproduce.
-//! Mirrors `pac_real_corpus.rs`: env-gated on `ITOTORI_SOFTPAL_RESEARCH_ROOT`
+//! Mirrors `pac_real_corpus.rs`: env-gated on `private inventory row`
 //! (the standalone Softpal research tree) and wired into the PERIODIC
 //! `ci-real-bytes` lane; see `pac_real_corpus.rs` for the env-gate /
 //! skip-when-absent contract.
@@ -17,7 +17,6 @@
 //! - Both: header count == the number of records the pool actually yields, and
 //!   each record's absolute byte offset is recovered.
 
-use std::env;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -26,7 +25,7 @@ use kaifuu_softpal::{
     EncFlag, PacArchive, TextDat, TextDatHeader, decrypt, encrypt, parse_records,
 };
 
-const RESEARCH_ROOT_ENV: &str = "ITOTORI_SOFTPAL_RESEARCH_ROOT";
+const GAME_IDENTITIES: [&str; 2] = ["softpal/1/plain", "softpal/2/plain"];
 
 /// One game's `TEXT.DAT` expectations.
 struct GameExpectation {
@@ -113,7 +112,12 @@ fn sjis_valid_ratio(b: &[u8]) -> f64 {
 /// Extract the `TEXT.DAT` bytes from the game's `data.pac` (selected by entry
 /// count), via the crate's PAC reader.
 fn extract_textdat(game: &GameExpectation, root: &Path) -> Vec<u8> {
-    let game_dir = root.join(game.subdir);
+    let nested = root.join(game.subdir);
+    let game_dir = if nested.is_dir() {
+        nested
+    } else {
+        root.to_path_buf()
+    };
     let mut pacs = Vec::new();
     find_data_pacs(&game_dir, &mut pacs);
     assert!(
@@ -145,13 +149,11 @@ fn extract_textdat(game: &GameExpectation, root: &Path) -> Vec<u8> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_SOFTPAL_RESEARCH_ROOT (read-only Softpal research tree)"]
+#[ignore = "real-bytes; requires private inventory row (read-only Softpal research tree)"]
 fn textdat_codec_on_two_softpal_titles() {
-    let Some(root) = env::var_os(RESEARCH_ROOT_ENV).map(PathBuf::from) else {
-        panic!("set {RESEARCH_ROOT_ENV} to the read-only Softpal research tree");
-    };
-
-    for game in &GAMES {
+    for (game, identity) in GAMES.iter().zip(GAME_IDENTITIES) {
+        let root = corpus_registry::resolve_identity(identity)
+            .unwrap_or_else(|reason| panic!("registry must resolve {identity}: {reason}"));
         let raw = extract_textdat(game, &root);
         assert_eq!(
             sha256_hex(&raw),

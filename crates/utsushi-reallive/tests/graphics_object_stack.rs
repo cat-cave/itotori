@@ -10,7 +10,7 @@
 //! `g00_real_bytes.rs` and `render_g00_real_bytes.rs` suites cover real g00
 //! decoding and rendering. A third entrypoint
 //! (`graphics_pipeline_honours_reallive_real_bytes_gameexe_screen_size`) is
-//! env-gated on `ITOTORI_REAL_GAME_ROOT` and pins the real-bytes
+//! env-gated on `private inventory row` and pins the real-bytes
 //! `SCREENSIZE_MOD=999,1280,720` round-trip through
 //! [`utsushi_reallive::SyscallDispatcher::screen_size`]
 //! [`utsushi_reallive::RenderPass::new`].
@@ -243,7 +243,7 @@ fn render_wipe_solid_colour_deterministic_png() {
 /// "render pass observes the `SCREENSIZE_MOD=999,1280,720` Gameexe
 /// value and emits a 1280x720 buffer" acceptance criterion.
 #[test]
-#[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
+#[ignore = "requires private inventory row; opt in with --include-ignored"]
 fn graphics_pipeline_honours_reallive_real_bytes_gameexe_screen_size() {
     let Some(gameexe_path) = real_gameexe_ini_path() else {
         real_corpus::require_real_bytes(

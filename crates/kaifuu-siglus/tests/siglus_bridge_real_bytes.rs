@@ -14,15 +14,17 @@ use kaifuu_siglus::{
     produce_scene_pack_bundle, read_gameexe_inventory, recover_exe_angou_key,
 };
 
-const FIRST_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
-const SECOND_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
+const FIRST_TITLE_ENV: &str = "siglus/1/encrypted";
+const SECOND_TITLE_ENV: &str = "siglus/2/encrypted";
 
 fn title_paths(variable: &str) -> Option<(PathBuf, PathBuf, PathBuf)> {
-    let value = std::env::var_os(variable).or_else(|| {
-        eprintln!("SKIP siglus bridge real bytes: {variable} is unset");
-        None
-    })?;
-    let root = PathBuf::from(value);
+    let value = corpus_registry::resolve_identity(variable)
+        .ok()
+        .or_else(|| {
+            eprintln!("SKIP siglus bridge real bytes: {variable} is unset");
+            None
+        })?;
+    let root = value;
     let dir = if root.is_dir() {
         root
     } else {

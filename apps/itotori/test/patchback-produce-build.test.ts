@@ -8,7 +8,7 @@
 // non-empty tar of a real patched game tree (REALLIVEDATA/Seen.txt present) whose
 // bytes differ from the source — no stub of the native op, no fabricated build.
 //
-// Env-gated: runs only when `ITOTORI_REAL_GAME_ROOT` points at a real RealLive
+// Env-gated: runs only when `private inventory row` points at a real RealLive
 // install (never committed). When the corpus is not staged it prints a skip note.
 // A deterministic 404-path test (no native op) always runs.
 
@@ -27,6 +27,7 @@ import { join } from "node:path";
 
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import { describe, expect, it } from "vitest";
+import { resolvePrivateCorpus } from "../src/private-inventory.js";
 
 import { runKaifuuExtract } from "../src/extract/kaifuu-extract-seam.js";
 import { buildFactSnapshot, type FactSnapshot } from "../src/prepass/index.js";
@@ -101,8 +102,8 @@ function tarEntryPaths(bytes: Buffer): string[] {
   return paths;
 }
 
-const corpus = realCorpus(process.env.ITOTORI_REAL_GAME_ROOT);
-const secondCorpus = realCorpus(process.env.ITOTORI_REAL_GAME_ROOT_2);
+const corpus = realCorpus(resolvePrivateCorpus("reallive", 1, "encrypted"));
+const secondCorpus = realCorpus(resolvePrivateCorpus("reallive", 2, "plain"));
 
 const actor = { userId: "produce-test", permissions: [] } as unknown as AuthorizationActor;
 

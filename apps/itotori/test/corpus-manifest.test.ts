@@ -1,7 +1,7 @@
 // Registered private-corpus manifest contract.
 //
 // Public CI validates only metadata. The real-byte oracle is opt-in through
-// ITOTORI_REAL_CORPUS_ROOT and writes all transient native output to an OS
+// private inventory row and writes all transient native output to an OS
 // temporary directory owned by the validator.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -165,7 +165,7 @@ describe("registered private corpus manifest", () => {
     expect(() => assertCorpusManifest(readdressed)).not.toThrow();
     expect(resolveCorpus(readdressed, {})).toEqual({
       kind: "skip",
-      reason: "ITOTORI_REAL_CORPUS_ROOT is unset; no private corpus bytes were read.",
+      reason: "private inventory has no selected corpus; no private corpus bytes were read.",
     });
   });
 

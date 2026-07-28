@@ -1,26 +1,21 @@
 # Rust std::env::var / var_os / option_env! / env!
 std::env::var("ITOTORI_PRODUCT_VERSION");
-std::env::var_os("KAIFUU_ARCHIVE_KEY");
 option_env!("UTSUSHI_BROWSER_BIN");
 env!("ITOTORI_TARGET_LOCALE");
 
 # TypeScript and JavaScript dot and bracket reads
 process.env.ITOTORI_PRODUCT_VERSION;
-process.env["KAIFUU_ARCHIVE_KEY"];
 
 # just export, default, and env_var call
 export UTSUSHI_BROWSER_BIN := env_var_or_default('UTSUSHI_BROWSER_BIN', '')
 locale := env_var_or_default('ITOTORI_TARGET_LOCALE', 'en')
-archive := env_var('KAIFUU_ARCHIVE_KEY')
 
 # CI env block and expression
 env:
   ITOTORI_PRODUCT_VERSION: fixture
-${{ env.KAIFUU_ARCHIVE_KEY }}
 
 # shell, Nix, Dockerfile, .env.example, and documentation
 UTSUSHI_BROWSER_BIN=fixture-command
 ITOTORI_TARGET_LOCALE = "en";
-ENV KAIFUU_ARCHIVE_KEY=fixture
 ITOTORI_PRODUCT_VERSION=fixture
 Run with ITOTORI_PRODUCT_VERSION=fixture.

@@ -4,8 +4,6 @@ use std::path::{Path, PathBuf};
 
 use kaifuu_core::redact_for_log_or_report;
 
-use crate::REAL_GAME_ROOT_ENV;
-
 pub(crate) fn local_path_for_diagnostic(path: &Path) -> String {
     redact_for_log_or_report(&path.display().to_string())
 }
@@ -168,7 +166,7 @@ pub(crate) fn resolve_reallive_game_root(
     }
 
     Err(format!(
-        "REALLIVEDATA/Seen.txt not found under {}; pass --game-root or {REAL_GAME_ROOT_ENV} pointing at a RealLive game root",
+        "REALLIVEDATA/Seen.txt not found under {}; pass --game-root pointing at a RealLive game root",
         game_root.display()
     )
     .into())

@@ -16,6 +16,7 @@ sha2.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+corpus-registry = { path = "../corpus-registry" }
 tempfile.workspace = true
 kaifuu-core = { path = "../kaifuu-core" }
 kaifuu-delta = { path = "../kaifuu-delta" }

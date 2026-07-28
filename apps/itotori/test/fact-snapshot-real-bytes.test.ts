@@ -1,6 +1,6 @@
 // Env-gated real-byte oracle for the deterministic fact-snapshot pre-pass.
 //
-// Only runs on an operator machine with `ITOTORI_REAL_GAME_ROOT` exported to a
+// Only runs on an operator machine with `private inventory row` exported to a
 // real RealLive install (never committed). It drives the REAL native seams:
 //   1. kaifuu extract --whole-seen  -> the v0.2 bridge bundle
 //   2. utsushi structure --bridge   -> the narrative structure (joined)
@@ -24,6 +24,7 @@ import { dirname, join } from "node:path";
 
 import type { BridgeBundleV02, SpeakerContextV02 } from "@itotori/localization-bridge-schema";
 import { describe, expect, it, vi } from "vitest";
+import { resolvePrivateCorpus } from "../src/private-inventory.js";
 
 import { runKaifuuExtract } from "../src/extract/kaifuu-extract-seam.js";
 import {
@@ -66,7 +67,7 @@ function findRealliveRoot(
 }
 
 function realCorpus(): { gameRoot: string; gameexe: string; seen: string } | undefined {
-  const root = process.env.ITOTORI_REAL_GAME_ROOT;
+  const root = resolvePrivateCorpus("reallive", 1, "encrypted");
   if (root === undefined || root.length === 0 || !existsSync(root)) return undefined;
   return findRealliveRoot(root);
 }

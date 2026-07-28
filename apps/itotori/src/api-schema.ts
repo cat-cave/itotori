@@ -234,7 +234,7 @@ export const API_ERROR_RESPONSE_CODES = [
  * the guards; this pins only the wire envelope (top-level keys + strictness +
  * schemaVersion const), consistent with the emitter's stated altitude.
  */
-export const ITOTORI_STRICT_API_BODY_KEYS = {
+export const STRICT_API_BODY_KEYS = {
   ApiErrorResponse: ["error", "code"],
   ApiAssetDecisionsResponse: ["decisions"],
   ApiCandidateAssetsResponse: ["candidateAssets"],
@@ -656,7 +656,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   ApiPatchIterationRefineResponse: ["schemaVersion", "refinement", "patch"],
 } as const satisfies Readonly<Record<string, readonly string[]>>;
 
-export type ItotoriStrictApiBodyName = keyof typeof ITOTORI_STRICT_API_BODY_KEYS;
+export type ItotoriStrictApiBodyName = keyof typeof STRICT_API_BODY_KEYS;
 
 /**
  * policy — assert an {@link ApiErrorResponse} body. Error responses are
@@ -670,7 +670,7 @@ export function assertItotoriApiErrorResponse(
   value: unknown,
   label = "ApiErrorResponse",
 ): asserts value is ApiErrorResponse {
-  const response = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiErrorResponse);
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiErrorResponse);
   assertString(response.error, `${label}.error`);
   assertEnum(response.code, API_ERROR_RESPONSE_CODES, `${label}.code`);
 }
@@ -1948,7 +1948,7 @@ export function parseConfigureAuthSsoSettingsRequest(
     const request = asStrictRecord(
       body,
       "ApiConfigureAuthSsoSettingsRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ApiConfigureAuthSsoSettingsRequest,
+      STRICT_API_BODY_KEYS.ApiConfigureAuthSsoSettingsRequest,
     );
     assertString(request.accountId, "ApiConfigureAuthSsoSettingsRequest.accountId");
     return {
@@ -1976,7 +1976,7 @@ export function parseSaveModelRoutingSettingsRequest(
     const request = asStrictRecord(
       body,
       "ApiSaveModelRoutingSettingsRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ApiSaveModelRoutingSettingsRequest,
+      STRICT_API_BODY_KEYS.ApiSaveModelRoutingSettingsRequest,
     );
     assertString(request.projectId, "ApiSaveModelRoutingSettingsRequest.projectId");
     assertString(request.taskKind, "ApiSaveModelRoutingSettingsRequest.taskKind");
@@ -2014,7 +2014,7 @@ export function parseSaveBranchPolicySettingsRequest(
     const request = asStrictRecord(
       body,
       "ApiSaveBranchPolicySettingsRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ApiSaveBranchPolicySettingsRequest,
+      STRICT_API_BODY_KEYS.ApiSaveBranchPolicySettingsRequest,
     );
     assertString(request.projectId, "ApiSaveBranchPolicySettingsRequest.projectId");
     assertString(request.localeBranchId, "ApiSaveBranchPolicySettingsRequest.localeBranchId");
@@ -2040,7 +2040,7 @@ export function parseSaveTranslationScopeSettingsRequest(
     const request = asStrictRecord(
       body,
       "ApiSaveTranslationScopeSettingsRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ApiSaveTranslationScopeSettingsRequest,
+      STRICT_API_BODY_KEYS.ApiSaveTranslationScopeSettingsRequest,
     );
     assertString(request.projectId, "ApiSaveTranslationScopeSettingsRequest.projectId");
     assertString(request.localeBranchId, "ApiSaveTranslationScopeSettingsRequest.localeBranchId");
@@ -2064,7 +2064,7 @@ export function parseSaveLocalizationRunConfigRequest(
     const request = asStrictRecord(
       body,
       "ApiSaveLocalizationRunConfigRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ApiSaveLocalizationRunConfigRequest,
+      STRICT_API_BODY_KEYS.ApiSaveLocalizationRunConfigRequest,
     );
     const stringFields = [
       "projectId",
@@ -2099,7 +2099,7 @@ export function parseInviteMemberRequest(body: unknown): ApiInviteMemberRequest 
     const request = asStrictRecord(
       body,
       "ApiInviteMemberRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ApiInviteMemberRequest,
+      STRICT_API_BODY_KEYS.ApiInviteMemberRequest,
     );
     assertString(request.accountId, "ApiInviteMemberRequest.accountId");
     assertString(request.email, "ApiInviteMemberRequest.email");
@@ -2132,7 +2132,7 @@ export function parseAcceptMemberInvitationRequest(
     const request = asStrictRecord(
       body,
       "ApiAcceptMemberInvitationRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ApiAcceptMemberInvitationRequest,
+      STRICT_API_BODY_KEYS.ApiAcceptMemberInvitationRequest,
     );
     assertString(request.userId, "ApiAcceptMemberInvitationRequest.userId");
     assertString(request.principalId, "ApiAcceptMemberInvitationRequest.principalId");
@@ -2160,7 +2160,7 @@ export function parseRemoveMemberRequest(body: unknown): ApiRemoveMemberRequest 
     const request = asStrictRecord(
       body,
       "ApiRemoveMemberRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ApiRemoveMemberRequest,
+      STRICT_API_BODY_KEYS.ApiRemoveMemberRequest,
     );
     assertNullableString(request.reason, "ApiRemoveMemberRequest.reason");
     assertNullableString(request.requestId, "ApiRemoveMemberRequest.requestId");
@@ -2175,7 +2175,7 @@ export function parsePrincipalPermissionSetGrantRequest(
     const request = asStrictRecord(
       body,
       "ApiPrincipalPermissionSetGrantRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ApiPrincipalPermissionSetGrantRequest,
+      STRICT_API_BODY_KEYS.ApiPrincipalPermissionSetGrantRequest,
     );
     assertNullableString(request.reason, "ApiPrincipalPermissionSetGrantRequest.reason");
     assertNullableString(request.requestId, "ApiPrincipalPermissionSetGrantRequest.requestId");
@@ -2188,7 +2188,7 @@ export function parseRevokeAuthSessionRequest(body: unknown): ApiRevokeAuthSessi
     const request = asStrictRecord(
       body,
       "ApiRevokeAuthSessionRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ApiRevokeAuthSessionRequest,
+      STRICT_API_BODY_KEYS.ApiRevokeAuthSessionRequest,
     );
     assertNullableString(request.reason, "ApiRevokeAuthSessionRequest.reason");
     assertNullableString(request.requestId, "ApiRevokeAuthSessionRequest.requestId");
@@ -2392,11 +2392,7 @@ function assertApiAssetDecisionsResponse(
   value: unknown,
   label = "ApiAssetDecisionsResponse",
 ): asserts value is ApiAssetDecisionsResponse {
-  const response = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ApiAssetDecisionsResponse,
-  );
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiAssetDecisionsResponse);
   const decisions = asArray(response.decisions, `${label}.decisions`);
   for (const [index, decision] of decisions.entries()) {
     assertAssetDecisionRecord(decision, `${label}.decisions[${index}]`);
@@ -2407,11 +2403,7 @@ function assertApiCandidateAssetsResponse(
   value: unknown,
   label = "ApiCandidateAssetsResponse",
 ): asserts value is ApiCandidateAssetsResponse {
-  const response = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ApiCandidateAssetsResponse,
-  );
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiCandidateAssetsResponse);
   const candidateAssets = asArray(response.candidateAssets, `${label}.candidateAssets`);
   for (const [index, candidate] of candidateAssets.entries()) {
     assertCandidateAssetRecord(candidate, `${label}.candidateAssets[${index}]`);
@@ -2481,11 +2473,7 @@ export function assertWikiObjectListResponse(
   value: unknown,
   label = "ApiWikiObjectListResponse",
 ): asserts value is ApiWikiListResponse {
-  const response = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectListResponse,
-  );
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiWikiObjectListResponse);
   assertLiteral(response.schemaVersion, "itotori.wiki.objects.v1", `${label}.schemaVersion`);
   assertDateLike(response.generatedAt, `${label}.generatedAt`);
   assertString(response.snapshotId, `${label}.snapshotId`);
@@ -2501,11 +2489,7 @@ export function assertWikiObjectShowResponse(
   value: unknown,
   label = "ApiWikiObjectShowResponse",
 ): asserts value is ApiWikiShowResponse {
-  const response = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectShowResponse,
-  );
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiWikiObjectShowResponse);
   assertLiteral(response.schemaVersion, "itotori.wiki.object.v1", `${label}.schemaVersion`);
   assertDateLike(response.generatedAt, `${label}.generatedAt`);
   assertWikiObjectView(response.view, `${label}.view`);
@@ -2525,11 +2509,7 @@ export function assertWikiObjectHistoryResponse(
   value: unknown,
   label = "ApiWikiObjectHistoryResponse",
 ): asserts value is ApiWikiHistoryResponse {
-  const response = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectHistoryResponse,
-  );
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiWikiObjectHistoryResponse);
   assertLiteral(response.schemaVersion, "itotori.wiki.history.v1", `${label}.schemaVersion`);
   assertDateLike(response.generatedAt, `${label}.generatedAt`);
   assertWikiObjectView(response.view, `${label}.view`);
@@ -2540,11 +2520,7 @@ export function assertWikiObjectWriteResponse(
   value: unknown,
   label = "ApiWikiObjectWriteResponse",
 ): asserts value is ApiWikiEditResponse {
-  const response = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectWriteResponse,
-  );
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiWikiObjectWriteResponse);
   assertLiteral(response.schemaVersion, "itotori.wiki.write.v1", `${label}.schemaVersion`);
   assertDateLike(response.generatedAt, `${label}.generatedAt`);
   assertWikiWriteReceipt(response.receipt, `${label}.receipt`);
@@ -2556,11 +2532,7 @@ export function assertWikiApplyResponse(
   value: unknown,
   label = "ApiWikiObjectApplyResponse",
 ): asserts value is ApiWikiApplyResponse {
-  const response = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectApplyResponse,
-  );
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiWikiObjectApplyResponse);
   assertLiteral(response.schemaVersion, "itotori.wiki.apply.v1", `${label}.schemaVersion`);
   assertDateLike(response.generatedAt, `${label}.generatedAt`);
   const receipt = asStrictRecord(response.receipt, `${label}.receipt`, [
@@ -2905,7 +2877,7 @@ export function assertCatalogOpportunityRankingReadModel(
   const model = asStrictRecord(
     value,
     label,
-    ITOTORI_STRICT_API_BODY_KEYS.CatalogOpportunityRankingReadModel,
+    STRICT_API_BODY_KEYS.CatalogOpportunityRankingReadModel,
   );
   assertLiteral(model.schemaVersion, "catalog.opportunity_ranking.v0.1", `${label}.schemaVersion`);
   assertPublicOpportunityString(model.targetLanguage, `${label}.targetLanguage`);
@@ -3141,11 +3113,7 @@ export function assertCatalogContextPanelReadModel(
   value: unknown,
   label = "CatalogContextPanelReadModel",
 ): asserts value is CatalogContextPanelReadModel {
-  const model = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.CatalogContextPanelReadModel,
-  );
+  const model = asStrictRecord(value, label, STRICT_API_BODY_KEYS.CatalogContextPanelReadModel);
   assertLiteral(model.schemaVersion, "catalog.context_panel_route.v0.1", `${label}.schemaVersion`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   const params = asStrictRecord(model.params, `${label}.params`, [
@@ -3332,7 +3300,7 @@ export function assertCatalogBenchmarkSeedFinderReadModel(
   const model = asStrictRecord(
     value,
     label,
-    ITOTORI_STRICT_API_BODY_KEYS.CatalogBenchmarkSeedFinderReadModel,
+    STRICT_API_BODY_KEYS.CatalogBenchmarkSeedFinderReadModel,
   );
   assertLiteral(
     model.schemaVersion,
@@ -3713,7 +3681,7 @@ export function assertCatalogCompletenessBenchmarkPools(
   const model = asStrictRecord(
     value,
     label,
-    ITOTORI_STRICT_API_BODY_KEYS.CatalogCompletenessBenchmarkPools,
+    STRICT_API_BODY_KEYS.CatalogCompletenessBenchmarkPools,
   );
   assertString(model.targetLanguage, `${label}.targetLanguage`);
   const pools = asStrictRecord(model.pools, `${label}.pools`, [
@@ -3985,11 +3953,7 @@ export function assertCatalogConflictReviewReadModel(
   value: unknown,
   label = "CatalogConflictReviewReadModel",
 ): asserts value is CatalogConflictReviewReadModel {
-  const model = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.CatalogConflictReviewReadModel,
-  );
+  const model = asStrictRecord(value, label, STRICT_API_BODY_KEYS.CatalogConflictReviewReadModel);
   const rows = asArray(model.rows, `${label}.rows`);
   for (const [index, rowValue] of rows.entries()) {
     const row = asStrictRecord(rowValue, `${label}.rows[${index}]`, [
@@ -4180,11 +4144,7 @@ function assertApiBenchmarkReportsResponse(
   value: unknown,
   label = "ApiBenchmarkReportsResponse",
 ): asserts value is ApiBenchmarkReportsResponse {
-  const response = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ApiBenchmarkReportsResponse,
-  );
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiBenchmarkReportsResponse);
   const reports = asArray(response.reports, `${label}.reports`);
   for (const [index, report] of reports.entries()) {
     assertBenchmarkReportSummary(report, `${label}.reports[${index}]`);
@@ -4196,7 +4156,7 @@ export function assertQueueHealthReadModel(
   value: unknown,
   label = "QueueHealthReadModel",
 ): asserts value is QueueHealthReadModel {
-  const model = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.QueueHealthReadModel);
+  const model = asStrictRecord(value, label, STRICT_API_BODY_KEYS.QueueHealthReadModel);
   assertLiteral(model.schemaVersion, "itotori.queue_health.v0.1", `${label}.schemaVersion`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   assertQueueHealthSection(model.outbox, `${label}.outbox`, "outbox");
@@ -4663,7 +4623,7 @@ export function assertProjectCostDrilldownResponse(
   value: unknown,
   label = "ApiProjectCostDrilldownResponse",
 ): asserts value is ApiProjectCostDrilldownResponse {
-  const page = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.CostDrilldownPage);
+  const page = asStrictRecord(value, label, STRICT_API_BODY_KEYS.CostDrilldownPage);
 
   const filter = asStrictRecord(page.filter, `${label}.filter`, [
     "projectId",
@@ -4782,7 +4742,7 @@ export function assertJobsRunTableReadModel(
   value: unknown,
   label = "JobsRunTableReadModel",
 ): asserts value is ApiJobsRunTableResponse {
-  const model = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.JobsRunTableReadModel);
+  const model = asStrictRecord(value, label, STRICT_API_BODY_KEYS.JobsRunTableReadModel);
   assertLiteral(model.schemaVersion, "jobs.run_table.v0.3", `${label}.schemaVersion`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   const filter = asStrictRecord(model.filter, `${label}.filter`, ["projectId"]);
@@ -4869,7 +4829,7 @@ export function assertProjectOverviewReadModel(
   value: unknown,
   label = "ProjectOverviewReadModel",
 ): asserts value is ProjectOverviewReadModel {
-  const model = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ProjectOverviewReadModel);
+  const model = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ProjectOverviewReadModel);
   assertLiteral(model.schemaVersion, PROJECT_OVERVIEW_SCHEMA_VERSION, `${label}.schemaVersion`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   assertString(model.projectId, `${label}.projectId`);
@@ -5490,7 +5450,7 @@ function assertConfigureAuthSsoSettingsResponse(
   const response = asStrictRecord(
     value,
     "ApiConfigureAuthSsoSettingsResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiConfigureAuthSsoSettingsResponse,
+    STRICT_API_BODY_KEYS.ApiConfigureAuthSsoSettingsResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -5513,7 +5473,7 @@ function assertModelRoutingSettingsResponse(
   const response = asStrictRecord(
     value,
     "ApiModelRoutingSettingsResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingSettingsResponse,
+    STRICT_API_BODY_KEYS.ApiModelRoutingSettingsResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -5557,7 +5517,7 @@ function assertBranchPolicySettingsResponse(
   const response = asStrictRecord(
     value,
     "ApiBranchPolicySettingsResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicySettingsResponse,
+    STRICT_API_BODY_KEYS.ApiBranchPolicySettingsResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -5592,7 +5552,7 @@ function assertTranslationScopeSettingsResponse(
   const response = asStrictRecord(
     value,
     "ApiTranslationScopeSettingsResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiTranslationScopeSettingsResponse,
+    STRICT_API_BODY_KEYS.ApiTranslationScopeSettingsResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -5615,7 +5575,7 @@ function assertLocalizationRunConfigResponse(
   const response = asStrictRecord(
     value,
     "ApiLocalizationRunConfigResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiLocalizationRunConfigResponse,
+    STRICT_API_BODY_KEYS.ApiLocalizationRunConfigResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -5641,7 +5601,7 @@ function assertBranchPolicySourceRevision(value: unknown, label: string): void {
   const sourceRevision = asStrictRecord(
     value,
     label,
-    ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicySourceRevisionReference,
+    STRICT_API_BODY_KEYS.ApiBranchPolicySourceRevisionReference,
   );
   assertString(sourceRevision.sourceRevisionId, `${label}.sourceRevisionId`);
   assertString(sourceRevision.revisionKind, `${label}.revisionKind`);
@@ -5652,7 +5612,7 @@ function assertNullableBranchPolicyVersion(value: unknown, label: string): void 
   if (value === null) {
     return;
   }
-  const version = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicyVersion);
+  const version = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiBranchPolicyVersion);
   assertString(version.styleGuideVersionId, `${label}.styleGuideVersionId`);
   assertString(version.status, `${label}.status`);
   assertNonNegativeInteger(version.versionSequence, `${label}.versionSequence`);
@@ -5672,7 +5632,7 @@ function assertNullableBranchPolicyReference(value: unknown, label: string): voi
   const reference = asStrictRecord(
     value,
     label,
-    ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicyGlossaryReference,
+    STRICT_API_BODY_KEYS.ApiBranchPolicyGlossaryReference,
   );
   assertString(reference.referenceId, `${label}.referenceId`);
   assertNonNegativeInteger(reference.versionSequence, `${label}.versionSequence`);
@@ -5693,11 +5653,7 @@ function parseBranchPolicyPolicy(value: unknown, label: string): ApiBranchPolicy
 }
 
 function parseBranchPolicySections(value: unknown, label: string): ApiBranchPolicySections {
-  const sections = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicySections,
-  );
+  const sections = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiBranchPolicySections);
   return {
     tone: parseBranchPolicyRules(sections.tone, `${label}.tone`),
     terminology: parseBranchPolicyRules(sections.terminology, `${label}.terminology`),
@@ -5710,7 +5666,7 @@ function parseBranchPolicySections(value: unknown, label: string): ApiBranchPoli
 function parseBranchPolicyRules(value: unknown, label: string): ApiBranchPolicyRule[] {
   return asArray(value, label).map((entry, index) => {
     const ruleLabel = `${label}[${index}]`;
-    const rule = asStrictRecord(entry, ruleLabel, ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicyRule);
+    const rule = asStrictRecord(entry, ruleLabel, STRICT_API_BODY_KEYS.ApiBranchPolicyRule);
     assertString(rule.ruleId, `${ruleLabel}.ruleId`);
     assertString(rule.guidance, `${ruleLabel}.guidance`);
     return { ruleId: rule.ruleId, guidance: rule.guidance };
@@ -5721,11 +5677,7 @@ function assertModelRoutingProvider(
   value: unknown,
   label: string,
 ): asserts value is ApiModelRoutingProvider {
-  const provider = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingProvider,
-  );
+  const provider = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiModelRoutingProvider);
   assertString(provider.providerId, `${label}.providerId`);
   assertString(provider.providerFamily, `${label}.providerFamily`);
   assertString(provider.endpointFamily, `${label}.endpointFamily`);
@@ -5737,7 +5689,7 @@ function assertModelRoutingModel(
   value: unknown,
   label: string,
 ): asserts value is ApiModelRoutingModel {
-  const model = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingModel);
+  const model = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiModelRoutingModel);
   assertString(model.modelRegistryId, `${label}.modelRegistryId`);
   assertString(model.providerId, `${label}.providerId`);
   assertString(model.modelId, `${label}.modelId`);
@@ -5749,11 +5701,7 @@ function assertModelRoutingPromptPreset(
   value: unknown,
   label: string,
 ): asserts value is ApiModelRoutingPromptPreset {
-  const preset = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingPromptPreset,
-  );
+  const preset = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiModelRoutingPromptPreset);
   assertString(preset.promptPresetId, `${label}.promptPresetId`);
   assertString(preset.promptTemplateVersion, `${label}.promptTemplateVersion`);
   assertString(preset.presetSchemaVersion, `${label}.presetSchemaVersion`);
@@ -5765,7 +5713,7 @@ function assertModelRoutingRoute(
   value: unknown,
   label: string,
 ): asserts value is ApiModelRoutingRoute {
-  const route = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingRoute);
+  const route = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiModelRoutingRoute);
   assertString(route.projectId, `${label}.projectId`);
   assertString(route.taskKind, `${label}.taskKind`);
   assertString(route.providerId, `${label}.providerId`);
@@ -5783,7 +5731,7 @@ function assertMemberInvitationResponse(
   const response = asStrictRecord(
     value,
     "ApiMemberInvitationResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiMemberInvitationResponse,
+    STRICT_API_BODY_KEYS.ApiMemberInvitationResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -5807,7 +5755,7 @@ function assertMemberResponse(value: unknown): asserts value is ApiMemberRespons
   const response = asStrictRecord(
     value,
     "ApiMemberResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiMemberResponse,
+    STRICT_API_BODY_KEYS.ApiMemberResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -5821,7 +5769,7 @@ function assertMembersListResponse(value: unknown): asserts value is ApiMembersL
   const response = asStrictRecord(
     value,
     "ApiMembersListResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiMembersListResponse,
+    STRICT_API_BODY_KEYS.ApiMembersListResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -5841,7 +5789,7 @@ function assertAuthBillingSeatUsageResponse(
   const response = asStrictRecord(
     value,
     "ApiAuthBillingSeatUsageResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiAuthBillingSeatUsageResponse,
+    STRICT_API_BODY_KEYS.ApiAuthBillingSeatUsageResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -5877,7 +5825,7 @@ function assertPermissionSetsListResponse(
   const response = asStrictRecord(
     value,
     "ApiPermissionSetsListResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPermissionSetsListResponse,
+    STRICT_API_BODY_KEYS.ApiPermissionSetsListResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -5903,7 +5851,7 @@ function assertPrincipalPermissionSetGrantResponse(
   const response = asStrictRecord(
     value,
     "ApiPrincipalPermissionSetGrantResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPrincipalPermissionSetGrantResponse,
+    STRICT_API_BODY_KEYS.ApiPrincipalPermissionSetGrantResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -5929,7 +5877,7 @@ function assertAuthSessionsListResponse(
   const response = asStrictRecord(
     value,
     "ApiAuthSessionsListResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiAuthSessionsListResponse,
+    STRICT_API_BODY_KEYS.ApiAuthSessionsListResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -5949,7 +5897,7 @@ function assertRevokeAuthSessionResponse(
   const response = asStrictRecord(
     value,
     "ApiRevokeAuthSessionResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiRevokeAuthSessionResponse,
+    STRICT_API_BODY_KEYS.ApiRevokeAuthSessionResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -5963,7 +5911,7 @@ function assertAuthIdentityResponse(value: unknown): asserts value is ApiAuthIde
   const response = asStrictRecord(
     value,
     "ApiAuthIdentityResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiAuthIdentityResponse,
+    STRICT_API_BODY_KEYS.ApiAuthIdentityResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -5987,7 +5935,7 @@ function assertAuthCapabilitiesResponse(
   const response = asStrictRecord(
     value,
     "ApiAuthCapabilitiesResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiAuthCapabilitiesResponse,
+    STRICT_API_BODY_KEYS.ApiAuthCapabilitiesResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -6001,7 +5949,7 @@ function assertAuthCapabilitiesResponse(
   const denials = asStrictRecord(
     response.denials,
     "ApiAuthCapabilitiesResponse.denials",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiStudioCapabilityDenials,
+    STRICT_API_BODY_KEYS.ApiStudioCapabilityDenials,
   );
   assertNullableString(denials.flag, "ApiAuthCapabilitiesResponse.denials.flag");
   assertNullableString(denials.steer, "ApiAuthCapabilitiesResponse.denials.steer");
@@ -6019,7 +5967,7 @@ function assertRemoveMemberResponse(value: unknown): asserts value is ApiRemoveM
   const response = asStrictRecord(
     value,
     "ApiRemoveMemberResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiRemoveMemberResponse,
+    STRICT_API_BODY_KEYS.ApiRemoveMemberResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -6033,7 +5981,7 @@ function assertAuthIdentityAccount(
   value: unknown,
   label: string,
 ): asserts value is ApiAuthIdentityAccount {
-  const account = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiAuthIdentityAccount);
+  const account = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiAuthIdentityAccount);
   assertString(account.membershipId, `${label}.membershipId`);
   assertString(account.accountId, `${label}.accountId`);
   assertString(account.accountSlug, `${label}.accountSlug`);
@@ -6043,7 +5991,7 @@ function assertAuthIdentityAccount(
 }
 
 function assertMemberRecord(value: unknown, label: string): asserts value is ApiMemberRecord {
-  const member = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiMemberRecord);
+  const member = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiMemberRecord);
   assertString(member.membershipId, `${label}.membershipId`);
   assertString(member.accountId, `${label}.accountId`);
   assertString(member.userId, `${label}.userId`);
@@ -6058,11 +6006,7 @@ function assertPermissionSetRecord(
   value: unknown,
   label: string,
 ): asserts value is ApiPermissionSetRecord {
-  const permissionSet = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPermissionSetRecord,
-  );
+  const permissionSet = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiPermissionSetRecord);
   assertString(permissionSet.permissionSetId, `${label}.permissionSetId`);
   assertString(permissionSet.accountId, `${label}.accountId`);
   assertString(permissionSet.name, `${label}.name`);
@@ -6073,7 +6017,7 @@ function assertAuthSessionRecord(
   value: unknown,
   label: string,
 ): asserts value is ApiAuthSessionRecord {
-  const session = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiAuthSessionRecord);
+  const session = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiAuthSessionRecord);
   assertString(session.sessionId, `${label}.sessionId`);
   assertString(session.principalId, `${label}.principalId`);
   assertDateLike(session.createdAt, `${label}.createdAt`);
@@ -6095,7 +6039,7 @@ function assertLaunchPassResponse(value: unknown): asserts value is ApiLaunchPas
   const response = asStrictRecord(
     value,
     "ApiLaunchPassResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiLaunchPassResponse,
+    STRICT_API_BODY_KEYS.ApiLaunchPassResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -6126,7 +6070,7 @@ export function parseLaunchPassRequest(body: unknown): ApiLaunchPassRequest {
     const request = asStrictRecord(
       body,
       "ApiLaunchPassRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ApiLaunchPassRequest,
+      STRICT_API_BODY_KEYS.ApiLaunchPassRequest,
     );
     assertString(request.localeBranchId, "ApiLaunchPassRequest.localeBranchId");
     return { localeBranchId: request.localeBranchId };
@@ -6144,7 +6088,7 @@ export function parsePlayTargetEditRequest(body: unknown): ApiPlayTargetEditRequ
     const request = asStrictRecord(
       body,
       "ApiPlayTargetEditRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ApiPlayTargetEditRequest,
+      STRICT_API_BODY_KEYS.ApiPlayTargetEditRequest,
     );
     assertString(request.bridgeUnitId, "ApiPlayTargetEditRequest.bridgeUnitId");
     assertString(request.targetBody, "ApiPlayTargetEditRequest.targetBody");
@@ -6165,7 +6109,7 @@ export function parsePatchIterationPlayRequest(body: unknown): ApiPatchIteration
     const request = asStrictRecord(
       body,
       "ApiPatchIterationPlayRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationPlayRequest,
+      STRICT_API_BODY_KEYS.ApiPatchIterationPlayRequest,
     );
     assertString(request.adapterId, "ApiPatchIterationPlayRequest.adapterId");
     assertString(request.operation, "ApiPatchIterationPlayRequest.operation");
@@ -6191,7 +6135,7 @@ export function parsePatchIterationFeedbackBatchRequest(
     const request = asStrictRecord(
       body,
       "ApiPatchIterationFeedbackBatchRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackBatchRequest,
+      STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackBatchRequest,
     );
     return {
       ...(request.feedbackBatchId === undefined
@@ -6288,7 +6232,7 @@ export function parsePatchIterationFeedbackRequest(
     const request = asStrictRecord(
       body,
       "ApiPatchIterationFeedbackRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackRequest,
+      STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackRequest,
     );
     assertEnum(request.eventKind, apiPatchIterationFeedbackEventKinds, "eventKind");
     const response: ApiPatchIterationFeedbackRequest = { eventKind: request.eventKind };
@@ -6355,7 +6299,7 @@ export function parsePatchIterationRefineRequest(body: unknown): ApiPatchIterati
     const request = asStrictRecord(
       body,
       "ApiPatchIterationRefineRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationRefineRequest,
+      STRICT_API_BODY_KEYS.ApiPatchIterationRefineRequest,
     );
     const response: ApiPatchIterationRefineRequest = {};
     if (request.feedbackBatchIds !== undefined) {
@@ -6430,7 +6374,7 @@ function assertPlayRouteMapResponse(value: unknown): asserts value is ApiPlayRou
   const response = asStrictRecord(
     value,
     "ApiPlayRouteMapResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPlayRouteMapResponse,
+    STRICT_API_BODY_KEYS.ApiPlayRouteMapResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -6571,7 +6515,7 @@ function assertPlayFlagAnnotationResponse(
   const response = asStrictRecord(
     value,
     "ApiPlayFlagAnnotationResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPlayFlagAnnotationResponse,
+    STRICT_API_BODY_KEYS.ApiPlayFlagAnnotationResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -6599,7 +6543,7 @@ export function assertPlayUnitFeedbackResponse(
   const response = asStrictRecord(
     value,
     "ApiPlayUnitFeedbackResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPlayUnitFeedbackResponse,
+    STRICT_API_BODY_KEYS.ApiPlayUnitFeedbackResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -6623,7 +6567,7 @@ function assertPlayAddressableUnitResponse(
   const response = asStrictRecord(
     value,
     "ApiPlayAddressableUnitResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPlayAddressableUnitResponse,
+    STRICT_API_BODY_KEYS.ApiPlayAddressableUnitResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -6684,7 +6628,7 @@ function assertPlayTargetEditResponse(value: unknown): asserts value is ApiPlayT
   const response = asStrictRecord(
     value,
     "ApiPlayTargetEditResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPlayTargetEditResponse,
+    STRICT_API_BODY_KEYS.ApiPlayTargetEditResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -6706,7 +6650,7 @@ function assertPlayDeliveryResponse(value: unknown): asserts value is ApiPlayDel
   const response = asStrictRecord(
     value,
     "ApiPlayDeliveryResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPlayDeliveryResponse,
+    STRICT_API_BODY_KEYS.ApiPlayDeliveryResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -6733,7 +6677,7 @@ function assertPlayDeliveryUnits(value: unknown, label: string): void {
     const unit = asStrictRecord(
       value,
       `${label}[${index}]`,
-      ITOTORI_STRICT_API_BODY_KEYS.ApiPlayDeliveryUnit,
+      STRICT_API_BODY_KEYS.ApiPlayDeliveryUnit,
     );
     assertString(unit.bridgeUnitId, `${label}[${index}].bridgeUnitId`);
     assertNonNegativeInteger(unit.unitOrdinal, `${label}[${index}].unitOrdinal`);
@@ -6751,7 +6695,7 @@ function assertPatchIterationDeliveryResponse(
   const response = asStrictRecord(
     value,
     "ApiPatchIterationDeliveryResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationDeliveryResponse,
+    STRICT_API_BODY_KEYS.ApiPatchIterationDeliveryResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -6778,7 +6722,7 @@ function assertPatchIterationVersionsResponse(
   const response = asStrictRecord(
     value,
     "ApiPatchIterationVersionsResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationVersionsResponse,
+    STRICT_API_BODY_KEYS.ApiPatchIterationVersionsResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -6797,7 +6741,7 @@ function assertPatchIterationSurfaceResponse(
   const response = asStrictRecord(
     value,
     "ApiPatchIterationSurfaceResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationSurfaceResponse,
+    STRICT_API_BODY_KEYS.ApiPatchIterationSurfaceResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -6818,7 +6762,7 @@ function assertPatchIterationPlayResponse(
   const response = asStrictRecord(
     value,
     "ApiPatchIterationPlayResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationPlayResponse,
+    STRICT_API_BODY_KEYS.ApiPatchIterationPlayResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -6856,7 +6800,7 @@ function assertPatchIterationFeedbackBatchResponse(
   const response = asStrictRecord(
     value,
     "ApiPatchIterationFeedbackBatchResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackBatchResponse,
+    STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackBatchResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -6876,7 +6820,7 @@ function assertPatchIterationFeedbackResponse(
   const response = asStrictRecord(
     value,
     "ApiPatchIterationFeedbackResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackResponse,
+    STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackResponse,
   );
   assertLiteral(
     response.schemaVersion,
@@ -6895,7 +6839,7 @@ function assertPatchIterationRefineResponse(
   const response = asStrictRecord(
     value,
     "ApiPatchIterationRefineResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationRefineResponse,
+    STRICT_API_BODY_KEYS.ApiPatchIterationRefineResponse,
   );
   assertLiteral(
     response.schemaVersion,

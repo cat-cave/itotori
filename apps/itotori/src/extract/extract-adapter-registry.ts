@@ -46,7 +46,7 @@ export type RealliveExtractSource = {
   vaultCanonicalId?: string;
   /**
    * Sourcing (raw-path helper): a game root containing REALLIVEDATA/Seen.txt.
-   * When omitted, kaifuu-cli falls back to the ITOTORI_REAL_GAME_ROOT env var.
+   * When omitted, kaifuu-cli falls back to the private inventory row env var.
    */
   gameRoot?: string;
   gameId: string;
@@ -75,7 +75,7 @@ export type SoftpalExtractSource = {
   engine: "softpal";
   /**
    * The Softpal game root (passed positionally). When omitted, kaifuu-cli falls
-   * back to the ITOTORI_REAL_GAME_ROOT_SOFTPAL env var.
+   * back to the private inventory row env var.
    */
   gameRoot?: string;
 };
@@ -84,7 +84,7 @@ export type SoftpalExtractSource = {
  * The inputs an RPG Maker MV/MZ extract needs. It walks the game's `www/data/
  * *.json` surfaces into one whole-game bridge; identity metadata mirrors the
  * RealLive flag-shape. When `gameDir` is omitted, kaifuu-cli falls back to the
- * ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ env var.
+ * private inventory row env var.
  */
 export type RpgMakerExtractSource = {
   engine: "rpg-maker";
@@ -510,7 +510,7 @@ const realliveExtractAdapter: ExtractAdapter<"reallive"> = {
     }
     return out;
   },
-  validate(args, env) {
+  validate(args, _env) {
     const scopeCount = [
       args.wholeSeen === true,
       args.scene !== undefined,
@@ -551,11 +551,9 @@ const realliveExtractAdapter: ExtractAdapter<"reallive"> = {
     // Sourcing: at least one route must be resolvable BEFORE spawning.
     const hasVault = args.vaultCanonicalId !== undefined && args.vaultCanonicalId.length > 0;
     const hasGameRoot = args.gameRoot !== undefined && args.gameRoot.length > 0;
-    const hasEnvGameRoot =
-      env.ITOTORI_REAL_GAME_ROOT !== undefined && env.ITOTORI_REAL_GAME_ROOT.length > 0;
-    if (!hasVault && !hasGameRoot && !hasEnvGameRoot) {
+    if (!hasVault && !hasGameRoot) {
       throw new Error(
-        "kaifuu extract refused: sourcing requires --vault-canonical-id <ID>, --game-root <PATH>, or the ITOTORI_REAL_GAME_ROOT env var",
+        "kaifuu extract refused: sourcing requires --vault-canonical-id <ID> or --game-root <PATH>",
       );
     }
   },
@@ -692,14 +690,11 @@ const softpalExtractAdapter: ExtractAdapter<"softpal"> = {
     out.push("--bundle-output", args.bundleOutputPath);
     return out;
   },
-  validate(args, env) {
+  validate(args, _env) {
     const hasGameRoot = args.gameRoot !== undefined && args.gameRoot.length > 0;
-    const hasEnvGameRoot =
-      env.ITOTORI_REAL_GAME_ROOT_SOFTPAL !== undefined &&
-      env.ITOTORI_REAL_GAME_ROOT_SOFTPAL.length > 0;
-    if (!hasGameRoot && !hasEnvGameRoot) {
+    if (!hasGameRoot) {
       throw new Error(
-        "kaifuu extract (softpal) refused: sourcing requires a game root — pass gameRoot or set the ITOTORI_REAL_GAME_ROOT_SOFTPAL env var",
+        "kaifuu extract (softpal) refused: sourcing requires a game root — pass gameRoot",
       );
     }
   },
@@ -756,14 +751,11 @@ const rpgMakerExtractAdapter: ExtractAdapter<"rpg-maker"> = {
     }
     return out;
   },
-  validate(args, env) {
+  validate(args, _env) {
     const hasGameDir = args.gameDir !== undefined && args.gameDir.length > 0;
-    const hasEnvGameDir =
-      env.ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ !== undefined &&
-      env.ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ.length > 0;
-    if (!hasGameDir && !hasEnvGameDir) {
+    if (!hasGameDir) {
       throw new Error(
-        "kaifuu extract (rpg-maker) refused: sourcing requires a game www/ dir — pass gameDir or set the ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ env var",
+        "kaifuu extract (rpg-maker) refused: sourcing requires a game www/ dir — pass gameDir",
       );
     }
   },
@@ -832,7 +824,7 @@ const siglusExtractAdapter: ExtractAdapter<"siglus"> = {
     );
     return out;
   },
-  validate(args, env) {
+  validate(args, _env) {
     if (!SIGLUS_SUPPORTED_CIPHER_METHODS.some((method) => method === args.cipherMethod)) {
       throw new Error(
         `kaifuu.siglus.engine_profile.out_of_profile_cipher_method: '${args.cipherMethod}' is not declared by the Siglus engine profile`,
@@ -840,17 +832,14 @@ const siglusExtractAdapter: ExtractAdapter<"siglus"> = {
     }
     const hasVault = args.vaultCanonicalId !== undefined && args.vaultCanonicalId.length > 0;
     const hasGameRoot = args.gameRoot !== undefined && args.gameRoot.length > 0;
-    const hasEnvGameRoot =
-      env.ITOTORI_REAL_GAME_ROOT_SIGLUS !== undefined &&
-      env.ITOTORI_REAL_GAME_ROOT_SIGLUS.length > 0;
     if (hasVault && hasGameRoot) {
       throw new Error(
         "kaifuu extract (siglus) refused: provide either a vault canonical id or game root, not both",
       );
     }
-    if (!hasVault && !hasGameRoot && !hasEnvGameRoot) {
+    if (!hasVault && !hasGameRoot) {
       throw new Error(
-        "kaifuu extract (siglus) refused: sourcing requires --vault-canonical-id <ID>, --game-root <PATH>, or the ITOTORI_REAL_GAME_ROOT_SIGLUS env var",
+        "kaifuu extract (siglus) refused: sourcing requires --vault-canonical-id <ID> or --game-root <PATH>",
       );
     }
   },

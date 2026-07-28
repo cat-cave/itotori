@@ -1,76 +1,14 @@
 //! Private real-corpus addressing.
 //!
 //! A test asks for an engine, ordinal, and variant. It never constructs an
-//! environment-variable name. The sole machine-specific setting is
-//! `ITOTORI_CORPUS_ROOT`; a local manifest maps stable identities to relative
-//! paths below that root. The manifest is deliberately not checked in because
-//! its paths identify private local installations.
+//! environment-variable name. Private roots live in the platform configuration
+//! directory's `itotori/inventory.toml`, where they are records in the shared
+//! inventory schema rather than values in a process-wide namespace.
 
-use std::collections::BTreeMap;
-use std::env;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
-use serde::de::{self, MapAccess, Visitor};
-
-const ROOT_ENV: &str = "ITOTORI_CORPUS_ROOT";
-const MANIFEST_RELATIVE_PATH: &str = "../../corpora/manifest.v1.json";
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Manifest {
-    #[serde(rename = "$schema")]
-    _schema: Option<String>,
-    version: u8,
-    corpora: Entries,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Entry {
-    path: PathBuf,
-}
-
-#[derive(Debug)]
-struct Entries(BTreeMap<String, Entry>);
-
-impl<'de> Deserialize<'de> for Entries {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct EntriesVisitor;
-
-        impl<'de> Visitor<'de> for EntriesVisitor {
-            type Value = Entries;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                formatter.write_str("a map of unique corpus identities to entries")
-            }
-
-            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                let mut entries = BTreeMap::new();
-                while let Some((identity, entry)) = map.next_entry::<String, Entry>()? {
-                    if let Some(previous) = entries.insert(identity.clone(), entry) {
-                        let current = entries.get(&identity).expect("inserted entry");
-                        return Err(de::Error::custom(format!(
-                            "duplicate corpus identity {identity}: paths {} and {}",
-                            previous.path.display(),
-                            current.path.display()
-                        )));
-                    }
-                }
-                Ok(Entries(entries))
-            }
-        }
-
-        deserializer.deserialize_map(EntriesVisitor)
-    }
-}
+use engine_contract::{Inventory, parse_inventory};
 
 /// A request for one corpus. Engine identifiers are manifest data, not an enum,
 /// so supporting another engine needs no registry code branch.
@@ -95,11 +33,11 @@ impl fmt::Display for Need<'_> {
 /// surface this as a non-passing result rather than claim coverage.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Unavailable {
-    RootUnset,
-    ManifestMissing {
+    ConfigDirectoryUnavailable,
+    InventoryMissing {
         path: PathBuf,
     },
-    ManifestInvalid {
+    InventoryInvalid {
         path: PathBuf,
         reason: String,
     },
@@ -119,15 +57,18 @@ pub enum Unavailable {
 impl fmt::Display for Unavailable {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::RootUnset => write!(formatter, "{ROOT_ENV} is unset"),
-            Self::ManifestMissing { path } => write!(
+            Self::ConfigDirectoryUnavailable => write!(
                 formatter,
-                "corpus registry manifest is missing at {}; copy corpora/manifest.v1.example.json to corpora/manifest.v1.json and replace its role-shaped paths with local directories",
+                "platform configuration directory is unavailable; pass an explicit inventory path to the caller"
+            ),
+            Self::InventoryMissing { path } => write!(
+                formatter,
+                "private corpus inventory is missing at {}; copy the matching catalog inventory template to this path and replace its example roots with local directories",
                 path.display()
             ),
-            Self::ManifestInvalid { path, reason } => write!(
+            Self::InventoryInvalid { path, reason } => write!(
                 formatter,
-                "corpus registry manifest at {} is invalid: {reason}",
+                "private corpus inventory at {} is invalid: {reason}",
                 path.display()
             ),
             Self::NotDeclared {
@@ -156,33 +97,79 @@ impl fmt::Display for Unavailable {
     }
 }
 
-/// Resolve a corpus from the process root. A missing root, entry, or directory
-/// is an explicit `Unavailable`, never a panic.
+/// Resolve a corpus from the platform-standard private inventory. A missing
+/// inventory, entry, or directory is an explicit `Unavailable`, never a panic.
 pub fn resolve(need: Need<'_>) -> Result<PathBuf, Unavailable> {
-    let Some(root) = env::var_os(ROOT_ENV).map(PathBuf::from) else {
-        return Err(Unavailable::RootUnset);
+    resolve_with_inventory(&inventory_path()?, need)
+}
+
+/// Resolve a slash-delimited inventory identity (`engine/ordinal/variant`).
+///
+/// This is the loader used by cross-crate real-byte harnesses. Keeping the
+/// identity as table data avoids reviving one environment variable per title.
+pub fn resolve_identity(identity: &str) -> Result<PathBuf, Unavailable> {
+    let config_path = inventory_path()?;
+    resolve_identity_with_inventory(&config_path, identity)
+}
+
+/// Resolve a slash-delimited inventory identity against a supplied inventory.
+///
+/// This makes the identity parser and the inventory lookup independently
+/// testable without changing a process-wide configuration directory.
+pub fn resolve_identity_with_inventory(
+    inventory_path: &Path,
+    identity: &str,
+) -> Result<PathBuf, Unavailable> {
+    let mut parts = identity.split('/');
+    let (Some(engine), Some(ordinal), Some(variant), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return Err(Unavailable::InventoryInvalid {
+            path: inventory_path.to_path_buf(),
+            reason: format!(
+                "invalid corpus identity `{identity}`; expected engine/ordinal/variant"
+            ),
+        });
     };
-    resolve_at(&root, need)
+    let ordinal = ordinal
+        .parse::<u16>()
+        .map_err(|_| Unavailable::InventoryInvalid {
+            path: inventory_path.to_path_buf(),
+            reason: format!("invalid corpus identity `{identity}`; ordinal must be a positive u16"),
+        })?;
+    if ordinal == 0 {
+        return Err(Unavailable::InventoryInvalid {
+            path: inventory_path.to_path_buf(),
+            reason: format!("invalid corpus identity `{identity}`; ordinal must be positive"),
+        });
+    }
+    resolve_with_inventory(
+        inventory_path,
+        Need {
+            engine,
+            ordinal,
+            variant,
+        },
+    )
 }
 
-/// Resolve against an explicit root; useful for deterministic registry tests.
-pub fn resolve_at(root: &Path, need: Need<'_>) -> Result<PathBuf, Unavailable> {
-    resolve_with_manifest(root, &manifest_path(), need)
-}
-
-/// Resolve against an explicit corpus root and manifest path. This keeps the
-/// parser testable without making private local manifest paths part of a build.
-pub fn resolve_with_manifest(
-    root: &Path,
-    manifest_path: &Path,
+/// Resolve against an explicit private inventory path; useful for deterministic
+/// registry tests and commands that provide an explicit configuration location.
+pub fn resolve_with_inventory(
+    inventory_path: &Path,
     need: Need<'_>,
 ) -> Result<PathBuf, Unavailable> {
-    let manifest = parse_manifest(manifest_path)?;
-    let identity = need.to_string();
-    let Some(entry) = manifest.corpora.0.get(&identity) else {
+    let inventory = read_inventory(inventory_path)?;
+    let id = format!("corpus-{}-{}-{}", need.engine, need.ordinal, need.variant);
+    let engine = format!("engine-{}", need.engine);
+    let Some(corpus) = inventory
+        .corpus
+        .iter()
+        .find(|corpus| corpus.id == id && corpus.engine == engine)
+    else {
         return Err(unavailable_not_declared(need));
     };
-    let path = root.join(&entry.path);
+    let path = PathBuf::from(&corpus.root);
     if path.is_dir() {
         Ok(path)
     } else {
@@ -190,80 +177,32 @@ pub fn resolve_with_manifest(
     }
 }
 
-/// Location of the private local manifest relative to this crate's source.
-pub fn manifest_path() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join(MANIFEST_RELATIVE_PATH)
+/// Default private inventory location following the platform configuration
+/// convention. Commands with a configuration argument should call
+/// [`resolve_with_inventory`] instead.
+pub fn inventory_path() -> Result<PathBuf, Unavailable> {
+    dirs::config_dir()
+        .map(|path| path.join("itotori").join("inventory.toml"))
+        .ok_or(Unavailable::ConfigDirectoryUnavailable)
 }
 
-fn parse_manifest(path: &Path) -> Result<Manifest, Unavailable> {
+fn read_inventory(path: &Path) -> Result<Inventory, Unavailable> {
     let text = std::fs::read_to_string(path).map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
-            Unavailable::ManifestMissing {
+            Unavailable::InventoryMissing {
                 path: path.to_path_buf(),
             }
         } else {
-            Unavailable::ManifestInvalid {
+            Unavailable::InventoryInvalid {
                 path: path.to_path_buf(),
                 reason: error.to_string(),
             }
         }
     })?;
-    let manifest =
-        serde_json::from_str::<Manifest>(&text).map_err(|error| Unavailable::ManifestInvalid {
-            path: path.to_path_buf(),
-            reason: error.to_string(),
-        })?;
-    if manifest.version != 1 {
-        return Err(Unavailable::ManifestInvalid {
-            path: path.to_path_buf(),
-            reason: format!("unsupported version {}; expected 1", manifest.version),
-        });
-    }
-    if manifest.corpora.0.is_empty() {
-        return Err(Unavailable::ManifestInvalid {
-            path: path.to_path_buf(),
-            reason: "corpora must contain at least one identity".to_owned(),
-        });
-    }
-    if manifest.corpora.0.iter().any(|(identity, entry)| {
-        !valid_identity(identity)
-            || entry.path.is_absolute()
-            || entry
-                .path
-                .components()
-                .any(|component| matches!(component, std::path::Component::ParentDir))
-    }) {
-        return Err(Unavailable::ManifestInvalid {
-            path: path.to_path_buf(),
-            reason: "corpus identities must be engine/ordinal/variant and paths must be relative without `..`".to_owned(),
-        });
-    }
-    Ok(manifest)
-}
-
-fn valid_identity(identity: &str) -> bool {
-    let mut parts = identity.split('/');
-    let Some(engine) = parts.next() else {
-        return false;
-    };
-    let Some(ordinal) = parts.next() else {
-        return false;
-    };
-    let Some(variant) = parts.next() else {
-        return false;
-    };
-    parts.next().is_none()
-        && valid_token(engine)
-        && ordinal.parse::<u16>().is_ok_and(|number| number > 0)
-        && valid_token(variant)
-}
-
-fn valid_token(token: &str) -> bool {
-    let mut chars = token.chars();
-    matches!(chars.next(), Some('a'..='z'))
-        && chars.all(|character| {
-            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
-        })
+    parse_inventory(&text).map_err(|error| Unavailable::InventoryInvalid {
+        path: path.to_path_buf(),
+        reason: error.to_string(),
+    })
 }
 
 fn unavailable_not_declared(need: Need<'_>) -> Unavailable {
@@ -285,29 +224,28 @@ fn unavailable_path_missing(need: Need<'_>, path: PathBuf) -> Unavailable {
 
 #[cfg(test)]
 mod tests {
-    use super::{Need, Unavailable, resolve_with_manifest};
+    use super::{Need, Unavailable, resolve_identity_with_inventory, resolve_with_inventory};
     use std::path::Path;
 
-    fn write_manifest(path: &Path, relative_path: &str) {
+    fn write_inventory(path: &Path, root: &Path) {
         std::fs::write(
             path,
             format!(
-                r#"{{"$schema":"./manifest.v1.schema.json","version":1,"corpora":{{"reallive/1/encrypted":{{"path":"{relative_path}"}}}}}}"#
+                "schema = \"inventory/v1\"\n\n[[corpus]]\nid = \"corpus-reallive-1-encrypted\"\nengine = \"engine-reallive\"\nvariant = \"variant-encrypted\"\nroot = \"{}\"\ncontent_address = \"sha256:test\"\ntags = [\"strict\"]\naccess = \"read-only\"\n",
+                root.display()
             ),
         )
-        .expect("write manifest");
+        .expect("write inventory");
     }
 
     #[test]
-    fn resolves_manifest_selected_corpus_from_single_root() {
+    fn resolves_inventory_selected_corpus() {
         let root = tempfile::tempdir().expect("temporary corpus root");
-        let manifest = tempfile::NamedTempFile::new().expect("temporary manifest");
-        std::fs::create_dir(root.path().join("role-primary")).expect("declared path");
-        write_manifest(manifest.path(), "role-primary");
+        let inventory = tempfile::NamedTempFile::new().expect("temporary inventory");
+        write_inventory(inventory.path(), root.path());
 
-        let actual = resolve_with_manifest(
-            root.path(),
-            manifest.path(),
+        let actual = resolve_with_inventory(
+            inventory.path(),
             Need {
                 engine: "reallive",
                 ordinal: 1,
@@ -316,16 +254,18 @@ mod tests {
         )
         .expect("declared corpus resolves");
 
-        assert_eq!(actual, root.path().join("role-primary"));
+        assert_eq!(actual, root.path());
     }
 
     #[test]
     fn reports_absent_declared_corpus_without_panicking() {
-        let manifest = tempfile::NamedTempFile::new().expect("temporary manifest");
-        write_manifest(manifest.path(), "role-secondary");
-        let error = resolve_with_manifest(
+        let inventory = tempfile::NamedTempFile::new().expect("temporary inventory");
+        write_inventory(
+            inventory.path(),
             Path::new("/definitely-missing-corpus-root"),
-            manifest.path(),
+        );
+        let error = resolve_with_inventory(
+            inventory.path(),
             Need {
                 engine: "reallive",
                 ordinal: 1,
@@ -338,10 +278,34 @@ mod tests {
     }
 
     #[test]
-    fn reports_missing_private_manifest_with_copy_instruction() {
-        let error = resolve_with_manifest(
-            Path::new("/corpus-root"),
-            Path::new("/definitely-missing-manifest.json"),
+    fn identity_loader_rejects_a_mutated_root_then_recovers_after_restore() {
+        let root = tempfile::tempdir().expect("temporary corpus root");
+        let inventory = tempfile::NamedTempFile::new().expect("temporary inventory");
+        write_inventory(inventory.path(), root.path());
+
+        let initial = resolve_identity_with_inventory(inventory.path(), "reallive/1/encrypted")
+            .expect("declared root resolves before mutation");
+        assert_eq!(initial, root.path());
+
+        write_inventory(
+            inventory.path(),
+            Path::new("/definitely-missing-corpus-root-after-mutation"),
+        );
+        let failure = resolve_identity_with_inventory(inventory.path(), "reallive/1/encrypted")
+            .expect_err("a wrong configured root must fail");
+        assert!(matches!(failure, Unavailable::PathMissing { .. }));
+        assert!(failure.to_string().contains("declared but"));
+
+        write_inventory(inventory.path(), root.path());
+        let restored = resolve_identity_with_inventory(inventory.path(), "reallive/1/encrypted")
+            .expect("restored root resolves");
+        assert_eq!(restored, root.path());
+    }
+
+    #[test]
+    fn reports_missing_private_inventory_with_copy_instruction() {
+        let error = resolve_with_inventory(
+            Path::new("/definitely-missing-inventory.toml"),
             Need {
                 engine: "reallive",
                 ordinal: 1,
@@ -350,31 +314,29 @@ mod tests {
         )
         .expect_err("missing private manifest must be actionable");
 
-        assert!(error.to_string().contains("manifest.v1.example.json"));
+        assert!(error.to_string().contains("catalog inventory template"));
     }
 
     #[test]
-    fn rejects_duplicate_identity_and_names_both_paths() {
-        let manifest = tempfile::NamedTempFile::new().expect("temporary manifest");
+    fn rejects_invalid_inventory_without_selecting_a_corpus() {
+        let inventory = tempfile::NamedTempFile::new().expect("temporary inventory");
         std::fs::write(
-            manifest.path(),
-            r#"{"version":1,"corpora":{"reallive/1/encrypted":{"path":"old"},"reallive/1/encrypted":{"path":"new"}}}"#,
+            inventory.path(),
+            "schema = \"inventory/v1\"\n\n[[corpus]]\nid = \"corpus-reallive-1-encrypted\"\nengine = \"engine-reallive\"\nvariant = \"variant-encrypted\"\nroot = \"relative\"\ncontent_address = \"sha256:test\"\ntags = []\naccess = \"read-only\"\n",
         )
-        .expect("write duplicate manifest");
+        .expect("write invalid inventory");
 
-        let error = resolve_with_manifest(
-            Path::new("/corpus-root"),
-            manifest.path(),
+        let error = resolve_with_inventory(
+            inventory.path(),
             Need {
                 engine: "reallive",
                 ordinal: 1,
                 variant: "encrypted",
             },
         )
-        .expect_err("duplicate identities must not select one declaration");
+        .expect_err("invalid inventory must not select a corpus");
 
         let message = error.to_string();
-        assert!(message.contains("reallive/1/encrypted"));
-        assert!(message.contains("old") && message.contains("new"));
+        assert!(message.contains("corpus root must be absolute"));
     }
 }

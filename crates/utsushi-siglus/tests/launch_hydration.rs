@@ -25,8 +25,8 @@ mod choice_support;
 
 use choice_support::synthetic_choice_scene_payload;
 
-const FIRST_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
-const SECOND_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
+const FIRST_TITLE_ENV: &str = "siglus/1/encrypted";
+const SECOND_TITLE_ENV: &str = "siglus/2/encrypted";
 
 #[test]
 fn launch_hydrates_the_asset_package_from_request_vfs_and_indexes_scenes() {
@@ -255,11 +255,11 @@ fn two_real_siglus_titles_launch_through_vfs_when_available() {
 }
 
 fn corpus_root(variable: &str) -> Option<PathBuf> {
-    let Some(value) = std::env::var_os(variable) else {
+    let Some(value) = corpus_registry::resolve_identity(variable).ok() else {
         eprintln!("SKIP Siglus launch real bytes: {variable} is unset");
         return None;
     };
-    let candidate = PathBuf::from(value);
+    let candidate = value;
     let root = if candidate.is_dir() {
         candidate
     } else {

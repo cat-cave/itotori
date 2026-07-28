@@ -139,40 +139,41 @@ fixtures/private-local/<corpus-id>/
   README.local.md              Local notes about acquisition and scope.
 ```
 
-Private corpus commands should take the corpus path from a CLI flag,
-environment variable, or local config file under `.tmp/`. Do not edit committed
+Private corpus commands should take the corpus path from a CLI flag or private
+platform config file. Do not edit committed
 paths, public manifests, tests, or package metadata to point at private inputs.
 CI must pass with the private path absent.
 
-Suite workflows that need a real corpus should prefer the local registry over
-title-specific environment variables. Copy `corpora/manifest.v1.example.json`
-to the ignored `corpora/manifest.v1.json`; registry-backed tests read that
-location automatically. Its entries are identity-keyed, and every `path` is
-relative to the configured corpus root. Its shape is:
+Suite workflows that need a real corpus use the platform-standard private
+inventory at `~/.config/itotori/inventory.toml` (or its platform equivalent).
+Copy the matching committed `catalog/inventory-templates/` file there and
+replace only the example roots. Its entries are identity-keyed records, and
+their roots are absolute private paths. Its shape is:
 
-```json
-{
-  "$schema": "./manifest.v1.schema.json",
-  "version": 1,
-  "corpora": {
-    "reallive/1/encrypted": {
-      "path": "role-primary-encrypted"
-    }
-  }
-}
+```toml
+schema = "inventory/v1"
+
+[[corpus]]
+id = "corpus-reallive-1-encrypted"
+engine = "engine-reallive"
+variant = "variant-encrypted"
+root = "/private/corpora/reallive-primary"
+content_address = "sha256:replace-with-local-content-address"
+tags = ["reallive", "strict"]
+access = "read-only"
 ```
 
-Registry-backed tests resolve the selected identity below that corpus root. The
+Registry-backed tests resolve the selected identity from that inventory. The
 extract stage instead selects its source with `--game-root` and produces the
 bridge bundle. Structure export consumes that bridge. The current public CLI
 does not provide an observed bridge-to-patch handoff; its selected game root
 must be a read-only source tree for the run and is treated as private local
 state.
 
-For a one-off single-corpus run, operators may set:
+For a one-off single-corpus run, operators should pass the source explicitly:
 
 ```sh
-ITOTORI_REAL_GAME_ROOT=<local-private-root>
+itotori extract --source <local-private-root>
 ```
 
 Never commit an absolute private root or a copied command transcript that

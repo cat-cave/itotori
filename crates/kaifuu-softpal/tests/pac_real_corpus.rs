@@ -1,25 +1,24 @@
 //! Real-bytes validation of the Softpal PAC reader against two owned titles.
-//! `#[ignore]`d and env-gated: set `ITOTORI_SOFTPAL_RESEARCH_ROOT` to the
+//! `#[ignore]`d and env-gated: set `private inventory row` to the
 //! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
 //! `--ignored`. No raw copyrighted bytes live in this file — only entry
 //! counts, offsets, sizes, and SHA-256 hashes, which the reader must
 //! reproduce. The extracted `SCRIPT.SRC` / `TEXT.DAT` hashes were verified
 //! byte-for-byte against the GARbro / SoftPal-Tool `pac_unpack.py` oracle.
 //! Wired into the PERIODIC `ci-real-bytes` real-bytes lane (the
-//! `ITOTORI_SOFTPAL_RESEARCH_ROOT` env-gate is detected by audit-strictness
+//! `private inventory row` env-gate is detected by audit-strictness
 //! rule 5 as a live-corpus signal). The Softpal corpus lives under its own
 //! root (separate from the RealLive/RPG-Maker/vault tree), so the lane
 //! recipe skips the Softpal sub-lane CLEANLY when the root is absent — the
 //! env-strictness contract for these `kaifuu-softpal` proofs lives at the
 //! LANE level (skip-when-absent), not at the test level.
 
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use kaifuu_softpal::{PacArchive, PacEntry};
 
-const RESEARCH_ROOT_ENV: &str = "ITOTORI_SOFTPAL_RESEARCH_ROOT";
+const GAME_IDENTITIES: [&str; 2] = ["softpal/1/plain", "softpal/2/plain"];
 
 /// One inner-file expectation: name, on-disk size, absolute offset, and the
 /// SHA-256 of the extracted payload (oracle-verified).
@@ -134,14 +133,13 @@ fn assert_inner_file(arc: &PacArchive, pac_bytes: &[u8], exp: &FileExpectation) 
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_SOFTPAL_RESEARCH_ROOT (read-only Softpal research tree)"]
+#[ignore = "real-bytes; requires private inventory row (read-only Softpal research tree)"]
 fn enumerates_and_extracts_two_softpal_titles() {
-    let Some(root) = env::var_os(RESEARCH_ROOT_ENV).map(PathBuf::from) else {
-        panic!("set {RESEARCH_ROOT_ENV} to the read-only Softpal research tree");
-    };
-
-    for game in &GAMES {
-        let game_dir = root.join(game.subdir);
+    for (game, identity) in GAMES.iter().zip(GAME_IDENTITIES) {
+        let root = corpus_registry::resolve_identity(identity)
+            .unwrap_or_else(|reason| panic!("registry must resolve {identity}: {reason}"));
+        let nested = root.join(game.subdir);
+        let game_dir = if nested.is_dir() { nested } else { root };
         let mut pacs = Vec::new();
         find_data_pacs(&game_dir, &mut pacs);
         assert!(

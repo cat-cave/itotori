@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 /// ALPHA-006a — `extract --engine reallive --scene <N> --bundle-output <PATH>`.
 /// Sources the RealLive corpus either BY-ID through the read-only vault
 /// (`--vault-canonical-id <ID>`, the alpha production route) or from a raw
-/// game tree (`--game-root <PATH>` / `ITOTORI_REAL_GAME_ROOT`, the env-gated
+/// game tree (`--game-root <PATH>` / `private inventory row`, the env-gated
 /// test helper). It then loads the resolved `REALLIVEDATA/Seen.txt` envelope,
 /// resolves scene `N` via the 10,000-slot directory, decompresses its
 /// AVG32 LZSS payload using kaifuu-reallive's `decompress_avg32`, walks

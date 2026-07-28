@@ -427,7 +427,7 @@ fn rpg_maker_mv_mz_fixture_key_validation_matches_system_json_and_image_evidence
         "fixtures/public/kaifuu-encrypted-matrix/expected/rpg-maker-mv-mz-key-validation-success-v0.1.json",
     );
     let actual = serde_json::to_value(report.redacted_for_report()).unwrap();
-    if std::env::var_os("KAIFUU_RPGMAKER_KEY_VALIDATION_REGEN").is_some() {
+    if std::env::var_os("REGENERATE_FIXTURES").is_some() {
         let mut rendered = serde_json::to_string_pretty(&actual).unwrap();
         rendered.push('\n');
         std::fs::write(&expected_path, rendered).unwrap();

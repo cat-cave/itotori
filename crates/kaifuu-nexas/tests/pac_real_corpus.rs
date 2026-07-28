@@ -1,12 +1,12 @@
 //! Real-bytes validation of the NeXAS PAC reader against Majikoi (*Maji de
 //! Watashi ni Koi Shinasai!*), a byte-verified NeXAS title.
-//! `#[ignore]`d and env-gated: set `ITOTORI_NEXAS_RESEARCH_ROOT` to a READ-ONLY
+//! `#[ignore]`d and env-gated: set `private inventory row` to a READ-ONLY
 //! directory holding the extracted `Config.pac` and `Script.pac` (e.g.
 //! `/scratch/nexas-majikoi`) and run with `--ignored`. No raw copyrighted bytes
 //! live in this file — only entry counts, offsets, sizes, and SHA-256 hashes,
 //! which the reader must reproduce.
 //! ```text
-//! ITOTORI_NEXAS_RESEARCH_ROOT=/scratch/nexas-majikoi \
+//! private inventory row=/scratch/nexas-majikoi \
 //! cargo test -p kaifuu-nexas --test pac_real_corpus -- --ignored --nocapture
 //! # Oracle
 //! The format is a clean-room port of GARbro's `ArcFormats/Nexas/ArcPAC.cs`.
@@ -23,7 +23,7 @@ use std::path::PathBuf;
 use kaifuu_nexas::{Compression, IndexLayout, PacArchive};
 use sha2::{Digest, Sha256};
 
-const RESEARCH_ROOT_ENV: &str = "ITOTORI_NEXAS_RESEARCH_ROOT";
+const RESEARCH_ROOT_ENV: &str = "nexas/1/plain";
 
 struct ArchiveExpectation {
     file: &'static str,
@@ -62,13 +62,15 @@ const ARCHIVES: [ArchiveExpectation; 2] = [
 ];
 
 fn require_corpus_root() -> Option<PathBuf> {
-    let root = std::env::var(RESEARCH_ROOT_ENV).ok()?;
+    let root = corpus_registry::resolve_identity(RESEARCH_ROOT_ENV)
+        .map(|path| path.to_string_lossy().into_owned())
+        .ok()?;
     let path = PathBuf::from(root);
     path.is_dir().then_some(path)
 }
 
 #[test]
-#[ignore = "requires ITOTORI_NEXAS_RESEARCH_ROOT with extracted Majikoi PACs"]
+#[ignore = "requires private inventory row with extracted Majikoi PACs"]
 fn extracts_majikoi_pacs_byte_exact() {
     let Some(root) = require_corpus_root() else {
         eprintln!("{RESEARCH_ROOT_ENV} not set / not a dir; skipping real-bytes NeXAS validation");

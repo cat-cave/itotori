@@ -55,8 +55,8 @@ jobs:
   # for the five other families. On a runner without ANY of the other corpora,
   # `just ci-real-bytes` pre-checks the roots and FAILS LOUD (nonzero) rather
   # than passing with zero real bytes — a red run, never a false green. Corpus
-  # roots are overridable via the ITOTORI_REAL_GAME_ROOT* / ITOTORI_VAULT_ROOT
-  # / ITOTORI_SOFTPAL_RESEARCH_ROOT env for machines that stage elsewhere.
+  # roots are overridable via the private inventory row* / ITOTORI_VAULT_ROOT
+  # / private inventory row env for machines that stage elsewhere.
   ground-truth:
     if: ${{ github.event_name == 'schedule' || inputs.stage == 'full' || inputs.stage == 'ground-truth-only' }}
     runs-on: [self-hosted, itotori-corpora]

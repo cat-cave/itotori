@@ -30,7 +30,7 @@ use kaifuu_core::{
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-const SOURCE_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_ENCRYPTED";
+const SOURCE_ROOT_ENV: &str = "rpg-maker-mv-mz/3/encrypted";
 const DEFAULT_SOURCE_ROOT: &str = "/scratch/itotori-research/rpg-maker-mv-mz/countryside-life/inakaraifu.rj390522.v1-0.en/countryside-life-2025/www";
 const MANIFEST: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -138,8 +138,9 @@ fn manifest_assets(manifest: &Value) -> Vec<AssetRow> {
 }
 
 fn source_www_dir() -> Option<PathBuf> {
-    let root = env::var_os(SOURCE_ROOT_ENV)
-        .map_or_else(|| PathBuf::from(DEFAULT_SOURCE_ROOT), PathBuf::from);
+    let root = corpus_registry::resolve_identity(SOURCE_ROOT_ENV)
+        .ok()
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_SOURCE_ROOT));
     if root.join("data/System.json").is_file() {
         Some(root)
     } else {

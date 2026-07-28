@@ -1,7 +1,7 @@
 //! Real-bytes validation of the Softpal **patch-back** against two owned titles,
 //! extracting `SCRIPT.SRC` + `TEXT.DAT` from the same `data.pac` via the crate's
 //! own PAC reader.
-//! `#[ignore]`d and env-gated: set `ITOTORI_SOFTPAL_RESEARCH_ROOT` to the
+//! `#[ignore]`d and env-gated: set `private inventory row` to the
 //! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
 //! `--ignored`. **No raw copyrighted text lives in this file** — only counts,
 //! offsets, SHA-256 digests, and short ASCII/kana strings *we* inject.
@@ -16,7 +16,6 @@
 //!    appear at those units, 100 % pointer resolution is preserved (0 dangling,
 //!    fully resolved), and out-of-scope units are unchanged.
 
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -25,7 +24,7 @@ use kaifuu_softpal::{
 };
 use sha2::{Digest, Sha256};
 
-const RESEARCH_ROOT_ENV: &str = "ITOTORI_SOFTPAL_RESEARCH_ROOT";
+const GAME_IDENTITIES: [&str; 2] = ["softpal/1/plain", "softpal/2/plain"];
 
 struct Game {
     subdir: &'static str,
@@ -64,7 +63,12 @@ fn find_data_pacs(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 fn extract_entry(game: &Game, root: &Path, name: &str) -> Vec<u8> {
-    let game_dir = root.join(game.subdir);
+    let nested = root.join(game.subdir);
+    let game_dir = if nested.is_dir() {
+        nested
+    } else {
+        root.to_path_buf()
+    };
     let mut pacs = Vec::new();
     find_data_pacs(&game_dir, &mut pacs);
     assert!(!pacs.is_empty(), "no data.pac under {}", game_dir.display());
@@ -105,13 +109,11 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_SOFTPAL_RESEARCH_ROOT (read-only Softpal research tree)"]
+#[ignore = "real-bytes; requires private inventory row (read-only Softpal research tree)"]
 fn patchback_on_two_softpal_titles() {
-    let Some(root) = env::var_os(RESEARCH_ROOT_ENV).map(PathBuf::from) else {
-        panic!("set {RESEARCH_ROOT_ENV} to the read-only Softpal research tree");
-    };
-
-    for game in &GAMES {
+    for (game, identity) in GAMES.iter().zip(GAME_IDENTITIES) {
+        let root = corpus_registry::resolve_identity(identity)
+            .unwrap_or_else(|reason| panic!("registry must resolve {identity}: {reason}"));
         let textdat_bytes = extract_entry(game, &root, "TEXT.DAT");
         let script_bytes = extract_entry(game, &root, "SCRIPT.SRC");
 

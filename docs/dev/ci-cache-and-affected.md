@@ -113,7 +113,7 @@ parallel work, run `just check affected` first, then run every printed command.
 Per-gate CI is **single-mode synthetic**: every gate (including the full `just
 ci`) runs the fast, copyright-free synthetic suites plus the
 `mutation-differential` differential guardrail, and needs **no** real corpora
-(no `ITOTORI_REAL_GAME_ROOT`). The `mutation-differential` + `coverage-parity`
+(no `private inventory row`). The `mutation-differential` + `coverage-parity`
 harnesses prove the synthetic fixtures are **as strong as** the real-bytes lanes
 at catching regressions (`synthetic ≥ real`; see
 `docs/synthetic-differential-validation.md`), so no coverage is lost.

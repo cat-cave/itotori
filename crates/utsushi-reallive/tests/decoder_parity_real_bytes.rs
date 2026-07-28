@@ -4,7 +4,7 @@
 //! Proves utsushi's [`decode_bytecode_stream`] reaches **true parity** with
 //! the proven `kaifuu-reallive` decompiler (`parse_real_bytecode`) on the two
 //! staged RealLive corpora: every populated scene the kaifuu decoder decodes
-//! utsushi decodes too. Before this node utsushi decoded only 133/198 primary_corpus
+//! utsushi decodes too. Before this node utsushi decoded only 133/198 Sweetie
 //! HD + 16/79 Kanon scenes (the LOADABLE subset), so a cross-scene
 //! Jump/FarCall into an un-decoded-but-present scene surfaced a spurious
 //! `SceneNotFound`. The gap was a diverged expression / special-parameter
@@ -21,7 +21,7 @@
 //! (no opt-out; these `#[ignore]`-d suites run only in the periodic
 //! ground-truth oracle, `just test real-bytes-oracle`, where corpora are staged).
 //! Run with
-//! `ITOTORI_REAL_GAME_ROOT=<primary_corpus> ITOTORI_REAL_GAME_ROOT_2=<kanon>
+//! `private inventory row=<sweetie> private inventory row=<kanon>
 //! cargo test -p utsushi-reallive --test decoder_parity_real_bytes --
 //! --ignored`.
 
@@ -35,11 +35,11 @@ use utsushi_reallive::{RealSceneIndex, decode_bytecode_stream, decompress_all_sc
 
 /// Expected populated-scene count per staged corpus, keyed by label. These
 /// are the counts the proven `kaifuu-reallive` `multi_corpus_real_bytes`
-/// harness pins (primary_corpus HD 198, Kanon 79); the parity gate asserts utsushi
+/// harness pins (Sweetie HD 198, Kanon 79); the parity gate asserts utsushi
 /// decodes ALL of them.
 fn expected_populated(label: &str) -> Option<usize> {
     match label {
-        "corpus-1" => Some(198), // primary_corpus primary_corpus HD (110002, use_xor_2)
+        "corpus-1" => Some(198), // Oshioki Sweetie HD (110002, use_xor_2)
         "corpus-2" => Some(79),  // Kanon (10002, no xor_2)
         _ => None,
     }
@@ -69,13 +69,13 @@ fn staged_scene_bytecode(seen_bytes: &[u8]) -> Vec<(u16, Vec<u8>)> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (+ ITOTORI_REAL_GAME_ROOT_2)"]
+#[ignore = "real-bytes; requires private inventory row (+ private inventory row)"]
 fn utsushi_decode_reaches_kaifuu_parity_on_every_populated_scene() {
     let corpora = real_corpus::corpora();
     if corpora.is_empty() {
         real_corpus::require_real_bytes(
             "utsushi_decode_reaches_kaifuu_parity_on_every_populated_scene \
-             (set ITOTORI_REAL_GAME_ROOT and ITOTORI_REAL_GAME_ROOT_2)",
+             (set reallive/1/encrypted and reallive/2/plain)",
         );
         return;
     }
@@ -154,7 +154,7 @@ fn utsushi_decode_reaches_kaifuu_parity_on_every_populated_scene() {
         );
 
         // Pin the exact per-title counts the proven kaifuu multi-corpus
-        // harness reports (198/198 primary_corpus HD, 79/79 Kanon), so a regression
+        // harness reports (198/198 Sweetie HD, 79/79 Kanon), so a regression
         // that silently drops a scene from either archive fails here.
         if let Some(expected) = expected_populated(corpus.label) {
             assert_eq!(

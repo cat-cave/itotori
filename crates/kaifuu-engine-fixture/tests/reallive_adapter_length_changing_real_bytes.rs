@@ -1,6 +1,6 @@
 //! Real-bytes proof for `reallive-adapter-expose-length-changing-patchback`.
 //! Drives the FULL RealLive adapter surface (`extract` -> `patch`) on the real
-//! primary_corpus HD archive at `$ITOTORI_REAL_GAME_ROOT` and proves a LENGTH-CHANGING
+//! Sweetie HD archive at `$private inventory row` and proves a LENGTH-CHANGING
 //! adapter patch routes through the bundle-driven driver and round-trips
 //! byte-correct: the patched archive re-parses with the same scene directory
 //! count (offset table rewritten), the patched scene decrypts + re-decompiles
@@ -8,7 +8,7 @@
 //! and every goto jump pointer is recalculated to land on an element boundary
 //! (at least one re-based by the length delta), never into the middle of a
 //! command.
-//! Env-gated and STRICT BY DEFAULT: without `ITOTORI_REAL_GAME_ROOT` the test
+//! Env-gated and STRICT BY DEFAULT: without `private inventory row` the test
 //! is a no-op (it is `#[ignore]`d and only runs under `--include-ignored`).
 
 use std::collections::BTreeMap;
@@ -25,8 +25,8 @@ use kaifuu_reallive::{
     parse_real_bytecode_spans, recover_archive_cipher,
 };
 
-const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
-const REAL_GAME_ROOT_2_ENV: &str = "ITOTORI_REAL_GAME_ROOT_2";
+const REAL_GAME_ROOT_ENV: &str = "reallive/1/encrypted";
+const REAL_GAME_ROOT_2_ENV: &str = "reallive/2/plain";
 
 /// A distinctive ASCII marker spliced into the grown dialogue body so it can
 /// be located both in the patched bytecode and in a fresh re-extract.
@@ -126,9 +126,11 @@ fn find_gameexe_ini(root: &Path) -> Option<PathBuf> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (primary_corpus HD)"]
+#[ignore = "real-bytes; requires private inventory row (Sweetie HD)"]
 fn reallive_adapter_length_changing_patch_round_trips_on_primary_corpus() {
-    let Ok(root) = std::env::var(REAL_GAME_ROOT_ENV) else {
+    let Ok(root) = corpus_registry::resolve_identity(REAL_GAME_ROOT_ENV)
+        .map(|path| path.to_string_lossy().into_owned())
+    else {
         // Strict-by-default: an absent corpus is a skip only when the env is
         // unset (the harness runs this under --include-ignored WITH the env).
         eprintln!("SKIP: {REAL_GAME_ROOT_ENV} unset");
@@ -139,7 +141,7 @@ fn reallive_adapter_length_changing_patch_round_trips_on_primary_corpus() {
 
     let extract = adapter
         .extract(ExtractRequest { game_dir: &root })
-        .expect("adapter extracts real primary_corpus HD");
+        .expect("adapter extracts real Sweetie HD");
     assert!(
         !extract.bridge.units.is_empty(),
         "real extract must yield bridge units"
@@ -248,7 +250,7 @@ fn reallive_adapter_length_changing_patch_round_trips_on_primary_corpus() {
             "scene {scene_id:04}: patched archive must keep the scene directory count"
         );
 
-        // Decrypt + decompress both scenes to plaintext bytecode. (primary_corpus HD
+        // Decrypt + decompress both scenes to plaintext bytecode. (Sweetie HD
         // scenes are `xor_2`; `apply_translated_bundle` re-encrypts the patched
         // scene at rest, so verification decrypts before re-decompiling.)
         let patched_cipher = recover_cipher(&patched_seen);
@@ -300,7 +302,7 @@ fn reallive_adapter_length_changing_patch_round_trips_on_primary_corpus() {
             .expect("stage Gameexe.ini for re-extract");
         let reextract = adapter
             .extract(ExtractRequest { game_dir: &out_dir })
-            .expect("adapter re-extracts patched primary_corpus HD output");
+            .expect("adapter re-extracts patched Sweetie HD output");
         let reread_unit = reextract
             .bridge
             .units
@@ -377,9 +379,11 @@ fn reallive_adapter_length_changing_patch_round_trips_on_primary_corpus() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT_2 (Kanon/plaintext RealLive title)"]
+#[ignore = "real-bytes; requires private inventory row (Kanon/plaintext RealLive title)"]
 fn reallive_adapter_extract_still_reads_plaintext_kanon_title() {
-    let Ok(root) = std::env::var(REAL_GAME_ROOT_2_ENV) else {
+    let Ok(root) = corpus_registry::resolve_identity(REAL_GAME_ROOT_2_ENV)
+        .map(|path| path.to_string_lossy().into_owned())
+    else {
         eprintln!("SKIP: {REAL_GAME_ROOT_2_ENV} unset");
         return;
     };

@@ -182,7 +182,7 @@ fn committed_real_launch_evidence_reproduces_the_e1_proof() {
     })
     .unwrap();
 
-    if std::env::var_os("UTSUSHI_MVMZ_RUNTIME_PROOF_REGEN").is_some() {
+    if std::env::var_os("REGENERATE_FIXTURES").is_some() {
         let mut rendered = serde_json::to_string_pretty(&proof).unwrap();
         rendered.push('\n');
         fs::write(proof_artifacts_dir().join("proof.json"), rendered).unwrap();

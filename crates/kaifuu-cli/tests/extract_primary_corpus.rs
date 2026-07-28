@@ -1,7 +1,7 @@
 //! CLI integration test for
 //! `kaifuu-cli extract --engine reallive --scene 2011 --bundle-output PATH`.
-//! Env-gated on `ITOTORI_REAL_GAME_ROOT`. Runs the kaifuu-cli
-//! binary against the real primary_corpus HD extracted root, asserts the
+//! Env-gated on `private inventory row`. Runs the kaifuu-cli
+//! binary against the real Sweetie HD extracted root, asserts the
 //! output file exists and decodes as a v0.2 bridge bundle whose
 //! `schemaVersion` and `units` length pass the canonical contract.
 //! Scene **2011** is a dialogue-bearing scene (the same scene the
@@ -44,7 +44,7 @@ fn kaifuu_cli_binary() -> PathBuf {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn cli_extract_engine_reallive_dialogue_scene_writes_schema_valid_v02_bundle() {
     let Some(game_root) = real_corpus::game_root() else {
         panic!(
@@ -54,9 +54,7 @@ fn cli_extract_engine_reallive_dialogue_scene_writes_schema_valid_v02_bundle() {
     };
 
     let tmp_dir = tempfile::tempdir().expect("tmp dir");
-    let bundle_out = tmp_dir
-        .path()
-        .join("primary_corpus-hd-scene-2011.bridge.json");
+    let bundle_out = tmp_dir.path().join("sweetie-hd-scene-2011.bridge.json");
 
     let mut cmd = Command::new(kaifuu_cli_binary());
     cmd.arg("extract")
@@ -69,11 +67,11 @@ fn cli_extract_engine_reallive_dialogue_scene_writes_schema_valid_v02_bundle() {
         .arg("--game-root")
         .arg(&game_root)
         .arg("--game-id")
-        .arg("primary_corpus-hd")
+        .arg("sweetie-hd")
         .arg("--game-version")
         .arg("1.0.0")
         .arg("--source-profile-id")
-        .arg("kaifuu-reallive-primary_corpus-hd")
+        .arg("kaifuu-reallive-sweetie-hd")
         .arg("--source-locale")
         .arg("ja-JP");
     let output = cmd.output().expect("kaifuu-cli must run");
@@ -110,18 +108,18 @@ fn cli_extract_engine_reallive_dialogue_scene_writes_schema_valid_v02_bundle() {
 }
 
 /// Env-gated whole-SEEN real-bytes proof (M1 bridge). Runs
-/// `extract --whole-seen` over the ENTIRE real primary_corpus HD SEEN archive — every
+/// `extract --whole-seen` over the ENTIRE real Sweetie HD SEEN archive — every
 /// populated scene decodes (decode-100), producing ONE multi-scene v0.2 BRIDGE.
 /// `kaifuu extract --whole-seen` produces the BRIDGE only — NOT the replay
 /// -derived narrative structure. Deriving the structure / `sceneDispatchOrder`
 /// needs the Utsushi replay runtime and kaifuu must never depend on utsushi
-/// (deps flow utsushi → kaifuu). The real-primary_corpus STRUCTURE proof lives on the
+/// (deps flow utsushi → kaifuu). The real-Sweetie STRUCTURE proof lives on the
 /// utsushi side (`utsushi-cli` `structure_primary_corpus.rs`).
 /// Asserts the bridge is schema-valid, spans many scenes, and that every unit
 /// carries its numeric scene in `context.route.sceneKey` — the field the
 /// whole-game localize driver joins to the utsushi-produced structure.
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn cli_extract_whole_seen_primary_corpus_writes_multi_scene_bridge() {
     let Some(game_root) = real_corpus::game_root() else {
         panic!(
@@ -131,10 +129,10 @@ fn cli_extract_whole_seen_primary_corpus_writes_multi_scene_bridge() {
     };
 
     let tmp_dir = tempfile::tempdir().expect("tmp dir");
-    let bundle_out = tmp_dir.path().join("primary_corpus-hd-whole.bridge.json");
+    let bundle_out = tmp_dir.path().join("sweetie-hd-whole.bridge.json");
     let report_out = tmp_dir
         .path()
-        .join("primary_corpus-hd-whole.decompile-report.json");
+        .join("sweetie-hd-whole.decompile-report.json");
 
     let mut cmd = Command::new(kaifuu_cli_binary());
     cmd.arg("extract")
@@ -148,11 +146,11 @@ fn cli_extract_whole_seen_primary_corpus_writes_multi_scene_bridge() {
         .arg("--game-root")
         .arg(&game_root)
         .arg("--game-id")
-        .arg("primary_corpus-hd")
+        .arg("sweetie-hd")
         .arg("--game-version")
         .arg("1.0.0")
         .arg("--source-profile-id")
-        .arg("kaifuu-reallive-primary_corpus-hd")
+        .arg("kaifuu-reallive-sweetie-hd")
         .arg("--source-locale")
         .arg("ja-JP");
     let output = cmd.output().expect("kaifuu-cli must run");

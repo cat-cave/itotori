@@ -9,7 +9,7 @@
 //!   SCRIPT.SRC + TEXT.DAT (from `data.pac` or a loose pair), disassembles the
 //!   dialogue + choice surfaces, and writes the v0.1 BridgeBundle. The game root
 //!   is a positional (consistent with the other engines' extract), with
-//!   `--game-dir` / `ITOTORI_REAL_GAME_ROOT_SOFTPAL` as alternates.
+//!   `--game-dir` as an alternate.
 //! - `patch --engine softpal <root> --patch <export.json> --output <dir>`
 //!   rebuilds TEXT.DAT + repoints SCRIPT.SRC as loose files in `<dir>` and writes
 //!   `patch-result.json` (`--source <root>` is an alternate to the positional).
@@ -41,7 +41,7 @@ fn first_positional(args: &[String]) -> Option<&str> {
 }
 
 /// Resolve the Softpal game root for extract/verify: `--game-dir`, else the
-/// positional root, else `ITOTORI_REAL_GAME_ROOT_SOFTPAL`.
+/// positional root.
 fn softpal_game_dir(args: &[String]) -> Result<PathBuf, Box<dyn std::error::Error>> {
     if let Some(value) = flag_optional(args, "--game-dir") {
         return Ok(PathBuf::from(value));
@@ -49,13 +49,7 @@ fn softpal_game_dir(args: &[String]) -> Result<PathBuf, Box<dyn std::error::Erro
     if let Some(value) = first_positional(args) {
         return Ok(PathBuf::from(value));
     }
-    match std::env::var_os("ITOTORI_REAL_GAME_ROOT_SOFTPAL") {
-        Some(value) => Ok(PathBuf::from(value)),
-        None => Err(
-            "softpal game root required: pass it positionally, via --game-dir <root>, or ITOTORI_REAL_GAME_ROOT_SOFTPAL"
-                .into(),
-        ),
-    }
+    Err("softpal game root required: pass it positionally or via --game-dir <root>".into())
 }
 
 /// Dispatch `--engine softpal` `extract`/`patch`/`verify` (verb is `args[0]`).

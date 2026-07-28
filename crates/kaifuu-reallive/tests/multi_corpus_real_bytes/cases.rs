@@ -5,7 +5,7 @@ pub(super) fn multi_game_validation_runs_against_two_distinct_reallive_corpora()
     if corpora.is_empty() {
         real_corpus::require_real_bytes(
             "multi_game_validation_runs_against_two_distinct_reallive_corpora \
-             (set ITOTORI_REAL_GAME_ROOT and ITOTORI_REAL_GAME_ROOT_2)",
+             (set reallive/1/encrypted and reallive/2/plain)",
         );
         return;
     }
@@ -53,7 +53,7 @@ pub(super) fn multi_game_validation_runs_against_two_distinct_reallive_corpora()
     // cannot semantically identify.
     // BOTH complete archives are asserted at this hard SEMANTIC-zero bar.
     // corpus-2 (Kanon, 10002) carries no second-level XOR and is decoded by
-    // the catalogue alone; corpus-1 (primary_corpus HD, 110002) is first decrypted by
+    // the catalogue alone; corpus-1 (Sweetie HD, 110002) is first decrypted by
     // the second-level `xor_2` decryptor (per-game key recovered in-process,
     // validated before consumption) and then decoded by the SAME catalogue.
     // No floor is relaxed and no scene is skipped: every populated scene of
@@ -123,7 +123,7 @@ pub(super) fn multi_game_validation_runs_against_two_distinct_reallive_corpora()
         );
 
         // The xor_2 decryptor must have ACTUALLY engaged on the eligible
-        // corpus (primary_corpus HD): a corpus with use_xor_2 scenes must have a
+        // corpus (Sweetie HD): a corpus with use_xor_2 scenes must have a
         // validated, consumed per-game key, and the decryption must have
         // strictly recovered scenes that were unreadable before
         // (after_clean > baseline_clean). A corpus with no eligible scenes
@@ -165,7 +165,7 @@ pub(super) fn multi_game_validation_runs_against_two_distinct_reallive_corpora()
     // unconditionally required, so both corpora must resolve AND be DIFFERENT
     // games. A single resolved corpus is a hard failure; two identical corpora
     // (same SEEN sha256) defeat the FIX-4 audit-focus "2nd corpus actually
-    // primary_corpus HD again".
+    // Sweetie HD again".
     assert!(
         reports.len() >= 2,
         "multi-game validation requires >= 2 RealLive corpora, but only {} \
@@ -208,7 +208,7 @@ pub(super) fn every_menu_boot_system_scene_decodes_to_zero_unknown() {
     let Some(corpus) = real_corpus::corpus_1() else {
         real_corpus::require_real_bytes(
             "every_menu_boot_system_scene_decodes_to_zero_unknown \
-             (set ITOTORI_REAL_GAME_ROOT to primary_corpus HD)",
+             (set reallive/1/encrypted to Sweetie HD)",
         );
         return;
     };
@@ -216,12 +216,12 @@ pub(super) fn every_menu_boot_system_scene_decodes_to_zero_unknown() {
     let report = decompile_corpus(&corpus);
     print_report(&report);
 
-    // The corpus must actually be primary_corpus HD (the title carrying these
+    // The corpus must actually be Sweetie HD (the title carrying these
     // menu/boot/system scene ids). A second-level xor_2 corpus with these
-    // exact ids IS primary_corpus HD; guard against an accidentally-repointed root.
+    // exact ids IS Sweetie HD; guard against an accidentally-repointed root.
     assert!(
         report.xor2.scenes_eligible > 0,
-        "[{}] expected primary_corpus HD (xor_2 title) for the menu/boot/system pin; \
+        "[{}] expected Sweetie HD (xor_2 title) for the menu/boot/system pin; \
          got a non-xor2 corpus",
         report.label
     );
@@ -275,7 +275,7 @@ pub(super) fn secondary_corpus_decompiles_zero_unknown() {
     let Some(corpus) = real_corpus::corpus_2() else {
         real_corpus::require_real_bytes(
             "secondary_corpus_decompiles_zero_unknown \
-             (set ITOTORI_REAL_GAME_ROOT_2 to a 2nd RealLive title, e.g. Kanon)",
+             (set reallive/2/plain to a 2nd RealLive title, e.g. Kanon)",
         );
         return;
     };
@@ -283,20 +283,20 @@ pub(super) fn secondary_corpus_decompiles_zero_unknown() {
     let report = decompile_corpus(&corpus);
     print_report(&report);
 
-    // (0) The 2nd corpus is a genuinely DIFFERENT title from primary_corpus HD — not
+    // (0) The 2nd corpus is a genuinely DIFFERENT title from Sweetie HD — not
     // corpus-1 re-pointed. Structural: Kanon (10002) carries NO second-level
-    // xor_2, whereas primary_corpus HD (110002) is xor_2-encrypted; AND the SEEN
-    // sha256 must not equal primary_corpus HD's. This catches "2nd corpus actually
-    // primary_corpus HD again" even with corpus-1 unstaged.
+    // xor_2, whereas Sweetie HD (110002) is xor_2-encrypted; AND the SEEN
+    // sha256 must not equal Sweetie HD's. This catches "2nd corpus actually
+    // Sweetie HD again" even with corpus-1 unstaged.
     assert_ne!(
         report.seen_sha256, PRIMARY_CORPUS_SEEN_SHA256,
-        "ITOTORI_REAL_GAME_ROOT_2 resolved to the primary_corpus HD SEEN archive; \
+        "reallive/2/plain resolved to the Sweetie HD SEEN archive; \
          multi-game validation needs a DISTINCT 2nd RealLive title"
     );
     assert_eq!(
         report.xor2.scenes_eligible, 0,
         "[{}] 2nd corpus reports second-level xor_2 scenes — expected a plain \
-         (non-xor2) RealLive title distinct from primary_corpus HD",
+         (non-xor2) RealLive title distinct from Sweetie HD",
         report.label
     );
 
@@ -320,7 +320,7 @@ pub(super) fn secondary_corpus_decompiles_zero_unknown() {
     );
 
     // (2) The hard SEMANTIC zero bar on the FULL 2nd archive (same
-    // `is_recognized` bar as primary_corpus HD). Split by failure mode so a
+    // `is_recognized` bar as Sweetie HD). Split by failure mode so a
     // regression names exactly which generalization gap opened.
     assert_eq!(
         report.total_generic_command, 0,
@@ -371,7 +371,7 @@ pub(super) fn secondary_corpus_decompiles_zero_unknown() {
     );
 
     eprintln!(
-        "[{}] GENERALIZATION PROVEN: primary_corpus-HD opcode coverage decodes a 2nd \
+        "[{}] GENERALIZATION PROVEN: Sweetie-HD opcode coverage decodes a 2nd \
          RealLive title (Kanon) — {}/{} scenes, {} opcodes, 0 unknown, 0 parse \
          failures, no game-specific special-casing.",
         report.label, report.clean_scenes, report.populated_scenes, report.total_opcodes,

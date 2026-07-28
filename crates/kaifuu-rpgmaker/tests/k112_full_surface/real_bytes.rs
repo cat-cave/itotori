@@ -39,7 +39,7 @@ fn resolve_www_dir(root: &Path) -> PathBuf {
     }
     find(root, 5).unwrap_or_else(|| {
         panic!(
-            "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ={} has no www/ dir with a data/ subdirectory",
+            "rpg-maker-mv-mz/1/plain={} has no www/ dir with a data/ subdirectory",
             root.display()
         )
     })
@@ -52,10 +52,11 @@ fn resolve_www_dir(root: &Path) -> PathBuf {
 /// the golden fixture supplies but the untyped corpus does not). No verbatim
 /// text is asserted or printed.
 #[test]
-#[ignore = "requires ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ (read-only LustMemory corpus)"]
+#[ignore = "requires private inventory row (read-only LustMemory corpus)"]
 fn real_bytes_data_surfaces_cover_and_plugin_gap_is_honest() {
-    let root = std::env::var("ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ")
-        .expect("ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ must be set");
+    let root = corpus_registry::resolve_identity("rpg-maker-mv-mz/1/plain")
+        .map(|path| path.to_string_lossy().into_owned())
+        .expect("rpg-maker-mv-mz/1/plain must be set");
     let www_root = resolve_www_dir(Path::new(&root));
 
     // No declared profiles: the honest real-bytes posture for an untyped game.

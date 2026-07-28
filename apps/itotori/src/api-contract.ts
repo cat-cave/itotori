@@ -7,7 +7,7 @@
 // already assert through them). This module does NOT re-implement or migrate
 // those guards to zod/valibot — a zod revisit is an evidence-gated deferred
 // follow-up, NOT this node. Instead it hosts the SINGLE co-located route
-// registry (`ITOTORI_API_ROUTES`) + a JSON-Schema `COMPONENT` table that BOTH
+// registry (`API_ROUTES`) + a JSON-Schema `COMPONENT` table that BOTH
 // the guards' world (the HTTP contract harness, which drives method/path from
 // this registry AND validates responses against these schemas) AND the emitter
 // consume. There is exactly one authority for the route topology (the
@@ -23,7 +23,7 @@
 // ALONGSIDE this schema.
 //
 // fe-openapi-parity-all-routes: every strict (`additionalProperties:false`)
-// body's `required` list is GENERATED from `ITOTORI_STRICT_API_BODY_KEYS` — the
+// body's `required` list is GENERATED from `STRICT_API_BODY_KEYS` — the
 // SAME array the guard passes to `asStrictRecord`. There is no hand-authored
 // second source for a strict body's envelope, so it cannot fork from the guard
 // for every strict route. The loose
@@ -33,14 +33,10 @@
 import { ITOTORI_PRODUCT_VERSION } from "@itotori/localization-bridge-schema";
 import {
   API_ERROR_RESPONSE_CODES,
-  ITOTORI_STRICT_API_BODY_KEYS,
+  STRICT_API_BODY_KEYS,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
-import {
-  ITOTORI_API_BINARY_ROUTES,
-  ITOTORI_API_ROUTE_IDS,
-  ITOTORI_API_ROUTES,
-} from "./api-routes.js";
+import { API_BINARY_ROUTES, API_ROUTE_IDS, API_ROUTES } from "./api-routes.js";
 import { extractCapabilities } from "./extract/extract-adapter-registry.js";
 
 // ---------------------------------------------------------------------------
@@ -191,20 +187,20 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   // Shared -----------------------------------------------------------------
   ApiErrorResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiErrorResponse,
+      required: STRICT_API_BODY_KEYS.ApiErrorResponse,
       properties: { error: str, code: { enum: [...API_ERROR_RESPONSE_CODES] } },
       additionalProperties: false,
     }),
   // Asset decisions --------------------------------------------------------
   ApiAssetDecisionsResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiAssetDecisionsResponse,
+      required: STRICT_API_BODY_KEYS.ApiAssetDecisionsResponse,
       properties: { decisions: arr },
       additionalProperties: false,
     }),
   ApiCandidateAssetsResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiCandidateAssetsResponse,
+      required: STRICT_API_BODY_KEYS.ApiCandidateAssetsResponse,
       properties: { candidateAssets: arr },
       additionalProperties: false,
     }),
@@ -212,33 +208,33 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   // Catalog ----------------------------------------------------------------
   CatalogBenchmarkSeedFinderReadModel: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.CatalogBenchmarkSeedFinderReadModel,
+      required: STRICT_API_BODY_KEYS.CatalogBenchmarkSeedFinderReadModel,
       properties: { targetLanguage: str, rows: arr },
       additionalProperties: false,
       schemaVersion: "catalog.benchmark_seed_finder.v0.1",
     }),
   CatalogContextPanelReadModel: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.CatalogContextPanelReadModel,
+      required: STRICT_API_BODY_KEYS.CatalogContextPanelReadModel,
       properties: { params: obj, row: obj, releases: arr, projectState: obj },
       additionalProperties: false,
       schemaVersion: "catalog.context_panel_route.v0.1",
     }),
   CatalogCompletenessBenchmarkPools: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.CatalogCompletenessBenchmarkPools,
+      required: STRICT_API_BODY_KEYS.CatalogCompletenessBenchmarkPools,
       properties: { targetLanguage: str, pools: obj, publicReport: obj },
       additionalProperties: false,
     }),
   CatalogConflictReviewReadModel: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.CatalogConflictReviewReadModel,
+      required: STRICT_API_BODY_KEYS.CatalogConflictReviewReadModel,
       properties: { rows: arr },
       additionalProperties: false,
     }),
   CatalogOpportunityRankingReadModel: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.CatalogOpportunityRankingReadModel,
+      required: STRICT_API_BODY_KEYS.CatalogOpportunityRankingReadModel,
       properties: { targetLanguage: str, weightsVersion: str, rows: arr },
       additionalProperties: false,
       schemaVersion: "catalog.opportunity_ranking.v0.1",
@@ -265,35 +261,35 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiWikiObjectListResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectListResponse,
+      required: STRICT_API_BODY_KEYS.ApiWikiObjectListResponse,
       properties: { generatedAt: str, snapshotId: str, sourceObjects: arr, renderings: arr },
       additionalProperties: false,
       schemaVersion: "itotori.wiki.objects.v1",
     }),
   ApiWikiObjectShowResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectShowResponse,
+      required: STRICT_API_BODY_KEYS.ApiWikiObjectShowResponse,
       properties: { generatedAt: str, view: obj, history: arr, dependencyImpact: obj },
       additionalProperties: false,
       schemaVersion: "itotori.wiki.object.v1",
     }),
   ApiWikiObjectHistoryResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectHistoryResponse,
+      required: STRICT_API_BODY_KEYS.ApiWikiObjectHistoryResponse,
       properties: { generatedAt: str, view: obj, history: arr },
       additionalProperties: false,
       schemaVersion: "itotori.wiki.history.v1",
     }),
   ApiWikiObjectWriteResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectWriteResponse,
+      required: STRICT_API_BODY_KEYS.ApiWikiObjectWriteResponse,
       properties: { generatedAt: str, receipt: obj, history: arr, dependencyImpact: obj },
       additionalProperties: false,
       schemaVersion: "itotori.wiki.write.v1",
     }),
   ApiWikiObjectApplyResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectApplyResponse,
+      required: STRICT_API_BODY_KEYS.ApiWikiObjectApplyResponse,
       properties: { generatedAt: str, receipt: obj, history: arr, dependencyImpact: obj },
       additionalProperties: false,
       schemaVersion: "itotori.wiki.apply.v1",
@@ -415,7 +411,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ProjectOverviewReadModel: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ProjectOverviewReadModel,
+      required: STRICT_API_BODY_KEYS.ProjectOverviewReadModel,
       properties: {
         generatedAt: str,
         projectId: str,
@@ -457,20 +453,20 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   CostDrilldownPage: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.CostDrilldownPage,
+      required: STRICT_API_BODY_KEYS.CostDrilldownPage,
       properties: { filter: obj, pagination: obj, rows: arr },
       additionalProperties: false,
     }),
   JobsRunTableReadModel: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.JobsRunTableReadModel,
+      required: STRICT_API_BODY_KEYS.JobsRunTableReadModel,
       properties: { generatedAt: str, filter: obj, pagination: obj, rows: arr },
       additionalProperties: false,
       schemaVersion: "jobs.run_table.v0.3",
     }),
   ApiBenchmarkReportsResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiBenchmarkReportsResponse,
+      required: STRICT_API_BODY_KEYS.ApiBenchmarkReportsResponse,
       properties: { reports: arr },
       additionalProperties: false,
     }),
@@ -516,14 +512,14 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   QueueHealthReadModel: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.QueueHealthReadModel,
+      required: STRICT_API_BODY_KEYS.QueueHealthReadModel,
       properties: { outbox: obj, jobs: obj },
       additionalProperties: false,
       schemaVersion: "itotori.queue_health.v0.1",
     }),
   ApiModelRoutingProvider: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingProvider,
+      required: STRICT_API_BODY_KEYS.ApiModelRoutingProvider,
       properties: {
         providerId: str,
         providerFamily: str,
@@ -535,7 +531,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiModelRoutingModel: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingModel,
+      required: STRICT_API_BODY_KEYS.ApiModelRoutingModel,
       properties: {
         modelRegistryId: str,
         providerId: str,
@@ -547,7 +543,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiModelRoutingPromptPreset: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingPromptPreset,
+      required: STRICT_API_BODY_KEYS.ApiModelRoutingPromptPreset,
       properties: {
         promptPresetId: str,
         promptTemplateVersion: str,
@@ -559,7 +555,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiModelRoutingRoute: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingRoute,
+      required: STRICT_API_BODY_KEYS.ApiModelRoutingRoute,
       properties: {
         projectId: str,
         taskKind: str,
@@ -575,7 +571,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiModelRoutingSettingsResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingSettingsResponse,
+      required: STRICT_API_BODY_KEYS.ApiModelRoutingSettingsResponse,
       properties: {
         projectId: str,
         generatedAt: str,
@@ -589,7 +585,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiSaveModelRoutingSettingsRequest: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiSaveModelRoutingSettingsRequest,
+      required: STRICT_API_BODY_KEYS.ApiSaveModelRoutingSettingsRequest,
       properties: {
         projectId: str,
         taskKind: str,
@@ -603,13 +599,13 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiBranchPolicyRule: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicyRule,
+      required: STRICT_API_BODY_KEYS.ApiBranchPolicyRule,
       properties: { ruleId: str, guidance: str },
       additionalProperties: false,
     }),
   ApiBranchPolicySections: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicySections,
+      required: STRICT_API_BODY_KEYS.ApiBranchPolicySections,
       properties: {
         tone: { type: "array", items: ref("ApiBranchPolicyRule") },
         terminology: { type: "array", items: ref("ApiBranchPolicyRule") },
@@ -630,7 +626,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiBranchPolicySourceRevisionReference: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicySourceRevisionReference,
+      required: STRICT_API_BODY_KEYS.ApiBranchPolicySourceRevisionReference,
       properties: {
         sourceRevisionId: str,
         revisionKind: str,
@@ -640,7 +636,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiBranchPolicyVersion: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicyVersion,
+      required: STRICT_API_BODY_KEYS.ApiBranchPolicyVersion,
       properties: {
         styleGuideVersionId: str,
         status: str,
@@ -654,7 +650,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiBranchPolicyGlossaryReference: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicyGlossaryReference,
+      required: STRICT_API_BODY_KEYS.ApiBranchPolicyGlossaryReference,
       properties: {
         referenceId: str,
         versionSequence: num,
@@ -668,7 +664,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiBranchPolicySettingsResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicySettingsResponse,
+      required: STRICT_API_BODY_KEYS.ApiBranchPolicySettingsResponse,
       properties: {
         projectId: str,
         localeBranchId: str,
@@ -686,7 +682,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiSaveBranchPolicySettingsRequest: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiSaveBranchPolicySettingsRequest,
+      required: STRICT_API_BODY_KEYS.ApiSaveBranchPolicySettingsRequest,
       properties: {
         projectId: str,
         localeBranchId: str,
@@ -698,7 +694,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiTranslationScopeSettingsResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiTranslationScopeSettingsResponse,
+      required: STRICT_API_BODY_KEYS.ApiTranslationScopeSettingsResponse,
       properties: {
         projectId: str,
         localeBranchId: str,
@@ -712,7 +708,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiSaveTranslationScopeSettingsRequest: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiSaveTranslationScopeSettingsRequest,
+      required: STRICT_API_BODY_KEYS.ApiSaveTranslationScopeSettingsRequest,
       properties: {
         projectId: str,
         localeBranchId: str,
@@ -724,7 +720,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiLocalizationRunConfigResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiLocalizationRunConfigResponse,
+      required: STRICT_API_BODY_KEYS.ApiLocalizationRunConfigResponse,
       properties: {
         projectId: str,
         localeBranchId: str,
@@ -741,7 +737,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiSaveLocalizationRunConfigRequest: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiSaveLocalizationRunConfigRequest,
+      required: STRICT_API_BODY_KEYS.ApiSaveLocalizationRunConfigRequest,
       properties: {
         projectId: str,
         localeBranchId: str,
@@ -756,7 +752,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiConfigureAuthSsoSettingsRequest: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiConfigureAuthSsoSettingsRequest,
+      required: STRICT_API_BODY_KEYS.ApiConfigureAuthSsoSettingsRequest,
       properties: {
         accountId: str,
         provider: obj,
@@ -767,7 +763,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiConfigureAuthSsoSettingsResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiConfigureAuthSsoSettingsResponse,
+      required: STRICT_API_BODY_KEYS.ApiConfigureAuthSsoSettingsResponse,
       properties: {
         accountId: str,
         provider: obj,
@@ -780,7 +776,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiInviteMemberRequest: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiInviteMemberRequest,
+      required: STRICT_API_BODY_KEYS.ApiInviteMemberRequest,
       properties: {
         accountId: str,
         email: str,
@@ -793,7 +789,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiMemberInvitationResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiMemberInvitationResponse,
+      required: STRICT_API_BODY_KEYS.ApiMemberInvitationResponse,
       properties: {
         invitationId: str,
         accountId: str,
@@ -809,7 +805,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiAcceptMemberInvitationRequest: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiAcceptMemberInvitationRequest,
+      required: STRICT_API_BODY_KEYS.ApiAcceptMemberInvitationRequest,
       properties: {
         userId: str,
         principalId: str,
@@ -823,7 +819,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiMemberRecord: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiMemberRecord,
+      required: STRICT_API_BODY_KEYS.ApiMemberRecord,
       properties: {
         membershipId: str,
         accountId: str,
@@ -838,14 +834,14 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiMemberResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiMemberResponse,
+      required: STRICT_API_BODY_KEYS.ApiMemberResponse,
       properties: { member: ref("ApiMemberRecord") },
       additionalProperties: false,
       schemaVersion: "itotori.auth.member.v0",
     }),
   ApiMembersListResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiMembersListResponse,
+      required: STRICT_API_BODY_KEYS.ApiMembersListResponse,
       properties: {
         accountId: str,
         members: { type: "array", items: ref("ApiMemberRecord") },
@@ -855,7 +851,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiAuthBillingSeatUsageResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiAuthBillingSeatUsageResponse,
+      required: STRICT_API_BODY_KEYS.ApiAuthBillingSeatUsageResponse,
       properties: {
         accountId: str,
         planId: str,
@@ -874,7 +870,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiRemoveMemberRequest: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiRemoveMemberRequest,
+      required: STRICT_API_BODY_KEYS.ApiRemoveMemberRequest,
       properties: {
         reason: { oneOf: [str, { type: "null" }] },
         requestId: { oneOf: [str, { type: "null" }] },
@@ -883,7 +879,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiAuthSessionRecord: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiAuthSessionRecord,
+      required: STRICT_API_BODY_KEYS.ApiAuthSessionRecord,
       properties: {
         sessionId: str,
         principalId: str,
@@ -899,7 +895,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiAuthSessionsListResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiAuthSessionsListResponse,
+      required: STRICT_API_BODY_KEYS.ApiAuthSessionsListResponse,
       properties: {
         principalId: str,
         sessions: { type: "array", items: ref("ApiAuthSessionRecord") },
@@ -909,7 +905,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiRevokeAuthSessionRequest: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiRevokeAuthSessionRequest,
+      required: STRICT_API_BODY_KEYS.ApiRevokeAuthSessionRequest,
       properties: {
         reason: { oneOf: [str, { type: "null" }] },
         requestId: { oneOf: [str, { type: "null" }] },
@@ -918,21 +914,21 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiRevokeAuthSessionResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiRevokeAuthSessionResponse,
+      required: STRICT_API_BODY_KEYS.ApiRevokeAuthSessionResponse,
       properties: { revokedSession: ref("ApiAuthSessionRecord") },
       additionalProperties: false,
       schemaVersion: "itotori.auth.session-revoked.v0",
     }),
   ApiRemoveMemberResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiRemoveMemberResponse,
+      required: STRICT_API_BODY_KEYS.ApiRemoveMemberResponse,
       properties: { removedMember: ref("ApiMemberRecord") },
       additionalProperties: false,
       schemaVersion: "itotori.auth.member-removed.v0",
     }),
   ApiPermissionSetRecord: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPermissionSetRecord,
+      required: STRICT_API_BODY_KEYS.ApiPermissionSetRecord,
       properties: {
         permissionSetId: str,
         accountId: str,
@@ -943,7 +939,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiPermissionSetsListResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPermissionSetsListResponse,
+      required: STRICT_API_BODY_KEYS.ApiPermissionSetsListResponse,
       properties: {
         accountId: str,
         permissionSets: { type: "array", items: ref("ApiPermissionSetRecord") },
@@ -953,7 +949,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiPrincipalPermissionSetGrantRequest: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPrincipalPermissionSetGrantRequest,
+      required: STRICT_API_BODY_KEYS.ApiPrincipalPermissionSetGrantRequest,
       properties: {
         reason: { oneOf: [str, { type: "null" }] },
         requestId: { oneOf: [str, { type: "null" }] },
@@ -962,7 +958,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiPrincipalPermissionSetGrantResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPrincipalPermissionSetGrantResponse,
+      required: STRICT_API_BODY_KEYS.ApiPrincipalPermissionSetGrantResponse,
       properties: {
         principalId: str,
         permissionSetId: str,
@@ -974,7 +970,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiAuthIdentityAccount: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiAuthIdentityAccount,
+      required: STRICT_API_BODY_KEYS.ApiAuthIdentityAccount,
       properties: {
         membershipId: str,
         accountId: str,
@@ -987,7 +983,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiAuthIdentityResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiAuthIdentityResponse,
+      required: STRICT_API_BODY_KEYS.ApiAuthIdentityResponse,
       properties: {
         actorUserId: str,
         userId: str,
@@ -1002,7 +998,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   // fnd-caps-context — Studio capability permission view wire schemas.
   ApiStudioCapabilityDenials: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiStudioCapabilityDenials,
+      required: STRICT_API_BODY_KEYS.ApiStudioCapabilityDenials,
       properties: {
         flag: { oneOf: [str, { type: "null" }] },
         steer: { oneOf: [str, { type: "null" }] },
@@ -1012,7 +1008,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiAuthCapabilitiesResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiAuthCapabilitiesResponse,
+      required: STRICT_API_BODY_KEYS.ApiAuthCapabilitiesResponse,
       properties: {
         actorUserId: str,
         canFlag: bool,
@@ -1123,13 +1119,13 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   // Launch-pass (ovw-launch-pass-action) ----------------------------------
   ApiLaunchPassRequest: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiLaunchPassRequest,
+      required: STRICT_API_BODY_KEYS.ApiLaunchPassRequest,
       properties: { localeBranchId: str },
       additionalProperties: false,
     }),
   ApiLaunchPassResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiLaunchPassResponse,
+      required: STRICT_API_BODY_KEYS.ApiLaunchPassResponse,
       properties: { outcome: { enum: ["started", "refused"] } },
       additionalProperties: false,
       schemaVersion: "itotori.projects.launch-pass.v1",
@@ -1187,7 +1183,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiPlayRouteMapResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayRouteMapResponse,
+      required: STRICT_API_BODY_KEYS.ApiPlayRouteMapResponse,
       properties: {
         nodes: { type: "array", items: ref("ApiPlayRouteMapNode") },
         edges: { type: "array", items: ref("ApiPlayRouteMapEdge") },
@@ -1218,7 +1214,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiPlayFlagAnnotationResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayFlagAnnotationResponse,
+      required: STRICT_API_BODY_KEYS.ApiPlayFlagAnnotationResponse,
       properties: {
         severity: { enum: ["blocker", "critical", "warning", "note"] },
         category: { anyOf: [{ type: "string" }, { type: "null" }] },
@@ -1262,7 +1258,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiPlayUnitFeedbackResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayUnitFeedbackResponse,
+      required: STRICT_API_BODY_KEYS.ApiPlayUnitFeedbackResponse,
       properties: {
         bridgeUnitId: str,
         notes: { type: "array", items: ref("ApiPlayUnitFeedbackNote") },
@@ -1272,7 +1268,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiPlayAddressableUnitResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayAddressableUnitResponse,
+      required: STRICT_API_BODY_KEYS.ApiPlayAddressableUnitResponse,
       properties: {
         unit: {
           oneOf: [
@@ -1307,13 +1303,13 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   // deliberately absent from the mutation request contract.
   ApiPlayTargetEditRequest: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayTargetEditRequest,
+      required: STRICT_API_BODY_KEYS.ApiPlayTargetEditRequest,
       properties: { bridgeUnitId: str, targetBody: str },
       additionalProperties: false,
     }),
   ApiPlayTargetEditResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayTargetEditResponse,
+      required: STRICT_API_BODY_KEYS.ApiPlayTargetEditResponse,
       properties: {
         resultRevisionId: str,
         patchVersionId: str,
@@ -1330,13 +1326,13 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiPlayDeliveryUnit: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayDeliveryUnit,
+      required: STRICT_API_BODY_KEYS.ApiPlayDeliveryUnit,
       properties: { bridgeUnitId: str, unitOrdinal: num, targetBody: str },
       additionalProperties: false,
     }),
   ApiPlayDeliveryResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayDeliveryResponse,
+      required: STRICT_API_BODY_KEYS.ApiPlayDeliveryResponse,
       properties: {
         patchVersionId: str,
         runId: str,
@@ -1356,7 +1352,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   // not private artifact refs or filesystem paths.
   ApiPatchIterationDeliveryResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationDeliveryResponse,
+      required: STRICT_API_BODY_KEYS.ApiPatchIterationDeliveryResponse,
       properties: {
         patchVersionId: str,
         runId: str,
@@ -1564,14 +1560,14 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiPatchIterationVersionsResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationVersionsResponse,
+      required: STRICT_API_BODY_KEYS.ApiPatchIterationVersionsResponse,
       properties: { versions: { type: "array", items: ref("ApiPatchIterationVersion") } },
       additionalProperties: false,
       schemaVersion: "itotori.patch-iteration.versions.v0",
     }),
   ApiPatchIterationSurfaceResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationSurfaceResponse,
+      required: STRICT_API_BODY_KEYS.ApiPatchIterationSurfaceResponse,
       properties: {
         patch: ref("ApiPatchIterationPatch"),
         versions: { type: "array", items: ref("ApiPatchIterationVersion") },
@@ -1582,7 +1578,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiPatchIterationPlayRequest: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationPlayRequest,
+      required: STRICT_API_BODY_KEYS.ApiPatchIterationPlayRequest,
       properties: {
         adapterId: { type: "string", minLength: 1 },
         operation: { type: "string", minLength: 1 },
@@ -1594,7 +1590,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiPatchIterationPlayResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationPlayResponse,
+      required: STRICT_API_BODY_KEYS.ApiPatchIterationPlayResponse,
       properties: {
         receipt: {
           oneOf: [
@@ -1623,13 +1619,13 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiPatchIterationFeedbackBatchRequest: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackBatchRequest,
+      required: STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackBatchRequest,
       properties: { feedbackBatchId: str, label: str },
       additionalProperties: false,
     }),
   ApiPatchIterationFeedbackBatchResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackBatchResponse,
+      required: STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackBatchResponse,
       properties: { batch: ref("ApiPatchIterationFeedbackBatch") },
       additionalProperties: false,
       schemaVersion: "itotori.patch-iteration.feedback-batch.v0",
@@ -1664,7 +1660,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   }),
   ApiPatchIterationFeedbackRequest: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackRequest,
+      required: STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackRequest,
       properties: {
         feedbackBatchId: str,
         playSessionId: str,
@@ -1682,14 +1678,14 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiPatchIterationFeedbackResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackResponse,
+      required: STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackResponse,
       properties: { feedback: ref("ApiPatchIterationFeedbackEvent") },
       additionalProperties: false,
       schemaVersion: "itotori.patch-iteration.feedback.v0",
     }),
   ApiPatchIterationRefineRequest: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationRefineRequest,
+      required: STRICT_API_BODY_KEYS.ApiPatchIterationRefineRequest,
       properties: {
         feedbackBatchIds: { type: "array", items: str },
         feedbackEventIds: { type: "array", items: str },
@@ -1707,7 +1703,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiPatchIterationRefineResponse: (ref) =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationRefineResponse,
+      required: STRICT_API_BODY_KEYS.ApiPatchIterationRefineResponse,
       properties: {
         refinement: ref("ApiPatchIterationRefinement"),
         patch: ref("ApiPatchIterationPatch"),
@@ -1732,9 +1728,9 @@ function materializeComponents(prefix: string): Record<string, JsonValue> {
 // ---------------------------------------------------------------------------
 
 export {
-  ITOTORI_API_BINARY_ROUTES,
-  ITOTORI_API_ROUTE_IDS,
-  ITOTORI_API_ROUTES,
+  API_BINARY_ROUTES,
+  API_ROUTE_IDS,
+  API_ROUTES,
   interpolateRoutePath,
   patchIterationDeliveryArchivePath,
   playDeliveryArchivePath,
@@ -1771,14 +1767,14 @@ function openApiErrorResponses(): Record<string, JsonValue> {
 
 /**
  * Build the deterministic OpenAPI 3.1 document derived from
- * {@link ITOTORI_API_ROUTES} + the component table. Carries the product version
+ * {@link API_ROUTES} + the component table. Carries the product version
  * (`ITOTORI_PRODUCT_VERSION`) per the format-stability policy. Serialize with
  * {@link serializeJsonDocument} for the committed artifact.
  */
 export function buildItotoriOpenApiDocument(): JsonValue {
   const paths: Record<string, Record<string, JsonValue>> = {};
-  for (const routeId of ITOTORI_API_ROUTE_IDS) {
-    const route = ITOTORI_API_ROUTES[routeId];
+  for (const routeId of API_ROUTE_IDS) {
+    const route = API_ROUTES[routeId];
     const operation: Record<string, JsonValue> = {
       operationId: route.operationId,
       summary: route.summary,
@@ -1814,7 +1810,7 @@ export function buildItotoriOpenApiDocument(): JsonValue {
     const pathItem = paths[route.pathTemplate] ?? (paths[route.pathTemplate] = {});
     pathItem[route.method.toLowerCase()] = operation;
   }
-  for (const [routeId, route] of Object.entries(ITOTORI_API_BINARY_ROUTES)) {
+  for (const [routeId, route] of Object.entries(API_BINARY_ROUTES)) {
     const responses: Record<string, JsonValue> = {
       "200": {
         description: "Selected delivered patch archive.",
@@ -1898,7 +1894,7 @@ export function jsonSchemaForRoute(
   routeId: ItotoriApiRouteId,
   kind: "request" | "response",
 ): JsonValue | null {
-  const route = ITOTORI_API_ROUTES[routeId];
+  const route = API_ROUTES[routeId];
   const name = kind === "request" ? route.requestSchema : route.responseSchema;
   if (name === undefined) {
     return null;

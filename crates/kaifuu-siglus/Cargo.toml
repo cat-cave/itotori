@@ -23,6 +23,7 @@ thiserror.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+corpus-registry = { path = "../corpus-registry" }
 tempfile.workspace = true
 
 [lints]

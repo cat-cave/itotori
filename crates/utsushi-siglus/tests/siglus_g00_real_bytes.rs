@@ -19,8 +19,8 @@ use utsushi_core::{
 };
 use utsushi_siglus::{SiglusCgRedaction, UtsushiSiglusPort, decode_siglus_g00, render_siglus_cg};
 
-const FIRST_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
-const SECOND_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
+const FIRST_TITLE_ENV: &str = "siglus/1/encrypted";
+const SECOND_TITLE_ENV: &str = "siglus/2/encrypted";
 
 #[test]
 fn two_real_siglus_titles_decode_layered_g00_and_capture_redacted_pngs() {
@@ -61,11 +61,11 @@ fn second_real_siglus_title_decodes_type3_encrypted_jpeg_into_visible_background
 }
 
 fn corpus_root(variable: &str) -> Option<PathBuf> {
-    let Some(value) = std::env::var_os(variable) else {
+    let Some(value) = corpus_registry::resolve_identity(variable).ok() else {
         eprintln!("SKIP siglus real bytes: {variable} is unset");
         return None;
     };
-    let path = PathBuf::from(value);
+    let path = value;
     if !path.is_dir() {
         eprintln!("SKIP siglus real bytes: {variable} is not a directory");
         return None;

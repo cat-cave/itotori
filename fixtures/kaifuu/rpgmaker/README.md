@@ -99,7 +99,7 @@ Encrypted-suffix coverage:
 
 ## Real-bytes corpus (optional)
 
-When `ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ` points at a real RPG Maker
+When `private inventory row` points at a real RPG Maker
 MV/MZ `www/` root, the CLI test
 `encrypted_media_proof_command_real_bytes_rpgmaker_corpus_when_available`
 walks the corpus and asserts that:

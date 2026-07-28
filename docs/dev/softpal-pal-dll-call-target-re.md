@@ -72,7 +72,7 @@ RE cannot confuse a missing semantic proof with malformed bytecode.
 Run from this worktree (the research root is read-only):
 
 ```sh
-direnv exec . env ITOTORI_SOFTPAL_RESEARCH_ROOT=/scratch/softpal-research \
+direnv exec . env private inventory row=/scratch/softpal-research \
   cargo test -p kaifuu-softpal --test opcode_real_corpus -- --ignored --nocapture
 ```
 

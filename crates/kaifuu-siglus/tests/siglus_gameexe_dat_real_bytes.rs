@@ -21,15 +21,17 @@ use std::path::{Path, PathBuf};
 
 use kaifuu_siglus::{GameexeDatError, decode_gameexe_dat, read_gameexe_header};
 
-const FIRST_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
-const SECOND_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
+const FIRST_TITLE_ENV: &str = "siglus/1/encrypted";
+const SECOND_TITLE_ENV: &str = "siglus/2/encrypted";
 
 fn gameexe_path(variable: &str) -> Option<PathBuf> {
-    let value = std::env::var_os(variable).or_else(|| {
-        eprintln!("SKIP siglus Gameexe.dat real bytes: {variable} is unset");
-        None
-    })?;
-    let path = PathBuf::from(value);
+    let value = corpus_registry::resolve_identity(variable)
+        .ok()
+        .or_else(|| {
+            eprintln!("SKIP siglus Gameexe.dat real bytes: {variable} is unset");
+            None
+        })?;
+    let path = value;
     let candidate = if path.is_dir() {
         path.join("Gameexe.dat")
     } else {

@@ -58,7 +58,7 @@ const CONTRACT_FIXTURE_KINDS_V02: &[&str] = &[
     "triage-v0.2",
 ];
 
-const ITOTORI_PERMISSION_VALUES_V02: &[&str] = &[
+const PERMISSION_VALUES_V02: &[&str] = &[
     "project.import",
     "draft.write",
     "patch.export",
@@ -365,7 +365,7 @@ pub fn validate_permission_local_user_fixture_v02(value: &Value) -> BridgeContra
         )?;
         assert_one_of(
             grant,
-            ITOTORI_PERMISSION_VALUES_V02,
+            PERMISSION_VALUES_V02,
             &format!("PermissionLocalUserFixtureV02.grants[{index}]"),
         )?;
         if !seen.insert(grant.to_string()) {
@@ -376,7 +376,7 @@ pub fn validate_permission_local_user_fixture_v02(value: &Value) -> BridgeContra
     }
     assert_exact_string_set(
         &seen,
-        ITOTORI_PERMISSION_VALUES_V02,
+        PERMISSION_VALUES_V02,
         "PermissionLocalUserFixtureV02.grants",
     )?;
     assert_string_array(

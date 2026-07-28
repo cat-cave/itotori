@@ -1,11 +1,10 @@
 // reason: shared real-bytes test-support helpers; not every consumer test uses every helper.
 #![allow(dead_code)]
 
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
+pub const REAL_GAME_ROOT_ENV: &str = "reallive/1/encrypted";
 
 /// Resolve the corpus-unavailable branch of an env-gated real-bytes test.
 ///
@@ -27,7 +26,7 @@ pub fn require_real_bytes(test_name: &str) {
 }
 
 pub fn game_root() -> Option<PathBuf> {
-    let root = PathBuf::from(env::var_os(REAL_GAME_ROOT_ENV)?);
+    let root = corpus_registry::resolve_identity(REAL_GAME_ROOT_ENV).ok()?;
     resolve_reallive_game_root(&root)
 }
 

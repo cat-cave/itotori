@@ -55,7 +55,7 @@ pub(crate) fn detect_wolf_rpg_editor(scan: &ArchiveDetectionScan) -> ArchiveDete
             vec![secret_requirement(
                 "wolf-rpg-editor-archive-key",
                 "Wolf RPG Editor protected archives require local key/helper evidence",
-                "KAIFUU_WOLF_ARCHIVE_KEY",
+                "ARCHIVE_KEY",
             )]
         } else {
             vec![]

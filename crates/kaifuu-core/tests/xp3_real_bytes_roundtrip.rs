@@ -3,7 +3,7 @@
 //! Proves `repack(read(fixture)) == fixture` BYTE-FOR-BYTE for the
 //! metadata-only `kaifuu-xp3-plain-profile-a` fixture when the
 //! separately licensed source archive is staged via the
-//! `KAIFUU_XP3_PROFILE_A_ARCHIVE` environment variable. The committed
+//! `private inventory archive` environment variable. The committed
 //! fixture itself records metadata only — no copyrighted archive bytes are
 //! redistributed — so the heavy case is SKIPPED (not panicked) when the env
 //! var is absent. The orchestrator runs the real-corpus validation with the
@@ -31,7 +31,7 @@ use sha2::{Digest, Sha256};
 /// Env var that names the separately licensed source archive on disk. The
 /// committed fixture is metadata-only; this variable is the ONLY way the
 /// real archive bytes enter the test process.
-const SOURCE_ARCHIVE_ENV: &str = "KAIFUU_XP3_PROFILE_A_ARCHIVE";
+const SOURCE_ARCHIVE_ENV: &str = "kirikiri-xp3/1/plain";
 
 /// The fixture referenced BY PATH (no node-id token): a metadata-only
 /// manifest under `fixtures/public/`. The path is anchored at the
@@ -64,8 +64,8 @@ fn fixture_manifest() -> Value {
 /// is a hard error (the operator explicitly named a path that cannot be
 /// honoured).
 fn source_archive_path() -> Option<PathBuf> {
-    let raw = std::env::var_os(SOURCE_ARCHIVE_ENV)?;
-    let path = PathBuf::from(raw);
+    let raw = corpus_registry::resolve_identity(SOURCE_ARCHIVE_ENV).ok()?;
+    let path = raw;
     if !path.exists() {
         eprintln!(
             "SKIP: {SOURCE_ARCHIVE_ENV}={} does not exist; real-bytes round-trip is skipped",

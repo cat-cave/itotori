@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-const SOURCE_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ";
+const SOURCE_ROOT_ENV: &str = "rpg-maker-mv-mz/1/plain";
 const DEFAULT_SOURCE_ROOT: &str = "/scratch/itotori-research/rpg-maker-mv-mz/extracted/LustMemory";
 const SPDX_ID: &str = "LicenseRef-LustMemory-English-Public-Release";
 const MANIFEST: &str = include_str!(concat!(
@@ -138,8 +138,9 @@ fn profile_a_metadata_matches_the_supplied_read_only_game_bytes() {
 }
 
 fn source_data_dir() -> Option<PathBuf> {
-    let root = env::var_os(SOURCE_ROOT_ENV)
-        .map_or_else(|| PathBuf::from(DEFAULT_SOURCE_ROOT), PathBuf::from);
+    let root = corpus_registry::resolve_identity(SOURCE_ROOT_ENV)
+        .ok()
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_SOURCE_ROOT));
     let direct = root.join("data");
     let nested = root.join("www/data");
     if direct.is_dir() {

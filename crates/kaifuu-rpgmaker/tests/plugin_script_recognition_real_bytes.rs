@@ -6,7 +6,6 @@
 //! `recognize.rs`; an unlisted command is a hard failure.
 
 use std::collections::BTreeMap;
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -17,8 +16,8 @@ use kaifuu_rpgmaker::{
 };
 use serde_json::Value;
 
-const REAL_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ";
-const REAL_ROOT_2_ENV: &str = "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2";
+const REAL_ROOT_ENV: &str = "rpg-maker-mv-mz/1/plain";
+const REAL_ROOT_2_ENV: &str = "rpg-maker-mv-mz/2/plain";
 
 #[derive(Debug, Default)]
 struct Census {
@@ -343,16 +342,16 @@ fn assert_title(name: &str, root: &Path) {
 /// Env-gated, two-title proof. Run with `--include-ignored` and both vars
 /// pointing at the `www` trees from the task brief:
 /// ```text
-/// ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ=/scratch/itotori-research/rpg-maker-mv-mz/extracted/LustMemory/www
-/// ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2=/scratch/itotori-research/rpg-maker-mv-mz/countryside-life/inakaraifu.rj390522.v1-0.en/countryside-life-2025/www
+/// private inventory row=/scratch/itotori-research/rpg-maker-mv-mz/extracted/LustMemory/www
+/// private inventory row=/scratch/itotori-research/rpg-maker-mv-mz/countryside-life/inakaraifu.rj390522.v1-0.en/countryside-life-2025/www
 #[test]
 #[ignore = "real-bytes; requires both RPG Maker MV/MZ title roots"]
 fn both_real_titles_have_only_typed_plugin_script_commands() {
-    let Some(root) = env::var_os(REAL_ROOT_ENV) else {
+    let Some(root) = corpus_registry::resolve_identity(REAL_ROOT_ENV).ok() else {
         eprintln!("SKIP: {REAL_ROOT_ENV} unset");
         return;
     };
-    let Some(root_2) = env::var_os(REAL_ROOT_2_ENV) else {
+    let Some(root_2) = corpus_registry::resolve_identity(REAL_ROOT_2_ENV).ok() else {
         eprintln!("SKIP: {REAL_ROOT_2_ENV} unset");
         return;
     };

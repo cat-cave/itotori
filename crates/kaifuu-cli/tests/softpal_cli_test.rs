@@ -1,6 +1,6 @@
 //! CLI integration test for `kaifuu-cli extract --engine softpal <root>` with
 //! the game root passed **positionally** (consistent with the other engines'
-//! extract surface). Env-gated on `ITOTORI_SOFTPAL_RESEARCH_ROOT`; runs the
+//! extract surface). Env-gated on `private inventory row`; runs the
 //! kaifuu-cli binary against the real, read-only Softpal corpus. The v60663
 //! (the plaintext TEXT.DAT staged corpus) test asserts the extracted
 //! BridgeBundle carries the exact known dialogue+choice unit count (39848 =
@@ -10,7 +10,7 @@
 //! BridgeBundles and the known unit count. Never prints raw copyrighted bytes.
 //! Wired into the PERIODIC `ci-real-bytes` lane (the wider
 //! `-p kaifuu-cli -- --ignored` invocation already picks this up); soft-skips
-//! when `ITOTORI_SOFTPAL_RESEARCH_ROOT` is unset (skip-when-absent is
+//! when `private inventory row` is unset (skip-when-absent is
 //! legitimate for the periodic lane).
 
 use std::path::PathBuf;
@@ -31,7 +31,7 @@ fn kaifuu_cli_binary() -> PathBuf {
 /// Locate the v60663 game dir (the one carrying `data.pac`) under the corpus
 /// root. Returns `None` when the env var is unset or the title is absent.
 fn v60663_game_dir() -> Option<PathBuf> {
-    let root = PathBuf::from(std::env::var_os("ITOTORI_SOFTPAL_RESEARCH_ROOT")?);
+    let root = corpus_registry::resolve_identity("softpal/1/plain").ok()?;
     let candidate = root.join("v60663").join("game");
     candidate.join("data.pac").is_file().then_some(candidate)
 }
@@ -39,7 +39,7 @@ fn v60663_game_dir() -> Option<PathBuf> {
 /// Locate v21465's `data.pac` game root plus its loose script/text reference.
 /// Returns `None` when the env var is unset or either source is absent.
 fn v21465_source_roots() -> Option<(PathBuf, PathBuf)> {
-    let root = PathBuf::from(std::env::var_os("ITOTORI_SOFTPAL_RESEARCH_ROOT")?);
+    let root = corpus_registry::resolve_identity("softpal/1/plain").ok()?;
     let title_root = root.join("v21465");
     let loose_root = title_root.join("scripts");
     if !loose_root.join("SCRIPT.SRC").is_file() || !loose_root.join("TEXT.DAT").is_file() {
@@ -84,10 +84,10 @@ fn extract_bundle(game_dir: &std::path::Path, bundle_out: &std::path::Path) -> V
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_SOFTPAL_RESEARCH_ROOT (read-only Softpal corpus)"]
+#[ignore = "real-bytes; requires private inventory row (read-only Softpal corpus)"]
 fn cli_extract_engine_softpal_positional_root_writes_bridge_with_expected_units() {
     let Some(game_dir) = v60663_game_dir() else {
-        eprintln!("skipping: set ITOTORI_SOFTPAL_RESEARCH_ROOT with a v60663/game/data.pac");
+        eprintln!("skipping: set softpal/1/plain with a v60663/game/data.pac");
         return;
     };
 
@@ -124,11 +124,11 @@ fn cli_extract_engine_softpal_positional_root_writes_bridge_with_expected_units(
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_SOFTPAL_RESEARCH_ROOT (read-only Softpal corpus)"]
+#[ignore = "real-bytes; requires private inventory row (read-only Softpal corpus)"]
 fn cli_extract_layered_pac_matches_its_loose_pair_reference() {
     let Some((pac_root, loose_root)) = v21465_source_roots() else {
         eprintln!(
-            "skipping: set ITOTORI_SOFTPAL_RESEARCH_ROOT with v21465 data.pac and loose SCRIPT.SRC/TEXT.DAT"
+            "skipping: set softpal/1/plain with v21465 data.pac and loose SCRIPT.SRC/TEXT.DAT"
         );
         return;
     };

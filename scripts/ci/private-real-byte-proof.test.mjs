@@ -88,7 +88,7 @@ test("a DRIFTED ZDR profile FAILS the gate", () => {
 });
 
 // --- probeFromEnv wiring: env + fs → gate probes ----------------------------
-test("probeFromEnv treats an absent root env as a missing corpus (no skip path)", () => {
+test("probeFromEnv treats an absent inventory row as a missing corpus (no skip path)", () => {
   const probes = probeFromEnv(
     {},
     { isDir: () => false, isFile: () => false, sha256File: () => "x" },
@@ -100,13 +100,23 @@ test("probeFromEnv treats an absent root env as a missing corpus (no skip path)"
 });
 
 test("probeFromEnv computes the content-address from the staged hash list", () => {
+  const inventory = `schema = "inventory/v1"
+
+[[corpus]]
+id = "corpus-reallive-1-encrypted"
+engine = "engine-reallive"
+variant = "variant-encrypted"
+root = "/staged/private-engine-corpus"
+content_address = "deadbeef"
+tags = ["strict"]
+access = "read-only"
+`;
   const probes = probeFromEnv(
     {
-      ITOTORI_REAL_GAME_ROOT: "/staged/private-engine-corpus",
-      ITOTORI_PRIVATE_ENGINE_CORPUS_CONTENT_ADDRESS: "deadbeef",
       ITOTORI_ZDR_PROFILE: APPROVED_ZDR_PROFILE,
     },
     { isDir: () => true, isFile: () => true, sha256File: () => "deadbeef" },
+    inventory,
   );
   const result = evaluateProofGate(probes);
   assert.equal(result.ok, true);

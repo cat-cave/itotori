@@ -25,7 +25,7 @@ const PROFILE_B_MANIFEST: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../fixtures/public/kaifuu-rpgmaker-mv-mz-profile-b.manifest.json"
 ));
-const SOURCE_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_ENCRYPTED";
+const SOURCE_ROOT_ENV: &str = "rpg-maker-mv-mz/3/encrypted";
 const DEFAULT_SOURCE_ROOT: &str = "/scratch/itotori-research/rpg-maker-mv-mz/countryside-life/inakaraifu.rj390522.v1-0.en/countryside-life-2025/www";
 
 type CmdResult = Result<(), Box<dyn std::error::Error>>;
@@ -54,8 +54,9 @@ fn decode_hex(text: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
 }
 
 fn source_www_dir() -> PathBuf {
-    std::env::var_os(SOURCE_ROOT_ENV)
-        .map_or_else(|| PathBuf::from(DEFAULT_SOURCE_ROOT), PathBuf::from)
+    corpus_registry::resolve_identity(SOURCE_ROOT_ENV)
+        .ok()
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_SOURCE_ROOT))
 }
 
 fn key_from_system_json(www: &Path) -> Result<MvMzAssetKey, Box<dyn std::error::Error>> {

@@ -6,7 +6,7 @@
 //! - `cargo test -p utsushi-reallive syscall_routes_match_reallive_real_bytes`
 //! - `cargo test -p utsushi-reallive mouseactioncall_hot_region_dispatches`
 //!
-//! The first entrypoint is env-gated on `ITOTORI_REAL_GAME_ROOT`
+//! The first entrypoint is env-gated on `private inventory row`
 //! and verifies the dispatcher loads against the real corpus's
 //! `Gameexe.ini` at ITS declared screen size and WBCALL namespace. The
 //! second entrypoint is synthetic and exercises the pixel-space
@@ -254,10 +254,10 @@ fn verify_syscall_routes_match_section_h(gameexe: &Gameexe) {
 }
 
 /// DAG-spec filter `cargo test... syscall_routes_match_reallive_real_bytes`.
-/// Env-gated on `ITOTORI_REAL_GAME_ROOT` so the harness can
+/// Env-gated on `private inventory row` so the harness can
 /// also run without the corpus.
 #[test]
-#[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
+#[ignore = "requires private inventory row; opt in with --include-ignored"]
 fn syscall_routes_match_reallive_real_bytes() {
     let Some(gameexe) = gameexe_helpers::load_reallive_real_bytes_gameexe() else {
         real_corpus::require_real_bytes(
@@ -409,7 +409,7 @@ fn syscall_routes_synthetic_eight_kinds_pinned() {
 /// assertion below FAIL. (Verified locally by reverting the repair to
 /// the `break` form and observing this test fail, then restoring.)
 #[test]
-#[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
+#[ignore = "requires private inventory row; opt in with --include-ignored"]
 fn mouseactioncall_scan_discovers_real_bytes_non_contiguous_namespace() {
     let Some(path) = gameexe_helpers::resolve_gameexe_path() else {
         real_corpus::require_real_bytes(
@@ -419,7 +419,7 @@ fn mouseactioncall_scan_discovers_real_bytes_non_contiguous_namespace() {
     };
     let real_bytes = fs::read(&path).unwrap_or_else(|err| {
         panic!(
-            "ITOTORI_REAL_GAME_ROOT is set but Gameexe.ini at {} could not be read: {err}",
+            "reallive/1/encrypted is set but Gameexe.ini at {} could not be read: {err}",
             path.display(),
         )
     });

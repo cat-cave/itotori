@@ -72,7 +72,7 @@ export const FORBIDDEN_DEMO_TOKENS = [
   "OPENROUTER_API_KEY",
   "ITOTORI_LIVE",
   "--live",
-  "ITOTORI_REAL_GAME_ROOT",
+  "private inventory row",
   "DATABASE_URL",
   "db-up",
 ];

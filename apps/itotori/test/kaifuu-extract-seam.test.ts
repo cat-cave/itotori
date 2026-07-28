@@ -14,6 +14,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { resolvePrivateCorpus } from "../src/private-inventory.js";
 import {
   buildExtractArgs,
   extractCapabilities,
@@ -163,21 +164,16 @@ describe("runKaifuuExtract (invocation shape mirrors run.mjs Phase 1)", () => {
     expect(captured!.some((token) => token === "--game-root")).toBe(false);
   });
 
-  it("falls back to the ITOTORI_REAL_GAME_ROOT env when no sourcing flag is given", () => {
-    let spawned = false;
-    runKaifuuExtract({
-      ...IDENTITY,
-      scene: 1,
-      bundleOutputPath: "/run/bridge.json",
-      env: { ITOTORI_REAL_GAME_ROOT: "/env-game-root" },
-      runProcess: (): KaifuuProcessResult => {
-        spawned = true;
-        return { status: 0, stdout: "", stderr: "" };
-      },
-    });
-    // kaifuu-cli reads ITOTORI_REAL_GAME_ROOT itself; the wrapper only needed to
-    // NOT refuse on missing sourcing — the spawn happened.
-    expect(spawned).toBe(true);
+  it("rejects RealLive sourcing when neither an explicit root nor a vault id is given", () => {
+    expect(() =>
+      runKaifuuExtract({
+        ...IDENTITY,
+        scene: 1,
+        bundleOutputPath: "/run/bridge.json",
+        env: {},
+        runProcess: (): KaifuuProcessResult => ({ status: 0, stdout: "", stderr: "" }),
+      }),
+    ).toThrow(/sourcing requires/u);
   });
 
   it("redacts protected-span decode drift dialogue on a non-zero exit", () => {
@@ -467,21 +463,6 @@ describe("runKaifuuExtract (rpg-maker dispatch)", () => {
       }),
     ).toThrow(/rpg-maker.*sourcing requires/u);
   });
-
-  it("resolves rpg-maker sourcing from the ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ env", () => {
-    let spawned = false;
-    runKaifuuExtract({
-      engine: "rpg-maker",
-      ...RPG_IDENTITY,
-      bundleOutputPath: "/run/bridge.json",
-      env: { ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ: "/env-www" },
-      runProcess: () => {
-        spawned = true;
-        return { status: 0, stdout: "", stderr: "" };
-      },
-    });
-    expect(spawned).toBe(true);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -577,10 +558,10 @@ describe("extract-adapter registry", () => {
 // Env-gated REAL-byte proof: spawns the REAL `kaifuu-cli extract --engine
 // softpal <root>` through the production seam (no faked runProcess) and asserts
 // the real bridge it wrote. Runs only on an operator machine with the built
-// binary + ITOTORI_REAL_GAME_ROOT_SOFTPAL exported to a real Softpal root.
+// binary + private inventory row exported to a real Softpal root.
 // Optionally asserts an exact unit count via ITOTORI_SOFTPAL_EXPECTED_UNITS.
 describe("runKaifuuExtract (env-gated real Softpal byte oracle)", () => {
-  const softpalRoot = process.env.ITOTORI_REAL_GAME_ROOT_SOFTPAL;
+  const softpalRoot = resolvePrivateCorpus("softpal", 1, "plain");
   const gated = softpalRoot === undefined || softpalRoot.length === 0 || !existsSync(softpalRoot);
   it.skipIf(gated)("drives the real softpal extract seam and writes a real bridge bundle", () => {
     const workDir = mkdtempSync(join(tmpdir(), "itotori-softpal-real-"));

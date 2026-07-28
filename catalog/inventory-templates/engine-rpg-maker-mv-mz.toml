@@ -1,19 +1,28 @@
 schema = "inventory/v1"
 
 [[corpus]]
-id = "corpus-rpg-maker-mv-mz-a"
+id = "corpus-rpg-maker-mv-mz-1-plain"
 engine = "engine-rpg-maker-mv-mz"
-variant = "variant-a"
+variant = "variant-plain"
 root = "/private/corpora/rpg-maker-mv-mz-a"
 content_address = "sha256:replace-with-local-content-address-a"
 tags = ["rpg-maker", "strict"]
 access = "read-only"
 
 [[corpus]]
-id = "corpus-rpg-maker-mv-mz-b"
+id = "corpus-rpg-maker-mv-mz-2-plain"
 engine = "engine-rpg-maker-mv-mz"
-variant = "variant-b"
+variant = "variant-plain"
 root = "/private/corpora/rpg-maker-mv-mz-b"
 content_address = "sha256:replace-with-local-content-address-b"
+tags = ["rpg-maker", "strict"]
+access = "read-only"
+
+[[corpus]]
+id = "corpus-rpg-maker-mv-mz-3-encrypted"
+engine = "engine-rpg-maker-mv-mz"
+variant = "variant-encrypted"
+root = "/private/corpora/rpg-maker-mv-mz-encrypted"
+content_address = "sha256:replace-with-local-content-address-c"
 tags = ["rpg-maker", "strict"]
 access = "read-only"

@@ -13,11 +13,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { expect, test, type Page } from "@playwright/test";
+import { resolvePrivateCorpus } from "../src/private-inventory.js";
 import { BrowserPlayerSessionManager } from "../src/play/browser-player-session.js";
 import { createItotoriServer } from "../src/server.js";
 import type { ItotoriReadOnlyServiceFactory } from "../src/services/database-services.js";
 
-const softpalRoot = process.env.ITOTORI_SOFTPAL_RESEARCH_ROOT;
+const softpalRoot = resolvePrivateCorpus("softpal", 1, "plain");
 const corpora = [
   { id: "corpus-1", pointId: 6543, staticOracle: 30_165 },
   { id: "corpus-2", pointId: 10_581, staticOracle: 39_832 },
@@ -28,10 +29,7 @@ const corpusReady =
   corpora.every(({ id }) => existsSync(join(softpalRoot, `softpal-${id.at(-1)}`, "data.pac")));
 
 test.describe("Softpal browser player", () => {
-  test.skip(
-    !corpusReady,
-    "set the established ITOTORI_SOFTPAL_RESEARCH_ROOT to a staged two-title Softpal corpus",
-  );
+  test.skip(!corpusReady, "configure the staged Softpal corpora in the private inventory");
   test.slow();
 
   for (const corpus of corpora) {

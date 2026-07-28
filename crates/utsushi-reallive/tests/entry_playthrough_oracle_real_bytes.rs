@@ -81,11 +81,11 @@ fn static_textout_sequence(
 }
 
 #[test]
-#[ignore = "requires ITOTORI_REAL_GAME_ROOT_2 with the optional real corpus"]
+#[ignore = "requires private inventory row with the optional real corpus"]
 fn entry_playthrough_emits_an_ordered_subset_of_static_text_bytes() {
     let Some(corpus) = real_corpus::corpus_2() else {
         eprintln!(
-            "SKIP entry playthrough oracle: ITOTORI_REAL_GAME_ROOT_2 is unset or does not name a readable corpus."
+            "SKIP entry playthrough oracle: reallive/2/plain is unset or does not name a readable corpus."
         );
         return;
     };
@@ -223,7 +223,7 @@ fn entry_playthrough_emits_an_ordered_subset_of_static_text_bytes() {
 }
 
 #[test]
-#[ignore = "requires ITOTORI_CORPUS_ROOT with the optional second real corpus"]
+#[ignore = "requires the private inventory row for the optional second real corpus"]
 fn real_entry_gate_chain_advances_the_frame_loop_before_its_next_pointer_boundary() {
     let Some(corpus) = real_corpus::corpus_2() else {
         eprintln!("SKIP pointer entry oracle: reallive/2/plain is unavailable.");
@@ -387,7 +387,7 @@ fn real_entry_gate_chain_advances_the_frame_loop_before_its_next_pointer_boundar
 }
 
 #[test]
-#[ignore = "requires ITOTORI_CORPUS_ROOT with the optional primary real corpus"]
+#[ignore = "requires the private inventory row for the optional primary real corpus"]
 fn primary_entry_path_keeps_its_executed_oracle_coverage() {
     let Some(corpus) = real_corpus::corpus_1() else {
         eprintln!("SKIP primary entry oracle: reallive/1/encrypted is unavailable.");

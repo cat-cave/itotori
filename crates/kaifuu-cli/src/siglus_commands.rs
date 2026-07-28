@@ -211,11 +211,9 @@ fn siglus_game_root(args: &[String]) -> Result<PathBuf, Box<dyn std::error::Erro
             .tree_root
     } else if let Some(root) = game_root {
         PathBuf::from(root)
-    } else if let Some(root) = std::env::var_os("ITOTORI_REAL_GAME_ROOT_SIGLUS") {
-        PathBuf::from(root)
     } else {
         return Err(
-            "kaifuu.siglus.engine_profile.source_unresolved: --vault-canonical-id <ID>, --game-root <PATH>, or ITOTORI_REAL_GAME_ROOT_SIGLUS is required"
+            "kaifuu.siglus.engine_profile.source_unresolved: --vault-canonical-id <ID> or --game-root <PATH> is required"
                 .into(),
         );
     };

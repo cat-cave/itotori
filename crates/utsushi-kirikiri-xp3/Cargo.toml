@@ -19,6 +19,7 @@ utsushi-core = { path = "../utsushi-core" }
 utsushi-kirikiri = { path = "../utsushi-kirikiri" }
 
 [dev-dependencies]
+corpus-registry = { path = "../corpus-registry" }
 # Test-only extraction oracle: validates emitted ids against the actual bridge
 # units generated from the manifest-declared plaintext corpus files.
 kaifuu-kirikiri = { path = "../kaifuu-kirikiri" }

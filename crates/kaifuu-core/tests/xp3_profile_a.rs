@@ -1,7 +1,7 @@
 //! Metadata-only licensed plain-XP3 profile A intake.
 //!
 //! The committed fixture intentionally carries no game bytes, member paths, or
-//! scenario prose. Set `KAIFUU_XP3_PROFILE_A_ARCHIVE` to the separately
+//! scenario prose. Set `private inventory archive` to the separately
 //! licensed source archive to run the read-side real-byte proof locally.
 
 use std::collections::BTreeSet;
@@ -97,7 +97,7 @@ fn metadata_only_profile_a_declares_honest_inventory_and_kag_coverage() {
 
 #[test]
 fn supplied_licensed_archive_matches_profile_a_inventory_metadata() {
-    let Some(archive_path) = std::env::var_os("KAIFUU_XP3_PROFILE_A_ARCHIVE") else {
+    let Some(archive_path) = corpus_registry::resolve_identity("kirikiri-xp3/1/plain").ok() else {
         return;
     };
     let bytes = std::fs::read(archive_path).expect("read supplied licensed archive");

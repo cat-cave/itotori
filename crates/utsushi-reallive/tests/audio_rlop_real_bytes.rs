@@ -54,7 +54,7 @@ fn load_reallive_real_bytes_gameexe() -> Option<Arc<Gameexe>> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn koe_play_archive_selection_is_authoritative_not_defaulted() {
     let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
         real_corpus::require_real_bytes(
@@ -125,7 +125,7 @@ fn koe_play_archive_selection_is_authoritative_not_defaulted() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn bgm_play_resolves_through_foldname_bgm() {
     let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
         real_corpus::require_real_bytes("utsushi-reallive bgm_play_resolves_through_foldname_bgm");
@@ -167,7 +167,7 @@ fn bgm_play_resolves_through_foldname_bgm() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn bgm_play_asset_id_resolves_against_real_asa_nwa_path() {
     let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
         real_corpus::require_real_bytes(
@@ -218,7 +218,7 @@ fn audio_rlop_real_bytes_skips_when_env_unset() {
         return;
     }
     eprintln!(
-        "ITOTORI_REAL_GAME_ROOT not set — audio RLOperation real-bytes tests are \
-         #[ignore]-gated and only run with ITOTORI_REAL_GAME_ROOT set.",
+        "reallive/1/encrypted not set — audio RLOperation real-bytes tests are \
+         #[ignore]-gated and only run with private inventory row set.",
     );
 }
