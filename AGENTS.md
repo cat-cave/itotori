@@ -8,7 +8,7 @@
 
 ## Fresh Worktree Setup (`node_modules`)
 
-A fresh worktree has no `node_modules`, so `vp check`, `just fixtures-validate`,
+A fresh worktree has no `node_modules`, so `vp check`, `just check fixtures`,
 and public-manifest regen fail until you provision it. Run ONCE after `cd`-ing in:
 
 ```sh

@@ -6,7 +6,7 @@ affected output may save local time, but it never replaces required CI.
 
 ## Affected Command
 
-`just affected` runs `node scripts/affected.mjs`. It inspects tracked changes
+`just check affected` runs `node scripts/affected.mjs`. It inspects tracked changes
 against `HEAD` plus untracked files that are not ignored by Git. The command is
 advisory: it prints the `just` recipes a worker should run for the current
 worktree, but CI still runs the required root gates.
@@ -16,18 +16,18 @@ Affected detection must be conservative:
 | Changed surface                                                                     | Required affected output                                                                  |
 | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | Root non-documentation file, toolchain, lockfile, workflow, script, or Vite+ config | `just ci`                                                                                 |
-| `packages/localization-bridge-schema/`                                              | `just schema`, `just ci-itotori`, `just ci-kaifuu`, `just ci-utsushi`, `just alpha-proof` |
-| `apps/itotori/`, `packages/itotori-db/`                                             | `just ci-itotori`                                                                         |
-| `crates/kaifuu-*`                                                                   | `just ci-kaifuu`                                                                          |
-| `apps/runtime-web-review/`, `crates/utsushi-*`                                      | `just ci-utsushi`                                                                         |
-| `fixtures/`                                                                         | `just fixtures-validate`, `just alpha-proof`                                              |
-| `roadmap/`                                                                          | `just roadmap-validate`                                                                   |
+| `packages/localization-bridge-schema/`                                              | `just check schema`, `just ci public`, `just test all`, `just test all`, `just test alpha` |
+| `apps/itotori/`, `packages/itotori-db/`                                             | `just ci public`                                                                         |
+| `crates/kaifuu-*`                                                                   | `just test all`                                                                          |
+| `apps/runtime-web-review/`, `crates/utsushi-*`                                      | `just test all`                                                                         |
+| `fixtures/`                                                                         | `just check fixtures`, `just test alpha`                                              |
+| `roadmap/`                                                                          | `just check roadmap`                                                                   |
 | Unknown non-documentation paths                                                     | `just check`                                                                              |
 | Documentation-only paths                                                            | No affected task, unless the worker or reviewer asks for a broader gate                   |
 
 If a change triggers `just ci`, narrower project gates are redundant and should
-not also be printed. Fixture changes may still print `just fixtures-validate`,
-and fixture or shared schema changes may still require `just alpha-proof`, so
+not also be printed. Fixture changes may still print `just check fixtures`,
+and fixture or shared schema changes may still require `just test alpha`, so
 affected output stays explicit about manifest validation and the cross-project
 public-fixture vertical.
 
@@ -93,20 +93,20 @@ audit command. Caches are only accelerators.
 | Gate                     | Project or surface                                       | Required checks                                                                                                                                                                                                                                                                    |
 | ------------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `just check`             | Whole repo baseline                                      | Vite+ config check, roadmap validation, fixture manifest validation, toolchain policy, TypeScript typecheck, Rust fmt, Rust check                                                                                                                                                  |
-| `just build`             | Whole repo build                                         | Vite+ TypeScript/web build and Cargo workspace build                                                                                                                                                                                                                               |
+| `just dev build`         | Whole repo build                                         | Vite+ TypeScript/web build and Cargo workspace build                                                                                                                                                                                                                               |
 | `just test`              | Whole repo tests                                         | Vite+ TypeScript/web tests and Cargo workspace tests                                                                                                                                                                                                                               |
 | `just ci`                | Full CI (single-mode synthetic, copyright-free)          | `check`, `build`, database migration, `test`, strict clippy, cargo-deny, plus `mutation-differential` (the synthetic differential guardrail proving synthetic ≥ real for regression detection). Needs NO real corpora — the ~30-45min real-bytes lane is periodic-only (see below) |
-| `just qd-full-ci`        | Local qd full CI (per-gate)                              | Starts a worktree-scoped disposable Postgres stack, runs the affected-aware subset of `just ci` lanes (single-mode synthetic; a crate change runs that family's rust gate + `mutation-differential`, never the real-bytes lane), then tears the stack down                         |
-| `just schema`            | Shared bridge schema                                     | Schema typecheck, tests, and build                                                                                                                                                                                                                                                 |
-| `just ci-itotori`        | Itotori app and DB package                               | DB typecheck/test/build, app typecheck/test/build                                                                                                                                                                                                                                  |
-| `just ci-kaifuu`         | Kaifuu Rust crates                                       | Tests for all `crates/kaifuu-*` workspace crates                                                                                                                                                                                                                                   |
-| `just ci-utsushi`        | Utsushi Rust crates and web review                       | Runtime web review typecheck/test/build, tests for all `crates/utsushi-*` workspace crates                                                                                                                                                                                         |
-| `just fixtures-validate` | Public fixture manifests                                 | Public manifest JSON Schema validation plus raw fixture hash and byte-count checks                                                                                                                                                                                                 |
-| `just alpha-proof`       | Public-fixture vertical (required integration guardrail) | TS build, `vp run alpha:public-fixture` (composes Itotori/Kaifuu/Utsushi/provider/benchmark manifest artifacts), then `vp run alpha:public-fixture-validate` (independent schema + hash-addressing + cross-artifact linkage re-proof). Public-fixture-only; no DB, no creds        |
-| `just roadmap-validate`  | Roadmap data and audit schemas                           | Spec DAG and audit report schema/example validation                                                                                                                                                                                                                                |
+| `just ci affected`        | Local qd full CI (per-gate)                              | Starts a worktree-scoped disposable Postgres stack, runs the affected-aware subset of `just ci` lanes (single-mode synthetic; a crate change runs that family's rust gate + `mutation-differential`, never the real-bytes lane), then tears the stack down                         |
+| `just check schema`            | Shared bridge schema                                     | Schema typecheck, tests, and build                                                                                                                                                                                                                                                 |
+| `just ci public`        | Itotori app and DB package                               | DB typecheck/test/build, app typecheck/test/build                                                                                                                                                                                                                                  |
+| `just test all`         | Kaifuu Rust crates                                       | Tests for all `crates/kaifuu-*` workspace crates                                                                                                                                                                                                                                   |
+| `just test all`        | Utsushi Rust crates and web review                       | Runtime web review typecheck/test/build, tests for all `crates/utsushi-*` workspace crates                                                                                                                                                                                         |
+| `just check fixtures` | Public fixture manifests                                 | Public manifest JSON Schema validation plus raw fixture hash and byte-count checks                                                                                                                                                                                                 |
+| `just test alpha`       | Public-fixture vertical (required integration guardrail) | TS build, `vp run alpha:public-fixture` (composes Itotori/Kaifuu/Utsushi/provider/benchmark manifest artifacts), then `vp run alpha:public-fixture-validate` (independent schema + hash-addressing + cross-artifact linkage re-proof). Public-fixture-only; no DB, no creds        |
+| `just check roadmap`  | Roadmap data and audit schemas                           | Spec DAG and audit report schema/example validation                                                                                                                                                                                                                                |
 
 Before merge, rely on CI workflow results, not only affected output. For local
-parallel work, run `just affected` first, then run every printed recipe.
+parallel work, run `just check affected` first, then run every printed command.
 
 ## Per-gate synthetic vs. periodic real bytes
 
@@ -118,8 +118,8 @@ harnesses prove the synthetic fixtures are **as strong as** the real-bytes lanes
 at catching regressions (`synthetic ≥ real`; see
 `docs/synthetic-differential-validation.md`), so no coverage is lost.
 
-The ~30-45min **real-bytes** suite (`just ci-real-bytes`) is the **periodic
-ground-truth oracle** — `just real-bytes-oracle`, run nightly/on-demand OUTSIDE
+The ~30-45min **real-bytes** suite (`just test real-bytes`) is the **periodic
+ground-truth oracle** — `just test real-bytes-oracle`, run nightly/on-demand OUTSIDE
 per-gate CI (see `docs/real-bytes-periodic-oracle.md`). It re-runs the real
 corpora as ground truth and drift-checks the synthetic manifest against them.
 This is what killed the old ~30min per-gate real-bytes drag. There is no corpus

@@ -149,7 +149,7 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
         );
       }
       if (p.dirty) parts.push("⚠ working tree dirty");
-      parts.push("re-run: just roadmap-dashboard");
+      parts.push("re-run: just dev roadmap-dashboard");
       pv.textContent = sha + " · " + parts.join(" — ");
       return;
     }

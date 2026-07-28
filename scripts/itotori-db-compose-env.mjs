@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 
 const defaultComposeEnvPath = ".tmp/itotori-db/compose.env";
 // Per-worktree Postgres host port range. The base sits above qd-full-ci's
-// reservation window (55433+) so a plain `just db-up` and a concurrent
+// reservation window (55433+) so a plain `just dev db-up` and a concurrent
 // qd-full-ci run never fight for the same default port.
 const defaultPortBase = 56000;
 const defaultPortSpan = 2000;

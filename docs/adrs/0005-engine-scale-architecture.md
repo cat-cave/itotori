@@ -215,12 +215,11 @@ Replace the large recipe family with four generic recipes:
 ```text
 just engine-list
 just engine-validate [engine]
-just real-bytes [engine] [corpus_config]
-just real-bytes-evidence [engine] [corpus_config]
+just test real-bytes
 ```
 
 They are thin calls to `itotori engine ...` and `itotori real-bytes ...`; shell
-does not select engines, roots, or tests. `just real-bytes` enumerates the
+does not select engines, roots, or tests. `just test real-bytes` enumerates the
 catalog and aggregates typed states. Public CI retains its existing public
 recipes; private proof scheduling uses the evidence protocol above.
 

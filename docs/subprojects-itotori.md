@@ -34,13 +34,13 @@ opaque retrieval store.
 Itotori DB-backed checks use `DATABASE_URL`. The local disposable Postgres
 default is `postgres://itotori:itotori@127.0.0.1:55433/itotori`, with
 `COMPOSE_PROJECT_NAME=itotori` as the no-secret public CI default. For qd local
-CI, use `qd ci run <NODE-ID>` or `just qd-full-ci`; that wrapper derives a
+CI, use `qd ci run <NODE-ID>` or `just ci affected`; that wrapper derives a
 worktree-specific host port and Compose project name, writes a per-run compose
 env file, starts Postgres, waits for readiness, runs `just ci`, and tears the
 stack down. If the derived port range is occupied, it fails before startup with
 the blocked ports listed. For manual parallel worktrees outside qd, set a unique
 `DATABASE_URL` host port and `COMPOSE_PROJECT_NAME`; when `COMPOSE_PROJECT_NAME`
-is unset locally, `just db-up` derives one from the worktree directory.
+is unset locally, `just dev db-up` derives one from the worktree directory.
 
 The local compose Postgres service uses runtime server flags, not initdb-only
 settings: `max_connections=400` and `shared_buffers=512MB`. `shared_buffers`
@@ -49,17 +49,17 @@ increase from the default 100, so recreating the container keeps the intended
 capacity without relying on persisted initialization state.
 
 ```sh
-just db-up
-just db-wait
-just db-migrate
-just db-reset
-just qd-full-ci
-just ci-itotori
-just itotori-scale-smoke
+just dev db-up
+just dev db-wait
+just dev db-migrate
+just dev db-reset
+just ci affected
+just ci public
+just dev scale-smoke
 ```
 
 `ITOTORI_SCALE_SCHEMA` optionally pins the schema name used by
-`just itotori-scale-smoke`; otherwise the harness creates a unique temporary
+`just dev scale-smoke`; otherwise the harness creates a unique temporary
 schema and drops it after the run. The smoke summary is
 `.tmp/itotori-scale-harness/smoke/summary.json`.
 

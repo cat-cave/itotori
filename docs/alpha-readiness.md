@@ -3,7 +3,7 @@
 This document is the **alpha readiness README**: the checked statement of what
 the suite can do at the alpha milestone and how a new user proves it from a
 fresh clone. It is the human-facing companion to the machine gate
-`just alpha-readiness-checklist`
+`just check alpha-readiness`
 ([`scripts/alpha-readiness-checklist.mjs`](../scripts/alpha-readiness-checklist.mjs)).
 
 > **What "alpha" means here.** Alpha is **readiness to _start_ a real
@@ -43,13 +43,13 @@ stage in isolation.
 
 ## 2. Fresh-clone demo (public fixtures only — no secrets, no real bytes)
 
-From a clean checkout, after `just install`:
+From a clean checkout, after `just dev install`:
 
 ```sh
-just alpha-proof
+just test alpha
 ```
 
-`just alpha-proof` runs the public-fixture alpha vertical:
+`just test alpha` runs the public-fixture alpha vertical:
 Kaifuu extraction → Itotori draft/patch export → Utsushi runtime observation →
 sanitized provider proof → fresh ITOTORI-026 benchmark → SHARED-025 manifest,
 then independently re-proves cross-artifact linkage. It is **public-fixture-only
@@ -72,7 +72,7 @@ requirements.
 The claims below are **re-derived from the generated engine capability matrix**
 ([`../apps/itotori/src/engine-capability/engine-capability-matrix.v0.1.json`](../apps/itotori/src/engine-capability/engine-capability-matrix.v0.1.json),
 produced by [`scripts/generate-engine-capability-matrix.mjs`](../scripts/generate-engine-capability-matrix.mjs)
-and drift-guarded by its `--check` mode). `just alpha-readiness-checklist`
+and drift-guarded by its `--check` mode). `just check alpha-readiness`
 re-derives these blocks from that matrix and fails if the text here has drifted,
 so this section cannot silently overstate coverage. `positive_adapter` means an
 adapter is exercised end-to-end on a fixture; `readiness_only` means detection /
@@ -121,7 +121,7 @@ recorded-or-opted-in real-provider proof.
 | node          | proves                                                                                                                                                  |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ALPHA-006`   | first real-engine end-to-end alpha vertical (RealLive); the live provider path (`alpha-006d` full-chain + `agentic-repair-live` residue) is opt-in.     |
-| `ALPHA-007`   | suite public-fixture vertical run (`just alpha-proof`).                                                                                                 |
+| `ALPHA-007`   | suite public-fixture vertical run (`just test alpha`).                                                                                                 |
 | `ALPHA-008`   | sanitized live-provider proof bundle.                                                                                                                   |
 | `ITOTORI-116` | public real-LLM proof harness (recorded by default; `--live` opt-in).                                                                                   |
 | `ITOTORI-117` | real-LLM degenerate raw-MTL baseline proof through the same harness.                                                                                    |
@@ -141,7 +141,7 @@ records, for one source revision, a `patch_result` artifact ref **and** a
 `runtime_report` artifact ref that observes the SAME `sourceBridgeId` /
 `sourceBundleHash`, plus the relevant artifact-lineage ids — the patched-output
 runtime proof consumes a `PatchResult` and the SHARED-025 manifest ids rather
-than a static read. `just alpha-readiness-checklist` re-verifies every one of
+than a static read. `just check alpha-readiness` re-verifies every one of
 those artifact hashes against the committed fixtures and confirms the runtime
 report's source matches the manifest (a mismatched revision or a missing patch
 result fails the gate).
@@ -182,13 +182,13 @@ pnpm exec vp run kaifuu:encrypted-readiness -- --no-corpus
 | gate                | command / workflow                                                               | scope                                                                               |
 | ------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | CI                  | `.github/workflows/pr-tiers.yml` → `_tier0.yml` / `_tier1.yml` (`just ci-tier*`) | tiered TS + Rust + DB + browser + alpha + mutation gates.                           |
-| Alpha proof         | `_tier1.yml` `alpha` job → `just alpha-proof`                                    | public-fixture vertical + independent linkage validator.                            |
-| Readiness checklist | `just alpha-readiness-checklist` (in `just check`)                               | docs-vs-generated-artifact drift + node refs + patched-output proof + demo command. |
+| Alpha proof         | `_tier1.yml` `alpha` job → `just test alpha`                                    | public-fixture vertical + independent linkage validator.                            |
+| Readiness checklist | `just check alpha-readiness` (in `just check`)                               | docs-vs-generated-artifact drift + node refs + patched-output proof + demo command. |
 
 ## 6. Running the checklist
 
 ```sh
-just alpha-readiness-checklist
+just check alpha-readiness
 ```
 
 It reads the generated capability matrix and the SHARED-025 proof manifest,

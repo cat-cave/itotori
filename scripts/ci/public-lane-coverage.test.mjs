@@ -13,7 +13,7 @@ import {
   runCoverage,
 } from "./public-lane-coverage.mjs";
 
-const justfileText = readFileSync(join(repoRoot, "justfile"), "utf8");
+const justfileText = readFileSync(join(repoRoot, "scripts", "developer-command.mjs"), "utf8");
 const realProbe = {
   categories: REQUIRED_PUBLIC_CATEGORIES,
   requiredIds: REQUIRED_CATEGORY_IDS,
@@ -41,11 +41,11 @@ test("the registry covers exactly the ten required category ids", () => {
   for (const id of REQUIRED_CATEGORY_IDS) assert.ok(present.has(id), `missing ${id}`);
 });
 
-test("recipe-body extraction isolates a recipe from the next header", () => {
+test("command-selector extraction isolates the meta lane from another scope", () => {
   const body = extractRecipeBody(justfileText, "ci-tier0-meta");
   assert.ok(body?.includes("audit-no-legacy-llm-residue"));
   assert.ok(body?.includes("migrations-parity.test.ts"));
-  // Must NOT bleed into the next recipe (ci-tier0-ts runs vp check).
+  // Must NOT bleed into the next scope (ts runs vp check).
   assert.ok(!body?.includes("pnpm exec vp check"), "recipe body leaked into ci-tier0-ts");
 });
 

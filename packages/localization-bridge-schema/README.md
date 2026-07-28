@@ -74,12 +74,12 @@ validates the same manifest as a downstream parity check.
 Use these commands for the cross-language contract gate:
 
 ```sh
-just contract-validate
+just test all
 pnpm --filter @itotori/localization-bridge-schema test
 cargo test -p kaifuu-core shared_contract_fixture_suite
 ```
 
-`just schema` runs the TypeScript schema typecheck, tests, and build. Full PR
+`just check schema` runs the TypeScript schema typecheck, tests, and build. Full PR
 verification should still run the workspace targets named by the spec.
 
 ## Asset Policy

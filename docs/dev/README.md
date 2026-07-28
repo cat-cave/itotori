@@ -60,7 +60,7 @@ concern.
 
 - [`ci-lanes.md`](ci-lanes.md) — per-gate lane vs periodic/strict lane, what
   runs where, why.
-- [`ci-cache-and-affected.md`](ci-cache-and-affected.md) — `just affected`,
+- [`ci-cache-and-affected.md`](ci-cache-and-affected.md) — `just check affected`,
   Vite+ task cache, Cargo cache, and the affected-vs-required-CI rule.
 - [`dependency-policy.md`](dependency-policy.md) — `cargo-deny` strictness,
   the duplicate-version skip rules, and the `scripts/verify-deny-strict.mjs`

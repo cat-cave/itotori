@@ -22,16 +22,16 @@ page keeps only the itotori-specific roadmap facts.
 
   ```sh
   qd export --out roadmap/spec-dag.json
-  just roadmap-validate
+  just check roadmap
   ```
 
-- `just roadmap-validate` (`node scripts/spec-dag.mjs validate`) is the
+- `just check roadmap` (`node scripts/spec-dag.mjs validate`) is the
   repo-local validator for the committed export: schema version, registries,
   duplicate ids, status/priority shape, placeholder spec/acceptance/audit-focus
   text, edge references, self-edges, and cycles.
 
 - `.qd/config.toml` delegates qd's `check_command` to `just check` and its
-  `ci_command` to `just qd-full-ci` (which wraps `just ci` with a
+  `ci_command` to `just ci affected` (which wraps `just ci` with a
   worktree-scoped disposable Postgres stack). So qd checks, `just check`, and CI
   all include the same roadmap gate.
 
@@ -44,7 +44,7 @@ the field mapping at `roadmap/qd-import-map.json`:
 qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json
 ```
 
-`just qd-import` wraps this and reruns `just roadmap-validate` plus
+`qd import --from roadmap/spec-dag.json` reruns `just check roadmap` plus
 `qd doctor --json`.
 
 ## itotori Registries

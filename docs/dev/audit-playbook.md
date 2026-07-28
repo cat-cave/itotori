@@ -29,10 +29,10 @@ itotori carries a repo-local validator that the audit and the orchestrator both
 rely on:
 
 ```sh
-just roadmap-validate
+just check roadmap
 ```
 
-`just roadmap-validate` validates the committed `roadmap/spec-dag.json`, compiles
+`just check roadmap` validates the committed `roadmap/spec-dag.json`, compiles
 `roadmap/audit-report.schema.json`, validates the committed audit-report
 examples under `roadmap/examples/`, and checks report-level orchestration
 invariants. Audit reports are machine-ingestible JSON that must validate against

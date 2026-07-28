@@ -90,7 +90,7 @@ Disallowed committed fixture sources:
 
 Public fixture manifests must follow `fixtures/public/manifest.schema.json`,
 include SHA-256 hashes and byte lengths, and validate with
-`just fixtures-validate`. Engine fixtures should also document the engine
+`just check fixtures`. Engine fixtures should also document the engine
 variant they represent, the adapter support boundary they exercise, and whether
 the fixture is positive, negative, or round-trip evidence.
 

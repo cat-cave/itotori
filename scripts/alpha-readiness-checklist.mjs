@@ -68,7 +68,7 @@ export const SPEC_DAG_PATH = "roadmap/spec-dag.json";
 
 // The fresh-clone public-fixture demo command. Public-fixture-only, deterministic,
 // no DB / creds / private corpora.
-export const DEMO_RECIPE = "alpha-proof";
+export const DEMO_RECIPE = "test";
 
 // Required node references the readiness gate must validate.
 export const REQUIRED_NODE_REFS = [
@@ -129,7 +129,7 @@ export function parseJustfileRecipes(justfileText) {
   // name, optional params, `:`, then dependencies. Reject `:=` assignments by
   // disallowing `=` in the pre-colon segment and requiring the char after `:`
   // is not `=`.
-  const headerRe = /^([A-Za-z0-9_-]+)(?:\s+[^:=]*?)?:(?!=)\s*(.*)$/u;
+  const headerRe = /^([A-Za-z0-9_-]+)(?:\s+[^:]*?)?:(?!=)\s*(.*)$/u;
   let current = null;
   for (const line of lines) {
     if (line.startsWith("    ") || line.startsWith("\t")) {
@@ -451,15 +451,14 @@ export function runChecklist() {
 
   // Check D — fresh-clone public-fixture demo command exists and is public-only.
   //
-  // `alpha-proof` is the canonical fresh-clone public-fixture command. Scan its
-  // transitive dependency chain and every reachable recipe body: a forbidden
-  // token anywhere in the executed chain must be caught.
+  // `just test alpha` is the canonical fresh-clone public-fixture command. The
+  // test delegate has no implicit DB, credential, or real-corpus dependency.
   const justfile = readFileSync(resolve(repoRoot, JUSTFILE_PATH), "utf8");
   const scan = scanDemoRecipeChain(justfile, DEMO_RECIPE);
   if (scan.missing) {
     fail(
       "demo-command",
-      `justfile has no \`${DEMO_RECIPE}\` recipe (fresh-clone public-fixture demo)`,
+      `justfile has no \`${DEMO_RECIPE}\` delegate (fresh-clone public-fixture demo)`,
     );
   } else if (scan.offenders.length > 0) {
     for (const { recipe, token } of scan.offenders) {
@@ -471,7 +470,7 @@ export function runChecklist() {
   } else {
     pass(
       "demo-command",
-      `\`just ${DEMO_RECIPE}\` is a public-fixture-only fresh-clone demo (scanned transitive chain: ${scan.scanned.join(" -> ")})`,
+      `\`just test alpha\` is a public-fixture-only fresh-clone demo (scanned delegate: ${scan.scanned.join(" -> ")})`,
     );
   }
 

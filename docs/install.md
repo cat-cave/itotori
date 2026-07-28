@@ -25,7 +25,7 @@ itotori --version                 # itotori <ITOTORI_PRODUCT_VERSION>
 or from a clone (produces a tarball you can install anywhere):
 
 ```sh
-just itotori-package-pack         # packages/itotori-cli/itotori-<version>.tgz
+just dev package-pack         # packages/itotori-cli/itotori-<version>.tgz
 npm install -g packages/itotori-cli/itotori-<version>.tgz
 ```
 
@@ -63,7 +63,7 @@ them via the deterministic path in
 | Chromium (render/e2e)      | `UTSUSHI_BROWSER_BIN` / `PLAYWRIGHT_CHROMIUM_BIN` / `pnpm exec playwright install chromium` |
 
 From a clone, `just doctor` verifies every native dep resolves + runs (it fails
-loud with a per-dep fix-it) and `just provision-native-deps` obtains the
+loud with a per-dep fix-it) and `just doctor provision` obtains the
 missing ones; an installed machine follows the provisioning doc above.
 
 ## Developer / fresh-clone setup
@@ -96,13 +96,13 @@ If you are not using direnv, prefix commands with `nix develop -c` (or
 ### Install dependencies
 
 ```sh
-just install        # pnpm install (workspace)
+just dev install        # pnpm install (workspace)
 ```
 
 ### Run the public-fixture demo (no secrets, no real bytes)
 
 ```sh
-just alpha-proof
+just test alpha
 ```
 
 This runs the deterministic public-fixture alpha vertical and its independent
@@ -119,7 +119,7 @@ localize summary is not patch input.
 ### Run the readiness checklist
 
 ```sh
-just alpha-readiness-checklist
+just check alpha-readiness
 ```
 
 Validates that the readiness docs match the generated capability + benchmark
@@ -133,7 +133,7 @@ patched-output runtime proof is grounded.
   required.
 - `just ci` — the complete gate: `check` + build + DB migrations + full TS/Rust
   test suites + the real-bytes lane. Spins up and tears down a worktree-scoped
-  Postgres stack (`just db-up` / `just db-down`). The real-bytes lane reads
+  Postgres stack (`just dev db-up` / `just dev db-down`). The real-bytes lane reads
   staged corpora **read-only** and is skipped unless the corpus roots are staged
   (it never copies copyrighted bytes).
 

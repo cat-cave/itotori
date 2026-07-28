@@ -42,7 +42,7 @@ when you are going to change code.
   per-worktree `CARGO_TARGET_DIR` — see
   [`docs/dev/worktree-lifecycle.md`](docs/dev/worktree-lifecycle.md).
 - A fresh worktree has no `node_modules`; run `just worktree-setup` once
-  before `pnpm exec vp check` or `just fixtures-validate`.
+  before `pnpm exec vp check` or `just check fixtures`.
 - Orchestration goes through qd; see
   [`docs/orchestration.md`](docs/orchestration.md) (playbook),
   [`docs/dev/orchestration-operating-model.md`](docs/dev/orchestration-operating-model.md)

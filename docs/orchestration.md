@@ -161,7 +161,7 @@ point it at the main checkout with `qd --root <main-checkout> …`.
 
 Per-gate CI is mostly synthetic. A green `just ci` or pull-request tier does
 not prove behavior on private bytes. The periodic ground-truth lane is
-`just real-bytes-oracle`; see [the oracle guide](real-bytes-periodic-oracle.md).
+`just test real-bytes-oracle`; see [the oracle guide](real-bytes-periodic-oracle.md).
 
 Before accepting a runtime, byte, or visual claim, require the actual evidence
 path and inspect it. Treat a successful command that ran zero tests as a

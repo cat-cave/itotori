@@ -72,11 +72,11 @@ and the run goes red.
   - `ground-truth` job runs on a `[self-hosted, itotori-corpora]` runner that
     has the real corpora staged (the corpora live under the configured corpus
     roots and are never committed). On a runner without the corpora,
-    `just ci-real-bytes` pre-checks the roots and fails loud rather than passing
+    `just test real-bytes` pre-checks the roots and fails loud rather than passing
     with zero real bytes — a red run, never a false green.
   - `workflow_dispatch` takes a `stage` input: `full`, `drift-only`, or
     `ground-truth-only`.
-- **On-demand locally**: `just real-bytes-oracle` (full) or `just
+- **On-demand locally**: `just test real-bytes-oracle` (full) or `just
 real-bytes-oracle-drift` (drift check only, no corpora).
 
 ## It is NOT in the per-gate CI path
@@ -103,5 +103,5 @@ The failure message on every red path prints this same re-derive hint.
 ## Corpora are read-only; nothing copyrighted is committed
 
 Stage (A) reads the corpora in place under the configured corpus roots,
-read-only, exactly like `just ci-real-bytes`. No copyrighted bytes are copied or
+read-only, exactly like `just test real-bytes`. No copyrighted bytes are copied or
 committed; only the derived, non-copyrighted coverage manifest is tracked.

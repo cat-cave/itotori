@@ -11,7 +11,7 @@
 //!   and NAMAE-resolved speakers whose identity is cross-checked against
 //!   Gameexe. Env-gated + STRICT: an absent corpus is a HARD FAILURE. This
 //!   `#[ignore]`-d suite runs only in the periodic oracle
-//!   (`just real-bytes-oracle`), where the corpus is staged.
+//!   (`just test real-bytes-oracle`), where the corpus is staged.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;

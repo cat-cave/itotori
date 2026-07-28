@@ -19,7 +19,7 @@
 //!   is a fresh allocation).
 //!   Env-gated and STRICT: without `ITOTORI_REAL_GAME_ROOT` an absent corpus is
 //!   an unconditional HARD FAILURE (no opt-out). This `#[ignore]`-d suite runs
-//!   only in the periodic ground-truth oracle (`just real-bytes-oracle`), where
+//!   only in the periodic ground-truth oracle (`just test real-bytes-oracle`), where
 //!   the corpus is staged.
 
 #[path = "support/real_corpus.rs"]

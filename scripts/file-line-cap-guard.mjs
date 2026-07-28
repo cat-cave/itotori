@@ -29,7 +29,7 @@
 // `#[cfg(test)] mod tests` lines so the cap reflects true file size.
 //
 // Exit codes: 0 = clean / update applied; 1 = violation or refused update.
-// Wired into `just ci-tier0-meta` (test then run), mirroring the
+// Wired into `just ci tier0-meta` (test then run), mirroring the
 // `audit-no-hardcoded-cost` house style.
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";

@@ -12,7 +12,7 @@
 //!
 //! `utsushi-cli` is the crate that can see every engine port (ports it does
 //! not use in production are pulled in dev-only, see Cargo.toml), so the gate
-//! lives here. `just ci-utsushi` runs `cargo test -p utsushi-cli`, which is
+//! lives here. `just test all` runs `cargo test -p utsushi-cli`, which is
 //! how this gate is wired into CI. Adding a new `EnginePort` crate without
 //! making it visible to this crate, exporting its port type, or publishing a
 //! `PARITY_PROFILE` fails during the generated registry build/compile.

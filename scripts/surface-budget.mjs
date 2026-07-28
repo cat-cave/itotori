@@ -25,7 +25,7 @@ export function findEnvVarNames(contents) {
 export function findRecipeNames(contents) {
   const names = new Set();
   for (const line of contents.split(/\r?\n/u)) {
-    const match = line.match(/^([A-Za-z][A-Za-z0-9_-]*)(?:\s+[^:=#]+)?\s*:/u);
+    const match = line.match(/^([A-Za-z][A-Za-z0-9_-]*)(?:\s+[^:#]+)?\s*:/u);
     if (match !== null && !line.includes(":=")) names.add(match[1]);
   }
   return names;

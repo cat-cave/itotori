@@ -1780,7 +1780,7 @@ function loadJustRecipeNames() {
   }
 
   const recipes = new Set();
-  for (const match of text.matchAll(/^([A-Za-z0-9_-]+)(?:\s+[^:=\n]+)?\s*:/gmu)) {
+  for (const match of text.matchAll(/^([A-Za-z0-9_-]+)(?:\s+[^:\n]+)?\s*:/gmu)) {
     recipes.add(match[1]);
   }
   return recipes;

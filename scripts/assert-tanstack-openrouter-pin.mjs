@@ -8,7 +8,7 @@
 // stale declared pin), and recorded publish-commit provenance fields.
 //
 // Exit codes: 0 = pin holds; 1 = drift or missing pin sites.
-// Wired into `just ci-tier0-meta` (test then run).
+// Wired into `just ci tier0-meta` (test then run).
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

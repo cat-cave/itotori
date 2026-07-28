@@ -46,7 +46,7 @@ or from a clone (produces a self-contained tarball you can install anywhere,
 no monorepo `node_modules` needed):
 
 ```sh
-just itotori-package-pack         # packages/itotori-cli/itotori-<version>.tgz
+just dev package-pack         # packages/itotori-cli/itotori-<version>.tgz
 npm install -g packages/itotori-cli/itotori-<version>.tgz
 ```
 
@@ -179,5 +179,5 @@ itself — the Nix + direnv + pnpm dev toolchain, the `just`-orchestrated gates,
 the qd DAG workflow, worktree lifecycle, internal architecture, testing
 standard, CI policy — start at [CONTRIBUTING.md](CONTRIBUTING.md), which routes
 you into [`docs/dev/`](docs/dev/README.md). The developer fresh-clone path
-(`just install`, `just alpha-proof`, `just check` / `just ci`) is documented in
+(`just dev install`, `just test alpha`, `just check` / `just ci`) is documented in
 [docs/install.md](docs/install.md) under the developer sections.

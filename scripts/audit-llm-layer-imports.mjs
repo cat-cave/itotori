@@ -20,7 +20,7 @@
 // not count) plus relative-path resolution.
 //
 // Exit codes: 0 = clean; 1 = violation.
-// Wired into `just ci-tier0-meta`.
+// Wired into `just ci tier0-meta`.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";

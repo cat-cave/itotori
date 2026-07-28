@@ -69,7 +69,7 @@ fire and pieces can be swapped."
 5. **Dashboard reachable.** The spec-dag-dashboard renders DAG, claims, and
    audit state from real DB state (not fixtures); audit-findings dashboard
    work in flight extends this.
-6. **Repo hygiene.** `just check` / `just test` / `just ci` / `just alpha-proof`
+6. **Repo hygiene.** `just check` / `just test` / `just ci` / `just test alpha`
    green locally; no silenced tests that represent real outstanding work;
    no foreign-tool subprocess invocations in production code.
 

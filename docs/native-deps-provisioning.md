@@ -14,7 +14,7 @@ today are provided **only** by `flake.nix`:
 The devshell (`flake.nix`) is the **developer** provisioning path and stays
 authoritative for a clone. This document defines the **non-nix** provisioning
 story and its boundary, and is implemented by `scripts/native-deps.mjs`
-(`just doctor` / `just provision-native-deps`).
+(`just doctor` / `just doctor provision`).
 
 ## Design principles
 
@@ -79,7 +79,7 @@ self-contained SEA/`node --experimental-sea` bundle — out of scope here).
 2. **`portable`** — `ITOTORI_POSTGRES_BIN_DIR` points at an unpacked **pinned
    portable Postgres 18** bin dir (`postgres` + `pg_ctl`). Deterministic
    (pinned version + checksum), zero external services, fully self-hostable.
-3. **`container`** — a `docker`/`podman` runtime is present → `just db-up` starts
+3. **`container`** — a `docker`/`podman` runtime is present → `just dev db-up` starts
    `postgres:18` via the committed `docker-compose.yml` (today's dev path); the
    derived per-worktree `DATABASE_URL` comes from
    `scripts/itotori-db-compose-env.mjs --print-database-url`.
@@ -161,8 +161,8 @@ runs before `pnpm install`. Unit-tested via `scripts/native-deps.test.mjs`
 ## Provisioning
 
 ```sh
-just provision-native-deps --dry-run    # print the pinned plan
-just provision-native-deps              # execute the missing steps
+just doctor provision --dry-run    # print the pinned plan
+just doctor provision              # execute the missing steps
 ```
 
 `provision` runs only the steps for **missing** deps: `cargo build --release -p
@@ -177,13 +177,13 @@ On a fresh **non-nix, glibc Linux** machine (Node ≥ `.node-version` present):
 1. Obtain the itotori artifact (installable-package node — the sibling M2 task).
    It ships the prebuilt kaifuu/utsushi bins in `libexec/` (`ITOTORI_LIBEXEC_DIR`)
    and the compiled app.
-2. `just install` (or the artifact's bundled `node_modules`).
-3. Provision the downloaded deps: `just provision-native-deps`
+2. `just dev install` (or the artifact's bundled `node_modules`).
+3. Provision the downloaded deps: `just doctor provision`
    - Chromium: `pnpm exec playwright install chromium` (Playwright-pinned).
-   - Postgres: `just db-up` (container) **or** point `DATABASE_URL` at a system
+   - Postgres: `just dev db-up` (container) **or** point `DATABASE_URL` at a system
      Postgres 18 **or** unpack a pinned portable Postgres and set
      `ITOTORI_POSTGRES_BIN_DIR`.
-4. Run migrations: `just db-migrate`.
+4. Run migrations: `just dev db-migrate`.
 5. Preflight: `just doctor` → must be green (exit 0).
 6. Stop after structure export unless the operator has provisioned the encrypted
    live-state prerequisites. The current public CLI has no observed

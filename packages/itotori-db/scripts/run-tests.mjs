@@ -59,8 +59,8 @@ async function handleMissingDatabase() {
     skippedSuites,
     command: dbTestCommand,
     remediationCommand:
-      "just db-up && just db-migrate && DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test:db",
-    strictCommand: "just test-db-strict",
+      "just dev db-up && just dev db-migrate && DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test:db",
+    strictCommand: "just test db",
     timestamp: new Date().toISOString(),
   };
 
@@ -89,7 +89,7 @@ async function handleMissingDatabase() {
     `skipped suites:   ${skippedSuites.length}`,
     "this run did NOT validate the DB layer",
     `skip report:      ${path.relative(repoRoot, skipReportPath)}`,
-    "to validate DB:   just test-db-strict",
+    "to validate DB:   just test db",
   ]);
   emitSkipMarker(skipReport);
   process.exit(0);

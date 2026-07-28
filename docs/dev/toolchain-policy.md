@@ -49,7 +49,7 @@ just ci
 
 ## Upgrade Policy
 
-`just upgrade` is the canonical upgrade entry point. It should:
+`just dev upgrade` is the canonical upgrade entry point. It should:
 
 1. Enable Corepack.
 2. Run `node scripts/update-node-version.mjs` to move `.node-version` and
@@ -109,7 +109,7 @@ network-free after dependencies have been installed:
 just check
 ```
 
-`just upgrade` also calls:
+`just dev upgrade` also calls:
 
 ```sh
 node scripts/update-node-version.mjs

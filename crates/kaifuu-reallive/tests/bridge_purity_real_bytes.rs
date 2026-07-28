@@ -24,7 +24,7 @@
 //!   `ITOTORI_REAL_GAME_ROOT` (Sweetie HD) and `ITOTORI_REAL_GAME_ROOT_2`
 //!   (Kanon). Without them an absent corpus is an unconditional HARD FAILURE
 //!   (no opt-out). These `#[ignore]`-d suites run only in the periodic
-//!   ground-truth oracle (`just real-bytes-oracle`), where corpora are staged.
+//!   ground-truth oracle (`just test real-bytes-oracle`), where corpora are staged.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;

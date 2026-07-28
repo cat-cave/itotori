@@ -14,7 +14,7 @@
 // exactly one PRIMARY SEAM by the strongest signal it emits, then prints a
 // by-seam count + a behavior-vs-internal RATIO. It is a REPORT, not a gate:
 // it always exits 0 (unless it crashes), so it can run anywhere
-// (`just test-ratio`, CI dashboards, PR notes) to anchor a baseline and surface
+// (`just test ratio`, CI dashboards, PR notes) to anchor a baseline and surface
 // the trend. The first run on the current tree establishes the baseline ratio;
 // future runs diff against it by eye. Promoting it to a hard fail is a later
 // decision (see § "Promoting to a gate" in the testing standard).
@@ -59,7 +59,7 @@
 // Run: `node scripts/classify-test-seams.mjs`            (scan the tracked tree)
 //      `node scripts/classify-test-seams.mjs --files a,b` (unused; the regression
 //        suite calls the exported helpers directly)
-// Wired into the justfile as `just test-ratio`.
+// Wired into the justfile as `just test ratio`.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

@@ -159,9 +159,9 @@ if (rustChannel === undefined) {
 has("rust-toolchain.toml", /"rustfmt"/, "rustfmt component must be installed");
 has("rust-toolchain.toml", /"clippy"/, "clippy component must be installed");
 
-// Atomic CI swap: toolchain pinning lives in the shared composite action;
-// tier workflows call the real `just ci-tier*` recipes (not a retired mono-job
-// `ci.yml`). DATABASE_URL for DB-backed suites is wired on `_tier1.yml`'s `db`.
+// Toolchain pinning lives in the shared composite action. The workflows use the
+// parameterized CI delegate; DATABASE_URL for DB-backed suites is wired on
+// `_tier1.yml`'s `db` job.
 const setupAction = ".github/actions/setup-itotori/action.yml";
 has(setupAction, /node-version-file:\s*\.node-version/, "CI must use .node-version");
 has(setupAction, /pnpm install --frozen-lockfile/, "CI must use frozen pnpm installs");
@@ -182,13 +182,13 @@ if (rustChannel !== undefined && /^\d+\.\d+\.\d+$/u.test(rustChannel)) {
 }
 has(
   ".github/workflows/_tier0.yml",
-  /just ci-tier0-\$\{\{\s*matrix\.lane\s*\}\}/,
-  "Tier 0 must call the real just ci-tier0-* recipes",
+  /just ci tier0-\$\{\{\s*matrix\.lane\s*\}\}/,
+  "Tier 0 must call the parameterized CI delegate",
 );
 has(
   ".github/workflows/_tier1.yml",
-  /just ci-tier1-/,
-  "Tier 1 must call the real just ci-tier1-* recipes",
+  /just ci tier1-/,
+  "Tier 1 must call the parameterized CI delegate",
 );
 has(
   ".github/workflows/_tier1.yml",
@@ -206,7 +206,7 @@ has(
 // than skip when either half is missing.
 has(
   ".github/workflows/_tier1.yml",
-  /nix develop \.#browser --command just ci-tier1-browser/,
+  /nix develop \.#browser --command just ci tier1-browser/,
   "Tier 1 browser job must run the lane inside the pinned nix renderer dev shell",
 );
 has(
@@ -234,9 +234,9 @@ has(
   "the visual oracle must pin its rasterization path, not inherit it from the machine",
 );
 has(
-  "justfile",
+  "scripts/developer-command.mjs",
   /node scripts\/ci\/assert-renderer-contract\.mjs/,
-  "ci-tier1-browser must assert the renderer contract before it runs the suite",
+  "the browser CI selector must assert the renderer contract before it runs the suite",
 );
 has(
   "scripts/ci/assert-renderer-contract.mjs",
@@ -244,40 +244,18 @@ has(
   "an unmet renderer contract must FAIL, never green-skip the pixel assertions",
 );
 
-hasRecipeCommand("check", "pnpm exec vp check", "must run Vite+ checks");
-hasRecipeCommand(
-  "check",
-  "node scripts/verify-toolchain-policy.mjs",
-  "must run the toolchain verifier",
-);
-hasRecipeCommand("check", "cargo fmt --check", "must run cargo fmt");
-hasRecipeCommand("check", "cargo check --workspace", "must run cargo check");
-hasRecipeDependency("ci", "check", "must depend on check");
-hasRecipeDependency("ci", "build", "must depend on build");
-hasRecipeDependency("ci", "db-migrate", "must depend on db-migrate");
-hasRecipeDependency("ci", "test", "must depend on test");
-// clippy + `cargo deny check` are wired into `check` (the single source of
-// truth); `ci` runs them transitively via its `check` dependency.
-hasRecipeCommand(
-  "check",
-  "cargo clippy --workspace --all-targets --all-features -- -D warnings",
-  "must run cargo clippy strictly",
-);
-hasRecipeCommand("check", "cargo deny check", "must run cargo deny");
-hasExactRecipeCommands(
-  "upgrade",
-  [
-    "corepack enable",
-    "node scripts/update-node-version.mjs",
-    "corepack use pnpm@latest",
-    "node scripts/sync-pnpm-engine.mjs",
-    "pnpm update --latest --recursive",
-    "rustup update stable",
-    "cargo update",
-    "node scripts/verify-toolchain-policy.mjs",
-  ],
-  "must run the canonical toolchain upgrade sequence",
-);
+const commandSurface = read("scripts/developer-command.mjs");
+for (const [command, message] of [
+  ["pnpm exec vp check", "check all must run Vite+ checks"],
+  ["node scripts/verify-toolchain-policy.mjs", "check all must run the toolchain verifier"],
+  ["cargo fmt --check", "check all must run cargo fmt"],
+  ["cargo check --workspace", "check all must run cargo check"],
+  ["cargo clippy --workspace --all-targets --all-features -- -D warnings", "check all must run strict clippy"],
+  ["cargo deny check", "check all must run cargo deny"],
+  ["node scripts/update-node-version.mjs", "dev upgrade must run the canonical toolchain upgrade sequence"],
+]) {
+  if (!commandSurface.includes(command)) failures.push(`developer command surface: ${message}`);
+}
 
 has("pnpm-lock.yaml", /lockfileVersion:/, "pnpm lockfile must be committed");
 has("Cargo.lock", /\[\[package\]\]/, "Cargo lockfile must be committed");

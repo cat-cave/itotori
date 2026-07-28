@@ -27,7 +27,7 @@ the live-state and patch-handoff boundary stated explicitly), then
 posture, legal boundaries, and honest limitations. The alpha readiness checklist
 command
 ([`scripts/alpha-readiness-checklist.mjs`](../scripts/alpha-readiness-checklist.mjs),
-`just alpha-readiness-checklist`) re-derives those readiness claims from the
+`just check alpha-readiness`) re-derives those readiness claims from the
 generated capability + benchmark artifacts so the docs cannot drift.
 
 Then read [alpha-proof.md](alpha-proof.md) and

@@ -50,9 +50,9 @@ e2e (below). The per-gate lane never launches a browser, so it stays fast.
 
 ## Lane 2 — periodic/strict (browser + real bytes)
 
-**Entry point:** `just periodic-strict` — runs `browser-e2e` then
+**Entry point:** `just test browser && just test real-bytes-oracle` — runs `browser-e2e` then
 `real-bytes-oracle`. The sub-lanes are also individually named:
-`just browser-e2e` and `just real-bytes-oracle` (+ `just real-bytes-oracle-drift`
+`just test browser` and `just test real-bytes-oracle` (+ `just test real-bytes-oracle-drift`
 for the corpora-free drift slice). GitHub: `.github/workflows/real-bytes-oracle.yml`
 (nightly cron + `workflow_dispatch`).
 
@@ -111,14 +111,14 @@ guessed. The font config is written by hand because the nixpkgs fonts-conf
 helper is additive, not hermetic — it emits a `/nix/store` path that still
 `<include>`s the host's `/etc/fonts/conf.d` and lists `/usr/share/fonts`, so a
 pinned-looking file inherits the host's hinting/subpixel rules and font
-universe. `just ci-tier1-browser` refuses to run unless all three are pinned,
+universe. `just ci tier1-browser` refuses to run unless all three are pinned,
 and it checks the font config's CONTENT, not just that its path is in the store.
 
 - **Locally:** enter the dev shell (`direnv` / `nix develop`) and run
-  `just browser-e2e`. Outside the dev shell, export `PLAYWRIGHT_CHROMIUM_BIN`
+  `just test browser`. Outside the dev shell, export `PLAYWRIGHT_CHROMIUM_BIN`
   to a runnable Chromium (>= 149, matching Playwright 1.60).
 - **In Tier-1 CI:** the `browser` job in `.github/workflows/_tier1.yml` installs
-  nix and runs `nix develop .#browser --command just ci-tier1-browser`. The
+  nix and runs `nix develop .#browser --command just ci tier1-browser`. The
   `.#browser` dev shell is a minimal shell carrying only the renderer contract
   (Chromium + fonts), so a hosted runner does not realise the Rust toolchain to
   take a screenshot; node/pnpm/just come from `setup-itotori`. This is what
@@ -128,12 +128,12 @@ and it checks the font config's CONTENT, not just that its path is in the store.
   an all-green check.
 - **In the periodic lane:** the `browser-e2e` job runs on the self-hosted
   `itotori-corpora` runner (the same host that stages the real corpora and
-  provides nix) via `nix develop --command just browser-e2e`. See
+  provides nix) via `nix develop --command just test browser`. See
   `.github/workflows/real-bytes-oracle.yml`.
 
 ### Skip-honesty / fail-loud
 
-With no runnable Chromium, `just browser-e2e` FAILS LOUD (non-zero) with a
+With no runnable Chromium, `just test browser` FAILS LOUD (non-zero) with a
 pointer to the dev shell — it never passes with the browser e2e unexercised.
 This is the strict-lane analogue of the DB skip-honesty gates (`test-db-strict`,
 `catalog-replay-db-strict`) and mirrors `ci-real-bytes`' missing-corpus
@@ -163,9 +163,9 @@ therefore cannot be consumed as a successful Chromium probe or runtime pass.
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | Tier 0 (`ci-tier0-*`), `just check`                                                                                                                           | Yes                        | These are browser-free public/static gates; a capabilities report may explicitly acknowledge that a browser was not exercised. |
 | Tier 1 portable, DB, and mutation recipes (`ci-tier1-ts-public-*`, `ci-tier1-rust-*`, `ci-tier1-db`, `ci-tier1-mutation`) and the browser-free `just ci` path | Yes                        | Only for a recipe step that is intentionally browserless, and only with the emitted skipped report retained as its evidence.   |
-| Tier 1 browser (`ci-tier1-browser`), `just browser-e2e`, and `just periodic-strict`                                                                           | **No**                     | These lanes own real-browser execution and must fail loudly if Chromium is unavailable.                                        |
-| `just real-bytes-oracle` and every MV/MZ runtime-evidence or alpha-claim lane                                                                                 | **No**                     | A Chromium launch is required evidence for an MV/MZ alpha claim; a skip is not an alpha pass.                                  |
-| `just alpha-proof`                                                                                                                                            | **No**                     | This named alpha recipe must not use a browser skip to imply any runtime-alpha evidence.                                       |
+| Tier 1 browser (`ci-tier1-browser`), `just test browser`, and `just test browser && just test real-bytes-oracle`                                                                           | **No**                     | These lanes own real-browser execution and must fail loudly if Chromium is unavailable.                                        |
+| `just test real-bytes-oracle` and every MV/MZ runtime-evidence or alpha-claim lane                                                                                 | **No**                     | A Chromium launch is required evidence for an MV/MZ alpha claim; a skip is not an alpha pass.                                  |
+| `just test alpha`                                                                                                                                            | **No**                     | This named alpha recipe must not use a browser skip to imply any runtime-alpha evidence.                                       |
 
 The `--skip-browser` surface is limited to `capabilities` and browser-adapter
 `smoke`; trace, capture, and runtime-proof commands reject it. A lane that
@@ -183,13 +183,13 @@ migration, patch-fixture, no-legacy, and LOC — the concrete secretless test fi
 (with a distinguishing marker that must appear in it) and the PUBLIC recipe that
 runs it. `--check` fails (exit 1) if any category is dropped, cites a
 private/secret lane, cites a missing test, has a stale marker, or is not
-actually wired into its recipe. It runs in `just ci-tier0-meta` (a required
+actually wired into its recipe. It runs in `just ci tier0-meta` (a required
 tier-0 merge-queue check), so the assertion gates every PR. Regression suite:
 `scripts/ci/public-lane-coverage.test.mjs`.
 
 ## Opt-in private real-byte proof lane
 
-`just ci-real-bytes-private-proof` (workflow:
+`just ci private-real-bytes` (workflow:
 `.github/workflows/real-bytes-private-proof.yml`, triggered on demand / by the
 `real-byte-proof` label — NEVER `push`/`merge_group`, so it is not a
 merge-required check) exercises extract -> structure -> patch -> replay on the

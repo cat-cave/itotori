@@ -57,7 +57,7 @@ qd ready --json
 qd node show <NODE-ID> --full
 qd claim <NODE-ID> --agent "<OWNER>" --branch spec/<node-id-lower>
 git worktree add -b spec/<node-id-lower> /scratch/worktrees/itotori-spec-<node-id-lower> main
-just roadmap-validate
+just check roadmap
 git diff --check
 git add roadmap/spec-dag.json
 git commit -m "chore(roadmap): claim <NODE-ID>"
@@ -538,7 +538,7 @@ For adapter code or fixture changes, add the focused commands that protect the
 behavior:
 
 ```sh
-just fixtures-validate
+just check fixtures
 cargo fmt --check
 cargo test -p kaifuu-core -p kaifuu-cli -p <adapter-crate>
 cargo run -p kaifuu-cli -- golden <fixture> \
@@ -548,7 +548,7 @@ cargo run -p kaifuu-cli -- golden <fixture> \
   --output .tmp/<adapter>/round-trip.json
 ```
 
-Use `just ci-kaifuu` or the full `just check` when the change touches shared
+Use `just test all` or the full `just check` when the change touches shared
 Kaifuu behavior, fixture validation, CLI registry code, or public contracts.
 Record skipped commands with the reason.
 

@@ -86,7 +86,7 @@ export async function runInitCommand(args: string[], deps: InitCommandDeps): Pro
   } else {
     deps.log("  [warning] No DATABASE_URL set. Database commands (db-migrate, localize)");
     deps.log("           will fail until Postgres is provisioned.");
-    deps.log("           See `just db-up` (docker) or docs/native-deps-provisioning.md.");
+    deps.log("           See `just dev db-up` (docker) or docs/native-deps-provisioning.md.");
   }
   deps.log("");
 
@@ -179,7 +179,7 @@ async function resolveDatabaseUrl(
   deps.log("");
   deps.log("  DATABASE_URL is not accepted in prompts or CLI flags.");
   deps.log("  Options:");
-  deps.log("    a) If you have docker: run `just db-up` to start a container");
+  deps.log("    a) If you have docker: run `just dev db-up` to start a container");
   deps.log("    b) Export DATABASE_URL for an existing Postgres instance and re-run init");
   deps.log("    c) Use a portable Postgres (ITOTORI_POSTGRES_BIN_DIR)");
   return undefined;

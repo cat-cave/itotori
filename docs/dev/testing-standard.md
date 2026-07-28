@@ -76,7 +76,7 @@ mechanics — rewrite it as the observable outcome a reviewer can falsify.
 
 Because this is a bias and not a ban, drift is the risk: behavior code slowly
 accumulates internal-seam tests because they are faster to write. The
-classifier `scripts/classify-test-seams.mjs` (`just test-ratio`) scans the
+classifier `scripts/classify-test-seams.mjs` (`just test ratio`) scans the
 tracked test suites and prints the by-seam ratio (behavior vs internal) so the
 drift is visible. It is a REPORT, not a gate: it always exits 0 and anchors a
 baseline ratio the team diffs against by eye. See **Test-Seam Classifier**
@@ -91,11 +91,11 @@ The root `justfile` is the shared command surface:
 | `just check`             | Fast local gate: Vite+ metadata, roadmap validation, public fixture manifest validation, toolchain policy, TypeScript typecheck, Rust format check, and Cargo check.               |
 | `just test`              | Runs TypeScript Vitest suites through Vite+ and Rust `cargo test --workspace`.                                                                                                     |
 | `just ci`                | Full CI gate: check, build, DB migration, tests, clippy, and cargo-deny.                                                                                                           |
-| `just browser-e2e`       | STRICT/PERIODIC browser lane: runs the runtime-web review Playwright e2e in the nix-provided Chromium. OUTSIDE per-gate CI. Fails LOUD if no runnable Chromium. See `ci-lanes.md`. |
-| `just periodic-strict`   | Periodic/strict lane entry point: `browser-e2e` + `real-bytes-oracle`. OUTSIDE per-gate CI (nightly cron + on-demand). See `ci-lanes.md`.                                          |
-| `just fixtures-validate` | Validates committed public fixture manifests and hashes.                                                                                                                           |
-| `just roadmap-validate`  | Validates the machine-readable spec DAG and audit report examples.                                                                                                                 |
-| `just test-ratio`        | Prints the test-seam classifier report: behavior-vs-internal ratio by seam (real-bytes / real-http / dom / real-db vs internal-handler / mocked / internal). Report, not a gate.   |
+| `just test browser`       | STRICT/PERIODIC browser lane: runs the runtime-web review Playwright e2e in the nix-provided Chromium. OUTSIDE per-gate CI. Fails LOUD if no runnable Chromium. See `ci-lanes.md`. |
+| `just test browser && just test real-bytes-oracle`   | Periodic/strict lane entry point: `browser-e2e` + `real-bytes-oracle`. OUTSIDE per-gate CI (nightly cron + on-demand). See `ci-lanes.md`.                                          |
+| `just check fixtures` | Validates committed public fixture manifests and hashes.                                                                                                                           |
+| `just check roadmap`  | Validates the machine-readable spec DAG and audit report examples.                                                                                                                 |
+| `just test ratio`        | Prints the test-seam classifier report: behavior-vs-internal ratio by seam (real-bytes / real-http / dom / real-db vs internal-handler / mocked / internal). Report, not a gate.   |
 
 Package-level commands are allowed for tight loops, but PR verification should
 name the root command that protects the changed behavior.
@@ -103,18 +103,18 @@ name the root command that protects the changed behavior.
 CI is split into two lanes — a fast, deterministic, browser-free per-gate lane
 (`just ci` / `qd-full-ci`: synthetic + real-HTTP `/api` contract tests + the
 OpenAPI drift test + the jsdom UI unit lane) and a periodic/strict lane
-(`just periodic-strict`: the real-browser Playwright e2e + the real-bytes
+(`just test browser && just test real-bytes-oracle`: the real-browser Playwright e2e + the real-bytes
 oracle). `ci-lanes.md` is the canonical map of which tests run where and
 why; the browser/real-bytes proofs are deliberately kept OUT of the per-gate
 lane so it stays fast and deterministic.
 
-`just alpha-proof` and the GitHub Alpha Proof workflow are the required
+`just test alpha` and the GitHub Alpha Proof workflow are the required
 integration checks (`ALPHA-009` retired the literal Hello World workflow). The
 gate validates bridge, patch, provider proof, benchmark, runtime evidence,
 dashboard/read-model, and SHARED-025 manifest linkage for the same fixture
 identity, source revision, and locale branch; it is not a success-string smoke.
 `just hello` remains only as a compatibility alias that delegates to
-`just alpha-proof` for roadmap nodes that still declare it, and cannot diverge.
+`just test alpha` for roadmap nodes that still declare it, and cannot diverge.
 
 ## Behavior Naming
 
@@ -179,7 +179,7 @@ Fixtures should be layered by reuse and legal risk:
 | --------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Inline literals       | Tiny behavior examples inside a single test.                                                    | Keep them readable and synthetic. Do not paste real game text.                                                                                                                      |
 | Test builders         | Repeated valid bridge, patch, runtime, or DB objects.                                           | Put shared TypeScript builders in a dedicated workspace package when duplication crosses packages. Rust builders should live in the crate test module or a dedicated fixture crate. |
-| Public fixtures       | Cross-package, cross-language, or golden behavior.                                              | Raw files must be synthetic, public domain, or redistributable, and have a manifest under `fixtures/public/` that passes `just fixtures-validate`.                                  |
+| Public fixtures       | Cross-package, cross-language, or golden behavior.                                              | Raw files must be synthetic, public domain, or redistributable, and have a manifest under `fixtures/public/` that passes `just check fixtures`.                                  |
 | Golden artifacts      | Expected bridge bundles, patch exports, runtime reports, deltas, or normalized UI/API payloads. | Store only stable, reviewed artifacts with schema versions and fixture hashes. Prefer semantic JSON comparison over broad snapshots.                                                |
 | Private local corpora | Purchased games, licensed sets, and benchmark evidence that cannot be redistributed.            | Keep them under `fixtures/private-local/`, ignored by git. CI must pass when the directory is absent.                                                                               |
 
@@ -229,7 +229,7 @@ To verify one app suite in isolation — for a roadmap `verification` command or
 tight local loop — name the exact test file, not a substring filter:
 
 ```sh
-just dlsite-demand-app-test
+just test dlsite-demand
 # or, equivalently, the concrete command it wraps:
 pnpm exec vitest run apps/itotori/test/dlsite-demand.test.ts --exclude '**/.direnv/**'
 ```
@@ -311,15 +311,15 @@ supports two explicitly-distinct modes:
   machine-readable report to `.tmp/itotori-db/no-database-skipped.json`
   carrying the package name, required env var, skipped-suite count + names, and
   the remediation command. A green run in this mode did NOT validate the DB.
-- **Required DB validation** — `just test-db-strict` (or the `--require-
+- **Required DB validation** — `just test db` (or the `--require-
 database` script path used by `pnpm --filter @itotori/db test:db`). This is
   the honesty gate: it runs the DB-backed suites and FAILS (non-zero) when
   `DATABASE_URL` is missing/empty or a skip marker was recorded, so a skipped
   run cannot masquerade as DB validation. Point it at a reachable Postgres
-  (`just db-up`). Use `scripts/assert-db-tests-not-skipped.mjs` to add the same
+  (`just dev db-up`). Use `scripts/assert-db-tests-not-skipped.mjs` to add the same
   no-skip assertion to any lane.
 
-CI runs the required-validation path (`just ci-itotori` brings up Postgres and
+CI runs the required-validation path (`just ci public` brings up Postgres and
 runs `test:db` + the no-skip assertion), so CI DB coverage is never weakened by
 the local fast-skip affordance.
 
@@ -337,11 +337,11 @@ run ONLY that suite and assert it executed persistence tests (per-suite count
 > regression test wired into `just check`.
 
 - **Catalog replay/idempotency (CATALOG-072)** —
-  `just catalog-replay-db-strict` (`scripts/catalog-replay-db-gate.mjs`).
+  `just test catalog-replay-db` (`scripts/catalog-replay-db-gate.mjs`).
   Skip artifact `.tmp/itotori-db/catalog-replay-skipped.json`; marker
   `CATALOG_REPLAY_DB_SKIP`; regression `scripts/catalog-replay-db-gate.test.mjs`.
 - **Repository permission-denial matrix (SHARED-027)** —
-  `just permission-denial-db-strict`
+  `just test permission-denial-db`
   (`scripts/permission-denial-db-gate.mjs`). This runs only
   `packages/itotori-db/test/authorization-matrix.test.ts` through the
   `--require-database` runner path, then asserts the `repository permission
@@ -351,18 +351,18 @@ denial fixtures` tests executed exactly one DB-backed denial assertion for
   `.tmp/itotori-db/permission-denial-proof.json`; one-line marker
   `PERMISSION_DENIAL_DB_SKIP`; regression
   `scripts/permission-denial-db-gate.test.mjs` (wired into `just check`). Bring
-  up a disposable Postgres first (`just db-up && just db-migrate`); the recipe
+  up a disposable Postgres first (`just dev db-up && just dev db-migrate`); the recipe
   does not itself manage docker. The full up/migrate/run/down flow:
 
   ```sh
-  just db-up
-  just db-migrate
+  just dev db-up
+  just dev db-migrate
   DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" \
-    just permission-denial-db-strict
-  just db-down
+    just test permission-denial-db
+  just dev db-down
   ```
 
-  Run `DATABASE_URL= just permission-denial-db-strict` to see the missing-
+  Run `DATABASE_URL= just test permission-denial-db` to see the missing-
   `DATABASE_URL` hard failure.
 
 ## Rust Adapter Tests
@@ -523,7 +523,7 @@ summaries or public fixtures.
 
 ## Test-Seam Classifier
 
-`scripts/classify-test-seams.mjs` (invoked as `just test-ratio`) is the
+`scripts/classify-test-seams.mjs` (invoked as `just test ratio`) is the
 behavior-first drift detector. It scans the tracked test suites
 (`apps/*/test`, `packages/*/test`, `crates/`) and classifies each test FILE
 into exactly one PRIMARY seam by the strongest signal it emits, then prints a
@@ -572,6 +572,6 @@ Before merging testing changes:
 5. DB tests isolate state and close connections.
 6. Golden updates are stable, normalized, and justified.
 7. Property or mutation tests target real invariants instead of blanket quotas.
-8. `just roadmap-validate` and `just check` pass.
+8. `just check roadmap` and `just check` pass.
 9. No committed test requires live providers, private corpora, or local-only
    credentials.

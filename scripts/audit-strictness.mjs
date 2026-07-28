@@ -246,8 +246,9 @@ export function checkRelaxedFloors(path, contents) {
 // `#[ignore]` test yet is absent from that lane (and not on the transitional
 // allowlist).
 export function parseLaneCrates(justfileText) {
-  const lines = justfileText.split(/\r?\n/u);
-  let inRecipe = false;
+  const lines = justfileText.replaceAll("\\n", "\n").split(/\r?\n/u);
+  const delegated = justfileText.includes('if (selector === "real-bytes")');
+  let inRecipe = delegated;
   const crates = new Set();
   let cargoCommand = "";
   for (const line of lines) {
@@ -255,7 +256,7 @@ export function parseLaneCrates(justfileText) {
       inRecipe = true;
       continue;
     }
-    if (inRecipe && /^\S/u.test(line)) break; // next top-level recipe
+    if (inRecipe && !delegated && /^\S/u.test(line)) break; // next top-level recipe
     if (!inRecipe) continue;
     const trimmed = line.trim();
     if (
@@ -365,8 +366,9 @@ function runAudit() {
     violations.push(...checkDenyBans(denyToml));
   }
 
+  const commandSurface = readRepoFile("scripts/developer-command.mjs");
   const justfile = readRepoFile("justfile");
-  const laneCrates = justfile ? parseLaneCrates(justfile) : new Set();
+  const laneCrates = parseLaneCrates(commandSurface ?? justfile ?? "");
   violations.push(...evaluateRealBytesCoverage(realBytesCrates, laneCrates));
 
   if (violations.length > 0) {
