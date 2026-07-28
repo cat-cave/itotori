@@ -34,6 +34,9 @@ pub struct VmState {
     pub system_properties: BTreeMap<(i32, i32), i32>,
     /// Root-stage object arrays keyed by stage index and object slot.
     pub stage_objects: BTreeMap<i32, BTreeMap<i32, StageObject>>,
+    /// Declared root-stage object-list lengths. Sparse slots stay sparse until
+    /// an authored operation materialises one.
+    pub stage_object_list_sizes: BTreeMap<i32, usize>,
     pub(super) structured_system: BTreeMap<(u32, Vec<i32>), Value>,
 }
 
@@ -117,6 +120,14 @@ pub enum VmError {
         scene_id: u32,
         offset: usize,
         operation: &'static str,
+    },
+    #[error(
+        "utsushi.siglus.vm.unsupported_element_path: scene {scene_id} offset {offset} path {path:?}"
+    )]
+    UnsupportedElementPath {
+        scene_id: u32,
+        offset: usize,
+        path: Vec<i32>,
     },
     #[error(
         "utsushi.siglus.vm.unsupported_stage_object_property: scene {scene_id} offset {offset} property {property}"

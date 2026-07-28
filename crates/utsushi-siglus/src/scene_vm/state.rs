@@ -85,7 +85,18 @@ impl SceneVm<'_> {
                     .cloned()
                     .unwrap_or(Value::Int(0)))
             }
-            _ => Err(self.operation(offset, "element-path")),
+            _ => Err(VmError::UnsupportedElementPath {
+                scene_id: self.scene_id,
+                offset,
+                path: values
+                    .iter()
+                    .map(|value| match value {
+                        Value::Int(value) => *value,
+                        Value::Str(index) => *index,
+                        Value::Text(_) | Value::System(_) | Value::Function(_) => i32::MIN,
+                    })
+                    .collect(),
+            }),
         }
     }
 
