@@ -29,6 +29,8 @@ import {
  * garbage.
  */
 
+// The identifier is intentionally structural: audit reports remain portable
+// across planning-prefix changes without retaining any particular prefix here.
 const FINDING_HEADING_RE = /^###\s+Finding:\s+([A-Z][A-Z0-9]*-\d+)\s+\[([A-Z0-9]+)\]\s+(.+?)\s*$/u;
 const FIELD_RE = /^\*\*([a-z_][a-z0-9_]*):\*\*\s+(.+?)\s*$/u;
 
