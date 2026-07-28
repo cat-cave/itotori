@@ -1,38 +1,14 @@
 //! Sv20 execution: values, branches, calls, and honest stop diagnostics.
-use crate::native_callback_registry::NativeCallbackRegistry;
-use crate::scene_runtime::{ChoiceOption, RuntimeDiagnostic, SceneStep, SoftpalRuntimeError};
+use crate::scene_runtime::{ChoiceOption, RuntimeDiagnostic, SceneStep};
 use kaifuu_softpal::{CommandFamily, Instruction, OpcodeScan, Operand, OperandTag, RawCommand};
 use std::collections::{BTreeMap, HashMap};
+mod scene_vm_calls;
+mod scene_vm_support;
+pub(crate) use scene_vm_support::point_offsets;
 #[derive(Default)]
 struct Frame {
     locals: BTreeMap<u32, i32>,
     arguments: Vec<i32>,
-}
-/// Parse `POINT.DAT`: its stored offsets are relative to the 12-byte code
-/// header and are listed in reverse label order.
-pub(crate) fn point_offsets(bytes: &[u8]) -> Result<Vec<usize>, SoftpalRuntimeError> {
-    if bytes.len() < 16 || !matches!(&bytes[..16], b"$POINT_LIST_****" | b"_POINT_LIST_****") {
-        return Err(SoftpalRuntimeError::InvalidPointTable);
-    }
-    let encrypted = bytes[0] == b'$'
-        && bytes.get(16..20).is_some_and(|word| {
-            u32::from_le_bytes(word.try_into().expect("four bytes")) & 0xff00_0000 != 0
-        });
-    let mut offsets = Vec::new();
-    let mut shift = 4u32;
-    for chunk in bytes[16..].chunks_exact(4) {
-        let mut raw = u32::from_le_bytes(chunk.try_into().expect("four bytes"));
-        if encrypted {
-            let mut parts = raw.to_le_bytes();
-            parts[0] = parts[0].rotate_left(shift);
-            raw = u32::from_le_bytes(parts) ^ 0x084d_f873 ^ 0xff98_7dee;
-            shift = (shift + 1) % 8;
-        }
-        offsets
-            .push(usize::try_from(raw).map_err(|_| SoftpalRuntimeError::InvalidPointTable)? + 12);
-    }
-    offsets.reverse();
-    Ok(offsets)
 }
 pub(crate) struct Vm<'a> {
     instructions: &'a [Instruction],
@@ -48,6 +24,10 @@ pub(crate) struct Vm<'a> {
     ip: usize,
     steps: Vec<SceneStep>,
     diagnostics: Vec<RuntimeDiagnostic>,
+    /// Category `0x0011:0x001c` work-process attachment; no launcher data is invented.
+    work_process_attached: bool,
+    /// Category `0x000f:0x0005` exchanges this PAL-owned mode value.
+    debug_window_state: i32,
     branches: usize,
     instruction_count: usize,
 }
@@ -66,7 +46,7 @@ impl<'a> Vm<'a> {
             .collect();
         let commands = commands
             .iter()
-            .map(|command| (command_call_offset(command), command))
+            .map(|command| (scene_vm_support::command_call_offset(command), command))
             .collect();
         Self {
             instructions: &scan.instructions,
@@ -82,6 +62,8 @@ impl<'a> Vm<'a> {
             ip: 0,
             steps: Vec::new(),
             diagnostics: Vec::new(),
+            work_process_attached: false,
+            debug_window_state: 0,
             branches: 0,
             instruction_count: 0,
         }
@@ -144,7 +126,32 @@ impl<'a> Vm<'a> {
                     }
                     self.ip = next;
                 }
-                _ => self.ip = next,
+                // The compact call model transfers arguments at `0x0b`.
+                0x20 | 0x21 => {
+                    let operation = if instruction.opcode.id() == 0x20 {
+                        "pack_args"
+                    } else {
+                        "drop_args"
+                    };
+                    if !scene_vm_calls::verify_frame_argument_count(
+                        &mut self,
+                        instruction,
+                        operation,
+                    ) {
+                        break;
+                    }
+                    self.ip = next;
+                }
+                // Sena identifies 0x16 as an intentionally state-free `nop`.
+                0x16 => self.ip = next,
+                // A future opcode is visible at its instruction offset.
+                opcode => {
+                    self.bad(
+                        &format!("unimplemented_opcode_{opcode:02x}"),
+                        instruction.offset,
+                    );
+                    break;
+                }
             }
         }
         VmResult {
@@ -152,6 +159,7 @@ impl<'a> Vm<'a> {
             diagnostics: self.diagnostics,
             branches: self.branches,
             instructions: self.instruction_count,
+            work_process_attached: self.work_process_attached,
         }
     }
     fn expression(&mut self, instruction: Instruction) -> bool {
@@ -194,7 +202,6 @@ impl<'a> Vm<'a> {
         };
         self.store(destination, result, instruction.offset)
     }
-
     fn conditional_jump(&mut self, instruction: Instruction, next: usize) -> bool {
         let operands = instruction.operands();
         let Some(condition) = operands
@@ -298,22 +305,24 @@ impl<'a> Vm<'a> {
             CommandFamily::Call { target }
                 if (target.category, target.function) == (0x0011, 0x001c) =>
             {
-                if NativeCallbackRegistry::default().invoke(|_| {}) == 0 {
-                    self.diagnostics.push(RuntimeDiagnostic {
-                        signature: "native_callback_registry_population_unavailable".to_string(),
-                        offset: instruction.offset,
-                    });
-                }
-                true
+                self.work_process_attached = true;
+                scene_vm_calls::write_call_result(self, instruction, 1)
             }
             CommandFamily::Call { target }
                 if (target.category, target.function) == (0x000f, 0x0005) =>
             {
-                self.bad("debug_window_state_unavailable", instruction.offset)
+                let Some(new_state) = self.stack.pop() else {
+                    return self.bad("debug_window_set_stack_underflow", instruction.offset);
+                };
+                let old_state = self.debug_window_state;
+                self.debug_window_state = new_state;
+                scene_vm_calls::write_call_result(self, instruction, old_state)
             }
-            CommandFamily::Call { target } if target.semantic_name().is_some() => true,
             CommandFamily::Call { target } => self.bad(
-                &format!("call_{:04x}_{:04x}", target.category, target.function),
+                &format!(
+                    "unimplemented_call_{:04x}_{:04x}",
+                    target.category, target.function
+                ),
                 instruction.offset,
             ),
             _ => true,
@@ -410,7 +419,7 @@ impl<'a> Vm<'a> {
 
     fn value(&mut self, operand: Operand, offset: usize) -> Option<i32> {
         match operand.tag() {
-            OperandTag::PLAIN => Some(sign_extend_28(operand.raw)),
+            OperandTag::PLAIN => Some(scene_vm_support::sign_extend_28(operand.raw)),
             OperandTag::TYPED => Some(
                 *self
                     .frames
@@ -482,19 +491,10 @@ impl<'a> Vm<'a> {
     }
 }
 
-fn command_call_offset(command: &RawCommand) -> usize {
-    match command {
-        RawCommand::TextShow { command_offset, .. } => command_offset + 24,
-        RawCommand::Select { command_offset, .. } => command_offset + 8,
-    }
-}
-fn sign_extend_28(raw: u32) -> i32 {
-    ((raw & 0x0fff_ffff) as i32) << 4 >> 4
-}
-
 pub(crate) struct VmResult {
     pub(crate) steps: Vec<SceneStep>,
     pub(crate) diagnostics: Vec<RuntimeDiagnostic>,
     pub(crate) branches: usize,
     pub(crate) instructions: usize,
+    pub(crate) work_process_attached: bool,
 }

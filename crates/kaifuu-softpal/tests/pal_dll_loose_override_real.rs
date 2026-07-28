@@ -12,19 +12,18 @@
 //! by this test; here we prove the engine binary actually contains the file /
 //! archive path machinery that behaviour depends on.
 //!
-//! `#[ignore]`d and env-gated: set `ITOTORI_SOFTPAL_RESEARCH_ROOT` to the
-//! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
-//! `--ignored`. When the env var is unset or no `Pal.dll` is present under the
-//! root the test SKIPS CLEANLY (prints why and returns) — it never panics on an
-//! absent corpus. Wired into the PERIODIC `ci-real-bytes` lane alongside the
-//! other `*_real_corpus` tests. **No copyrighted text lives in this file** —
-//! only ASCII engine-format markers.
+//! `#[ignore]`d real-bytes proof over both staged corpora. An absent named
+//! binary is a **failing** required-input outcome, never a successful skip.
+//! **No copyrighted text lives in this file** — only ASCII engine-format
+//! markers.
 
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const RESEARCH_ROOT_ENV: &str = "ITOTORI_SOFTPAL_RESEARCH_ROOT";
+const CORPORA: [(&str, &str); 2] = [
+    ("corpus-1", "/scratch/corpus/softpal-1/dll/Pal.dll"),
+    ("corpus-2", "/scratch/corpus/softpal-2/dll/Pal.dll"),
+];
 
 /// A `<dir>\<file>` path-join template — the loose-file half of the resolver.
 const PATH_JOIN: &[u8] = b"%s\\%s";
@@ -33,48 +32,28 @@ const PAC_EXT: &[u8] = b".pac";
 /// The PAL engine's own PDB identity marker, proving this is the real engine.
 const ENGINE_MARKER: &[u8] = b"TamoSys";
 
-/// Collect every `Pal.dll` (case-insensitive) under `dir`.
-fn find_pal_dlls(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(rd) = fs::read_dir(dir) else { return };
-    for entry in rd.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            find_pal_dlls(&path, out);
-        } else if path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.eq_ignore_ascii_case("Pal.dll"))
-        {
-            out.push(path);
-        }
-    }
-}
-
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
     haystack.windows(needle.len()).any(|w| w == needle)
 }
 
-#[test]
-#[ignore = "real-bytes; requires ITOTORI_SOFTPAL_RESEARCH_ROOT with a shipped Pal.dll"]
-fn pal_dll_carries_loose_and_archive_path_machinery() {
-    let Some(root) = env::var_os(RESEARCH_ROOT_ENV).map(PathBuf::from) else {
-        eprintln!("SKIP: {RESEARCH_ROOT_ENV} unset; no Softpal research tree to inspect");
-        return;
-    };
-    let mut dlls = Vec::new();
-    find_pal_dlls(&root, &mut dlls);
-    dlls.sort();
-    if dlls.is_empty() {
-        eprintln!(
-            "SKIP: no Pal.dll under {} (engine binary not staged)",
-            root.display()
-        );
-        return;
-    }
+fn required_binary(label: &str, path: &Path) -> Vec<u8> {
+    fs::read(path).unwrap_or_else(|error| {
+        panic!(
+            "REAL-BYTES SKIP pal_dll_carries_loose_and_archive_path_machinery: \
+             {label} required Pal.dll missing at {} ({error}); refusing a passing real-bytes proof \
+             without its required input",
+            path.display(),
+        )
+    })
+}
 
+#[test]
+#[ignore = "real-bytes; requires both staged Softpal Pal.dll binaries"]
+fn pal_dll_carries_loose_and_archive_path_machinery() {
     let mut checked = 0usize;
-    for dll in &dlls {
-        let bytes = fs::read(dll).expect("read Pal.dll");
+    for (label, raw_path) in CORPORA {
+        let dll = Path::new(raw_path);
+        let bytes = required_binary(label, dll);
         assert!(
             contains(&bytes, ENGINE_MARKER),
             "{}: expected PAL engine identity marker {:?}",
@@ -94,9 +73,17 @@ fn pal_dll_carries_loose_and_archive_path_machinery() {
         checked += 1;
     }
 
-    assert!(checked >= 1, "expected to inspect at least one Pal.dll");
+    assert_eq!(checked, CORPORA.len(), "both staged binaries inspected");
     eprintln!(
-        "OK: {checked} Pal.dll binary(ies) carry both loose (`%s\\%s`) and archive (`.pac`) \
-         path machinery under the PAL engine marker"
+        "OK: {checked}/{} staged Pal.dll binaries carry both loose (`%s\\%s`) and archive \
+         (`.pac`) path machinery under the PAL engine marker",
+        CORPORA.len(),
     );
+}
+
+#[test]
+#[should_panic(expected = "required Pal.dll missing")]
+fn missing_pal_dll_is_a_non_passing_required_input() {
+    let missing = PathBuf::from("/scratch/corpus/absent-softpal-proof-input/Pal.dll");
+    let _ = required_binary("absent-fixture", &missing);
 }

@@ -65,6 +65,8 @@ pub struct SoftpalSceneStats {
     pub text_bearing_choice_count: usize,
     pub system_select_count: usize,
     pub branch_count: usize,
+    /// Whether the executed path attached the native work-process pump.
+    pub work_process_attached: bool,
     pub unresolved_construct_count: usize,
     pub opcode_exhaustive: bool,
 }
@@ -166,6 +168,7 @@ impl SoftpalScene {
                 text_bearing_choice_count,
                 system_select_count: choices.len() - text_bearing_choice_count,
                 branch_count: result.branches,
+                work_process_attached: result.work_process_attached,
                 unresolved_construct_count: result.diagnostics.len(),
                 opcode_exhaustive: walk.is_exhaustive(),
             },
@@ -334,21 +337,50 @@ mod tests {
     }
 
     #[test]
-    fn refuses_debug_window_state_call_without_inventing_host_state() {
-        let (textdat, _) = textdat();
-        let scene = SoftpalScene::execute(
-            &program(&[op(0x1f), word(0), op(0x17), word(0x000f_0005), word(0)]),
-            &textdat,
-        )
-        .expect("valid script shape");
-        assert_eq!(scene.stats.instructions_executed, 2);
+    fn debug_window_state_returns_the_previous_value_and_controls_flow() {
+        let (textdat, pointer) = textdat();
+        // Two state swaps should return 0 then 3. `not(local2)` is zero only
+        // when the second call returned the state installed by the first; the
+        // jump then bypasses the message. A gutted state exchange emits it.
+        let tokens = [
+            op(0x1f),
+            word(3),
+            op(0x17),
+            word(0x000f_0005),
+            word(0x4000_0001),
+            op(0x1f),
+            word(9),
+            op(0x17),
+            word(0x000f_0005),
+            word(0x4000_0002),
+            op(0x14),
+            word(0x4000_0002),
+            op(0x0a),
+            word(1),
+            word(0x4000_0002),
+            op(0x1f),
+            word(pointer),
+            op(0x1f),
+            word(0x0fff_ffff),
+            op(0x1f),
+            word(0),
+            op(0x17),
+            word(0x0002_0002),
+            word(0),
+            op(0x15),
+        ];
+        let mut points = Vec::from(&b"_POINT_LIST_****"[..]);
+        points.extend_from_slice(&96_u32.to_le_bytes());
+        let scene = SoftpalScene::execute_with_points(&program(&tokens), &textdat, Some(&points))
+            .expect("stateful debug calls execute");
+        assert!(scene.diagnostics.is_empty());
         assert_eq!(
-            scene.diagnostics,
-            vec![RuntimeDiagnostic {
-                signature: "debug_window_state_unavailable".to_string(),
-                offset: 20,
-            }],
-            "the registered handler consumes a value and swaps an external debug-window state"
+            scene.stats.dialogue_count, 0,
+            "state return bypasses message"
+        );
+        assert_eq!(
+            scene.stats.branch_count, 2,
+            "conditional plus its taken jump"
         );
     }
 }

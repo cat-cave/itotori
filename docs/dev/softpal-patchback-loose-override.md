@@ -72,6 +72,6 @@ runtime trace.
   rebuilt files into an output directory deployed as the engine's `data\`
   override directory.
 - Real-bytes grounding test: `kaifuu-softpal/tests/pal_dll_loose_override_real.rs`
-  inspects the shipped `Pal.dll` for the archive (`.pac`) + loose (`%s\%s`) path
-  machinery under the `TamoSys` engine marker. Env-gated on
-  `ITOTORI_SOFTPAL_RESEARCH_ROOT`; skips cleanly when the corpus is absent.
+  inspects the two staged `Pal.dll` binaries for the archive (`.pac`) + loose
+  (`%s\%s`) path machinery under the `TamoSys` engine marker. It is ignored
+  outside the real-bytes lane; a missing named binary fails rather than passes.

@@ -174,17 +174,17 @@ impl UtsushiSoftpalPort {
             CapabilityDeclaration {
                 capability: PortCapability::Snapshot,
                 stance: CapabilityStance::Pending,
-                note: "dev: a Softpal VM state model is not yet built, so snapshot/restore is unwired.",
+                note: "dev: the VM has a small native-state slice, but no complete snapshot/restore state model.",
             },
             CapabilityDeclaration {
                 capability: PortCapability::DeterministicReplay,
                 stance: CapabilityStance::Pending,
-                note: "dev: deterministic replay awaits the Softpal VM state model.",
+                note: "dev: deterministic replay awaits a complete Softpal VM state model.",
             },
             CapabilityDeclaration {
                 capability: PortCapability::ReplayReview,
                 stance: CapabilityStance::Pending,
-                note: "dev: no replay-review surface exists without a Softpal VM.",
+                note: "dev: no replay-review surface exists without a complete Softpal VM model.",
             },
         ],
     };
