@@ -188,15 +188,19 @@ export const REQUIRED_CATEGORY_IDS = [
 // ---------------------------------------------------------------------------
 export function extractRecipeBody(justfileText, recipeName) {
   if (recipeName === "ci-tier0-meta") {
-    return /if \(scope === "meta"\) return shell\(`(?<body>[\s\S]*?)`\);/u.exec(justfileText)
-      ?.groups?.body ?? null;
+    return (
+      /if \(scope === "meta"\)\s*return shell\(`(?<body>[\s\S]*?)`\);/u.exec(justfileText)?.groups
+        ?.body ?? null
+    );
   }
   if (recipeName.startsWith("ci-tier1-ts-public-")) {
     const selector = recipeName.slice(3);
-    return new RegExp(
-      `if \\(lane === "${selector}"\\) return shell\\("(?<body>[^\\n]+)`,
-      "u",
-    ).exec(justfileText)?.groups?.body ?? null;
+    return (
+      new RegExp(
+        `if \\(lane === "${selector}"\\)\\s*return shell\\(\\s*"(?<body>[\\s\\S]*?)",\\s*\\)`,
+        "u",
+      ).exec(justfileText)?.groups?.body ?? null
+    );
   }
   const lines = justfileText.split(/\r?\n/u);
   const headerRe = new RegExp(`^${recipeName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?:\\s|:)`);

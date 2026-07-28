@@ -213,10 +213,12 @@ test("check mode exits 1 on an active-surface leak and 0 on a classified histori
 });
 
 test("Tier 0 content audit runs the enforceable generalization-purge gate", () => {
-  const justfile = readFileSync(resolve(here, "..", "justfile"), "utf8");
-  const tier0Meta = justfile.match(/^ci-tier0-meta:\n([\s\S]*?)^ci-tier0-ts:/mu)?.[1];
+  const dispatcher = readFileSync(resolve(here, "developer-command.mjs"), "utf8");
+  const tier0Meta = /if \(scope === "meta"\)\s*return shell\(`(?<body>[\s\S]*?)`\);/u.exec(
+    dispatcher,
+  )?.groups?.body;
 
-  assert.ok(tier0Meta, "ci-tier0-meta recipe must exist");
+  assert.ok(tier0Meta, "ci tier0-meta selector must exist");
   assert.match(tier0Meta, /node --test scripts\/validate-no-specific-game-references\.test\.mjs/u);
   assert.match(tier0Meta, /node scripts\/validate-no-specific-game-references\.mjs/u);
 });

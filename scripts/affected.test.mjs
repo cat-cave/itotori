@@ -69,7 +69,10 @@ test("the parameterized test delegate covers every kaifuu and utsushi workspace 
   const commandSurface = readFileSync("scripts/developer-command.mjs", "utf8");
   assert.match(commandSurface, /cargo test --workspace/u);
   for (const prefix of ["kaifuu-", "utsushi-"]) {
-    assert.ok(workspacePackagesByPrefix(prefix).length > 0, `workspace must retain ${prefix} crates`);
+    assert.ok(
+      workspacePackagesByPrefix(prefix).length > 0,
+      `workspace must retain ${prefix} crates`,
+    );
   }
 });
 

@@ -86,16 +86,16 @@ near the end of this document.
 
 The root `justfile` is the shared command surface:
 
-| Command                  | Purpose                                                                                                                                                                            |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `just check`             | Fast local gate: Vite+ metadata, roadmap validation, public fixture manifest validation, toolchain policy, TypeScript typecheck, Rust format check, and Cargo check.               |
-| `just test`              | Runs TypeScript Vitest suites through Vite+ and Rust `cargo test --workspace`.                                                                                                     |
-| `just ci`                | Full CI gate: check, build, DB migration, tests, clippy, and cargo-deny.                                                                                                           |
-| `just test browser`       | STRICT/PERIODIC browser lane: runs the runtime-web review Playwright e2e in the nix-provided Chromium. OUTSIDE per-gate CI. Fails LOUD if no runnable Chromium. See `ci-lanes.md`. |
-| `just test browser && just test real-bytes-oracle`   | Periodic/strict lane entry point: `browser-e2e` + `real-bytes-oracle`. OUTSIDE per-gate CI (nightly cron + on-demand). See `ci-lanes.md`.                                          |
-| `just check fixtures` | Validates committed public fixture manifests and hashes.                                                                                                                           |
-| `just check roadmap`  | Validates the machine-readable spec DAG and audit report examples.                                                                                                                 |
-| `just test ratio`        | Prints the test-seam classifier report: behavior-vs-internal ratio by seam (real-bytes / real-http / dom / real-db vs internal-handler / mocked / internal). Report, not a gate.   |
+| Command                                            | Purpose                                                                                                                                                                            |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `just check`                                       | Fast local gate: Vite+ metadata, roadmap validation, public fixture manifest validation, toolchain policy, TypeScript typecheck, Rust format check, and Cargo check.               |
+| `just test`                                        | Runs TypeScript Vitest suites through Vite+ and Rust `cargo test --workspace`.                                                                                                     |
+| `just ci`                                          | Full CI gate: check, build, DB migration, tests, clippy, and cargo-deny.                                                                                                           |
+| `just test browser`                                | STRICT/PERIODIC browser lane: runs the runtime-web review Playwright e2e in the nix-provided Chromium. OUTSIDE per-gate CI. Fails LOUD if no runnable Chromium. See `ci-lanes.md`. |
+| `just test browser && just test real-bytes-oracle` | Periodic/strict lane entry point: `browser-e2e` + `real-bytes-oracle`. OUTSIDE per-gate CI (nightly cron + on-demand). See `ci-lanes.md`.                                          |
+| `just check fixtures`                              | Validates committed public fixture manifests and hashes.                                                                                                                           |
+| `just check roadmap`                               | Validates the machine-readable spec DAG and audit report examples.                                                                                                                 |
+| `just test ratio`                                  | Prints the test-seam classifier report: behavior-vs-internal ratio by seam (real-bytes / real-http / dom / real-db vs internal-handler / mocked / internal). Report, not a gate.   |
 
 Package-level commands are allowed for tight loops, but PR verification should
 name the root command that protects the changed behavior.
@@ -179,7 +179,7 @@ Fixtures should be layered by reuse and legal risk:
 | --------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Inline literals       | Tiny behavior examples inside a single test.                                                    | Keep them readable and synthetic. Do not paste real game text.                                                                                                                      |
 | Test builders         | Repeated valid bridge, patch, runtime, or DB objects.                                           | Put shared TypeScript builders in a dedicated workspace package when duplication crosses packages. Rust builders should live in the crate test module or a dedicated fixture crate. |
-| Public fixtures       | Cross-package, cross-language, or golden behavior.                                              | Raw files must be synthetic, public domain, or redistributable, and have a manifest under `fixtures/public/` that passes `just check fixtures`.                                  |
+| Public fixtures       | Cross-package, cross-language, or golden behavior.                                              | Raw files must be synthetic, public domain, or redistributable, and have a manifest under `fixtures/public/` that passes `just check fixtures`.                                     |
 | Golden artifacts      | Expected bridge bundles, patch exports, runtime reports, deltas, or normalized UI/API payloads. | Store only stable, reviewed artifacts with schema versions and fixture hashes. Prefer semantic JSON comparison over broad snapshots.                                                |
 | Private local corpora | Purchased games, licensed sets, and benchmark evidence that cannot be redistributed.            | Keep them under `fixtures/private-local/`, ignored by git. CI must pass when the directory is absent.                                                                               |
 

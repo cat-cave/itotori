@@ -250,9 +250,15 @@ for (const [command, message] of [
   ["node scripts/verify-toolchain-policy.mjs", "check all must run the toolchain verifier"],
   ["cargo fmt --check", "check all must run cargo fmt"],
   ["cargo check --workspace", "check all must run cargo check"],
-  ["cargo clippy --workspace --all-targets --all-features -- -D warnings", "check all must run strict clippy"],
+  [
+    "cargo clippy --workspace --all-targets --all-features -- -D warnings",
+    "check all must run strict clippy",
+  ],
   ["cargo deny check", "check all must run cargo deny"],
-  ["node scripts/update-node-version.mjs", "dev upgrade must run the canonical toolchain upgrade sequence"],
+  [
+    "node scripts/update-node-version.mjs",
+    "dev upgrade must run the canonical toolchain upgrade sequence",
+  ],
 ]) {
   if (!commandSurface.includes(command)) failures.push(`developer command surface: ${message}`);
 }
