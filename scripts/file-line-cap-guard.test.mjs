@@ -20,6 +20,7 @@ import {
   emptyWhitelist,
   evaluateCheck,
   evaluateUpdate,
+  listScanFiles,
 } from "./file-line-cap-guard.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -35,6 +36,17 @@ test("countLines matches wc -l (newline count)", () => {
   assert.equal(countLines("a\n"), 1);
   assert.equal(countLines("a\nb\n"), 2);
   assert.equal(countLines("a\nb\nc"), 2);
+});
+
+test("tree scan includes tracked TypeScript alongside Rust", () => {
+  const dir = mkdtempSync(join(tmpdir(), "linecap-scope-"));
+  execFileSync("git", ["init", "--quiet"], { cwd: dir });
+  writeFileSync(join(dir, "guard.rs"), "fn main() {}\n");
+  writeFileSync(join(dir, "guard.ts"), "export const guard = true;\n");
+  writeFileSync(join(dir, "ignored.txt"), "not source\n");
+  execFileSync("git", ["add", "."], { cwd: dir });
+
+  assert.deepEqual(listScanFiles(dir), ["guard.rs", "guard.ts"]);
 });
 
 test("a NEW oversized file (not whitelisted) fails", () => {
