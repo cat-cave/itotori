@@ -51,6 +51,10 @@ export const SOURCE_FILES = {
   },
   realliveOpcode: {
     path: "crates/kaifuu-reallive/src/opcode.rs",
+    additionalPaths: [
+      "crates/kaifuu-reallive/src/opcode_parts/001.rs",
+      "crates/kaifuu-reallive/src/opcode_parts/002.rs",
+    ],
     symbols: ["RealLiveOpcode", "Expr", "opener"],
     role: "kaifuu RealLive decoder element taxonomy: RealLiveOpcode element forms (framing edges: kidoku markup, command argc/overload, goto-family, choice/select-block), Expr data-lead forms (ExpressionPiece), and the opener-byte marker switch.",
   },
@@ -110,12 +114,12 @@ export class ManifestGenerationError extends Error {
 export function loadSources(root = repoRoot) {
   const sources = {};
   for (const [id, spec] of Object.entries(SOURCE_FILES)) {
-    const absolute = resolve(root, spec.path);
+    const paths = [spec.path, ...(spec.additionalPaths ?? [])];
     try {
-      sources[id] = readFileSync(absolute, "utf8");
+      sources[id] = paths.map((path) => readFileSync(resolve(root, path), "utf8")).join("\n");
     } catch (error) {
       throw new ManifestGenerationError(
-        `missing source-of-truth file "${id}" at ${spec.path}: ${
+        `missing source-of-truth file "${id}" at ${paths.join(", ")}: ${
           error?.code ?? error?.message ?? "unreadable"
         }`,
       );

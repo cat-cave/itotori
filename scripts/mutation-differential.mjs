@@ -90,7 +90,7 @@ export const MUTATIONS = [
   {
     id: "opcode_byteswap",
     category: "swapped / mis-typed opcode",
-    file: "crates/kaifuu-reallive/src/opcode.rs",
+    file: "crates/kaifuu-reallive/src/opcode_parts/004.rs",
     find: "let opcode_u16 = u16::from_le_bytes([bytes[pos + 3], bytes[pos + 4]]);",
     replace: "let opcode_u16 = u16::from_le_bytes([bytes[pos + 4], bytes[pos + 3]]);",
     guardCrates: ["kaifuu-reallive", "utsushi-reallive"],
@@ -99,7 +99,7 @@ export const MUTATIONS = [
   {
     id: "framing_off_by_one",
     category: "off-by-one framing (arg_count / overload / header width)",
-    file: "crates/kaifuu-reallive/src/opcode.rs",
+    file: "crates/kaifuu-reallive/src/opcode_parts/004.rs",
     find: "let mut consumed = COMMAND_HEADER_LEN;",
     replace: "let mut consumed = COMMAND_HEADER_LEN + 1;",
     guardCrates: ["kaifuu-reallive", "utsushi-reallive"],
@@ -119,7 +119,7 @@ export const MUTATIONS = [
   {
     id: "avg32_broken_backref",
     category: "broken AVG32 decompress step (LZSS back-reference run length)",
-    file: "crates/utsushi-reallive/src/decompressor.rs",
+    file: "crates/utsushi-reallive/src/decompressor_parts/001.rs",
     find: "let run_length = ((count & 0x0f) as usize) + AVG32_LZSS_MIN_RUN;",
     replace: "let run_length = ((count & 0x0f) as usize) + AVG32_LZSS_MIN_RUN + 1;",
     guardCrates: ["utsushi-reallive"],
@@ -139,7 +139,7 @@ export const MUTATIONS = [
   {
     id: "choice_drop_option",
     category: "dropped choice option",
-    file: "crates/kaifuu-reallive/src/opcode.rs",
+    file: "crates/kaifuu-reallive/src/opcode_parts/004.rs",
     // Only ever keep the FIRST select-block option; every later option is
     // silently dropped from the decoded Choice.
     find: "if !text.is_empty() {",
@@ -150,7 +150,7 @@ export const MUTATIONS = [
   {
     id: "assignop_plain_eq_to_shr",
     category: "swapped assignment operator (AssignOp table: plain `=` mis-decoded)",
-    file: "crates/utsushi-reallive/src/expression.rs",
+    file: "crates/utsushi-reallive/src/expression_parts/001.rs",
     // The exact historical bug: pin op 0x1E (plain `=`) back to `>>=`, so
     // every `intX[Y] = <expr>` silently executes as `intX[Y] >>= <expr>`.
     // The synthetic `synth_42_plain_assign_into_intb` fixture (intB[0] = 7)
