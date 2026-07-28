@@ -23,7 +23,6 @@ import {
   LocaleBranchScopeV02,
   LocalizationUnitV02,
 } from "./schema-domain-04.js";
-import { BridgeBundleV02 } from "./schema-domain-06.js";
 import { RuntimeCapabilityContractV02 } from "./schema-domain-07.js";
 import {
   RuntimeControlledPlaybackEvidenceSurfaceV02,

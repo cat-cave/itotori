@@ -1,7 +1,6 @@
 import {
   CatalogSource,
   ItotoriDatabase,
-  and,
   catalogConflictSubjectKindValues,
   catalogExternalIds,
   catalogLanguageStatuses,

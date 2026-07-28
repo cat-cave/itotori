@@ -4,7 +4,6 @@ import {
   CatalogOpportunityDecision,
   CatalogOpportunityExistingTranslationSignal,
   CatalogOpportunityUnknownEvidenceSignal,
-  and,
   capabilityLevelStatusKindValues,
   capabilityLevelValues,
   catalogLanguageStatusValues,

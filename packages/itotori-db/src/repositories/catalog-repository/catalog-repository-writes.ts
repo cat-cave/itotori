@@ -1,15 +1,11 @@
 import {
   AuthorizationActor,
   ItotoriDatabase,
-  and,
   catalogConflictEvidence,
   catalogConflicts,
   catalogDemandFacts,
   catalogExternalIds,
   catalogLanguageStatuses,
-  catalogLocalScanEntries,
-  catalogLocalScanExternalIds,
-  catalogLocalScans,
   catalogReleaseInstallStates,
   catalogReleaseMappings,
   catalogReleases,
@@ -22,23 +18,12 @@ import {
   CatalogSourceProvenanceInput,
   CatalogSourceProvenanceRecord,
 } from "./catalog-domain-01.js";
-import {
-  CatalogLocalScanInput,
-  CatalogLocalScanRecord,
-  CatalogWorkInput,
-  CatalogWorkSnapshot,
-} from "./catalog-domain-02.js";
-import { ItotoriCatalogRepositoryPort } from "./catalog-domain-04.js";
-import { recordSeedTargetUnchecked, recordSourceProvenanceUnchecked } from "./catalog-domain-16.js";
-import {
-  assertSourceProvenanceInput,
-  readLocalScan,
-  readWorkSnapshot,
-} from "./catalog-domain-17.js";
+import { CatalogWorkInput, CatalogWorkSnapshot } from "./catalog-domain-02.js";
+import { recordSourceProvenanceUnchecked } from "./catalog-domain-16.js";
+import { assertSourceProvenanceInput, readWorkSnapshot } from "./catalog-domain-17.js";
 import { assertCatalogWorkInput, assertWorkScopedArtifactReferences } from "./catalog-domain-18.js";
 import { assertConflictEvidenceSubjectReferences } from "./catalog-domain-19.js";
-import { assertLocalScanInput } from "./catalog-domain-21.js";
-import { requiredLocalScan, requiredRow, requiredSnapshot } from "./catalog-domain-22.js";
+import { requiredSnapshot } from "./catalog-domain-22.js";
 export class CatalogRepositoryWrites {
   constructor(protected readonly db: ItotoriDatabase) {}
 

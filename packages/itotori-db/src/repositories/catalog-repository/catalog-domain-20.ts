@@ -6,7 +6,6 @@ import {
   CatalogSeedOrigin,
   CatalogSeedStatus,
   CatalogSource,
-  and,
   catalogConfidenceValues,
   catalogConflictStatusValues,
   catalogExternalIdKindValues,

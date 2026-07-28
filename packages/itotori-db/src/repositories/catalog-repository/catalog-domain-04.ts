@@ -25,7 +25,6 @@ import {
   CatalogSource,
   CatalogSourceRecordKind,
   CatalogTranslationPortability,
-  and,
   catalogCandidateMatchStatusValues,
   catalogConfidenceValues,
   catalogConflictKindValues,

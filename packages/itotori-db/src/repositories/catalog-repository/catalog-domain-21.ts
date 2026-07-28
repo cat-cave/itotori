@@ -10,7 +10,6 @@ import {
   CatalogReleasePackageKind,
   CatalogSource,
   CatalogSourceRecordKind,
-  and,
   catalogCandidateMatchStatusValues,
   catalogExternalIdKindValues,
   catalogExternalIds,

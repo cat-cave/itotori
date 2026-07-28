@@ -2,7 +2,6 @@ import {
   ProjectState,
   RUNTIME_ARTIFACT_HASH_PROVENANCES,
   RuntimeDashboardStatus,
-  assertBridgeBundleV02,
   assertRuntimeReport,
   isExtractModeForEngine,
 } from "./dependencies.js";

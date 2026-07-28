@@ -34,7 +34,6 @@ import {
   ObservationRedactionMetadata,
   ObservationSourceRevision,
   RuntimeCapabilityContractV02,
-  RuntimeEvidenceReportV02,
   RuntimeFeatureSupportV02,
 } from "./schema-domain-07.js";
 import {

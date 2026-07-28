@@ -2,13 +2,10 @@ import { translationScopeValues } from "./dependencies.js";
 import { STRICT_API_BODY_KEYS } from "./api-domain-02.js";
 import { ApiModelRoutingModel, ApiModelRoutingProvider } from "./api-domain-03.js";
 import {
-  ApiBranchPolicyGlossaryReference,
   ApiBranchPolicyPolicy,
   ApiBranchPolicyRule,
   ApiBranchPolicySections,
   ApiBranchPolicySettingsResponse,
-  ApiBranchPolicySourceRevisionReference,
-  ApiBranchPolicyVersion,
   ApiConfigureAuthSsoSettingsResponse,
   ApiLocalizationRunConfigResponse,
   ApiModelRoutingPromptPreset,

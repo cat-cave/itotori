@@ -18,7 +18,6 @@ import {
   TriageActorV02,
   TriageArtifactRefV02,
   TriageBundleReferenceIndexV02,
-  TriageBundleV02,
   TriageEventV02,
   TriageSubjectRefV02,
   TriageTaskV02,

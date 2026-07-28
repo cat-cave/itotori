@@ -21,7 +21,6 @@ import {
   ProvenanceRecordV02,
   TriageSubjectRefV02,
 } from "./schema-domain-04.js";
-import { benchmarkRubricQualitySeverityForScore } from "./schema-domain-06.js";
 
 export function computeBenchmarkCostLedgerV02(
   providerRuns: readonly BenchmarkProviderRunV02[],

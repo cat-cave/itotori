@@ -11,7 +11,6 @@ import {
 import {
   BenchmarkCountBucketV02,
   BenchmarkPenaltySummaryV02,
-  BenchmarkReportV02,
   DeterministicQaResultV02,
   HumanEvaluationResultV02,
   QaAgentEvaluationV02,

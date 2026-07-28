@@ -3,7 +3,6 @@ import {
   CatalogLanguageStatus,
   CatalogPlatformLanguageConflictOrigin,
   CatalogSource,
-  and,
   catalogDemandFacts,
   catalogExternalIds,
   catalogPlatformLanguageConflictOriginValues,

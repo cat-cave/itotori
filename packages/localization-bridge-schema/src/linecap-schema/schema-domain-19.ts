@@ -33,7 +33,6 @@ import {
 import {
   BenchmarkCountBucketV02,
   BenchmarkFindingRecordV02,
-  BenchmarkReportV02,
   BenchmarkSeededDefectOracleV02,
 } from "./schema-domain-05.js";
 import { assertPortableArtifactUriV02 } from "./schema-domain-15.js";

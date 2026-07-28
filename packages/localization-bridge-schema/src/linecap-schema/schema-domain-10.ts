@@ -16,7 +16,6 @@ import {
   PatchTouchedAssetV02,
   PermissionLocalUserFixtureV02,
 } from "./schema-domain-07.js";
-import { assertBridgeBundleV02 } from "./schema-domain-08.js";
 import {
   assertPatchFailureV02,
   computePatchResultOutputHashRollupV02,

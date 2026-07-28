@@ -22,7 +22,6 @@ import {
   BENCHMARK_RUBRIC_DIMENSION_IDS,
   BENCHMARK_RUBRIC_MAPPING_SOURCES,
   BENCHMARK_RUBRIC_SCORES,
-  BenchmarkFindingRecordV02,
   BenchmarkQualityRubric,
   BenchmarkRubricDimensionId,
   BenchmarkRubricMqmBand,

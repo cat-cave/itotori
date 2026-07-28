@@ -1,6 +1,4 @@
 import {
-  CostDrilldownPage,
-  JobsRunTableReadModel,
   PROJECT_OVERVIEW_SCHEMA_VERSION,
   ProjectOverviewReadModel,
   ProjectTelemetryTimeseries,

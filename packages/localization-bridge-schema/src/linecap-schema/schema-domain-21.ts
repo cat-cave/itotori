@@ -4,13 +4,11 @@ import {
   AlphaVerticalProofHashScopeV02,
   CONTRACT_COMPATIBILITY_STATUSES_V02,
   CONTRACT_FIXTURE_KINDS_V02,
-  RFC3339_INSTANT_MALFORMED_CODE,
   RFC3339_INSTANT_PATTERN,
   Rfc3339InstantValidationError,
 } from "./schema-domain-02.js";
 import {
   AlphaVerticalProofContentHashV02,
-  AlphaVerticalProofManifestV02,
   ContractFixtureManifestEntryV02,
   InvalidContractFixtureManifestEntryV02,
 } from "./schema-domain-07.js";

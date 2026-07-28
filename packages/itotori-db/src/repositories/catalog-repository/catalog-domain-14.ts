@@ -2,7 +2,6 @@ import {
   CatalogConflictKind,
   CatalogConflictStatus,
   CatalogPlatformLanguageConflictOrigin,
-  and,
   catalogConflictEvidence,
   catalogConflictKindValues,
   catalogConflictSubjectKindValues,

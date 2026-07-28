@@ -4,7 +4,6 @@ import {
   CatalogOpportunityMarketPrevalenceSignal,
   CatalogOpportunityRuntimeEvidenceSignal,
   CatalogOpportunityWorkTypeSignal,
-  and,
   capabilityLevelStatusKindValues,
   catalogDemandFactKindValues,
   catalogDemandFacts,

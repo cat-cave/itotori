@@ -13,7 +13,6 @@ import {
   CatalogSource,
   CatalogSourceRecordKind,
   CatalogTranslationPortability,
-  and,
 } from "./dependencies.js";
 
 export type CatalogJsonRecord = Record<string, unknown>;

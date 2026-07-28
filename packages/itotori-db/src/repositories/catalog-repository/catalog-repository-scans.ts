@@ -32,8 +32,6 @@ import {
   CatalogWorkSnapshot,
 } from "./catalog-domain-02.js";
 import {
-  CatalogCompletenessBenchmarkPools,
-  CatalogCompletenessPoolFilter,
   CatalogConflictReviewFilter,
   CatalogConflictReviewReadModel,
 } from "./catalog-domain-03.js";
@@ -45,11 +43,7 @@ import {
   catalogSources,
   seedTargetIsBenchmarkSelectable,
 } from "./catalog-domain-04.js";
-import {
-  readCatalogCompletenessBenchmarkPools,
-  readCatalogConflictReview,
-} from "./catalog-domain-05.js";
-import { assertCompletenessPoolFilter } from "./catalog-domain-08.js";
+import { readCatalogConflictReview } from "./catalog-domain-05.js";
 import {
   assertCatalogConflictReviewFilter,
   catalogConflictReviewRowMatches,

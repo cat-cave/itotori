@@ -1,5 +1,6 @@
 export { API_ERROR_RESPONSE_CODES } from "./api-domain-01.js";
 export type { ApiErrorResponse, ItotoriApiRouteId } from "./api-domain-01.js";
+export type { JobsRunTableReadModel, JobsRunTableRow, LoadJobsRunTableOptions } from "@itotori/db";
 export { STRICT_API_BODY_KEYS } from "./api-domain-02.js";
 export { assertItotoriApiErrorResponse } from "./api-domain-03.js";
 export type {
