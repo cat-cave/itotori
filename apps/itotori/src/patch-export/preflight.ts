@@ -14,6 +14,7 @@
 // The exporter treats any `blockingExport: true` failure as a hard
 // stop — no bundle is produced.
 
+import { selectedWrittenOutcomeCandidate } from "@itotori/localization-bridge-schema";
 import type {
   DraftArtifactBundle,
   PatchExportPreflightCheckKind,
@@ -273,15 +274,7 @@ function blockingFail(check: PatchExportPreflightCheckKind, detail: string): Pre
 }
 
 function selectedTargetBody(draft: DraftArtifactBundle["drafts"][number]): string {
-  const selectedCandidate = draft.writtenOutcome.candidates.find(
-    (candidate: any) => candidate.id === draft.writtenOutcome.selectedCandidateId,
-  );
-  if (selectedCandidate === undefined) {
-    throw new Error(
-      `patch-export preflight: written outcome for ${draft.sourceUnitId} has no selected candidate`,
-    );
-  }
-  return selectedCandidate.body;
+  return selectedWrittenOutcomeCandidate(draft.writtenOutcome).body;
 }
 
 /**

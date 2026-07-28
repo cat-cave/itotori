@@ -1,9 +1,7 @@
-import type {
-  CatalogBenchmarkSeedRow,
-  CatalogReleaseRecord,
-  LocaleBranchStatus,
-} from "@itotori/db";
-import { assertBrowserItotoriApiResponse } from "./api-client-guards.js";
+import {
+  assertBrowserItotoriApiResponse,
+  type BrowserCatalogContextPanelResponse,
+} from "./api-client-guards.js";
 import {
   catalogContextPanelViewFromReadModel,
   renderCatalogContextPanel,
@@ -74,84 +72,20 @@ async function fetchCatalogContextPanel(endpoint: string): Promise<CatalogContex
   return toCatalogContextPanelReadModel(body);
 }
 
-function toCatalogContextPanelReadModel(value: unknown): CatalogContextPanelReadModel {
-  const record = requireRecord(value, "catalog-context response");
+function toCatalogContextPanelReadModel(
+  value: BrowserCatalogContextPanelResponse,
+): CatalogContextPanelReadModel {
   return {
-    schemaVersion: requireLiteral(
-      record.schemaVersion,
-      "catalog.context_panel_route.v0.1",
-      "schemaVersion",
-    ),
-    generatedAt: requireDate(record.generatedAt, "generatedAt"),
-    params: toParams(record.params),
-    row: requireRecord(record.row, "row") as unknown as CatalogBenchmarkSeedRow,
-    releases: requireArray(record.releases, "releases").map(toReleaseRecord),
-    projectState: toProjectState(record.projectState),
+    ...value,
+    generatedAt: toDate(value.generatedAt, "generatedAt"),
+    releases: value.releases.map((release) => ({
+      ...release,
+      createdAt: toDate(release.createdAt, "release.createdAt"),
+      updatedAt: toDate(release.updatedAt, "release.updatedAt"),
+    })),
   };
 }
-
-function toParams(value: unknown): CatalogContextPanelRouteParams {
-  const record = requireRecord(value, "params");
-  return {
-    projectId: requireString(record.projectId, "params.projectId"),
-    localeBranchId: requireString(record.localeBranchId, "params.localeBranchId"),
-    workId: requireString(record.workId, "params.workId"),
-  };
-}
-
-function toReleaseRecord(value: unknown): CatalogReleaseRecord {
-  const record = requireRecord(value, "release");
-  return {
-    ...(record as unknown as Omit<CatalogReleaseRecord, "createdAt" | "updatedAt">),
-    createdAt: requireDate(record.createdAt, "release.createdAt"),
-    updatedAt: requireDate(record.updatedAt, "release.updatedAt"),
-  };
-}
-
-function toProjectState(value: unknown): CatalogContextPanelReadModel["projectState"] {
-  const record = requireRecord(value, "projectState");
-  return {
-    targetLanguage: requireString(record.targetLanguage, "projectState.targetLanguage"),
-    localeBranch:
-      record.localeBranch === null
-        ? null
-        : (requireRecord(
-            record.localeBranch,
-            "projectState.localeBranch",
-          ) as unknown as LocaleBranchStatus),
-  };
-}
-
-function requireRecord(value: unknown, label: string): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} must be a JSON object`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function requireArray(value: unknown, label: string): unknown[] {
-  if (!Array.isArray(value)) {
-    throw new Error(`${label} must be an array`);
-  }
-  return value;
-}
-
-function requireLiteral<T extends string>(value: unknown, expected: T, label: string): T {
-  if (value !== expected) {
-    throw new Error(`${label} must be ${expected}`);
-  }
-  return expected;
-}
-
-function requireString(value: unknown, label: string): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${label} must be a non-empty string`);
-  }
-  return value;
-}
-
-function requireDate(value: unknown, label: string): Date {
-  const text = requireString(value, label);
+function toDate(text: string, label: string): Date {
   const parsed = new Date(text);
   if (Number.isNaN(parsed.getTime())) {
     throw new Error(`${label} must be a parseable ISO date string`);
