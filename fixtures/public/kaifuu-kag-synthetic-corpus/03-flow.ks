@@ -1,7 +1,7 @@
 ; kaifuu-kag-synthetic-corpus — 03-flow.ks
 ; SPDX-License-Identifier: CC0-1.0
 ; Original, hand-authored CC0 KAG (.ks) content. Contains NO copyrighted game
-; text. Authored for itotori KAIFUU-203.
+; text. Authored for itotori capability_kaifuu_203.
 ; Covers: an [if]...[endif] conditional, a [call] into a subroutine label, and
 ; a [return] back — branching + subroutine control flow.
 *gate|The Counting Gate

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "fixtureId": "kaifuu-kirikiri-plain-xp3-smoke",
-  "sourceNodeId": "KAIFUU-071",
+  "sourceNodeId": "capability_kaifuu_071",
   "engineFamily": "kiri_kiri_xp3",
   "archive": {
     "archiveId": "kirikiri-xp3-plain-smoke-archive",

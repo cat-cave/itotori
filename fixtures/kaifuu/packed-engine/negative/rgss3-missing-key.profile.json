@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "profileId": "packed/rgss3/negative/missing_key",
   "fixtureId": "rgss3-missing-key",
-  "sourceNodeId": "KAIFUU-103",
+  "sourceNodeId": "capability_kaifuu_103",
   "engineFamily": "rgss3",
   "container": "rgssad",
   "crypto": "xor",

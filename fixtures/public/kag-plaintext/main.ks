@@ -1,4 +1,4 @@
-; UTSUSHI-008 synthetic KAG .ks probe fixture (CC0, authored — no retail bytes).
+; capability_utsushi_008 synthetic KAG .ks probe fixture (CC0, authored — no retail bytes).
 ; Exercises every trace-kag column on plaintext / already-extracted KAG:
 ;   labels (*label), a #name speaker, message text, a [macro]...[endmacro]
 ;   definition + a later invocation, a same-file @jump, and a

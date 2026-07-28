@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "profileId": "packed/rgss3/alpha",
   "fixtureId": "alpha.readiness.rgss3",
-  "sourceNodeId": "KAIFUU-056",
+  "sourceNodeId": "capability_kaifuu_056",
   "prerequisiteProof": "rgss3_header_key_readiness_fixture",
   "engineFamily": "rgss3",
   "capabilities": {

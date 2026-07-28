@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "capabilityId": "kaifuu-siglus-static-key",
-  "sourceNodeId": "KAIFUU-069",
+  "sourceNodeId": "capability_kaifuu_069",
   "engineFamily": "siglus",
   "entries": [
     {

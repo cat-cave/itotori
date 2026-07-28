@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "fixtureId": "kirikiri-xp3-crypt-smoke-fixture",
-  "sourceNodeId": "KAIFUU-100",
+  "sourceNodeId": "capability_kaifuu_100",
   "engineFamily": "kirikiri",
   "container": "xp3",
   "cryptoProfile": "xor-simple-crypt-fixture",

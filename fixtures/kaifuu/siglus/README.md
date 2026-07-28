@@ -1,6 +1,6 @@
-# Siglus fixtures (KAIFUU-069 static-key, KAIFUU-070 known-key smoke)
+# Siglus fixtures (the relevant capability static-key, the relevant capability known-key smoke)
 
-## KAIFUU-015 — synthetic profile-proof composition
+## the relevant capability — synthetic profile-proof composition
 
 `synthetic-profile.json` drives `kaifuu siglus profile-proof --fixture
 fixtures/kaifuu/siglus/synthetic-profile.json --out <report.json>`, which
@@ -9,11 +9,11 @@ proof report over a **synthetic** profile:
 
 - the **detector** slice (`SiglusProfileDetectorAdapter`) over
   `fixtures/public/kaifuu-encrypted-matrix/raw/siglus` → detector evidence;
-- the **key-boundary** slice (KAIFUU-070 known-key `secretRef`, surfaced through
+- the **key-boundary** slice (the relevant capability known-key `secretRef`, surfaced through
   the parser-boundary key-refs) → key-profile id;
 - the **parser-boundary** slice
   (`run_siglus_known_key_parser_boundary_smoke`) → parser-profile id + outcome;
-- the **redacted validation** slice (KAIFUU-105 compat-profile validator over
+- the **redacted validation** slice (the relevant capability compat-profile validator over
   `../compat-profile/siglus.extract.tuple.json`) → capability-level honesty.
 
 The report records detector evidence, key-profile id, parser-profile id,
@@ -21,11 +21,11 @@ capability level, and a redaction summary. **Honest scope:** it claims **no**
 broad commercial Siglus compatibility — the real Scene.pck/Gameexe.dat
 decrypt/extract/repack core is `NotImplemented`, so the capability level is
 capped at `known-key-extract` and `broadCommercialClaim` is always `false`.
-Before the artifact is written it is **deep-scanned** (KAIFUU-036/094): a seeded
+Before the artifact is written it is **deep-scanned** (the relevant capability/094): a seeded
 raw key, helper dump, private path, or decrypted private text makes the command
 fail loud and persist nothing.
 
-## KAIFUU-070 — known-key Scene/Gameexe extract-patch-verify smoke
+## the relevant capability — known-key Scene/Gameexe extract-patch-verify smoke
 
 `siglus-knownkey-smoke.json` drives a **narrow, honestly-scoped** known-key
 smoke (`kaifuu_siglus::run_known_key_smoke_from_fixture`): for one declared
@@ -43,7 +43,7 @@ per-game second-layer strip and proprietary-LZSS codec stay skeleton stubs
 - **Known key stays redacted.** The raw key lives only in a module-private,
   zeroize-on-drop, `Debug`-redacting holder — never serialized, logged, or
   written to disk. The report carries the structured `secretRef`
-  (`local-secret:siglus-secondary-key`, shared with the KAIFUU-069 key) + a
+  (`local-secret:siglus-secondary-key`, shared with the the relevant capability key) + a
   one-way sha256 commitment + the key length; no extracted or translated text
   (only sha256 digests).
 - **Out-of-profile is typed not-implemented.** A container flagged with the
@@ -53,7 +53,7 @@ per-game second-layer strip and proprietary-LZSS codec stay skeleton stubs
 
 ---
 
-# Siglus static-key helper fixtures (KAIFUU-069)
+# Siglus static-key helper fixtures (the relevant capability)
 
 Fixtures for `kaifuu siglus static-key --fixture
 fixtures/kaifuu/siglus/siglus-static-key.json`, the in-process Siglus

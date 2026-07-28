@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "profileId": "packed/bgi/negative/hash_mismatch",
   "fixtureId": "bgi-hash-mismatch",
-  "sourceNodeId": "KAIFUU-103",
+  "sourceNodeId": "capability_kaifuu_103",
   "engineFamily": "bgi",
   "container": "archive",
   "crypto": "null_key",

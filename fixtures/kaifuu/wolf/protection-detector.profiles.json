@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "detectorSetId": "wolf/protection-detector",
-  "sourceNodeId": "KAIFUU-120",
+  "sourceNodeId": "capability_kaifuu_120",
   "engineFamily": "wolf",
   "entries": [
     {

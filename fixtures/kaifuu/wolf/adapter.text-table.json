@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "fixtureId": "wolf-text-table-adapter-synthetic",
-  "sourceNodeId": "KAIFUU-012",
+  "sourceNodeId": "capability_kaifuu_012",
   "engineFamily": "wolf",
   "detector": {
     "fixtureId": "wolf.adapter.protected",
