@@ -19,6 +19,7 @@ pub mod conformance;
 pub mod embed;
 pub mod input;
 mod observation;
+pub mod playability;
 pub mod port;
 pub mod replay;
 mod runtime_artifact;
@@ -81,6 +82,11 @@ pub use input::{
     CLOCK_BACKTRACK_CODE, ChoiceIndex, INPUT_INVALID_PAYLOAD_CODE, INPUT_UNSUPPORTED_KIND_CODE,
     InputError, InputEvent, InputKind, MenuTarget, PointerButton, REPLAY_NON_MONOTONIC_TICK_CODE,
     REPLAY_REDACTION_VIOLATION_CODE, REPLAY_UNSUPPORTED_SCHEMA_VERSION_CODE, RawInputCode,
+};
+pub use playability::{
+    CanonicalState, CausalCheckpoint, FreshProcessReplay, InputGate, Observation,
+    PlayabilityDriver, PlayabilityError, PlayabilityRun, PublicContractStatus, SemanticEvent,
+    replay_in_fresh_process, replay_log, run,
 };
 pub use runtime_artifact::{
     RUNTIME_ARTIFACT_ROOT_MARKER, RUNTIME_ARTIFACT_SOFT_BYTE_BUDGET_LABEL,
