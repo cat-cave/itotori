@@ -9,6 +9,8 @@ import "@itotori/ds/styles.css";
 // frame around the screens, and the screen layout the screens render into.
 import "./ui/shell-frame.css";
 import "./ui/screen-layout.css";
+import "./ui/legacy-surface.css";
+import "./ui/screen-variants.css";
 import { App } from "./ui/App.js";
 
 const container = document.querySelector<HTMLDivElement>("#app");
