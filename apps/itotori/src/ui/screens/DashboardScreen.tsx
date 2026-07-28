@@ -514,7 +514,7 @@ function JobsRunTableRowView({ row }: { row: JobsRunTableRow }): ReactNode {
         <span className="itotori-virtual-list__value">
           {row.task}
           <br />
-          <code>{row.journalRunId}</code>
+          <code>{row.jobId ?? row.runId}</code>
         </span>
       </span>
       <span>

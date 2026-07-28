@@ -118,6 +118,36 @@ describe("dashboard API failure responses", () => {
       error: "Database migrations are not applied. Run itotori db-migrate, then refresh.",
     });
   });
+
+  it("reports a missing jobs read-model dependency as a typed migration failure, never an empty table", async () => {
+    const server = createItotoriServer({
+      readOnlyServiceFactory: async (callback) =>
+        await callback({
+          authorization: { async requirePermission() {} },
+          jobs: {
+            async loadRunTable() {
+              const postgresError = Object.assign(
+                new Error('relation "itotori_provider_runs" does not exist'),
+                { code: "42P01" },
+              );
+              throw new Error("jobs provider-run dependency is unavailable", {
+                cause: postgresError,
+              });
+            },
+          },
+        } as unknown as ItotoriApplicationServices),
+    });
+    servers.push(server);
+    const baseUrl = await listen(server);
+
+    const response = await fetch(`${baseUrl}/api/jobs/run-table?projectId=project-1`);
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      code: "database_migrations_required",
+      error: "Database migrations are not applied. Run itotori db-migrate, then refresh.",
+    });
+  });
 });
 
 async function requestFromFactory(error: () => Error): Promise<{

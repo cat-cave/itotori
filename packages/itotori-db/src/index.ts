@@ -243,6 +243,21 @@ export type {
 } from "./repositories/project-repository.js";
 export { RUNTIME_ARTIFACT_HASH_PROVENANCES } from "./repositories/project-repository.js";
 export {
+  ItotoriJobsRunTableRepository,
+  JOBS_RUN_TABLE_DEFAULT_LIMIT,
+  JOBS_RUN_TABLE_MAX_LIMIT,
+  JOBS_RUN_TABLE_SCHEMA_VERSION,
+} from "./repositories/jobs-run-table-repository.js";
+export type {
+  JobsRunTableCost,
+  JobsRunTableFallback,
+  JobsRunTableReadModel,
+  JobsRunTableRow,
+  JobsRunTableTokens,
+  JobsRunTableZdr,
+  LoadJobsRunTableOptions,
+} from "./repositories/jobs-run-table-repository.js";
+export {
   ItotoriModelLedgerRepository,
   sanitizeAdapterMetadata,
   COST_DRILLDOWN_DEFAULT_LIMIT,

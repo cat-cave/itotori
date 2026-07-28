@@ -25,6 +25,7 @@ import type {
   BenchmarkReportSummary,
   CostDrilldownPage,
   DashboardDecisionReadModel,
+  JobsRunTableReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
   ProjectRunPortfolioProgressSummary,
@@ -105,57 +106,7 @@ import {
   type ExtractSource,
 } from "./extract/extract-adapter-registry.js";
 
-/**
- * The jobs dashboard is an API projection, not a database repository
- * contract. Keeping the DTO here prevents the retired journal persistence
- * boundary from leaking back into application composition.
- */
-export type JobsRunTableTokens = { in: number | null; out: number | null; total: number | null };
-export type JobsRunTableCost = { unit: "usd"; amount: string };
-export type JobsRunTableFallback = {
-  availability: "captured" | "not_captured";
-  used: boolean | null;
-  plan: string[] | null;
-  chain: string[];
-};
-export type JobsRunTableRow = {
-  runId: string;
-  journalRunId: string;
-  attemptId: string;
-  providerRunId: string;
-  bridgeUnitId: string;
-  projectId: string;
-  localeBranchId: string;
-  task: string;
-  status: string;
-  servedModel: string;
-  servedProvider: string;
-  zdr: boolean;
-  cost: JobsRunTableCost;
-  tokens: JobsRunTableTokens;
-  fallback: JobsRunTableFallback;
-  createdAt: string;
-};
-export type JobsRunTableReadModel = {
-  schemaVersion: string;
-  generatedAt: string;
-  filter: { projectId: string | null };
-  pagination: {
-    total: number;
-    limit: number;
-    offset: number;
-    page: number;
-    pageCount: number;
-    hasMore: boolean;
-    nextOffset: number | null;
-  };
-  rows: JobsRunTableRow[];
-};
-export type LoadJobsRunTableOptions = {
-  projectId?: string;
-  limit?: number;
-  offset?: number;
-};
+export type { JobsRunTableReadModel, JobsRunTableRow, LoadJobsRunTableOptions } from "@itotori/db";
 
 export type ItotoriApiRouteId =
   | "assetDecisions.active"
@@ -4807,10 +4758,10 @@ export function assertJobsRunTableReadModel(
   label = "JobsRunTableReadModel",
 ): asserts value is ApiJobsRunTableResponse {
   const model = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.JobsRunTableReadModel);
-  assertLiteral(model.schemaVersion, "jobs.run_table.v0.2", `${label}.schemaVersion`);
+  assertLiteral(model.schemaVersion, "jobs.run_table.v0.3", `${label}.schemaVersion`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   const filter = asStrictRecord(model.filter, `${label}.filter`, ["projectId"]);
-  assertNullableString(filter.projectId, `${label}.filter.projectId`);
+  assertString(filter.projectId, `${label}.filter.projectId`);
   assertProjectOverviewPagination(model.pagination, `${label}.pagination`);
   const rows = asArray(model.rows, `${label}.rows`);
   if (rows.length > Number((model.pagination as { limit: unknown }).limit)) {
@@ -4824,10 +4775,7 @@ export function assertJobsRunTableReadModel(
 function assertJobsRunTableRow(value: unknown, label: string): void {
   const row = asStrictRecord(value, label, [
     "runId",
-    "journalRunId",
-    "attemptId",
-    "providerRunId",
-    "bridgeUnitId",
+    "jobId",
     "projectId",
     "localeBranchId",
     "task",
@@ -4841,17 +4789,14 @@ function assertJobsRunTableRow(value: unknown, label: string): void {
     "createdAt",
   ]);
   assertString(row.runId, `${label}.runId`);
-  assertString(row.journalRunId, `${label}.journalRunId`);
-  assertString(row.attemptId, `${label}.attemptId`);
-  assertString(row.providerRunId, `${label}.providerRunId`);
-  assertString(row.bridgeUnitId, `${label}.bridgeUnitId`);
+  assertNullableString(row.jobId, `${label}.jobId`);
   assertString(row.projectId, `${label}.projectId`);
-  assertString(row.localeBranchId, `${label}.localeBranchId`);
+  assertNullableString(row.localeBranchId, `${label}.localeBranchId`);
   assertString(row.task, `${label}.task`);
   assertString(row.status, `${label}.status`);
   assertString(row.servedModel, `${label}.servedModel`);
   assertString(row.servedProvider, `${label}.servedProvider`);
-  assertBoolean(row.zdr, `${label}.zdr`);
+  assertJobsRunTableZdr(row.zdr, `${label}.zdr`);
   assertJobsRunTableCost(row.cost, `${label}.cost`);
   assertJobsRunTableTokens(row.tokens, `${label}.tokens`);
   assertJobsRunTableFallback(row.fallback, `${label}.fallback`);
@@ -4859,9 +4804,11 @@ function assertJobsRunTableRow(value: unknown, label: string): void {
 }
 
 function assertJobsRunTableCost(value: unknown, label: string): void {
-  const cost = asStrictRecord(value, label, ["unit", "amount"]);
-  assertString(cost.unit, `${label}.unit`);
-  assertString(cost.amount, `${label}.amount`);
+  const cost = asStrictRecord(value, label, ["availability", "unit", "amount"]);
+  assertEnum(cost.availability, ["captured", "not_captured"] as const, `${label}.availability`);
+  assertLiteral(cost.unit, "usd", `${label}.unit`);
+  if (cost.availability === "captured") assertString(cost.amount, `${label}.amount`);
+  else assertNull(cost.amount, `${label}.amount`);
 }
 
 function assertJobsRunTableTokens(value: unknown, label: string): void {
@@ -4878,19 +4825,19 @@ function assertJobsRunTableTokens(value: unknown, label: string): void {
 }
 
 function assertJobsRunTableFallback(value: unknown, label: string): void {
-  const fallback = asStrictRecord(value, label, ["availability", "used", "plan", "chain"]);
-  assertEnum(fallback.availability, ["captured", "not_captured"] as const, `${label}.availability`);
-  if (fallback.availability === "captured") {
-    assertBoolean(fallback.used, `${label}.used`);
-    for (const [index, entry] of asArray(fallback.plan, `${label}.plan`).entries()) {
-      assertString(entry, `${label}.plan[${index}]`);
-    }
-  } else if (fallback.used !== null || fallback.plan !== null) {
-    throw new Error(`${label} without captured fallback facts must use null used/plan`);
+  const fallback = asStrictRecord(value, label, ["used", "plan", "chain"]);
+  assertBoolean(fallback.used, `${label}.used`);
+  for (const [index, entry] of asArray(fallback.plan, `${label}.plan`).entries()) {
+    assertString(entry, `${label}.plan[${index}]`);
   }
-  for (const [index, entry] of asArray(fallback.chain, `${label}.chain`).entries()) {
-    assertString(entry, `${label}.chain[${index}]`);
-  }
+  assertNull(fallback.chain, `${label}.chain`);
+}
+
+function assertJobsRunTableZdr(value: unknown, label: string): void {
+  const zdr = asStrictRecord(value, label, ["availability", "enforced"]);
+  assertEnum(zdr.availability, ["captured", "not_captured"] as const, `${label}.availability`);
+  if (zdr.availability === "captured") assertBoolean(zdr.enforced, `${label}.enforced`);
+  else assertNull(zdr.enforced, `${label}.enforced`);
 }
 
 export function assertProjectOverviewReadModel(
