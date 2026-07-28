@@ -7,8 +7,8 @@ use std::path::Path;
 use utsushi_reallive::{Framebuffer, TextLayer, WipeColour};
 use utsushi_siglus::scene_vm::{Moment, StageSnapshot};
 use utsushi_siglus::{
-    SiglusCgFrame, SiglusCgRedaction, SiglusG00Image, SiglusG00Kind, SiglusStageRenderError,
-    decode_siglus_g00, encode_siglus_png, render_siglus_cg, render_siglus_stage,
+    SiglusCgFrame, SiglusCgRedaction, SiglusG00Image, SiglusG00Kind, decode_siglus_g00,
+    encode_siglus_png, render_siglus_cg, render_siglus_stage_on_canvas,
 };
 
 /// The Gameexe-driven portion of the Siglus message-window projection.
@@ -104,6 +104,13 @@ impl MessageWindowProjection {
         frame_width as f32 / self.virtual_size.map_or(frame_width, |size| size.0).max(1) as f32
     }
 
+    fn canvas_size(self) -> (u32, u32) {
+        // The reference host resolves Gameexe's SCREEN_SIZE before falling back
+        // to its documented 1280×720 display. Stage coordinates are relative
+        // to this stable canvas, not to a cropped union of sprite bounds.
+        self.virtual_size.unwrap_or((1280, 720))
+    }
+
     fn scale_y(self, frame_height: u32) -> f32 {
         frame_height as f32 / self.virtual_size.map_or(frame_height, |size| size.1).max(1) as f32
     }
@@ -171,50 +178,47 @@ impl MessageWindowProjection {
     }
 }
 
-pub(super) fn render_boundaries(
+/// Render one already-executed boundary. Keeping this per-boundary lets the
+/// interactive player answer an authored advance without first encoding every
+/// later boundary in a long scene.
+pub(super) fn render_boundary(
     root: &Path,
     artifact_root: &Path,
     run_id: &str,
     message_window: MessageWindowProjection,
-    snapshots: Vec<StageSnapshot>,
-) -> Result<Vec<RenderedBoundary>, Box<dyn Error>> {
+    snapshot: StageSnapshot,
+    index: usize,
+    cache: &mut HashMap<String, SiglusG00Image>,
+) -> Result<RenderedBoundary, Box<dyn Error>> {
     let private_root = artifact_root
         .with_extension("private-siglus-live-player")
         .join(run_id);
     let public_root = artifact_root.join("siglus-live-player").join(run_id);
     std::fs::create_dir_all(&private_root)?;
     std::fs::create_dir_all(&public_root)?;
-    let mut cache = HashMap::new();
-    let mut boundaries = Vec::new();
-    for snapshot in snapshots {
-        let mut frame = match render_siglus_stage(&snapshot.state.stage_objects, |identity| {
-            load_g00(root, identity, &mut cache)
-        }) {
-            Ok(frame) => frame,
-            Err(SiglusStageRenderError::NoVisibleObjects) => continue,
-            Err(error) => return Err(error.into()),
-        };
-        composite_message_window(&mut frame, &snapshot.moment, message_window)?;
-        let public = redact_frame(&frame)?;
-        let private_png = encode_siglus_png(&frame)?;
-        let public_png = encode_siglus_png(&public)?;
-        let index = boundaries.len();
-        let private_path = private_root.join(format!("frame-{index:04}.png"));
-        let public_path = public_root.join(format!("frame-{index:04}.png"));
-        std::fs::write(&private_path, &private_png)?;
-        std::fs::write(&public_path, &public_png)?;
-        boundaries.push(RenderedBoundary {
-            snapshot,
-            private_path,
-            public_path,
-            private_sha256: sha256(&private_png),
-            public_sha256: sha256(&public_png),
-            width: frame.width,
-            height: frame.height,
-            non_background_pixels: non_background_pixel_count(&frame),
-        });
-    }
-    Ok(boundaries)
+    let mut frame = render_siglus_stage_on_canvas(
+        &snapshot.state.stage_objects,
+        Some(message_window.canvas_size()),
+        |identity| load_g00(root, identity, cache),
+    )?;
+    composite_message_window(&mut frame, &snapshot.moment, message_window)?;
+    let public = redact_frame(&frame)?;
+    let private_png = encode_siglus_png(&frame)?;
+    let public_png = encode_siglus_png(&public)?;
+    let private_path = private_root.join(format!("frame-{index:04}.png"));
+    let public_path = public_root.join(format!("frame-{index:04}.png"));
+    std::fs::write(&private_path, &private_png)?;
+    std::fs::write(&public_path, &public_png)?;
+    Ok(RenderedBoundary {
+        snapshot,
+        private_path,
+        public_path,
+        private_sha256: sha256(&private_png),
+        public_sha256: sha256(&public_png),
+        width: frame.width,
+        height: frame.height,
+        non_background_pixels: non_background_pixel_count(&frame),
+    })
 }
 
 pub(super) fn load_g00(

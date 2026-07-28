@@ -12,16 +12,17 @@ use kaifuu_siglus::{
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
+use utsushi_siglus::SiglusG00Image;
 use utsushi_siglus::scene_vm::{
     ExecutionOutcome, Moment, SceneProgram, StageSnapshot, TitleProgram, VmState,
     execute_title_scene_with_stage_snapshots_observed,
 };
 
-use self::render::{MessageWindowProjection, render_boundaries};
+use self::render::{MessageWindowProjection, render_boundary};
 #[cfg(test)]
 use self::render::{composite_message_window, load_g00, non_background_pixel_count};
 #[cfg(test)]
@@ -101,17 +102,13 @@ pub(crate) fn run_siglus_live_player_command(args: &[String]) -> Result<(), Box<
             fallback_snapshots.get_or_insert(renderable);
             continue;
         }
-        let rendered =
-            render_boundaries(&root, &artifact_root, run_id, message_window, positioned)?;
-        if !rendered.is_empty() {
-            boundaries = Some(rendered);
-            break;
-        }
+        boundaries = Some(positioned);
+        break;
     }
     let boundaries = if let Some(boundaries) = boundaries {
         boundaries
     } else if let Some(snapshots) = fallback_snapshots {
-        render_boundaries(&root, &artifact_root, run_id, message_window, snapshots)?
+        snapshots
     } else {
         let suffix = first_terminal
             .map(|error| format!("; first terminal diagnostic: {error}"))
@@ -119,17 +116,24 @@ pub(crate) fn run_siglus_live_player_command(args: &[String]) -> Result<(), Box<
         return Err(format!("siglus-live-player found no text/choice boundary with a real visible stage object{suffix}").into());
     };
     let mut index = 0usize;
-    write_response(
-        &mut io::stdout(),
-        response(&boundaries[index], index, reveal, false),
+    let mut cache = HashMap::<String, SiglusG00Image>::new();
+    let mut rendered = render_boundary(
+        &root,
+        &artifact_root,
+        run_id,
+        message_window,
+        boundaries[index].clone(),
+        index,
+        &mut cache,
     )?;
+    write_response(&mut io::stdout(), response(&rendered, index, reveal, false))?;
     for line in io::stdin().lock().lines() {
         let input: BrowserInput = serde_json::from_str(&line?)?;
         if matches!(input, BrowserInput::Close) {
             write_response(&mut io::stdout(), json!({"closed": true}))?;
             return Ok(());
         }
-        let boundary = &boundaries[index];
+        let boundary = &rendered;
         match (&boundary.snapshot.moment, input) {
             (Moment::Choice { options, .. }, BrowserInput::Choice { index: 0 })
                 if !options.is_empty() => {}
@@ -159,15 +163,19 @@ pub(crate) fn run_siglus_live_player_command(args: &[String]) -> Result<(), Box<
         }
         if index + 1 < boundaries.len() {
             index += 1;
+            rendered = render_boundary(
+                &root,
+                &artifact_root,
+                run_id,
+                message_window,
+                boundaries[index].clone(),
+                index,
+                &mut cache,
+            )?;
         }
         write_response(
             &mut io::stdout(),
-            response(
-                &boundaries[index],
-                index,
-                reveal,
-                index + 1 == boundaries.len(),
-            ),
+            response(&rendered, index, reveal, index + 1 == boundaries.len()),
         )?;
     }
     Ok(())

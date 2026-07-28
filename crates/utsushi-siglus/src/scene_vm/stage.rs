@@ -14,6 +14,9 @@ const OBJECT_Z: i32 = 5;
 const OBJECT_CENTER_X: i32 = 6;
 const OBJECT_CENTER_Y: i32 = 7;
 const OBJECT_CENTER_Z: i32 = 8;
+const OBJECT_CENTER_REP_X: i32 = 9;
+const OBJECT_CENTER_REP_Y: i32 = 10;
+const OBJECT_CENTER_REP_Z: i32 = 11;
 const OBJECT_SCALE_X: i32 = 12;
 const OBJECT_SCALE_Y: i32 = 13;
 const OBJECT_SCALE_Z: i32 = 14;
@@ -26,9 +29,11 @@ const OBJECT_CLIP_TOP: i32 = 20;
 const OBJECT_CLIP_RIGHT: i32 = 21;
 const OBJECT_CLIP_BOTTOM: i32 = 22;
 const OBJECT_TR: i32 = 27;
+const OBJECT_BLEND: i32 = 46;
 const OBJECT_WIPE_COPY: i32 = 56;
 const OBJECT_ORDER: i32 = 55;
 const OBJECT_WIPE_ERASE: i32 = 92;
+const OBJECT_CHILD: i32 = 93;
 
 const OBJECT_INIT: i32 = 35;
 const OBJECT_FREE: i32 = 36;
@@ -37,6 +42,7 @@ const OBJECT_SET_POS: i32 = 48;
 const OBJECT_SET_SCALE: i32 = 49;
 const OBJECT_SET_ROTATE: i32 = 50;
 const OBJECT_SET_CENTER: i32 = 158;
+const OBJECT_SET_CENTER_REP: i32 = 159;
 const OBJECT_SET_CLIP: i32 = 160;
 const OBJECT_LIST_GET_SIZE: i32 = 3;
 const OBJECT_LIST_RESIZE: i32 = 4;
@@ -50,6 +56,9 @@ pub struct StageGeometry {
     pub center_x: i32,
     pub center_y: i32,
     pub center_z: i32,
+    pub center_rep_x: i32,
+    pub center_rep_y: i32,
+    pub center_rep_z: i32,
     pub scale_x: i32,
     pub scale_y: i32,
     pub scale_z: i32,
@@ -68,6 +77,9 @@ impl Default for StageGeometry {
             center_x: 0,
             center_y: 0,
             center_z: 0,
+            center_rep_x: 0,
+            center_rep_y: 0,
+            center_rep_z: 0,
             scale_x: 1000,
             scale_y: 1000,
             scale_z: 1000,
@@ -86,6 +98,8 @@ pub struct StageObject {
     pub identity: Option<String>,
     pub visible: bool,
     pub transparency: i32,
+    /// The authored blend mode retained for an embedded object.
+    pub blend: i32,
     /// Retained lifetime flag read by a later stage wipe operation.
     pub wipe_copy: i32,
     /// Retained lifetime flag read by a later stage wipe operation.
@@ -93,6 +107,8 @@ pub struct StageObject {
     pub order: i32,
     pub layer: i32,
     pub geometry: StageGeometry,
+    /// Embedded `OBJECT.CHILD` slots, keyed by the authored child index.
+    pub children: std::collections::BTreeMap<i32, StageObject>,
 }
 
 impl Default for StageObject {
@@ -102,23 +118,26 @@ impl Default for StageObject {
             identity: None,
             visible: false,
             transparency: 255,
+            blend: 0,
             wipe_copy: 0,
             wipe_erase: 0,
             order: 0,
             layer: 0,
             geometry: StageGeometry::default(),
+            children: std::collections::BTreeMap::new(),
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StageObjectTarget {
     stage: i32,
     slot: i32,
+    children: Vec<i32>,
     op: Option<i32>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum StageTarget {
     Object(StageObjectTarget),
     ObjectList { stage: i32, op: i32 },
@@ -145,6 +164,7 @@ pub(super) fn target(values: &[Value]) -> Option<StageTarget> {
         return Some(StageTarget::Object(StageObjectTarget {
             stage: *stage,
             slot: 0,
+            children: Vec::new(),
             op: Some(*op),
         }));
     }
@@ -176,19 +196,30 @@ pub(super) fn target(values: &[Value]) -> Option<StageTarget> {
         ),
         _ => return None,
     };
-    match tail {
-        [] => Some(StageTarget::Object(StageObjectTarget {
-            stage,
-            slot,
-            op: None,
-        })),
-        [op] => Some(StageTarget::Object(StageObjectTarget {
-            stage,
-            slot,
-            op: Some(*op),
-        })),
-        _ => None,
+    object_target(stage, slot, tail).map(StageTarget::Object)
+}
+
+/// Decode a root object followed by zero or more `OBJECT.CHILD[index]`
+/// selectors. The reference treats each child as a full embedded object, so
+/// its final property/command is dispatched against the child rather than
+/// discarded as an unknown tail.
+fn object_target(stage: i32, slot: i32, mut tail: &[i32]) -> Option<StageObjectTarget> {
+    let mut children = Vec::new();
+    while let [OBJECT_CHILD, ELM_ARRAY, child, rest @ ..] = tail {
+        children.push(*child);
+        tail = rest;
     }
+    let op = match tail {
+        [] => None,
+        [op] => Some(*op),
+        _ => return None,
+    };
+    Some(StageObjectTarget {
+        stage,
+        slot,
+        children,
+        op,
+    })
 }
 
 pub(super) fn read(
@@ -222,12 +253,15 @@ pub(super) fn read(
     let op = target
         .op
         .ok_or_else(|| unsupported(scene_id, offset, "stage-object-reference"))?;
-    let object = state
+    let mut object = state
         .stage_objects
         .get(&target.stage)
         .and_then(|slots| slots.get(&target.slot))
         .cloned()
         .unwrap_or_default();
+    for child in &target.children {
+        object = object.children.get(child).cloned().unwrap_or_default();
+    }
     let value = property(&object, op).ok_or(VmError::UnsupportedStageObjectProperty {
         scene_id,
         offset,
@@ -327,6 +361,14 @@ pub(super) fn command(
             &mut object.geometry.center_x,
             &mut object.geometry.center_y,
             &mut object.geometry.center_z,
+            args,
+            scene_id,
+            offset,
+        )?,
+        OBJECT_SET_CENTER_REP => set_vec3(
+            &mut object.geometry.center_rep_x,
+            &mut object.geometry.center_rep_y,
+            &mut object.geometry.center_rep_z,
             args,
             scene_id,
             offset,
