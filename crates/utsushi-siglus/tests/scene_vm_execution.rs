@@ -3,7 +3,7 @@
 use kaifuu_siglus::SiglusIncludedCommand;
 use utsushi_siglus::scene_vm::{
     Moment, SceneProgram, TitleProgram, VmState, execute_scene, execute_scene_with_stage_objects,
-    execute_title_scene,
+    execute_title_scene, execute_title_scene_with_stage_snapshots_observed,
 };
 
 #[test]
@@ -332,6 +332,47 @@ fn stage_object_commands_and_properties_populate_slot_geometry_and_order() {
         !state.stage_objects[&1][&5].active,
         "free must erase the lifecycle state instead of leaving a stale object",
     );
+}
+
+#[test]
+fn captures_the_stage_state_that_produced_each_real_text_boundary() {
+    let mut code = Vec::new();
+    stage_path(&mut code, 0, 4, 38);
+    push_str(&mut code, 0);
+    command(&mut code, 1, 0);
+    stage_assign(&mut code, 0, 4, 3, 1);
+    push_str(&mut code, 1);
+    text(&mut code);
+    code.push(0x16);
+    let scene = SceneProgram::from_payload(12, &payload(&code, &[], &["back", "first line"]))
+        .expect("stage scene compiles");
+    let title = TitleProgram::from_scenes(vec![scene], &[]).expect("title compiles");
+    let outcome =
+        execute_title_scene_with_stage_snapshots_observed(&title, 12, &mut VmState::default())
+            .expect("snapshot execution is real bytecode execution");
+    let report = match outcome {
+        utsushi_siglus::scene_vm::ExecutionOutcome::Complete(report) => report,
+        utsushi_siglus::scene_vm::ExecutionOutcome::Terminal { .. } => {
+            panic!("test payload should reach eof")
+        }
+    };
+    assert_eq!(report.stage_snapshots.len(), 1);
+    let snapshot = &report.stage_snapshots[0];
+    assert_eq!(
+        snapshot.moment,
+        Moment::Text {
+            scene_id: 12,
+            offset: 189,
+            speaker: None,
+            text: "first line".to_string(),
+        },
+        "deleting boundary capture leaves the player with no state for the emitted text",
+    );
+    assert_eq!(
+        snapshot.state.stage_objects[&0][&4].identity.as_deref(),
+        Some("back")
+    );
+    assert!(snapshot.state.stage_objects[&0][&4].visible);
 }
 
 fn payload(code: &[u8], labels: &[i32], strings: &[&str]) -> Vec<u8> {

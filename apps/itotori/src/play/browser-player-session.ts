@@ -20,14 +20,25 @@ export const BROWSER_PLAYER_SESSION_IDLE_TIMEOUT_MS = 5 * 60_000;
 export const BROWSER_PLAYER_SESSION_REAP_INTERVAL_MS = 30_000;
 const BROWSER_PLAYER_CLOSE_GRACE_MS = 1_000;
 
-/** Trusted server-side launch data. This type is never decoded from HTTP. */
-export type BrowserPlayerLaunch = {
+/** Trusted RealLive launch data. This type is never decoded from HTTP. */
+export type RealLiveBrowserPlayerLaunch = {
+  engine?: "reallive";
   seenPath: string;
   gameexePath: string;
   g00Dir: string;
   artifactRoot: string;
   scene: number;
 };
+
+/** Trusted Siglus launch data. Full frames stay in the private sibling root. */
+export type SiglusBrowserPlayerLaunch = {
+  engine: "siglus";
+  gameRoot: string;
+  artifactRoot: string;
+  scene: number;
+};
+
+export type BrowserPlayerLaunch = RealLiveBrowserPlayerLaunch | SiglusBrowserPlayerLaunch;
 
 export type BrowserPlayerInput =
   | { type: "advance" }
@@ -214,24 +225,40 @@ class LivePlayerChild {
   ): LivePlayerChild {
     const env = nativeCli.env ?? process.env;
     const resolved = resolveNativeCli("utsushi-cli", env);
-    const args = [
-      ...resolved.prefixArgs,
-      "live-player",
-      "--seen",
-      input.seenPath,
-      "--scene",
-      String(input.scene),
-      "--gameexe",
-      input.gameexePath,
-      "--g00-dir",
-      input.g00Dir,
-      "--artifact-root",
-      input.artifactRoot,
-      "--run-id",
-      runId,
-      "--redaction",
-      "on",
-    ];
+    const args =
+      input.engine === "siglus"
+        ? [
+            ...resolved.prefixArgs,
+            "siglus-live-player",
+            "--game-root",
+            input.gameRoot,
+            "--scene",
+            String(input.scene),
+            "--artifact-root",
+            input.artifactRoot,
+            "--run-id",
+            runId,
+            "--redaction",
+            "on",
+          ]
+        : [
+            ...resolved.prefixArgs,
+            "live-player",
+            "--seen",
+            input.seenPath,
+            "--scene",
+            String(input.scene),
+            "--gameexe",
+            input.gameexePath,
+            "--g00-dir",
+            input.g00Dir,
+            "--artifact-root",
+            input.artifactRoot,
+            "--run-id",
+            runId,
+            "--redaction",
+            "on",
+          ];
     if (reveal) args.push("--reveal");
     return new LivePlayerChild(
       spawn(resolved.command, args, { env: scrubLiveProviderSecrets(env), stdio: "pipe" }),
@@ -292,7 +319,11 @@ class LivePlayerChild {
 }
 
 function validateLaunch(input: BrowserPlayerLaunch): void {
-  for (const value of [input.seenPath, input.gameexePath, input.g00Dir, input.artifactRoot]) {
+  const paths =
+    input.engine === "siglus"
+      ? [input.gameRoot, input.artifactRoot]
+      : [input.seenPath, input.gameexePath, input.g00Dir, input.artifactRoot];
+  for (const value of paths) {
     if (typeof value !== "string" || value.trim().length === 0)
       throw new BrowserPlayerSessionError("player launch paths are required");
   }

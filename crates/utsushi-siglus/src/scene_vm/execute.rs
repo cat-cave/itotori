@@ -1,8 +1,8 @@
 //! Program-counter dispatch and explicit runtime diagnostics.
 
 use super::model::{
-    ChoicePolicy, ExecutionOutcome, ExecutionReport, ProgramSource, SceneVm, Value, VmError,
-    VmState,
+    ChoicePolicy, ExecutionOutcome, ExecutionReport, Moment, ProgramSource, SceneVm, Value,
+    VmError, VmState,
 };
 use super::program::{SceneProgram, TitleProgram};
 use kaifuu_siglus::{SiglusArgForm, SiglusOpcode, SiglusOperand, SiglusPush};
@@ -60,6 +60,19 @@ pub fn execute_title_scene_with_stage_objects_observed(
     Ok(vm.run_observed())
 }
 
+/// Execute one entry scene while retaining the real root-stage state at every
+/// emitted text or choice boundary. This is deliberately opt-in: a complete
+/// title scan has tens of thousands of messages and must not clone every VM
+/// state merely to produce static structure.
+pub fn execute_title_scene_with_stage_snapshots_observed(
+    program: &TitleProgram,
+    scene_id: u32,
+    state: &mut VmState,
+) -> Result<ExecutionOutcome, VmError> {
+    let mut vm = SceneVm::for_title_with_snapshots(program, scene_id, state, ChoicePolicy::First)?;
+    Ok(vm.run_observed())
+}
+
 impl<'a> SceneVm<'a> {
     /// Construct a scene-entry VM with fresh operand and call stacks.
     pub fn new(program: &'a SceneProgram, state: &'a mut VmState, policy: ChoicePolicy) -> Self {
@@ -86,6 +99,8 @@ impl<'a> SceneVm<'a> {
             moments: Vec::new(),
             policy,
             stage_objects_enabled,
+            capture_stage_snapshots: false,
+            stage_snapshots: Vec::new(),
             instructions_executed: 0,
             scenes_entered: [program.scene_id].into_iter().collect(),
         }
@@ -119,9 +134,22 @@ impl<'a> SceneVm<'a> {
             moments: Vec::new(),
             policy,
             stage_objects_enabled,
+            capture_stage_snapshots: false,
+            stage_snapshots: Vec::new(),
             instructions_executed: 0,
             scenes_entered: [scene_id].into_iter().collect(),
         })
+    }
+
+    fn for_title_with_snapshots(
+        program: &'a TitleProgram,
+        scene_id: u32,
+        state: &'a mut VmState,
+        policy: ChoicePolicy,
+    ) -> Result<Self, VmError> {
+        let mut vm = Self::for_title(program, scene_id, state, policy, true)?;
+        vm.capture_stage_snapshots = true;
+        Ok(vm)
     }
 
     pub(super) fn program(&self) -> &SceneProgram {
@@ -259,7 +287,23 @@ impl<'a> SceneVm<'a> {
             scenes_entered: self.scenes_entered.clone(),
             instructions_executed: self.instructions_executed,
             moments: self.moments.clone(),
+            stage_snapshots: self.stage_snapshots.clone(),
             halted: true,
+        }
+    }
+
+    pub(super) fn record_moment(&mut self, moment: Moment) {
+        self.moments.push(moment.clone());
+        if self.capture_stage_snapshots {
+            self.stage_snapshots.push(super::model::StageSnapshot {
+                scene_id: self.scene_id,
+                offset: match &moment {
+                    Moment::Text { offset, .. } | Moment::Choice { offset, .. } => *offset,
+                },
+                instruction_pointer: self.pc,
+                moment,
+                state: self.state.clone(),
+            });
         }
     }
 

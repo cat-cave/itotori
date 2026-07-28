@@ -317,6 +317,15 @@ fn diagnostic(error: &VmError) -> (String, u32, usize) {
             *scene_id,
             *offset,
         ),
+        VmError::UnsupportedStageObjectProperty {
+            scene_id,
+            offset,
+            property,
+        } => (
+            format!("unsupported-stage-object-property-{property}"),
+            *scene_id,
+            *offset,
+        ),
         VmError::StackUnderflow { scene_id, offset } => {
             ("stack-underflow".to_string(), *scene_id, *offset)
         }

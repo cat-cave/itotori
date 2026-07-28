@@ -174,8 +174,11 @@ pub(super) fn read(
         .and_then(|slots| slots.get(&target.slot))
         .cloned()
         .unwrap_or_default();
-    let value = property(&object, op)
-        .ok_or_else(|| unsupported(scene_id, offset, "stage-object-property"))?;
+    let value = property(&object, op).ok_or(VmError::UnsupportedStageObjectProperty {
+        scene_id,
+        offset,
+        property: op,
+    })?;
     Ok(Value::Int(value))
 }
 
@@ -192,7 +195,11 @@ pub(super) fn assign(
     let object = object_mut(state, target);
     set_property(object, op, value)
         .then_some(())
-        .ok_or_else(|| unsupported(scene_id, offset, "stage-object-property"))
+        .ok_or(VmError::UnsupportedStageObjectProperty {
+            scene_id,
+            offset,
+            property: op,
+        })
 }
 
 pub(super) fn command(
