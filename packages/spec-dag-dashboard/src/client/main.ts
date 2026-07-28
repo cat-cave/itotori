@@ -97,8 +97,7 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
   const vb = el("s_valid");
   if (DATA.errorCount > 0) {
     vb.className = "badwarn err";
-    vb.textContent =
-      "⚠ " + DATA.errorCount + " issue" + (DATA.errorCount === 1 ? "" : "s");
+    vb.textContent = "⚠ " + DATA.errorCount + " issue" + (DATA.errorCount === 1 ? "" : "s");
     vb.onclick = openIssues;
   } else {
     vb.className = "badwarn ok";
@@ -672,7 +671,8 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
       },
     );
   }
-  const svg = el("svg", SVGSVGElement), vp = el("vp", SVGGElement);
+  const svg = el("svg", SVGSVGElement),
+    vp = el("vp", SVGGElement);
   const view = { k: 1, tx: 0, ty: 0 };
   function applyView(): void {
     vp.setAttribute(
