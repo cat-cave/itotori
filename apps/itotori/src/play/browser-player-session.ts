@@ -62,6 +62,13 @@ export type BrowserPlayerFrame = {
   height: number;
 };
 
+/** Decoder-to-static-oracle accounting emitted by engines that can provide it. */
+export type BrowserPlayerOracleOverlap = {
+  executed: number;
+  ordered: number;
+  static: number;
+};
+
 export type BrowserPlayerState = {
   sessionId: string;
   scene: number;
@@ -77,6 +84,8 @@ export type BrowserPlayerState = {
     | null;
   ended: boolean;
   frame: BrowserPlayerFrame | null;
+  /** Present only when the live engine has a static dialogue oracle. */
+  oracleOverlap?: BrowserPlayerOracleOverlap;
 };
 
 type CliFrame = { path: string; artifactId: string; width: number; height: number };
@@ -378,7 +387,26 @@ function parseCliState(value: unknown): CliState {
   ) {
     throw new BrowserPlayerSessionError("player engine emitted an invalid session response");
   }
+  if ("oracleOverlap" in value && !isOracleOverlap(value.oracleOverlap)) {
+    throw new BrowserPlayerSessionError("player engine emitted an invalid oracle overlap");
+  }
   return value as CliState;
+}
+
+function isOracleOverlap(value: unknown): value is BrowserPlayerOracleOverlap {
+  if (typeof value !== "object" || value === null) return false;
+  const overlap = value as Record<string, unknown>;
+  return (
+    isCount(overlap.executed) &&
+    isCount(overlap.ordered) &&
+    isCount(overlap.static) &&
+    overlap.ordered <= overlap.executed &&
+    overlap.executed <= overlap.static
+  );
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 function registerFrame(session: BrowserPlayerSession, frame: CliFrame): BrowserPlayerFrame {
