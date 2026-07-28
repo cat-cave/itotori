@@ -43,6 +43,7 @@ const emit = () => {
       frame: null,
       received,
       redaction,
+      args,
     }) + "\\n",
   );
 };
@@ -89,6 +90,8 @@ const START = {
 };
 
 type Relayed = { received: { type: string; index?: number } | null; redaction: string };
+
+type SoftpalRelayed = Relayed & { args: string[] };
 
 describe("browser player input relay", () => {
   it("returns a distinct VM address for every input, never the opening state again", async () => {
@@ -137,6 +140,32 @@ describe("browser player input relay", () => {
     const guarded = (await manager.start(START, false)) as unknown as Relayed;
     manager.close((guarded as unknown as { sessionId: string }).sessionId);
     expect(guarded.redaction).toBe("on");
+  });
+
+  it("relays a trusted Softpal point entry to the real-byte player command", async () => {
+    const manager = await managerWithStubEngine();
+    const started = (await manager.start(
+      {
+        engine: "softpal",
+        gameRoot: "/descriptor/softpal",
+        artifactRoot: "/descriptor/artifacts",
+        pointId: 6543,
+      },
+      true,
+    )) as unknown as SoftpalRelayed;
+    manager.close((started as unknown as { sessionId: string }).sessionId);
+
+    expect(started.redaction).toBe("on");
+    expect(started.args).toEqual(
+      expect.arrayContaining([
+        "softpal-live-player",
+        "--game-root",
+        "/descriptor/softpal",
+        "--point",
+        "6543",
+        "--reveal",
+      ]),
+    );
   });
 
   it("refuses an input for a session it is not holding", async () => {

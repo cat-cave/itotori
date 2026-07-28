@@ -18,6 +18,7 @@ mod replay_registry;
 mod replay_validate;
 mod rpgmaker_mv_capture;
 mod runtime_skip;
+mod softpal_live_player;
 mod staged_replay;
 mod structure;
 mod trace_kag;
@@ -95,6 +96,10 @@ fn run_cli_with_registry(
         Some("live-player") => {
             let tail: Vec<String> = args.iter().skip(1).cloned().collect();
             live_player::run_live_player_command(&tail)?;
+        }
+        Some("softpal-live-player") => {
+            let tail: Vec<String> = args.iter().skip(1).cloned().collect();
+            softpal_live_player::run_softpal_live_player_command(&tail)?;
         }
         Some("render-validate") => {
             // rasterized localized screenshot through the

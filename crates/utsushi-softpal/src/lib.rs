@@ -33,7 +33,7 @@ pub use scene_render::{
 };
 pub use scene_runtime::{
     ChoiceOption, RuntimeBankWrite, RuntimeDiagnostic, RuntimeTraceEvent, SceneStep,
-    SoftpalRuntimeError, SoftpalScene, SoftpalSceneStats,
+    SoftpalRuntimeError, SoftpalScene, SoftpalSceneStats, point_entry_offsets,
 };
 /// One-line capability boundary, mirroring the kaifuu detector's support
 /// statements: what this runtime port DOES and, honestly, does not claim.

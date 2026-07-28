@@ -1,9 +1,8 @@
-// Server-held RealLive browser-player sessions.
+// Server-held engine browser-player sessions.
 //
-// A session is one long-lived `utsushi-cli live-player` child. The child owns
-// the VM; this service only serialises browser requests and relays its
-// redacted frame bytes. It never substitutes a cached image after an engine
-// failure.
+// A session is one long-lived Utsushi child. The child owns the VM; this
+// service only serialises browser requests and relays its redacted frame
+// bytes. It never substitutes a cached image after an engine failure.
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { readFile } from "node:fs/promises";
@@ -21,13 +20,22 @@ export const BROWSER_PLAYER_SESSION_REAP_INTERVAL_MS = 30_000;
 const BROWSER_PLAYER_CLOSE_GRACE_MS = 1_000;
 
 /** Trusted server-side launch data. This type is never decoded from HTTP. */
-export type BrowserPlayerLaunch = {
-  seenPath: string;
-  gameexePath: string;
-  g00Dir: string;
-  artifactRoot: string;
-  scene: number;
-};
+export type BrowserPlayerLaunch =
+  | {
+      engine?: "reallive";
+      seenPath: string;
+      gameexePath: string;
+      g00Dir: string;
+      artifactRoot: string;
+      scene: number;
+    }
+  | {
+      /** Softpal executes only the named title-authored POINT.DAT entry. */
+      engine: "softpal";
+      gameRoot: string;
+      artifactRoot: string;
+      pointId: number;
+    };
 
 export type BrowserPlayerInput =
   | { type: "advance" }
@@ -214,24 +222,41 @@ class LivePlayerChild {
   ): LivePlayerChild {
     const env = nativeCli.env ?? process.env;
     const resolved = resolveNativeCli("utsushi-cli", env);
-    const args = [
-      ...resolved.prefixArgs,
-      "live-player",
-      "--seen",
-      input.seenPath,
-      "--scene",
-      String(input.scene),
-      "--gameexe",
-      input.gameexePath,
-      "--g00-dir",
-      input.g00Dir,
-      "--artifact-root",
-      input.artifactRoot,
-      "--run-id",
-      runId,
-      "--redaction",
-      reveal ? "off" : "on",
-    ];
+    const args =
+      input.engine === "softpal"
+        ? [
+            ...resolved.prefixArgs,
+            "softpal-live-player",
+            "--game-root",
+            input.gameRoot,
+            "--point",
+            String(input.pointId),
+            "--artifact-root",
+            input.artifactRoot,
+            "--run-id",
+            runId,
+            "--redaction",
+            "on",
+            ...(reveal ? ["--reveal"] : []),
+          ]
+        : [
+            ...resolved.prefixArgs,
+            "live-player",
+            "--seen",
+            input.seenPath,
+            "--scene",
+            String(input.scene),
+            "--gameexe",
+            input.gameexePath,
+            "--g00-dir",
+            input.g00Dir,
+            "--artifact-root",
+            input.artifactRoot,
+            "--run-id",
+            runId,
+            "--redaction",
+            reveal ? "off" : "on",
+          ];
     return new LivePlayerChild(
       spawn(resolved.command, args, { env: scrubLiveProviderSecrets(env), stdio: "pipe" }),
     );
@@ -291,11 +316,16 @@ class LivePlayerChild {
 }
 
 function validateLaunch(input: BrowserPlayerLaunch): void {
-  for (const value of [input.seenPath, input.gameexePath, input.g00Dir, input.artifactRoot]) {
+  const paths =
+    input.engine === "softpal"
+      ? [input.gameRoot, input.artifactRoot]
+      : [input.seenPath, input.gameexePath, input.g00Dir, input.artifactRoot];
+  for (const value of paths) {
     if (typeof value !== "string" || value.trim().length === 0)
       throw new BrowserPlayerSessionError("player launch paths are required");
   }
-  if (!Number.isInteger(input.scene) || input.scene < 1 || input.scene > 65_535)
+  const entry = input.engine === "softpal" ? input.pointId : input.scene;
+  if (!Number.isInteger(entry) || entry < 1 || entry > 65_535)
     throw new BrowserPlayerSessionError("player scene must be an integer between 1 and 65535");
 }
 
