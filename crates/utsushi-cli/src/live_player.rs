@@ -24,7 +24,7 @@ use utsushi_reallive::{
 use crate::reallive_port::OnDiskG00Package;
 use crate::staged_replay::staged_engine;
 
-const USAGE: &str = "usage: utsushi live-player --seen <PATH> --scene <N> --gameexe <PATH> --g00-dir <DIR> --artifact-root <DIR> [--run-id <ID>] [--redaction on|off]";
+const USAGE: &str = "usage: utsushi live-player --seen <PATH> --scene <N> --gameexe <PATH> --g00-dir <DIR> --artifact-root <DIR> [--run-id <ID>] [--redaction on] [--reveal]";
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -44,13 +44,15 @@ pub(crate) fn run_live_player_command(args: &[String]) -> Result<(), Box<dyn Err
     let g00_dir = PathBuf::from(required_flag(args, "--g00-dir")?);
     let artifact_root = PathBuf::from(required_flag(args, "--artifact-root")?);
     let run_id = optional_flag(args, "--run-id").unwrap_or("browser-player");
-    let reveal = match optional_flag(args, "--redaction") {
-        None | Some("on") => false,
-        Some("off") => true,
+    match optional_flag(args, "--redaction") {
+        None | Some("on") => {}
         Some(value) => {
-            return Err(format!("live-player --redaction must be on|off, got {value}").into());
+            return Err(format!("live-player --redaction must be on; full-fidelity frames use --reveal and the private artifact path, got {value}").into());
         }
-    };
+    }
+    // `--reveal` only selects the authorized response file below. Rendering
+    // always emits a redacted managed artifact and a sibling private frame.
+    let reveal = args.iter().any(|arg| arg == "--reveal");
     if !g00_dir.is_dir() {
         return Err(format!(
             "live-player g00 directory is missing: {}",
@@ -254,12 +256,15 @@ fn response(
     let mut pass = RenderPass::with_dimensions(renderer.screen_size.0, renderer.screen_size.1)?
         .with_assets(Arc::clone(&renderer.assets));
     let sink = RecordingFrameArtifactSink::new();
+    // The public artifact is *always* redacted. A capable viewer is served
+    // `private_png_path` below, after the full-fidelity image has been written
+    // beside the managed root; it must never make the public emit full-fidelity.
     let mut emit = SceneEmit::frame(
         &renderer.artifact_root,
         &renderer.run_id,
         &sink,
         &renderer.private_dir,
-        !renderer.reveal,
+        true,
     );
     if let Some(overlay) = overlay {
         emit = emit.with_choice(overlay);
