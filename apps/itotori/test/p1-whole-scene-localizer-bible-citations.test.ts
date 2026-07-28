@@ -1,48 +1,10 @@
-import {
-  LlmMemoConflictError,
-  LlmRetriesExhaustedError,
-  type LlmCallMemoStore,
-  type LlmMemoSingleflightInput,
-  type LlmMemoSingleflightResult,
-} from "@itotori/db";
 import { describe, expect, it } from "vitest";
-import {
-  FACT_SCHEMA_VERSION,
-  DRAFT_BATCH_SCHEMA_VERSION,
-  LocalizedRenderingSchema,
-  type DraftBatch,
-  type UnitFact,
-} from "../src/contracts/index.js";
-import { sha256 } from "../src/llm/canonical-json.js";
-import { deepSeekV4FlashProfile } from "../src/llm/role-model-profiles.js";
-import type { MeasuredModelProfile } from "../src/llm/physical-attempt-policy.js";
-import type { LocalizerRuntimeBase } from "../src/roles/p1/index.js";
-import {
-  assembleFinalizedDrafts,
-  assertExactAgainstSource,
-  assertPlaceholdersPreserved,
-  buildLocalizerCall,
-  dispatchLocalizerCall,
-  localizeScene,
-  LocalizeError,
-  MAX_P1_CORE_UNITS_PER_REQUEST,
-  normalizeScene,
-  planSceneLocalization,
-  FinalizeError,
-  PlanError,
-} from "../src/roles/p1/index.js";
-import { specialistFor } from "../src/roster/index.js";
-import { localizedRenderingExample } from "./contract-fixtures-core.js";
+import type { DraftBatch } from "../src/contracts/index.js";
+import { localizeScene, LocalizeError } from "../src/roles/p1/index.js";
 import {
   BASE,
-  BIBLE,
-  CTX,
-  LOC,
-  SCHEMA,
-  chunkBatch,
   draftBatchResponse,
   installedBibleRendering,
-  pad,
   recordedRuntime,
   unitFact,
   wholeSceneBatch,

@@ -10,7 +10,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { Permission } from "./authorization.js";
-import { events } from "./schema-events.js";
 import {
   authAccounts,
   authPrincipals,

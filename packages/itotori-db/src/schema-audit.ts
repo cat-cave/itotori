@@ -1,12 +1,4 @@
-import {
-  check,
-  foreignKey,
-  index,
-  pgTable,
-  primaryKey,
-  text,
-  timestamp,
-} from "drizzle-orm/pg-core";
+import { foreignKey, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import {
   type AuditFindingSeverity,
   type AuditFindingStatus,

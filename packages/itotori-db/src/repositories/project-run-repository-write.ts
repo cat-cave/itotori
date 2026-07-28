@@ -7,9 +7,6 @@ import {
   projectRunProgress,
   projectRunStatusValues,
   projectRuns,
-  projects,
-  type ProjectRunProgressStatus,
-  type ProjectRunStatus,
 } from "../schema.js";
 import {
   ItotoriProjectRunRepositoryError,
@@ -18,12 +15,10 @@ import {
   assertProgressStatus,
   assertRunStatus,
   canAdvance,
-  emptyStatusCounts,
   fenceRejected,
   leaseFromRow,
   leaseSeconds,
   loadRun,
-  loadRunOrNull,
   normalizeBlockers,
   normalizeCreate,
   normalizeLease,

@@ -5,7 +5,6 @@ import {
   integer,
   jsonb,
   pgTable,
-  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -13,7 +12,6 @@ import {
 import { sql } from "drizzle-orm";
 import { type WikiBrandContextRole } from "./schema-values-core.js";
 import { users } from "./schema-catalog-values.js";
-import { events } from "./schema-events.js";
 
 export const workspaces = pgTable("itotori_workspaces", {
   workspaceId: text("workspace_id").primaryKey(),

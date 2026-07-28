@@ -4,7 +4,6 @@ import {
   integer,
   jsonb,
   pgTable,
-  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -12,7 +11,6 @@ import {
 import { sql } from "drizzle-orm";
 import { users } from "./schema-catalog-values.js";
 import { projects, localeBranches } from "./schema-project-core.js";
-import { findings } from "./schema-model-runs.js";
 import {
   type CapabilityLevel,
   type CapabilityLevelStatusKind,
