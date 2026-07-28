@@ -383,4 +383,82 @@ mod tests {
             "conditional plus its taken jump"
         );
     }
+
+    #[test]
+    fn scene_skip_cancel_returns_success_and_bypasses_failure_path() {
+        let (textdat, pointer) = textdat();
+        // Category 9/index 52 consumes no arguments and returns success. If
+        // its implementation is removed or reduced to a pass-through, local 1
+        // remains zero and the conditional reaches the message at point 1.
+        let tokens = [
+            op(0x17),
+            word(0x0009_0034),
+            word(0x4000_0001),
+            op(0x0a),
+            word(1),
+            word(0x4000_0001),
+            op(0x15),
+            op(0x1f),
+            word(pointer),
+            op(0x1f),
+            word(0x0fff_ffff),
+            op(0x1f),
+            word(0),
+            op(0x17),
+            word(0x0002_0002),
+            word(0),
+            op(0x15),
+        ];
+        let mut points = Vec::from(&b"_POINT_LIST_****"[..]);
+        points.extend_from_slice(&28_u32.to_le_bytes());
+        let scene = SoftpalScene::execute_with_points(&program(&tokens), &textdat, Some(&points))
+            .expect("scene-skip cancellation executes");
+
+        assert!(scene.diagnostics.is_empty());
+        assert_eq!(
+            scene.stats.dialogue_count, 0,
+            "success bypasses failure message"
+        );
+        assert_eq!(scene.stats.branch_count, 1);
+    }
+
+    #[test]
+    fn auto_set_consumes_its_flag_and_returns_success() {
+        let (textdat, pointer) = textdat();
+        // The setter must consume its input and write success. A gutted
+        // implementation either stops at the named call or leaves local 1 at
+        // zero, which takes point 1 and emits this message.
+        let tokens = [
+            op(0x1f),
+            word(1),
+            op(0x17),
+            word(0x0009_0002),
+            word(0x4000_0001),
+            op(0x0a),
+            word(1),
+            word(0x4000_0001),
+            op(0x15),
+            op(0x1f),
+            word(pointer),
+            op(0x1f),
+            word(0x0fff_ffff),
+            op(0x1f),
+            word(0),
+            op(0x17),
+            word(0x0002_0002),
+            word(0),
+            op(0x15),
+        ];
+        let mut points = Vec::from(&b"_POINT_LIST_****"[..]);
+        points.extend_from_slice(&36_u32.to_le_bytes());
+        let scene = SoftpalScene::execute_with_points(&program(&tokens), &textdat, Some(&points))
+            .expect("auto setter executes");
+
+        assert!(scene.diagnostics.is_empty());
+        assert_eq!(
+            scene.stats.dialogue_count, 0,
+            "success bypasses failure message"
+        );
+        assert_eq!(scene.stats.branch_count, 1);
+    }
 }

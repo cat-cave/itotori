@@ -81,8 +81,14 @@ fn executes_two_proven_native_state_transitions_before_the_next_visible_gap() {
             "corpus {} emitted dialogue remains an ordered oracle prefix",
             index + 1
         );
-        assert_eq!(observed.len(), 0, "state setup must not invent text");
+        assert_eq!(observed.len(), 0, "executed setup must not invent text");
         let diagnostics = first.diagnostic_frequencies();
+        eprintln!(
+            "[corpus {}] first diagnostic={:?} instructions={}",
+            index + 1,
+            first.diagnostics.first(),
+            first.stats.instructions_executed
+        );
         assert_eq!(
             first.stats.unresolved_construct_count,
             first.diagnostics.len()
@@ -90,25 +96,25 @@ fn executes_two_proven_native_state_transitions_before_the_next_visible_gap() {
         assert_eq!(
             first.diagnostics.len(),
             1,
-            "corpus {} stops at one named unimplemented call",
+            "corpus {} stops at one named visible gap",
             index + 1
         );
         assert_eq!(
             first.diagnostics[0].signature,
-            "unimplemented_call_0009_0034",
-            "corpus {} names its next unimplemented call",
+            "operand_tag_01",
+            "corpus {} names its next visible gap",
             index + 1
         );
         assert_eq!(
             first.diagnostics[0].offset,
-            [72, 168][index],
-            "corpus {} next unimplemented call offset",
+            [200, 280][index],
+            "corpus {} next visible gap offset",
             index + 1
         );
         assert_eq!(
             first.stats.instructions_executed,
-            [7, 15][index],
-            "corpus {} advances beyond the former false blocker",
+            [143, 159][index],
+            "corpus {} advances to the operand-memory boundary",
             index + 1
         );
         assert!(
