@@ -320,17 +320,18 @@ fn p2_backward_slice_classifies_the_rectangle_operand_provenance() {
 #[test]
 #[ignore = "requires the existing ITOTORI_REAL_GAME_ROOT primary asset root"]
 fn p2_primary_executed_line_oracle_remains_7750() {
-    let Some((seen, _gameexe, _g00)) = root_paths(PRIMARY_ROOT_ENV) else {
+    let Some((seen, gameexe_path, _g00)) = root_paths(PRIMARY_ROOT_ENV) else {
         eprintln!("SKIP primary regression oracle: {PRIMARY_ROOT_ENV} is unavailable.");
         return;
     };
     let (engine, _) = staged_engine_and_bytes(&fs::read(seen).expect("read primary Seen.txt"));
-    let entry =
-        utsushi_reallive::Gameexe::parse(&fs::read(_gameexe).expect("read primary Gameexe.ini"))
-            .expect("parse primary Gameexe.ini")
-            .get_int("SEEN_START")
-            .and_then(|scene| u16::try_from(scene).ok())
-            .expect("primary entry scene");
+    let entry = utsushi_reallive::Gameexe::parse(
+        &fs::read(gameexe_path).expect("read primary Gameexe.ini"),
+    )
+    .expect("parse primary Gameexe.ini")
+    .get_int("SEEN_START")
+    .and_then(|scene| u16::try_from(scene).ok())
+    .expect("primary entry scene");
     let playthrough = engine.observe_playthrough(
         entry,
         &utsushi_reallive::ReplayOpts {
