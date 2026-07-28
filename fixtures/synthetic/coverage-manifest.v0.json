@@ -17,11 +17,25 @@
       "id": "realliveOpcode",
       "path": "crates/kaifuu-reallive/src/opcode.rs",
       "symbols": [
-        "RealLiveOpcode",
-        "Expr",
+        "RealLiveOpcode"
+      ],
+      "role": "kaifuu RealLive decoder element taxonomy: RealLiveOpcode element forms (framing edges: kidoku markup, command argc/overload, goto-family, choice/select-block)."
+    },
+    {
+      "id": "realliveExpression",
+      "path": "crates/kaifuu-reallive/src/opcode/expression.rs",
+      "symbols": [
+        "Expr"
+      ],
+      "role": "kaifuu RealLive decoder expression taxonomy: Expr data-lead forms (ExpressionPiece)."
+    },
+    {
+      "id": "realliveOpener",
+      "path": "crates/kaifuu-reallive/src/opcode/header.rs",
+      "symbols": [
         "opener"
       ],
-      "role": "kaifuu RealLive decoder element taxonomy: RealLiveOpcode element forms (framing edges: kidoku markup, command argc/overload, goto-family, choice/select-block), Expr data-lead forms (ExpressionPiece), and the opener-byte marker switch."
+      "role": "kaifuu RealLive decoder opener-byte marker switch."
     },
     {
       "id": "realliveNamedOpcode",
@@ -1547,7 +1561,7 @@
           ]
         },
         "element_form": {
-          "source": "crates/kaifuu-reallive/src/opcode.rs#RealLiveOpcode+Expr+opener",
+          "source": "crates/kaifuu-reallive/src/opcode.rs#RealLiveOpcode",
           "derivation": "extracted",
           "count": 29,
           "components": [
@@ -1583,7 +1597,7 @@
           ]
         },
         "expression_form": {
-          "source": "crates/kaifuu-reallive/src/opcode.rs#RealLiveOpcode+Expr+opener",
+          "source": "crates/kaifuu-reallive/src/opcode/expression.rs#Expr",
           "derivation": "extracted",
           "count": 8,
           "components": [
@@ -1598,7 +1612,7 @@
           ]
         },
         "opener_marker": {
-          "source": "crates/kaifuu-reallive/src/opcode.rs#RealLiveOpcode+Expr+opener",
+          "source": "crates/kaifuu-reallive/src/opcode/header.rs#opener",
           "derivation": "extracted",
           "count": 7,
           "components": [

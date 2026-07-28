@@ -62,7 +62,7 @@ test("RealLive opcode tuples are extracted from REAL_CATALOG and family-tagged f
 
 test("RealLive element/expression enums, openers, named opcodes, cipher, g00 all extract", () => {
   assert.ok(extractEnumVariants(sources.realliveOpcode, "RealLiveOpcode").includes("MetaKidoku"));
-  assert.deepEqual(extractEnumVariants(sources.realliveOpcode, "Expr").sort(), [
+  assert.deepEqual(extractEnumVariants(sources.realliveExpression, "Expr").sort(), [
     "Binary",
     "Complex",
     "IntLiteral",

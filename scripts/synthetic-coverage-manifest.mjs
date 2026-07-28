@@ -51,8 +51,18 @@ export const SOURCE_FILES = {
   },
   realliveOpcode: {
     path: "crates/kaifuu-reallive/src/opcode.rs",
-    symbols: ["RealLiveOpcode", "Expr", "opener"],
-    role: "kaifuu RealLive decoder element taxonomy: RealLiveOpcode element forms (framing edges: kidoku markup, command argc/overload, goto-family, choice/select-block), Expr data-lead forms (ExpressionPiece), and the opener-byte marker switch.",
+    symbols: ["RealLiveOpcode"],
+    role: "kaifuu RealLive decoder element taxonomy: RealLiveOpcode element forms (framing edges: kidoku markup, command argc/overload, goto-family, choice/select-block).",
+  },
+  realliveExpression: {
+    path: "crates/kaifuu-reallive/src/opcode/expression.rs",
+    symbols: ["Expr"],
+    role: "kaifuu RealLive decoder expression taxonomy: Expr data-lead forms (ExpressionPiece).",
+  },
+  realliveOpener: {
+    path: "crates/kaifuu-reallive/src/opcode/header.rs",
+    symbols: ["opener"],
+    role: "kaifuu RealLive decoder opener-byte marker switch.",
   },
   realliveNamedOpcode: {
     path: "crates/kaifuu-reallive/src/opcodes.rs",
@@ -414,8 +424,8 @@ export function buildManifest(sources) {
   }));
 
   const elementForms = extractEnumVariants(sources.realliveOpcode, "RealLiveOpcode");
-  const expressionForms = extractEnumVariants(sources.realliveOpcode, "Expr");
-  const openerMarkers = extractOpenerMarkers(sources.realliveOpcode);
+  const expressionForms = extractEnumVariants(sources.realliveExpression, "Expr");
+  const openerMarkers = extractOpenerMarkers(sources.realliveOpener);
   const namedOpcodes = extractEnumVariants(sources.realliveNamedOpcode, "NamedOpcode");
   const cipherCases = extractCipherCases(sources.realliveXor2);
   const g00Types = extractG00Types(sources.realliveG00);
@@ -444,8 +454,8 @@ export function buildManifest(sources) {
         componentGroups: {
           opcode_tuple: group("realliveCatalog", "extracted", opcodeTuples),
           element_form: group("realliveOpcode", "extracted", elementForms),
-          expression_form: group("realliveOpcode", "extracted", expressionForms),
-          opener_marker: group("realliveOpcode", "extracted", openerMarkers),
+          expression_form: group("realliveExpression", "extracted", expressionForms),
+          opener_marker: group("realliveOpener", "extracted", openerMarkers),
           named_opcode: group("realliveNamedOpcode", "extracted", namedOpcodes),
           cipher_case: group("realliveXor2", "extracted", cipherCases),
           g00_type: group("realliveG00", "extracted", g00Types),
