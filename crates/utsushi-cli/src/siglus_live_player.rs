@@ -1,15 +1,8 @@
 //! Persistent real-byte Siglus stage player for the browser session bridge.
-//!
 //! It precomputes only actual text/choice boundaries from one decoded entry
 //! scene, each paired with the stage state produced by that exact execution.
 //! There is deliberately no image fallback: if a visible stage object cannot
 //! resolve to an installed supported G00, launching fails.
-
-use std::collections::{BTreeMap, HashMap};
-use std::error::Error;
-use std::io::{self, BufRead, Write};
-use std::path::{Path, PathBuf};
-
 use kaifuu_siglus::{
     GameexeDatEntry, SiglusSecondLayerKey, decode_gameexe_dat, decode_scene_chunk, parse_scene_pck,
     read_gameexe_header, recover_exe_angou_key,
@@ -17,6 +10,10 @@ use kaifuu_siglus::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, HashMap};
+use std::error::Error;
+use std::io::{self, BufRead, Write};
+use std::path::{Path, PathBuf};
 use utsushi_reallive::{Framebuffer, TextLayer, WipeColour};
 use utsushi_siglus::scene_vm::{
     ExecutionOutcome, Moment, SceneProgram, StageSnapshot, TitleProgram, VmState,
@@ -26,7 +23,6 @@ use utsushi_siglus::{
     SiglusCgFrame, SiglusG00Image, SiglusG00Kind, SiglusStageRenderError, decode_siglus_g00,
     encode_siglus_png, render_siglus_cg, render_siglus_stage,
 };
-
 const USAGE: &str = "usage: utsushi siglus-live-player --game-root <DIR> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--redaction on] [--reveal]";
 
 #[derive(Debug, Deserialize)]
@@ -47,6 +43,7 @@ struct RenderedBoundary {
     public_sha256: String,
     width: u32,
     height: u32,
+    non_background_pixels: usize,
 }
 
 /// The Gameexe-driven portion of the Siglus message-window projection.
@@ -451,6 +448,7 @@ fn render_boundaries(
             public_sha256: sha256(&public_png),
             width: frame.width,
             height: frame.height,
+            non_background_pixels: non_background_pixel_count(&frame),
         });
     }
     Ok(boundaries)
@@ -661,7 +659,7 @@ fn response(boundary: &RenderedBoundary, event_index: usize, reveal: bool, ended
         "eventIndex": event_index,
         "waitingFor": waiting_for,
         "ended": ended,
-        "frame": {"path": path, "artifactId": artifact_id, "width": boundary.width, "height": boundary.height},
+        "frame": {"path": path, "artifactId": artifact_id, "width": boundary.width, "height": boundary.height, "nonBackgroundPixels": boundary.non_background_pixels},
     })
 }
 
@@ -669,6 +667,19 @@ fn sha256(bytes: &[u8]) -> String {
     let mut digest = Sha256::new();
     digest.update(bytes);
     format!("{:x}", digest.finalize())
+}
+
+fn non_background_pixel_count(frame: &SiglusCgFrame) -> usize {
+    frame
+        .pixels_rgba
+        .first_chunk::<4>()
+        .map_or(0, |background| {
+            frame
+                .pixels_rgba
+                .chunks_exact(4)
+                .filter(|pixel| pixel[..3] != background[..3])
+                .count()
+        })
 }
 
 fn write_response(out: &mut impl Write, value: Value) -> Result<(), Box<dyn Error>> {
@@ -691,6 +702,8 @@ fn optional_flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[path = "siglus_live_player_scan_tests.rs"]
+    mod scan;
 
     fn opaque_black_frame() -> SiglusCgFrame {
         SiglusCgFrame {
@@ -771,6 +784,9 @@ mod tests {
         let mut renderable_scenes = 0usize;
         let mut positioned_renderable_scenes = 0usize;
         let mut text_boundaries = 0usize;
+        let mut background_scenes = 0usize;
+        let mut nonblack_background_text_scenes = 0usize;
+        let mut detailed_background_text_scenes = 0usize;
         let mut positioned_boundaries = 0usize;
         let mut renderable_boundaries = 0usize;
         let mut positioned_renderable_boundary_count = 0usize;
@@ -791,6 +807,11 @@ mod tests {
             }
             text_scenes += 1;
             text_boundaries += snapshots.len();
+            let (has_background, nonblack, detailed) =
+                scan::scene_background_stats(&root, &snapshots);
+            background_scenes += usize::from(has_background);
+            nonblack_background_text_scenes += usize::from(nonblack);
+            detailed_background_text_scenes += usize::from(detailed);
             let positioned = snapshots.iter().any(has_nondefault_stage_position);
             let renderable = snapshots
                 .iter()
@@ -818,7 +839,7 @@ mod tests {
             }
         }
         eprintln!(
-            "REAL siglus player boundaries: text_scenes={text_scenes} positioned_scenes={positioned_scenes} renderable_scenes={renderable_scenes} positioned_renderable_scenes={positioned_renderable_scenes} text_boundaries={text_boundaries} positioned_boundaries={positioned_boundaries} renderable_boundaries={renderable_boundaries} positioned_renderable_boundary_count={positioned_renderable_boundary_count} positioned_renderable_boundaries={positioned_renderable_boundaries:?}"
+            "REAL siglus player boundaries: text_scenes={text_scenes} background_scenes={background_scenes} nonblack_background_text_scenes={nonblack_background_text_scenes} detailed_background_text_scenes={detailed_background_text_scenes} positioned_scenes={positioned_scenes} renderable_scenes={renderable_scenes} positioned_renderable_scenes={positioned_renderable_scenes} text_boundaries={text_boundaries} positioned_boundaries={positioned_boundaries} renderable_boundaries={renderable_boundaries} positioned_renderable_boundary_count={positioned_renderable_boundary_count} positioned_renderable_boundaries={positioned_renderable_boundaries:?}"
         );
         assert!(
             positioned_scenes > 0,
