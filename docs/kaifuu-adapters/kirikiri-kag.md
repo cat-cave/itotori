@@ -2,7 +2,7 @@
 
 - Adapter id: `kaifuu.kirikiri-kag`
 - Crate: `kaifuu-kirikiri`
-- Roadmap node: KAIFUU-009 (KiriKiri KAG plaintext reference adapter — the
+- Roadmap node: the relevant capability (KiriKiri KAG plaintext reference adapter — the
   null-container special case).
 - Engine family: KiriKiri / KAG (KiriKiri Adventure Game system).
 

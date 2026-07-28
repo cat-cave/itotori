@@ -5,7 +5,7 @@ publish = false
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "UTSUSHI-179 — pure-Rust RPG Maker MV/MZ engine-port scaffold for the utsushi-core substrate facade. The browser/NW.js JS engine IS the MV/MZ runtime, so this port carries ZERO opcode handlers: it declares the MV/MZ family through the substrate facade conformance manifest and emits a from-scratch clean-room attestation. Clean-room; no decompiled/copyrighted engine code, no vendored engine source, no game bytes."
+description = "capability_utsushi_179 — pure-Rust RPG Maker MV/MZ engine-port scaffold for the utsushi-core substrate facade. The browser/NW.js JS engine IS the MV/MZ runtime, so this port carries ZERO opcode handlers: it declares the MV/MZ family through the substrate facade conformance manifest and emits a from-scratch clean-room attestation. Clean-room; no decompiled/copyrighted engine code, no vendored engine source, no game bytes."
 
 [dependencies]
 # ONLY utsushi-core. This crate consumes the substrate facade

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "itotori.kaifuu-encrypted-readiness-integration.v0.1",
   "title": "Kaifuu alpha encrypted-readiness evidence integration composed report",
-  "description": "The alpha-readiness composed-evidence artifact emitted by the kaifuu:encrypted-readiness workflow (KAIFUU-042). It NAMES + aggregates the prerequisite surfaces/adapters/command-evidence/proof artifacts (KAIFUU-103 packed-engine readiness + KAIFUU-104 alpha-encrypted evidence) by content HASH, and carries the private-encrypted-corpus readiness aggregate. The `skipped` status with reason `private_inputs_absent` is the deterministic REDACTED no-corpus artifact emitted when no private encrypted corpus is configured. Contains ONLY redacted fields: logical ids, source-node ids, sha256 proof hashes, aggregate counts, and per-engine readiness bins. Never key material, decrypted content, or local paths.",
+  "description": "The alpha-readiness composed-evidence artifact emitted by the kaifuu:encrypted-readiness workflow (capability_kaifuu_042). It NAMES + aggregates the prerequisite surfaces/adapters/command-evidence/proof artifacts (capability_kaifuu_103 packed-engine readiness + capability_kaifuu_104 alpha-encrypted evidence) by content HASH, and carries the private-encrypted-corpus readiness aggregate. The `skipped` status with reason `private_inputs_absent` is the deterministic REDACTED no-corpus artifact emitted when no private encrypted corpus is configured. Contains ONLY redacted fields: logical ids, source-node ids, sha256 proof hashes, aggregate counts, and per-engine readiness bins. Never key material, decrypted content, or local paths.",
   "type": "object",
   "additionalProperties": false,
   "required": [

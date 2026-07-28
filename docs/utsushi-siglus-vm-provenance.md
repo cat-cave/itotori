@@ -1,4 +1,4 @@
-# UTSUSHI-034 — Siglus VM clean-room provenance & implementation map
+# the relevant capability — Siglus VM clean-room provenance & implementation map
 
 **Status:** authored _before_ any Siglus-VM adapter code (this document gates
 `crates/utsushi-siglus/src/vm.rs`). It records what external Siglus references
@@ -33,7 +33,7 @@ MPL obligations we do not want to carry. Therefore:
 > re-derived from publicly-archived Siglus format documentation and this VM's
 > own synthetic model, then authored fresh.** If a specific real-Siglus decode
 > follow-up (§4) ever needs to lean on `siglus_rs` more directly, that is a
-> separate licensing decision that must be recorded on that follow-up node
+> separate licensing decision that must be recorded for that later capability
 > _before_ code lands — it is **not** pre-authorized by this document.
 
 ## 2. Clean-room boundary — studied vs reimplemented
@@ -44,7 +44,7 @@ MPL obligations we do not want to carry. Therefore:
   `Scene.pck` scene bytecode, resolving strings from a UTF-16LE table and
   keeping flag/variable banks.
 - That container access can require a key that a real title resolves in-process
-  (never a shell-out) — the discipline already encoded by UTSUSHI-035's
+  (never a shell-out) — the discipline already encoded by the relevant capability's
   runtime-profile boundary.
 - The _subsystem decomposition_ (decode → dispatch → string-table → banks →
   choices → custom callbacks) named in the implementation map (§4).
@@ -60,7 +60,7 @@ MPL obligations we do not want to carry. Therefore:
   locally-resolvable key without ever serializing the raw key material". The
   key is an authored, clearly-fake constant; there is no retail key anywhere.
 - All secret-ref / redaction / one-way-commitment discipline is **reused from
-  UTSUSHI-035** (`SecretRef`, `ProofHash`, `RuntimeKeyReference`) — itotori's
+  the relevant capability** (`SecretRef`, `ProofHash`, `RuntimeKeyReference`) — itotori's
   own code, not an external reference.
 
 **Hard boundaries (crate-graph enforced):**
@@ -106,7 +106,7 @@ broad-compatibility claim; the validator stamps the
 4. **`gameexe-namespace-resolution`** — resolve `Gameexe.dat` namespaced config
    into runtime state (Research).
 5. **`siglus-lzss-decompression`** — the proprietary Siglus LZSS container codec
-   the UTSUSHI-035 boundary currently rejects as out-of-profile (Research).
+   the the relevant capability boundary currently rejects as out-of-profile (Research).
 6. **`siglus-flag-and-variable-banks`** — the real flag/variable bank model and
    its snapshot/restore mapping (Research; the smoke models a synthetic subset).
 7. **`siglus-selbtn-choices`** — Siglus choice/selection (`SelBtn`-style)

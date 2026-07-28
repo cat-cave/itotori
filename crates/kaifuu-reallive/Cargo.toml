@@ -5,7 +5,7 @@ publish = false
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Pure-Rust RealLive Scene/SEEN parser-boundary smoke (KAIFUU-173). Clean-room, behavior-only; rlvm not linked, not derived."
+description = "Pure-Rust RealLive Scene/SEEN parser-boundary smoke (capability_kaifuu_173). Clean-room, behavior-only; rlvm not linked, not derived."
 
 [dependencies]
 encoding_rs.workspace = true

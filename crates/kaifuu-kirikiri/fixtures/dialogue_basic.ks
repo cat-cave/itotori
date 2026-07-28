@@ -1,4 +1,4 @@
-; kirikiri-kag synthetic fixture (CC0) — authored for itotori KAIFUU-009
+; kirikiri-kag synthetic fixture (CC0) — authored for itotori capability_kaifuu_009
 *start|プロローグ
 @wait time=1000
 #アリス

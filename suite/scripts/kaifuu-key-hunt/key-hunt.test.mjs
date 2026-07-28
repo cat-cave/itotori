@@ -1,5 +1,5 @@
 /*
- * KAIFUU-067 — deterministic unit + integration tests for the private-local
+ * the relevant capability — deterministic unit + integration tests for the private-local
  * key-hunting run workflow. `node --test`, no network, no DB, no build, no
  * private corpora, no Wine/Windows: the no-corpus path and STUB redacted
  * manifests drive everything. Proves:

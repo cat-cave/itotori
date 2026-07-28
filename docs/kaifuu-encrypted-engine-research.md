@@ -3,7 +3,7 @@
 This brief records the current research basis for treating decryption and key
 discovery as an alpha readiness lane. It complements
 [kaifuu-key-discovery.md](kaifuu-key-discovery.md) and the roadmap nodes
-`KAIFUU-035` through `KAIFUU-042`, `KAIFUU-050`, and `KAIFUU-051`.
+`the relevant capability` through `the relevant capability`, `the relevant capability`, and `the relevant capability`.
 
 ## Research Conclusions
 

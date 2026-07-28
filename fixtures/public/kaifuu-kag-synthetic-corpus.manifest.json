@@ -10,7 +10,7 @@
     "sourceLocale": "en-US",
     "license": {
       "spdx": "CC0-1.0",
-      "evidence": "All `.ks` scripts are original prose hand-authored in-repository for KAIFUU-203 and dedicated to the public domain (CC0-1.0); each file carries a `; SPDX-License-Identifier: CC0-1.0` header. No retail/game bytes."
+      "evidence": "All `.ks` scripts are original prose hand-authored in-repository for capability_kaifuu_203 and dedicated to the public domain (CC0-1.0); each file carries a `; SPDX-License-Identifier: CC0-1.0` header. No retail/game bytes."
     },
     "provenance": {
       "author": "Itotori contributors",

@@ -9,14 +9,14 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const publicFixturesDir = resolve(repoRoot, "fixtures/public");
 const schemaPath = resolve(publicFixturesDir, "manifest.schema.json");
 const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
-// KAIFUU-203: the hand-authored CC0 KAG `.ks` corpus manifest declares a
+// the relevant capability: the hand-authored CC0 KAG `.ks` corpus manifest declares a
 // distinct shape (verbatim `SPDX-License-Identifier`, per-file KAG tag
 // inventory) and points its `$schema` at `kag-corpus.manifest.schema.json`.
 // Each manifest is validated against the schema it declares.
 const kagCorpusSchemaSuffix = "kag-corpus.manifest.schema.json";
 const kagCorpusSchemaPath = resolve(publicFixturesDir, kagCorpusSchemaSuffix);
 const kagCorpusSchema = JSON.parse(readFileSync(kagCorpusSchemaPath, "utf8"));
-// KAIFUU-204 records a licensed real-game XP3 as metadata only. Its schema
+// the relevant capability records a licensed real-game XP3 as metadata only. Its schema
 // intentionally has no `files` list because archive bytes and member paths
 // must not be committed.
 const xp3ProfileASchemaSuffix = "xp3-profile-a.manifest.schema.json";

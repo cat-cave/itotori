@@ -2,7 +2,7 @@
 
 We use **qdcli** for audit orchestration. How audits run, how findings and
 severities (P0–P3) work, and how findings gate CI/merge and get promoted into
-follow-up nodes are documented in the orchestrator playbook
+later planning work is documented in the orchestrator playbook
 ([`docs/orchestration.md`](../orchestration.md), especially §B, §F, and the
 audit steps in the node lifecycle). Do not duplicate that generic machinery
 here.

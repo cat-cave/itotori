@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /*
- * KAIFUU-042 — Alpha encrypted-readiness evidence integration core.
+ * the relevant capability — Alpha encrypted-readiness evidence integration core.
  *
  * Pure, deterministic core for the `kaifuu:encrypted-readiness` workflow. It
  * COMPOSES the already-generated encrypted-readiness EVIDENCE of the
- * prerequisite slices (KAIFUU-103 packed-engine readiness surface +
- * KAIFUU-104 alpha-encrypted readiness evidence) into an alpha-readiness
+ * prerequisite slices (the relevant capability packed-engine readiness surface +
+ * the relevant capability alpha-encrypted readiness evidence) into an alpha-readiness
  * composed-evidence artifact, and produces a deterministic REDACTED no-corpus
  * artifact when no PRIVATE encrypted corpus is configured.
  *
  * IT DOES NOT RE-OWN PREREQUISITE SLICES. It never re-derives readiness
- * postures, never re-runs an adapter, and never re-implements the KAIFUU-104
+ * postures, never re-runs an adapter, and never re-implements the the relevant capability
  * generator. It reads the committed prerequisite manifest, aggregates the
  * committed prerequisite proof artifacts by content HASH, and cross-checks that
  * each artifact still declares the source node the manifest names. Any missing,
@@ -74,7 +74,7 @@ export const READINESS_BINS = [
 ];
 
 // Prerequisite adapter engine families are declared in the packed-engine schema
-// vocabulary (`engineFamily` field of the KAIFUU-103 profile fixtures). Any
+// vocabulary (`engineFamily` field of the the relevant capability profile fixtures). Any
 // prerequisite whose engine family is NOT recognized is a semantic diagnostic.
 export const SUPPORTED_PREREQUISITE_ENGINE_FAMILIES = [
   "kirikiri_xp3",

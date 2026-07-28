@@ -1,6 +1,6 @@
 # Kaifuu Engine Adapter Development Playbook
 
-KAIFUU-020 defines the repeatable workflow for adding engine adapters with
+the relevant capability defines the repeatable workflow for adding engine adapters with
 parallel coding agents. This playbook is the operational entry point for an
 adapter worker. It complements:
 
@@ -222,7 +222,7 @@ New adapters plug into the same architecture as the fixture adapter:
   substitution, video editing, archive rebuilds, and binary relocation remain
   unsupported unless tested and documented for the exact fixture profile.
 
-## Capability Ladder (KAIFUU-053)
+## Capability Ladder (the relevant capability)
 
 Every adapter declares an `AdapterCapabilityMatrix` over the four-rung ladder
 `Identify < Inventory < Extract < Patch`. The ladder is a typed query surface
@@ -232,7 +232,7 @@ usability.
 
 Rules every adapter author follows:
 
-- Declare `level_matrix` at construction. KAIFUU-053 follow-up F002 made
+- Declare `level_matrix` at construction. the relevant capability follow-up F002 made
   the matrix a required parameter of `AdapterCapabilities::new(adapter_id,
 reports, level_matrix)` — there is no silent fallback from
   per-`Capability` reports to a derived matrix. Tests that genuinely don't
@@ -247,7 +247,7 @@ reports, level_matrix)` — there is no silent fallback from
 - Detector-only adapters declare
   `AdapterCapabilityMatrix::identify_only(adapter_id, reason)` — `Identify`
   Supported, every higher rung `Unsupported` with the same reason. This is
-  what acceptance criterion 2 of KAIFUU-053 requires: identifying that an
+  what acceptance criterion 2 of the relevant capability requires: identifying that an
   engine exists does not imply the adapter can extract or patch it.
 - The declared matrix must never claim more than the per-`Capability` reports
   support. `AdapterCapabilities::normalize` enforces this with a
@@ -351,7 +351,7 @@ The default for every claimed game is _no helper needed_. The rule is:
 - If static parsing genuinely cannot recover what is needed for a specific
   claimed game's protected variant, record that evidence in the readiness
   record (what was tried, what was observed, why it is insufficient). Only
-  then does the bounded helper boundary (`KAIFUU-064`) come into play, and
+  then does the bounded helper boundary (`the relevant capability`) come into play, and
   only then is the appropriate per-channel adapter (Wine wrapper, local
   Windows process, remote host, etc.) added — scoped to that game's actual
   need.
@@ -370,8 +370,8 @@ as a binary at runtime.
 ## Remote Windows And Wine Helper Protocol Sketch
 
 This section describes **aspirational helper protocol design** for a future
-capability tracked at continuous-tier under `KAIFUU-064`, `KAIFUU-065`,
-`KAIFUU-090`, and `KAIFUU-129`. It is _not_ a current contract: no adapter
+capability tracked at continuous-tier under `the relevant capability`, `the relevant capability`,
+`the relevant capability`, and `the relevant capability`. It is _not_ a current contract: no adapter
 worker should depend on this protocol being available, and the remote/Wine
 helper transports are no longer alpha-required. Per the per-game
 evidence-first rule above, any dynamic-key-discovery helper infrastructure is

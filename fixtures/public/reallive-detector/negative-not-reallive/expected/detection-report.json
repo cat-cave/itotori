@@ -194,7 +194,7 @@
         {
           "capability": "extraction",
           "status": "unsupported",
-          "limitation": "KAIFUU-095 is an XP3 detector/profile fixture only"
+          "limitation": "capability_kaifuu_095 is an XP3 detector/profile fixture only"
         },
         {
           "capability": "key_profile",
@@ -331,7 +331,7 @@
         {
           "capability": "extraction",
           "status": "unsupported",
-          "limitation": "KAIFUU-172 is a RealLive detector/profile fixture only"
+          "limitation": "capability_kaifuu_172 is a RealLive detector/profile fixture only"
         },
         {
           "capability": "key_profile",
@@ -351,7 +351,7 @@
         {
           "capability": "patching",
           "status": "unsupported",
-          "limitation": "KAIFUU-172 does not patch or rebuild RealLive assets"
+          "limitation": "capability_kaifuu_172 does not patch or rebuild RealLive assets"
         },
         {
           "capability": "profile_generation",
@@ -361,7 +361,7 @@
         {
           "capability": "runtime_vm",
           "status": "unsupported",
-          "limitation": "runtime support belongs to UTSUSHI-146, not this detector fixture"
+          "limitation": "runtime support belongs to capability_utsushi_146, not this detector fixture"
         }
       ]
     },
@@ -432,7 +432,7 @@
         {
           "capability": "extraction",
           "status": "unsupported",
-          "limitation": "KAIFUU-091 is a Siglus detector/profile fixture only"
+          "limitation": "capability_kaifuu_091 is a Siglus detector/profile fixture only"
         },
         {
           "capability": "key_profile",

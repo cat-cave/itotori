@@ -44,28 +44,28 @@ fire and pieces can be swapped."
 
 ### 2.1 real-game-testing-ready
 
-1. **Substrate extensions M.1–M.3 landed.** `UTSUSHI-222` (composite asset
-   package + try-dir-then-archive resolver), `UTSUSHI-223` (snapshot
-   envelope size class), `UTSUSHI-224` (`EnginePort` → substrate-sinks
+1. **Substrate extensions M.1–M.3 landed.** `the relevant capability` (composite asset
+   package + try-dir-then-archive resolver), `the relevant capability` (snapshot
+   envelope size class), `the relevant capability` (`EnginePort` → substrate-sinks
    bridge, the legacy Rust runtime `ObservationHookEvent` enum deleted
    from `crates/`). Each ships with multi-engine validation against ≥2
    real-bytes corpora and same-change legacy deletion. (The distinct TS
    bridge wire type `ObservationHookEvent` in
    `packages/localization-bridge-schema` is unaffected and remains live
    as an `observationHookEvents` field of `RuntimeEvidenceReportV02`.)
-2. **Non-synthetic engine port crate scaffolded.** `UTSUSHI-200` registers
+2. **Non-synthetic engine port crate scaffolded.** `the relevant capability` registers
    conformance against the substrate with the smallest credible opcode
    subset (call/return/text-display/wait); does not depend on author-fixture
    envelopes.
 3. **Real-bytes alpha-corpus smoke.** `kaifuu-cli detect` returns true,
    `parse_archive` returns a non-empty entry list (no silent zero-state),
    the Gameexe parser classifies the dominant key families. Closed by
-   `KAIFUU-188` (10000-slot envelope), `KAIFUU-189` (depth-N detector),
-   `KAIFUU-190` (Gameexe key family expansion).
+   `the relevant capability` (10000-slot envelope), `the relevant capability` (depth-N detector),
+   `the relevant capability` (Gameexe key family expansion).
 4. **Recorded-LLM bundle.** A reproducible recorded-provider run through
    the full Itotori workflow (draft → QA → patch export) is reachable
    with deterministic outputs. Tracked by
-   `ITOTORI-019` / `ITOTORI-021` / `ITOTORI-025`.
+   `the relevant capability` / `the relevant capability` / `the relevant capability`.
 5. **Dashboard reachable.** The spec-dag-dashboard renders DAG, claims, and
    audit state from real DB state (not fixtures); audit-findings dashboard
    work in flight extends this.
@@ -82,8 +82,8 @@ Stricter than real-game-testing-ready. All six criteria above PLUS:
    `providerId` as a pair (no defaulting, no fallback). Recorded bundles
    pin both. Pre-alpha development pairs are small/cheap; alpha defends its
    chosen pair in prompt/preset metadata.
-2. **UTSUSHI-201..221 runtime port largely landed.** The 22-sub-node
-   `utsushi-reallive` runtime decomposition (`UTSUSHI-200..221`,
+2. **the relevant capability..221 runtime port largely landed.** The 22-sub-node
+   `utsushi-reallive` runtime decomposition (`the relevant capability..221`,
    `docs/research/reallive-engine-dag-proposal.md`) has shipped enough of
    the opcode VM, variable system, asset pipeline, and system-call dispatch
    to run a patched scene of the configured alpha corpus on Linux.

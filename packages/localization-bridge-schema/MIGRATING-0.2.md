@@ -80,7 +80,7 @@ Do not collapse unknown speakers into a single string or boolean.
   `sourceSpanId` plus `sourceStartByte`/`sourceEndByte` so reordered or
   duplicate raw spans are matched by source identity and explicit target byte
   range, not by source span order.
-- Duplicate protected-span policy (KAIFUU-170): the two span shapes are governed
+- Duplicate protected-span policy (the relevant capability): the two span shapes are governed
   by different duplicate rules. **Legacy raw-only spans** (only `raw` plus a
   target range, no source identity) are compatibility-preserving — a duplicate
   `raw` is ALLOWED, because the same protected literal legitimately recurs in a

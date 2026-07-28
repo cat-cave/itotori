@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "profileId": "packed/siglus/missing_key",
   "fixtureId": "siglus.missing-key",
-  "sourceNodeId": "KAIFUU-103",
+  "sourceNodeId": "capability_kaifuu_103",
   "engineFamily": "siglus",
   "container": "siglus_pck",
   "crypto": "key_profile",

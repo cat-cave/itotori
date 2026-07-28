@@ -1,7 +1,7 @@
 ; kaifuu-kag-synthetic-corpus — 06-epilogue.ks
 ; SPDX-License-Identifier: CC0-1.0
 ; Original, hand-authored CC0 KAG (.ks) content. Contains NO copyrighted game
-; text. Authored for itotori KAIFUU-203.
+; text. Authored for itotori capability_kaifuu_203.
 ; Covers: a closing [eval] variable update, click/clear [l] / [p] tags, a
 ; [wait] beat, and a [[ literal-bracket ]] escape inside message text.
 *epilogue|A Kept Count

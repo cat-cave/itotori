@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "profileId": "packed/kirikiri-xp3/alpha",
   "fixtureId": "alpha.readiness.kirikiri-xp3",
-  "sourceNodeId": "KAIFUU-056",
+  "sourceNodeId": "capability_kaifuu_056",
   "prerequisiteProof": "xp3_capability_profile",
   "engineFamily": "kirikiri_xp3",
   "capabilities": {

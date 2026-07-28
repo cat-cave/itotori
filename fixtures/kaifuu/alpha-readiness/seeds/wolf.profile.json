@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "profileId": "packed/wolf/alpha",
   "fixtureId": "alpha.readiness.wolf",
-  "sourceNodeId": "KAIFUU-056",
+  "sourceNodeId": "capability_kaifuu_056",
   "prerequisiteProof": "wolf_archive_readiness_fixture",
   "engineFamily": "wolf",
   "capabilities": {

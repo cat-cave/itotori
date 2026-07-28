@@ -85,22 +85,39 @@ export const SUBSTRATE_SURFACES = [
   {
     surface: "benchmark",
     description: "Benchmark harness + set selector + QA benchmark modes + matrix runner",
-    nodes: ["ALPHA-003", "ITOTORI-026", "ITOTORI-089", "ITOTORI-090", "ITOTORI-091", "ITOTORI-099"],
+    nodes: [
+      "ALPHA-003",
+      "capability_itotori_026",
+      "capability_itotori_089",
+      "capability_itotori_090",
+      "capability_itotori_091",
+      "capability_itotori_099",
+    ],
   },
   {
     surface: "dashboard-reporting",
     description: "Cost/quality + provider-route report renderers and export metadata",
-    nodes: ["ITOTORI-092", "ITOTORI-100", "ITOTORI-039", "ITOTORI-059"],
+    nodes: [
+      "capability_itotori_092",
+      "capability_itotori_100",
+      "capability_itotori_039",
+      "capability_itotori_059",
+    ],
   },
   {
     surface: "synthetic-encrypted",
     description: "Encrypted-readiness evidence + synthetic encrypted-XP3 scaffolding",
-    nodes: ["KAIFUU-104", "KAIFUU-171"],
+    nodes: ["capability_kaifuu_104", "capability_kaifuu_171"],
   },
   {
     surface: "real-bytes-parse",
     description: "RealLive real-bytes envelope / detector / Gameexe substrate",
-    nodes: ["KAIFUU-064", "KAIFUU-188", "KAIFUU-189", "KAIFUU-190"],
+    nodes: [
+      "capability_kaifuu_064",
+      "capability_kaifuu_188",
+      "capability_kaifuu_189",
+      "capability_kaifuu_190",
+    ],
   },
   {
     surface: "dag-implementability-lint",

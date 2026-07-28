@@ -47,7 +47,7 @@ ready row to `running`/`publishing`, stamps `locked_by = <workerId>`, and sets
 `lease_expires_at = now() + leaseSeconds`. Only rows whose lease is unset or already elapsed are
 claimable, so a live lease grants exclusive ownership for its window.
 
-**Stale-lease / late-completion policy (ITOTORI-046).** A worker may lose ownership of a job it is
+**Stale-lease / late-completion policy (the relevant capability).** A worker may lose ownership of a job it is
 still processing — its lease can expire before it finishes, a reaper can recover the lease, or a
 second worker can take the lease over after recovery. Completing or failing a job on a lost lease
 would corrupt final state (overwrite a newer owner's result, resurrect a dead-lettered job, or
@@ -170,7 +170,7 @@ from the **live post-render DOM**, not from fixture-declared strings. The
 machine-readable observation island a real JS runtime emits, with an
 evidence-tier discriminator (`live_dom` vs `fixture_declared`) so a
 fixture-declared trace is never mistaken for a live observation (the
-UTSUSHI-006/110 proof-honesty concern). The policy permits real-Chromium
+the relevant capability/110 proof-honesty concern). The policy permits real-Chromium
 evidence, and the DOM probe is what makes that evidence genuinely live rather
 than declared.
 

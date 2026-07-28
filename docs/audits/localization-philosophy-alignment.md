@@ -3,7 +3,7 @@
 **Snapshot.** Static audit of commit `4a2ae090c4bcdf3deabca568a34be8f3f34410c3`.
 
 > **Historical snapshot; superseded for the retired queue tree.** The final
-> `p0-core-purge-reviewer-queue-as-deferral` capstone deletes the queue
+> `the relevant capability` capstone deletes the queue
 > producer, storage, APIs, UI, and decision/rerun consumers that this audit
 > describes. Consequently #86/#87 are moot rather than repaired with a
 > `contextRefs` compatibility path. Current human changes use result revisions,

@@ -46,7 +46,7 @@
         "data": {
           "reason": {
             "kind": "DeferredTo",
-            "data": "deferred-to-UTSUSHI-148"
+            "data": "deferred-to-capability_utsushi_148"
           }
         }
       },
@@ -70,7 +70,7 @@
           "evidenceRefs": [
             {
               "kind": "RoadmapNode",
-              "locator": "UTSUSHI-029",
+              "locator": "capability_utsushi_029",
               "caption": "Audio-event check is roadmapped."
             }
           ]

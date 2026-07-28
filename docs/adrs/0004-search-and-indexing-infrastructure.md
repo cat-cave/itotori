@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for ITOTORI-030 and refreshed after ITOTORI-071.
+Accepted for the relevant capability and refreshed after the relevant capability.
 
 ## Context
 
@@ -207,7 +207,7 @@ Docker and CI behavior:
 ## Index Migration Plan
 
 1. Keep existing migrations and current Docker service unchanged for
-   ITOTORI-030.
+   the relevant capability.
 2. Add the future glossary, scene, context artifact, feedback, and agent-tool
    exact indexes in the same migrations that create those tables. Those
    migrations must contain repository tests similar to the current

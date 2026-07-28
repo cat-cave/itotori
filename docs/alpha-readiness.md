@@ -51,7 +51,7 @@ just test alpha
 
 `just test alpha` runs the public-fixture alpha vertical:
 Kaifuu extraction → Itotori draft/patch export → Utsushi runtime observation →
-sanitized provider proof → fresh ITOTORI-026 benchmark → SHARED-025 manifest,
+sanitized provider proof → fresh the relevant capability benchmark → SHARED-025 manifest,
 then independently re-proves cross-artifact linkage. It is **public-fixture-only
 and deterministic**: no database, no live credentials, no private corpora, no
 retail bytes. It fails unless every artifact agrees on the same fixture id,
@@ -118,22 +118,22 @@ The alpha readiness gate validates that each of these DAG nodes resolves in
 gates: CI, the alpha-proof / public-fixture vertical, the benchmark smoke, and
 recorded-or-opted-in real-provider proof.
 
-| node          | proves                                                                                                                                                  |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ALPHA-006`   | first real-engine end-to-end alpha vertical (RealLive); the live provider path (`alpha-006d` full-chain + `agentic-repair-live` residue) is opt-in.     |
-| `ALPHA-007`   | suite public-fixture vertical run (`just test alpha`).                                                                                                  |
-| `ALPHA-008`   | sanitized live-provider proof bundle.                                                                                                                   |
-| `ITOTORI-116` | public real-LLM proof harness (recorded by default; `--live` opt-in).                                                                                   |
-| `ITOTORI-117` | real-LLM degenerate raw-MTL baseline proof through the same harness.                                                                                    |
-| `KAIFUU-042`  | alpha encrypted-readiness evidence integration: composes the KAIFUU-103 / KAIFUU-104 encrypted-readiness proofs; deterministic redacted no-corpus skip. |
-| `UTSUSHI-119` | MV/MZ patched-output runtime proof: runtime observation consumes a `PatchResult` + SHARED-025 manifest ids (not a static/pre-patch read).               |
-| `SHARED-025`  | alpha vertical proof manifest contract (ties bridge / patch / runtime / provider / benchmark ids + content hashes).                                     |
-| `UNIV-013`    | self-contained DB test + scale smoke recipe.                                                                                                            |
-| `SHARED-013`  | permission-gate negative test matrix.                                                                                                                   |
-| `SHARED-014`  | permission constant + migration drift guard.                                                                                                            |
-| `UNIV-021`    | spec-DAG implementability lint.                                                                                                                         |
+| node                      | proves                                                                                                                                                                            |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ALPHA-006`               | first real-engine end-to-end alpha vertical (RealLive); the live provider path (`alpha-006d` full-chain + `agentic-repair-live` residue) is opt-in.                               |
+| `ALPHA-007`               | suite public-fixture vertical run (`just test alpha`).                                                                                                                            |
+| `ALPHA-008`               | sanitized live-provider proof bundle.                                                                                                                                             |
+| `the relevant capability` | public real-LLM proof harness (recorded by default; `--live` opt-in).                                                                                                             |
+| `the relevant capability` | real-LLM degenerate raw-MTL baseline proof through the same harness.                                                                                                              |
+| `the relevant capability` | alpha encrypted-readiness evidence integration: composes the the relevant capability / the relevant capability encrypted-readiness proofs; deterministic redacted no-corpus skip. |
+| `the relevant capability` | MV/MZ patched-output runtime proof: runtime observation consumes a `PatchResult` + SHARED-025 manifest ids (not a static/pre-patch read).                                         |
+| `SHARED-025`              | alpha vertical proof manifest contract (ties bridge / patch / runtime / provider / benchmark ids + content hashes).                                                               |
+| `UNIV-013`                | self-contained DB test + scale smoke recipe.                                                                                                                                      |
+| `SHARED-013`              | permission-gate negative test matrix.                                                                                                                                             |
+| `SHARED-014`              | permission constant + migration drift guard.                                                                                                                                      |
+| `UNIV-021`                | spec-DAG implementability lint.                                                                                                                                                   |
 
-### Patched-output runtime proof (UTSUSHI-119 × SHARED-025)
+### Patched-output runtime proof (the relevant capability × SHARED-025)
 
 The SHARED-025 alpha proof manifest
 ([`../fixtures/alpha-vertical-proof/hello-game-alpha-proof-v0.2.fr-FR.json`](../fixtures/alpha-vertical-proof/hello-game-alpha-proof-v0.2.fr-FR.json))
@@ -146,13 +146,13 @@ those artifact hashes against the committed fixtures and confirms the runtime
 report's source matches the manifest (a mismatched revision or a missing patch
 result fails the gate).
 
-### Encrypted-readiness evidence integration (KAIFUU-042)
+### Encrypted-readiness evidence integration (the relevant capability)
 
 The `kaifuu:encrypted-readiness` workflow
 ([`../suite/scripts/kaifuu-encrypted-readiness-integration/run.mjs`](../suite/scripts/kaifuu-encrypted-readiness-integration/run.mjs))
 **composes** the already-generated encrypted-readiness EVIDENCE of the
-prerequisite slices — the KAIFUU-103 packed-engine readiness surface and the
-KAIFUU-104 alpha-encrypted readiness evidence generator — into an alpha-readiness
+prerequisite slices — the the relevant capability packed-engine readiness surface and the
+the relevant capability alpha-encrypted readiness evidence generator — into an alpha-readiness
 composed-evidence artifact. It does **not** re-own those slices: the committed
 [`prerequisites.manifest.json`](../suite/scripts/kaifuu-encrypted-readiness-integration/prerequisites.manifest.json)
 NAMES the prerequisite surfaces, adapters, command evidence, and proof
@@ -161,7 +161,7 @@ hash (`composedEvidenceHash`). A missing, tampered (wrong source node), or
 UNSUPPORTED prerequisite becomes a structured **semantic diagnostic**
 (`status: failed`) — never a hidden success.
 
-Like the KAIFUU-036 / KAIFUU-067 / KAIFUU-094 private-local workflows this is a
+Like the the relevant capability / the relevant capability / the relevant capability private-local workflows this is a
 FIRST-CLASS LOCAL lane, intentionally absent from per-gate CI. When **no private
 encrypted corpus is configured** (the public/default case, or `--no-corpus`) it
 emits the deterministic REDACTED no-corpus artifact

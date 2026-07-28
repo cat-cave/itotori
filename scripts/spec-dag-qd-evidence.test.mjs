@@ -7,8 +7,8 @@ test("rejects qd export CI reuse evidence that cites local qd log paths", () => 
   dag.runs.push(
     qdCiReuseRunFixture({
       summary:
-        "Covered by integrated qd-full-ci wave on main.\nEvidence: log_path=.qd/logs/ci-ITOTORI-300-2026-06-28T09-00-25-766Z.log",
-      log_path: ".qd/logs/ci-ITOTORI-300-2026-06-28T09-00-25-766Z.log",
+        "Covered by integrated qd-full-ci wave on main.\nEvidence: log_path=.qd/logs/ci-capability_itotori_300-2026-06-28T09-00-25-766Z.log",
+      log_path: ".qd/logs/ci-capability_itotori_300-2026-06-28T09-00-25-766Z.log",
     }),
     qdCiReuseRunFixture({
       node_id: "UNIV-000",
@@ -22,11 +22,11 @@ test("rejects qd export CI reuse evidence that cites local qd log paths", () => 
 
   assertError(
     errors,
-    "runs[0] ITOTORI-300 ci reuse evidence log_path must not point at local-only .qd state",
+    "runs[0] capability_itotori_300 ci reuse evidence log_path must not point at local-only .qd state",
   );
   assertError(
     errors,
-    "runs[0] ITOTORI-300 ci reuse evidence summary must not cite local-only .qd/logs paths",
+    "runs[0] capability_itotori_300 ci reuse evidence summary must not cite local-only .qd/logs paths",
   );
   assertError(
     errors,
@@ -60,11 +60,11 @@ test("rejects qd export passed-CI reuse wording that cites local qd log paths", 
 
   assertError(
     errors,
-    "runs[0] ITOTORI-300 ci reuse evidence log_path must be repo-relative, not absolute",
+    "runs[0] capability_itotori_300 ci reuse evidence log_path must be repo-relative, not absolute",
   );
   assertError(
     errors,
-    "runs[0] ITOTORI-300 ci reuse evidence summary must not cite local-only .qd/logs paths",
+    "runs[0] capability_itotori_300 ci reuse evidence summary must not cite local-only .qd/logs paths",
   );
   assertError(
     errors,
@@ -81,7 +81,7 @@ test("accepts qd export CI reuse evidence recorded as an external id", () => {
   dag.runs.push(
     qdCiReuseRunFixture({
       summary:
-        "Covered by integrated qd-full-ci wave on main.\nEvidence: external_id=local-qdfullci:ITOTORI-300:2026-06-28T09-00-25Z",
+        "Covered by integrated qd-full-ci wave on main.\nEvidence: external_id=local-qdfullci:capability_itotori_300:2026-06-28T09-00-25Z",
       log_path: null,
     }),
   );
@@ -129,7 +129,7 @@ function qdExportFixture() {
         audit_focus: ["Baseline drift"],
       },
       {
-        id: "ITOTORI-300",
+        id: "capability_itotori_300",
         title: "Validate qd export roadmap gate",
         kind: "feature",
         milestone: "continuous",
@@ -148,7 +148,7 @@ function qdExportFixture() {
         audit_focus: ["qd check/CI gate drift"],
       },
     ],
-    edges: [{ from_node: "UNIV-000", to_node: "ITOTORI-300", type: "requires" }],
+    edges: [{ from_node: "UNIV-000", to_node: "capability_itotori_300", type: "requires" }],
     findings: [],
     runs: [],
     node_notes: [],
@@ -158,7 +158,7 @@ function qdExportFixture() {
 function qdCiReuseRunFixture(overrides = {}) {
   return {
     id: "00000000-0000-4000-8000-000000000000",
-    node_id: "ITOTORI-300",
+    node_id: "capability_itotori_300",
     kind: "ci",
     status: "passed",
     worktree_path: null,
@@ -166,7 +166,7 @@ function qdCiReuseRunFixture(overrides = {}) {
     started_at: "2026-06-28T09:00:25.766Z",
     finished_at: "2026-06-28T09:00:25.766Z",
     summary:
-      "Covered by integrated qd-full-ci wave on main.\nEvidence: external_id=local-qdfullci:ITOTORI-300:2026-06-28T09-00-25Z",
+      "Covered by integrated qd-full-ci wave on main.\nEvidence: external_id=local-qdfullci:capability_itotori_300:2026-06-28T09-00-25Z",
     log_path: null,
     ...overrides,
   };

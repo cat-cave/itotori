@@ -1,6 +1,6 @@
 # Utsushi substrate facade contract
 
-Status: alpha (UTSUSHI-120)
+Status: alpha (the relevant capability)
 Schema authority: `utsushi_core::substrate`
 
 Decision: recorder deleted; `SourceTag` moved; shipping surfaces = `ReplayLog` + observation-hooks.
@@ -26,17 +26,17 @@ contract drift loud at build time.
 
 ## 2. Subsystem entry points
 
-| Subsystem                     | Owning spec      | Canonical type / fn                                                           | Use when…                                                |
-| ----------------------------- | ---------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Runtime VFS                   | UTSUSHI-020      | `RuntimeVfs`, `AssetPackage`, `AssetId`                                       | You mount engine content for read.                       |
-| Logical clock                 | UTSUSHI-021      | `LogicalClock`, `LogicalClockTick`                                            | You advance deterministic time.                          |
-| Input + replay log            | UTSUSHI-021      | `InputEvent`, `ReplayLogBuilder`, `ReplayLog`                                 | You record / replay a deterministic input stream.        |
-| Sinks (text / audio / frame)  | UTSUSHI-022      | `SinkSet`, `TextSurfaceSink`, `FrameArtifactSink`, `AudioEventSink`           | You emit observed runtime events.                        |
-| Snapshot primitives           | UTSUSHI-023      | `Inspectable`, `Restorable`, `take_snapshot`                                  | You expose / restore controlled-playback state.          |
-| Embed capability surface      | UTSUSHI-024      | `EmbedCapability`, `EmbedCapabilityId`, `EmbedCapabilityStatus`, `EmbedError` | You declare the observable surface a host embed exposes. |
-| Conformance manifest + checks | UTSUSHI-025..030 | `ConformanceManifest`, `TraceConformanceCheck`, `RecordingConformanceCheck`   | You declare or evaluate conformance.                     |
-| Port + observation hook       | UTSUSHI-025/056  | `PortManifest`, `EnginePort`, `LifecycleStage`, `CaptureOutcome`              | You expose an engine port to the runner.                 |
-| Redaction policy              | UTSUSHI-056      | `reject_unredacted_local_paths`                                               | You sweep an outgoing artifact for host-path leakage.    |
+| Subsystem                     | Owning spec                  | Canonical type / fn                                                           | Use when…                                                |
+| ----------------------------- | ---------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Runtime VFS                   | the relevant capability      | `RuntimeVfs`, `AssetPackage`, `AssetId`                                       | You mount engine content for read.                       |
+| Logical clock                 | the relevant capability      | `LogicalClock`, `LogicalClockTick`                                            | You advance deterministic time.                          |
+| Input + replay log            | the relevant capability      | `InputEvent`, `ReplayLogBuilder`, `ReplayLog`                                 | You record / replay a deterministic input stream.        |
+| Sinks (text / audio / frame)  | the relevant capability      | `SinkSet`, `TextSurfaceSink`, `FrameArtifactSink`, `AudioEventSink`           | You emit observed runtime events.                        |
+| Snapshot primitives           | the relevant capability      | `Inspectable`, `Restorable`, `take_snapshot`                                  | You expose / restore controlled-playback state.          |
+| Embed capability surface      | the relevant capability      | `EmbedCapability`, `EmbedCapabilityId`, `EmbedCapabilityStatus`, `EmbedError` | You declare the observable surface a host embed exposes. |
+| Conformance manifest + checks | the relevant capability..030 | `ConformanceManifest`, `TraceConformanceCheck`, `RecordingConformanceCheck`   | You declare or evaluate conformance.                     |
+| Port + observation hook       | the relevant capability/056  | `PortManifest`, `EnginePort`, `LifecycleStage`, `CaptureOutcome`              | You expose an engine port to the runner.                 |
+| Redaction policy              | the relevant capability      | `reject_unredacted_local_paths`                                               | You sweep an outgoing artifact for host-path leakage.    |
 
 The facade also re-exports the universal `EvidenceTier` and
 `FidelityTier` tier enums, plus `ObservationArtifactRef` /
@@ -48,11 +48,11 @@ emits and conformance reader consumes).
 Every facade-re-exported schema version constant is pinned by a
 compile-time const-assertion in `substrate.rs`:
 
-| Schema                       | Value         | Owning spec     |
-| ---------------------------- | ------------- | --------------- |
-| `REPLAY_LOG_SCHEMA_VERSION`  | `0.1.0-alpha` | UTSUSHI-021     |
-| `SNAPSHOT_SCHEMA_VERSION`    | `0.2.0-alpha` | UTSUSHI-023     |
-| `CONFORMANCE_SCHEMA_VERSION` | `0.2.0-alpha` | UTSUSHI-026/028 |
+| Schema                       | Value         | Owning spec                 |
+| ---------------------------- | ------------- | --------------------------- |
+| `REPLAY_LOG_SCHEMA_VERSION`  | `0.1.0-alpha` | the relevant capability     |
+| `SNAPSHOT_SCHEMA_VERSION`    | `0.2.0-alpha` | the relevant capability     |
+| `CONFORMANCE_SCHEMA_VERSION` | `0.2.0-alpha` | the relevant capability/028 |
 
 A substrate slice that bumps its schema version constant without
 revising the facade contract trips the const-assertion at build time;
@@ -118,7 +118,7 @@ The facade is the natural carve-out point for a future
    keeps working without source change.
 
 The conformance release ABI version is owned by `ConformanceAbiVersion`
-(UTSUSHI-026) and is re-exported through this facade. The facade
+(the relevant capability) and is re-exported through this facade. The facade
 does NOT introduce a separate facade version constant; instead, the
 const-assertion block in `substrate.rs` is the structural pin.
 
@@ -174,13 +174,13 @@ No fourth runtime path exists outside these three.
 
 ### 7.3 Cross-references
 
-- **UTSUSHI-154** ("Fixture engine port adoption", UTSUSHI-103
+- **the relevant capability** ("Fixture engine port adoption", the relevant capability
   Slice B) rebases `FixtureRuntimeAdapter` onto
   `EnginePortAdapter<FixtureEnginePort>`, making the shipping CLI
   trace/capture/smoke path the **first product execution of
   `Runner`**. `utsushi-delete-parallel-runtime-adapter` then enforces
   the no-legacy-compat deletion on top of it.
-- **UTSUSHI-160** ("First production engine port consumes
+- **the relevant capability** ("First production engine port consumes
   `ConformanceManifest`") is the first non-test consumer of the
   conformance surface and the foundation
   `utsushi-cli-route-conformance-result` builds on.

@@ -2,7 +2,7 @@
 
 itotori enforces its Cargo dependency posture with [`cargo-deny`](https://embarkstudios.github.io/cargo-deny/)
 via `deny.toml`. This document records the `[bans]` strictness introduced by
-KAIFUU-208 and how to keep the workspace green under it.
+the relevant capability and how to keep the workspace green under it.
 
 ## Strict bans
 

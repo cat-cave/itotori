@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for ITOTORI-031.
+Accepted for the relevant capability.
 
 ## Context
 
@@ -371,9 +371,9 @@ debugging path without making live transcripts part of public CI.
 
 ## Consequences
 
-- ITOTORI-009 should implement provider interfaces and capability records from
+- the relevant capability should implement provider interfaces and capability records from
   this ADR before adding live OpenRouter behavior.
-- ITOTORI-010 should model provider identity, route settings, structured-output
+- the relevant capability should model provider identity, route settings, structured-output
   mode, token accounting, and billed-versus-estimated cost separately.
 - Benchmark and QA nodes should reject unrecorded provider fallback as
   insufficient evidence.

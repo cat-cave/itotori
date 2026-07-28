@@ -103,7 +103,7 @@ with each engine's _type of work_ (positive adapter vs readiness/encryption prof
   307 JP VNs. Keep it as the easy reference adapter; do not expect JP opportunity from it.
 - **TyranoScript is under-weighted.** Biggest plaintext greenfield in the market; cheap to
   add. At original publication this was described as missing from the roadmap; it is now
-  mapped to `KAIFUU-016`, `UTSUSHI-052`, `UTSUSHI-053`, and `ALPHA-004`.
+  mapped to `the relevant capability`, `the relevant capability`, `the relevant capability`, and `ALPHA-004`.
 - **RGSS3/VX Ace is under-weighted relative to the _local_ backlog** (ROBF/Re:BF). Its
   binary-patcher dependency should be pulled earlier than a pure VN-market view implies.
 
@@ -156,7 +156,7 @@ mapping**; (9) **benchmark-vs-existing-TL harness**. Most are now mapped in
 [`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md).
 
 **Historical reprioritization proposal:** (1) pull encryption/key-discovery
-(KAIFUU-014) + binary-patcher core (KAIFUU-011) into the early alpha-readiness path
+(the relevant capability) + binary-patcher core (the relevant capability) into the early alpha-readiness path
 because they gate the pool; (2) MV/MZ stays #1 via the full pipeline; (3) RGSS3/VX
 Ace earlier (local backlog); (4) Ren'Py → reference adapter; (5) TyranoScript added
 early (null-key config); (6) KiriKiri high but on the encryption track.
@@ -182,7 +182,7 @@ patch` — so a recognized-but-packed engine is never presented as usable. (Loca
 fan_full / fan_partial / mtl / interface_only / unverified_console / none`, with
    provenance and **cross-source conflict detection** (the 689). This is the engine for
    _opportunity ranking_ and _benchmark-set construction_; it is now mapped to
-   `CATALOG-002`, `CATALOG-004`, `CATALOG-061`, and `ITOTORI-026`.
+   `CATALOG-002`, `CATALOG-004`, `CATALOG-061`, and `the relevant capability`.
 5. **Readiness profiles for packed/encrypted engines** (Siglus / KiriKiri XP3 / NeXAS PAC /
    RGSS / Unity bundles / Aoi VFS / RealLive Seen) — classify container/version/key
    readiness _before_ extraction; never leak keys/raw text.
@@ -248,20 +248,20 @@ claimable. Use
 [`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md) for the current live
 node ids and deferred items.
 
-| Proposed id      | title                                                                                              | proj           | pri   | dependsOn          |
-| ---------------- | -------------------------------------------------------------------------------------------------- | -------------- | ----- | ------------------ |
-| CATALOG-000..012 | (the `RESEARCH-*` engine: adapters, resolver, completeness, finders, IGDB/Wikidata, local scanner) | itotori/shared | P1–P3 | UNIV-000           |
-| KAIFUU-Dnn       | Engine detector registry (capability-leveled)                                                      | kaifuu         | P1    | KAIFUU-001         |
-| KAIFUU-Dnn       | RPG Maker MV/MZ **full-surface** positive adapter                                                  | kaifuu         | P1    | detector           |
-| KAIFUU-Dnn       | Binary-patcher core → RGSS3/VX Ace adapter                                                         | kaifuu         | P1    | MV/MZ              |
-| KAIFUU-Dnn       | KiriKiri **rescope**: readiness + XP3/encryption (not plaintext-only)                              | kaifuu         | P2    | KAIFUU-014         |
-| KAIFUU-Dnn       | TyranoScript plaintext adapter (new — market greenfield)                                           | kaifuu         | P2    | detector           |
-| KAIFUU-Dnn       | Packed-engine readiness profiles (Siglus/Unity/NeXAS/Aoi/RealLive/Wolf)                            | kaifuu         | P2    | detector           |
-| KAIFUU-Dnn       | Edition mapping + archive/install-state                                                            | kaifuu         | P2    | catalog resolver   |
-| UTSUSHI-Cnn      | Completeness-driven targeting + benchmark-vs-existing-TL harness                                   | utsushi        | P2    | completeness model |
-| UTSUSHI-Cnn      | Edition-aware translation porting                                                                  | utsushi        | P3    | edition mapping    |
-| SHARED-Cnn       | Unified catalog schema + migrations + provenance/conflict model                                    | shared         | P1    | UNIV-000           |
-| SHARED-Cnn       | Shared engine-fingerprint registry                                                                 | shared         | P2    | detector           |
+| Proposed id      | title                                                                                              | proj           | pri   | dependsOn               |
+| ---------------- | -------------------------------------------------------------------------------------------------- | -------------- | ----- | ----------------------- |
+| CATALOG-000..012 | (the `RESEARCH-*` engine: adapters, resolver, completeness, finders, IGDB/Wikidata, local scanner) | itotori/shared | P1–P3 | UNIV-000                |
+| KAIFUU-Dnn       | Engine detector registry (capability-leveled)                                                      | kaifuu         | P1    | the relevant capability |
+| KAIFUU-Dnn       | RPG Maker MV/MZ **full-surface** positive adapter                                                  | kaifuu         | P1    | detector                |
+| KAIFUU-Dnn       | Binary-patcher core → RGSS3/VX Ace adapter                                                         | kaifuu         | P1    | MV/MZ                   |
+| KAIFUU-Dnn       | KiriKiri **rescope**: readiness + XP3/encryption (not plaintext-only)                              | kaifuu         | P2    | the relevant capability |
+| KAIFUU-Dnn       | TyranoScript plaintext adapter (new — market greenfield)                                           | kaifuu         | P2    | detector                |
+| KAIFUU-Dnn       | Packed-engine readiness profiles (Siglus/Unity/NeXAS/Aoi/RealLive/Wolf)                            | kaifuu         | P2    | detector                |
+| KAIFUU-Dnn       | Edition mapping + archive/install-state                                                            | kaifuu         | P2    | catalog resolver        |
+| UTSUSHI-Cnn      | Completeness-driven targeting + benchmark-vs-existing-TL harness                                   | utsushi        | P2    | completeness model      |
+| UTSUSHI-Cnn      | Edition-aware translation porting                                                                  | utsushi        | P3    | edition mapping         |
+| SHARED-Cnn       | Unified catalog schema + migrations + provenance/conflict model                                    | shared         | P1    | UNIV-000                |
+| SHARED-Cnn       | Shared engine-fingerprint registry                                                                 | shared         | P2    | detector                |
 
 ---
 

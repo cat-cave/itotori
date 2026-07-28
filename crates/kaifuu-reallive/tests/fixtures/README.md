@@ -1,4 +1,4 @@
-# KAIFUU-173 / KAIFUU-188 parser-boundary smoke fixtures
+# the relevant capability / the relevant capability parser-boundary smoke fixtures
 
 Synthetic-only. Every byte is authored from public RealLive format
 archaeology (Haeleth's RLDEV documentation) and the documented in-crate
@@ -6,7 +6,7 @@ bytecode shape (see `crates/kaifuu-reallive/src/lib.rs`). No retail bytes,
 no opcode tables copied from rlvm or RLDEV.
 
 All envelopes use the real 10,000-slot fixed-offset-table shape
-(KAIFUU-188): 80,000 bytes of `(u32_le offset, u32_le length)` pairs at
+(the relevant capability): 80,000 bytes of `(u32_le offset, u32_le length)` pairs at
 file offset 0, with the single scene populated at slot 1
 (`reallive:scene-0001`). The scene payload sits at file offset
 `0x0001_3880`, mirroring Sweetie HD's first-scene layout. These are
@@ -18,7 +18,7 @@ License: CC0-1.0.
 
 Fixture set:
 
-KAIFUU-173 parser fixtures:
+the relevant capability parser fixtures:
 
 - `smoke-scene-001/SEEN.TXT` — single-scene archive exercising
   `TextDisplay`, `SetSpeaker`, `Choice`, `Pause`.
@@ -29,7 +29,7 @@ KAIFUU-173 parser fixtures:
   recognized instruction. Asserts the warning + Unrecognized AST node
   pairing and the partition invariant.
 
-KAIFUU-174 inventory + patchback fixtures:
+the relevant capability inventory + patchback fixtures:
 
 - `bridge-inventory-001/SEEN.TXT` + `Gameexe.ini` — single-scene archive
   with SetSpeaker / TextDisplay / Choice plus an asset-reference dialogue
@@ -59,8 +59,8 @@ KAIFUU FIX-1 binary-patch-smoke fixture (kaifuu-cli):
 
 - `crates/kaifuu-cli/src/binary_patch_smoke.rs::build_synthetic_seen_txt`
   — a **regenerable, in-code** synthetic Seen.txt (no on-disk bytes). It
-  replaces the deleted pre-KAIFUU-191 `0x23 ('#') opener + named opcode
-byte + operand-count` shape with the real post-KAIFUU-191 byte shape:
+  replaces the deleted pre-the relevant capability `0x23 ('#') opener + named opcode
+byte + operand-count` shape with the real post-the relevant capability byte shape:
   the 80,000-byte 10,000-slot fixed-offset directory (slot 1 populated,
   payload at `0x0001_3880`), a documented Meta prologue (MetaLine /
   MetaEntrypoint / MetaKidoku), and real 8-byte `CommandElement` headers

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * KAIFUU-036 — Private-local encrypted corpus triage core.
+ * the relevant capability — Private-local encrypted corpus triage core.
  *
  * Pure, deterministic core for the `kaifuu:private-local-triage` workflow. It
  * turns operator-authored, ALREADY-REDACTED private-local triage manifests into

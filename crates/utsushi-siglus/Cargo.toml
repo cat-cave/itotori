@@ -5,7 +5,7 @@ publish = false
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "UTSUSHI-147 cross-engine substrate-alignment scaffold: pure-Rust Siglus engine port that registers conformance against the utsushi-core substrate facade. Clean-room; xmoezzz/siglus_rs (MPL-2.0) is a research anchor only and is not linked, vendored, or mechanically translated."
+description = "capability_utsushi_147 cross-engine substrate-alignment scaffold: pure-Rust Siglus engine port that registers conformance against the utsushi-core substrate facade. Clean-room; xmoezzz/siglus_rs (MPL-2.0) is a research anchor only and is not linked, vendored, or mechanically translated."
 
 [dependencies]
 # Intentionally NO `utsushi-reallive` dependency. The Siglus port is a

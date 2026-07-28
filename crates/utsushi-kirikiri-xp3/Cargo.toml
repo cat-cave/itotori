@@ -5,7 +5,7 @@ publish = false
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "UTSUSHI-181 — pure-Rust KiriKiri XP3/KAG engine-port scaffold for the utsushi-core substrate facade. The native KiriKiri2/KirikiriZ (or a browser reimplementation) TJS engine IS the KAG runtime, so this port carries ZERO opcode handlers: it declares the KiriKiri/KAG family through the substrate facade conformance manifest and emits a from-scratch clean-room attestation for the KAG plaintext (.ks) path. Clean-room; no decompiled/copyrighted KiriKiri/TJS engine code, no vendored engine source, no game bytes."
+description = "capability_utsushi_181 — pure-Rust KiriKiri XP3/KAG engine-port scaffold for the utsushi-core substrate facade. The native KiriKiri2/KirikiriZ (or a browser reimplementation) TJS engine IS the KAG runtime, so this port carries ZERO opcode handlers: it declares the KiriKiri/KAG family through the substrate facade conformance manifest and emits a from-scratch clean-room attestation for the KAG plaintext (.ks) path. Clean-room; no decompiled/copyrighted KiriKiri/TJS engine code, no vendored engine source, no game bytes."
 
 [dependencies]
 # The port consumes the substrate facade (`utsushi_core::substrate::*`) plus

@@ -1,4 +1,4 @@
-# KiriKiri XP3 profile-proof fixtures (KAIFUU-038)
+# KiriKiri XP3 profile-proof fixtures (the relevant capability)
 
 Fixtures for the `kaifuu xp3 profile-proof` command. Plain XP3 is the
 **only** variant for which detect / extract / patch-back is a claimed
@@ -9,7 +9,7 @@ makes no extract or patch-back claim for them.
 ## Archives
 
 All `.xp3` archives are synthetic, fixture-only byte strings that
-exercise the KAIFUU-095 detector routing without retail game bytes,
+exercise the the relevant capability detector routing without retail game bytes,
 extracted scripts, screenshots, audio, fonts, video, helper dumps,
 private paths, or private keys. The plain archive is byte-identical to
 `fixtures/public/kaifuu-encrypted-matrix/xp3-profiles/plain/data.xp3`.
@@ -30,12 +30,12 @@ private paths, or private keys. The plain archive is byte-identical to
 | `xp3-helper-required-profile.json`      | `helper_required`                  | `unsupported`    |
 | `xp3-protected-executable-profile.json` | `unsupported_protected_executable` | `unsupported`    |
 
-## Capability profile (KAIFUU-054)
+## Capability profile (the relevant capability)
 
 `xp3-capability-profile.json` is the aggregate **capability-profile manifest**
 consumed by `kaifuu xp3 capability-profile --fixture
 fixtures/kaifuu/kirikiri/xp3-capability-profile.json`. It is **generated** —
-never hand-authored — from the detector proof fixtures above, the KAIFUU-085
+never hand-authored — from the detector proof fixtures above, the the relevant capability
 key/helper results, the crypt-profile routing taxonomy, and the archive bytes.
 Each entry's capability tuple is recomputed from that evidence; the manifest's
 declared `expected` block only drives structured validation findings.
@@ -74,7 +74,7 @@ claiming extract or patch-back:
 | `xp3-unknown-encryption-plugin.json` | `xp3.crypt_profile.unknown_plugin` (P0) |
 | `xp3-leaked-archive-path.json`       | `xp3.archive_path.leaked` (P0)          |
 
-## Plain XP3 read/write smoke (KAIFUU-071)
+## Plain XP3 read/write smoke (the relevant capability)
 
 `plain-xp3.json` is the fixture consumed by `kaifuu xp3 plain-smoke --fixture
 fixtures/kaifuu/kirikiri/plain-xp3.json --out artifacts/kaifuu/plain-xp3-smoke.json`.

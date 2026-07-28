@@ -1,7 +1,7 @@
 ; kaifuu-kag-synthetic-corpus — 01-intro.ks
 ; SPDX-License-Identifier: CC0-1.0
 ; Original, hand-authored CC0 KAG (.ks) content. Contains NO copyrighted game
-; text. Authored for itotori KAIFUU-203.
+; text. Authored for itotori capability_kaifuu_203.
 ; Covers: comment lines, a label, a #name speaker, message text, an [eval]
 ; variable initialiser, and the [r] / [l] / [p] click/line profile-B tags.
 *intro|The Lantern Workshop

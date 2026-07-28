@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "patchResultId": "patch/kirikiri_xp3/positive/repack",
   "profileId": "packed/kirikiri_xp3/positive",
-  "sourceNodeId": "KAIFUU-104",
+  "sourceNodeId": "capability_kaifuu_104",
   "status": "passed",
   "patchBack": "repack_archive",
   "touchedAssets": ["data/scenario.ks"],

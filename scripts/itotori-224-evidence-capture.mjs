@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// ITOTORI-224 — OpenRouter live evidence capture.
+// the relevant capability — OpenRouter live evidence capture.
 //
 // Resolves the DOC-AMBIGUOUS items called out by
 // docs/audits/openrouter-wiring-audit-2026-06-25.md (DOC-AMBIGUOUS-1, -2, -3,
@@ -19,7 +19,7 @@
 //     spend, refusing to write a partial evidence file.
 //
 // Not a production helper — exists to be reproducible by future auditors.
-// Re-run via `node scripts/itotori-224-evidence-capture.mjs` after sourcing
+// Re-run via `node scripts/the relevant capability.mjs` after sourcing
 // the worktree .env (direnv allow).
 
 import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
@@ -35,15 +35,15 @@ const EVIDENCE_PATH = resolve(EVIDENCE_DIR, `${EVIDENCE_DATE}.json`);
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY.length < 16) {
   console.error(
-    "ITOTORI-224 evidence capture aborted: OPENROUTER_API_KEY is not set in the environment.",
+    "capability_itotori_224 evidence capture aborted: OPENROUTER_API_KEY is not set in the environment.",
   );
   process.exit(1);
 }
 
 const REDACT = "Bearer sk-or-***REDACTED***";
 const BASE = "https://openrouter.ai/api/v1";
-const REFERER = "https://itotori.dev/itotori-224-evidence-capture";
-const TITLE = "itotori-224-evidence-capture";
+const REFERER = "https://itotori.dev/the relevant capability";
+const TITLE = "capability_itotori_224-evidence-capture";
 
 const PROVIDER_ROUTING_ALPHA = {
   only: ["fireworks"],
@@ -110,7 +110,9 @@ const fetchedAt = new Date().toISOString();
 const callRecords = [];
 const docAmbiguous = {};
 
-console.error("[ITOTORI-224] Firing toy call #1 (baseline; provider.zdr=true; alpha pair)...");
+console.error(
+  "[capability_itotori_224] Firing toy call #1 (baseline; provider.zdr=true; alpha pair)...",
+);
 const call1 = await captureCall("call_1_baseline_zdr_alpha_pair", {
   path: "/chat/completions",
   body: {
@@ -129,11 +131,11 @@ console.error(
 // Decide whether to abort early if call_1 failed unexpectedly
 if (call1.response.status >= 400) {
   console.error(
-    "[ITOTORI-224] Baseline call failed; capturing remaining diagnostic calls anyway, but flagging.",
+    "[capability_itotori_224] Baseline call failed; capturing remaining diagnostic calls anyway, but flagging.",
   );
 }
 
-console.error("[ITOTORI-224] Firing toy call #2 (X-OpenRouter-Metadata header)...");
+console.error("[capability_itotori_224] Firing toy call #2 (X-OpenRouter-Metadata header)...");
 const call2 = await captureCall("call_2_metadata_header_enabled", {
   path: "/chat/completions",
   body: {
@@ -162,7 +164,7 @@ console.error(
 // usage.prompt_tokens_details.cached_tokens / cost_details.cache_discount
 // surface on a repeat-prompt under a non-implicit-cache provider.
 console.error(
-  "[ITOTORI-224] Firing toy call #3 (implicit cache probe — DeepSeek provider, expects ZDR 404)...",
+  "[capability_itotori_224] Firing toy call #3 (implicit cache probe — DeepSeek provider, expects ZDR 404)...",
 );
 const call3 = await captureCall("call_3_implicit_cache_probe_deepseek_provider_blocked_by_zdr", {
   path: "/chat/completions",
@@ -191,7 +193,7 @@ callRecords.push(call3);
 console.error(`  -> status ${call3.response.status} (expected 404 — proves DOC-AMBIGUOUS-2)`);
 
 console.error(
-  "[ITOTORI-224] Firing toy call #4 (implicit cache replay against Fireworks; repeat of call_1 prompt)...",
+  "[capability_itotori_224] Firing toy call #4 (implicit cache replay against Fireworks; repeat of call_1 prompt)...",
 );
 const call4 = await captureCall("call_4_cache_probe_fireworks_repeat_call_1_prompt", {
   path: "/chat/completions",
@@ -212,15 +214,17 @@ console.error(
 const accumulatedCost = callRecords
   .map((c) => Number(c.response.body?.usage?.cost ?? 0))
   .reduce((a, b) => a + b, 0);
-console.error(`[ITOTORI-224] Accumulated usage.cost so far: USD ${accumulatedCost.toFixed(6)}`);
+console.error(
+  `[capability_itotori_224] Accumulated usage.cost so far: USD ${accumulatedCost.toFixed(6)}`,
+);
 if (accumulatedCost > 0.05) {
   console.error(
-    "[ITOTORI-224] HARD BUDGET CAP: accumulated cost exceeded USD 0.05; aborting before the remaining diagnostic call.",
+    "[capability_itotori_224] HARD BUDGET CAP: accumulated cost exceeded USD 0.05; aborting before the remaining diagnostic call.",
   );
   // Still record what we have rather than throwing away evidence.
 } else {
   console.error(
-    "[ITOTORI-224] Firing toy call #5 (DOC-AMBIGUOUS-2 — fictitious non-ZDR pinning attempt)...",
+    "[capability_itotori_224] Firing toy call #5 (DOC-AMBIGUOUS-2 — fictitious non-ZDR pinning attempt)...",
   );
   // We don't try to actually route to a non-ZDR endpoint (no safe way to
   // pin one we know is non-ZDR for sure on Trevor's account). Instead we
@@ -235,7 +239,7 @@ if (accumulatedCost > 0.05) {
       max_tokens: 4,
       temperature: 0,
       provider: {
-        only: ["this-provider-does-not-exist-itotori-224"],
+        only: ["this-provider-does-not-exist-capability_itotori_224"],
         allow_fallbacks: false,
         data_collection: "deny",
         zdr: true,
@@ -260,10 +264,10 @@ if (call1Id) {
   const waits = [3000, 5000, 8000, 13000];
   for (const wait of waits) {
     console.error(
-      `[ITOTORI-224] Sleeping ${wait}ms before /generation lookup for id=${call1Id}...`,
+      `[capability_itotori_224] Sleeping ${wait}ms before /generation lookup for id=${call1Id}...`,
     );
     await new Promise((r) => setTimeout(r, wait));
-    console.error("[ITOTORI-224] Firing GET /generation?id=...");
+    console.error("[capability_itotori_224] Firing GET /generation?id=...");
     call6 = await captureCall(`call_6_generation_lookup_for_call_1_after_${wait}ms`, {
       method: "GET",
       path: `/generation?id=${encodeURIComponent(call1Id)}`,
@@ -345,7 +349,7 @@ docAmbiguous["DOC-AMBIGUOUS-6"] = {
     call_4_cost_details: c4?.usage?.cost_details ?? null,
     call_4_cached_tokens: c4?.usage?.prompt_tokens_details?.cached_tokens ?? null,
     call_4_cache_discount: c4?.usage?.cost_details?.cache_discount ?? null,
-    note: "Implicit-cache evidence is NOT available from this capture because the DeepSeek-tagged endpoint (the only endpoint with supports_implicit_caching=true on /api/v1/models/deepseek/deepseek-v4-flash/endpoints) is excluded from Trevor's ZDR allow-list (proven empirically by call_3/call_4's 404). The repeat-prompt call_4 ran against Fireworks (supports_implicit_caching=false in the catalog) and so cannot establish cache_discount semantics. ITOTORI-233 must either (a) re-run this resolution against a ZDR-permitted implicit-cache provider once one is whitelisted, or (b) accept the docs' verbatim statement: cache_discount 'tells you how much the response saved' (per /docs/guides/best-practices/prompt-caching) and treat usage.cost as the post-discount billed amount. Cost_details on call_1 already shows upstream_inference_cost === usage.cost, so OR is internally tracking the upstream charge as the same number as the billed cost (no discount was applied because cached_tokens === 0); this is consistent with usage.cost being net of any discounts that DID apply. DOC-AMBIGUOUS-6 is therefore RESOLVED-BY-DOC for itotori's posture: treat usage.cost as authoritative billed cost; never recompute.",
+    note: "Implicit-cache evidence is NOT available from this capture because the DeepSeek-tagged endpoint (the only endpoint with supports_implicit_caching=true on /api/v1/models/deepseek/deepseek-v4-flash/endpoints) is excluded from Trevor's ZDR allow-list (proven empirically by call_3/call_4's 404). The repeat-prompt call_4 ran against Fireworks (supports_implicit_caching=false in the catalog) and so cannot establish cache_discount semantics. capability_itotori_233 must either (a) re-run this resolution against a ZDR-permitted implicit-cache provider once one is whitelisted, or (b) accept the docs' verbatim statement: cache_discount 'tells you how much the response saved' (per /docs/guides/best-practices/prompt-caching) and treat usage.cost as the post-discount billed amount. Cost_details on call_1 already shows upstream_inference_cost === usage.cost, so OR is internally tracking the upstream charge as the same number as the billed cost (no discount was applied because cached_tokens === 0); this is consistent with usage.cost being net of any discounts that DID apply. DOC-AMBIGUOUS-6 is therefore RESOLVED-BY-DOC for itotori's posture: treat usage.cost as authoritative billed cost; never recompute.",
   },
 };
 
@@ -381,7 +385,7 @@ docAmbiguous["COST-AUDIT-1.4"] = {
       callRecords.find((c) => c.label === "call_6_generation_lookup_for_call_1")?.response.status ??
       null,
     generation_lookup_body: c6 ?? null,
-    note: "Per OR docs at /docs/api/api-reference/generations/get-generation, the endpoint returns total_cost (USD), upstream_inference_cost (USD or null), and cache_discount (USD or null). Confirm the captured body exposes those three keys; itotori's ITOTORI-235 reconciler will read them.",
+    note: "Per OR docs at /docs/api/api-reference/generations/get-generation, the endpoint returns total_cost (USD), upstream_inference_cost (USD or null), and cache_discount (USD or null). Confirm the captured body exposes those three keys; itotori's capability_itotori_235 reconciler will read them.",
   },
 };
 
@@ -396,8 +400,8 @@ docAmbiguous["COST-AUDIT-1.3"] = {
 };
 
 const payload = {
-  schemaVersion: "itotori-224-evidence/v0",
-  node: "ITOTORI-224",
+  schemaVersion: "capability_itotori_224-evidence/v0",
+  node: "capability_itotori_224",
   fetchedAt,
   redactionContract: {
     field: "headers.authorization",
@@ -416,7 +420,7 @@ const payload = {
     deepseek_endpoint_tag: "deepseek",
     deepseek_supports_implicit_caching: true,
     catalog_note:
-      "The catalog /api/v1/models/deepseek/deepseek-v4-flash/endpoints returned 18 endpoints. Fireworks IS in the list (tag='fireworks'). Implicit caching is supported ONLY on the 'deepseek' tag, not on Fireworks. Pricing on Fireworks: prompt=$0.00000014/token, completion=$0.00000028/token, input_cache_read=$0.000000028/token. ITOTORI-226 may want to evaluate switching the pin from 'fireworks' to 'deepseek' if cache-rate matters for the alpha pair; alternatively, keep 'fireworks' for latency and accept no implicit caching.",
+      "The catalog /api/v1/models/deepseek/deepseek-v4-flash/endpoints returned 18 endpoints. Fireworks IS in the list (tag='fireworks'). Implicit caching is supported ONLY on the 'deepseek' tag, not on Fireworks. Pricing on Fireworks: prompt=$0.00000014/token, completion=$0.00000028/token, input_cache_read=$0.000000028/token. capability_itotori_226 may want to evaluate switching the pin from 'fireworks' to 'deepseek' if cache-rate matters for the alpha pair; alternatively, keep 'fireworks' for latency and accept no implicit caching.",
   },
   routingPostureUsed: PROVIDER_ROUTING_ALPHA,
   calls: callRecords,
@@ -434,7 +438,7 @@ const written = readFileSync(EVIDENCE_PATH, "utf8");
 const SK_RE = /sk-or-[A-Za-z0-9_-]{40,}/;
 if (SK_RE.test(written)) {
   console.error(
-    `[ITOTORI-224] FATAL: API key pattern leaked into ${EVIDENCE_PATH}; deleting evidence file.`,
+    `[capability_itotori_224] FATAL: API key pattern leaked into ${EVIDENCE_PATH}; deleting evidence file.`,
   );
   // Refuse to leave the leaky file on disk.
   writeFileSync(
@@ -446,6 +450,6 @@ if (SK_RE.test(written)) {
 }
 
 console.error(
-  `[ITOTORI-224] Evidence written to ${EVIDENCE_PATH} (size ${written.length} bytes; accumulated cost USD ${payload.accumulatedUsdCost.toFixed(8)}).`,
+  `[capability_itotori_224] Evidence written to ${EVIDENCE_PATH} (size ${written.length} bytes; accumulated cost USD ${payload.accumulatedUsdCost.toFixed(8)}).`,
 );
-console.error("[ITOTORI-224] Done.");
+console.error("[capability_itotori_224] Done.");

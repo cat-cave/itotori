@@ -53,6 +53,6 @@
   ],
   "notes": [
     "Key labels are committed only because every payload is generated in-repository.",
-    "Manual key import and helper binary allowlist behavior are outside KAIFUU-051."
+    "Manual key import and helper binary allowlist behavior are outside capability_kaifuu_051."
   ]
 }

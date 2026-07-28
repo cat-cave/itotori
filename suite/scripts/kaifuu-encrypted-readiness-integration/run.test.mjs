@@ -1,5 +1,5 @@
 /*
- * KAIFUU-042 — deterministic unit + integration tests for the alpha
+ * the relevant capability — deterministic unit + integration tests for the alpha
  * encrypted-readiness evidence INTEGRATION workflow. `node --test`, no network,
  * no DB, no build, no private corpora: the no-corpus path + the committed public
  * prerequisite fixtures + a MOCK redacted private-corpus manifest drive
@@ -59,8 +59,8 @@ test("composed evidence path NAMES prerequisites and AGGREGATES their proofs", (
   const composed = compose({ prerequisites: PREREQ_PATH() });
   // Names the prerequisite surfaces, adapters, command evidence, and artifacts.
   assert.deepEqual(composed.composes.surfaces.map((s) => s.sourceNodeId).sort(), [
-    "KAIFUU-103",
-    "KAIFUU-104",
+    "capability_kaifuu_103",
+    "capability_kaifuu_104",
   ]);
   assert.deepEqual(
     composed.composes.adapters.map((a) => a.engineFamily).sort(),
@@ -181,7 +181,7 @@ test("TAMPERED prerequisite (wrong source node) is a source_node_mismatch diagno
   const composed = composePrerequisites(manifest, (relPath) => {
     const parsed = JSON.parse(readFileSync(join(REPO_ROOT, relPath), "utf8"));
     // Simulate someone swapping in an artifact from a different slice.
-    return { ...parsed, sourceNodeId: "KAIFUU-999" };
+    return { ...parsed, sourceNodeId: "capability_kaifuu_999" };
   });
   assert.ok(
     composed.findings.some((f) => f.code === "kaifuu.encrypted_readiness.source_node_mismatch"),
@@ -189,9 +189,9 @@ test("TAMPERED prerequisite (wrong source node) is a source_node_mismatch diagno
 });
 
 test("prerequisite content hash changes iff the proof content changes (formatter-independent)", () => {
-  const base = { sourceNodeId: "KAIFUU-103", engineFamily: "siglus", a: 1, b: 2 };
-  const reordered = { b: 2, engineFamily: "siglus", a: 1, sourceNodeId: "KAIFUU-103" };
-  const changed = { sourceNodeId: "KAIFUU-103", engineFamily: "siglus", a: 1, b: 3 };
+  const base = { sourceNodeId: "capability_kaifuu_103", engineFamily: "siglus", a: 1, b: 2 };
+  const reordered = { b: 2, engineFamily: "siglus", a: 1, sourceNodeId: "capability_kaifuu_103" };
+  const changed = { sourceNodeId: "capability_kaifuu_103", engineFamily: "siglus", a: 1, b: 3 };
   assert.equal(canonicalHash(base), canonicalHash(reordered), "key order must not change the hash");
   assert.notEqual(canonicalHash(base), canonicalHash(changed), "a content change must move it");
 });

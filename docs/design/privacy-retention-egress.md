@@ -59,14 +59,14 @@ provider-side conversation state, or remote response cache is allowed. A future
 Responses implementation must additionally use `store: false`.
 
 The dispatcher records requested and served model/provider pairs separately.
-It enables router metadata and persists the generation ID. The current RB-015
+It enables router metadata and persists the generation ID. The current the relevant capability
 writer uses `served_pair_status = 'confirmed'` only when the
 whole served pair was present and schema-valid after parsing stream metadata: it
 is stream-attested, not independently verified against OpenRouter. Acceptance
 requires an active source memo whose `generation_id` is present, served pair is
 `confirmed`, and verification status is `verified`; otherwise the response is
 quarantined and cannot contribute to an accepted artifact. Independent
-OpenRouter `/generation` reconciliation is deferred to RB-010, gated on upstream
+OpenRouter `/generation` reconciliation is deferred to the relevant capability, gated on upstream
 issue #941. Until then, the injected lookup seam defaults to unknown and no
 production `/generation` client is implied.
 
@@ -144,10 +144,10 @@ independently deletable per-record material. A retention change requires a new
 versioned policy and migration; it cannot be supplied as an ad-hoc runtime
 override.
 
-## Billing truth (target contract; RB-010 deferred)
+## Billing truth (target contract; the relevant capability deferred)
 
 The `/generation`-reconciled billing state below is the target contract for
-RB-010, not a claim that RB-015 independently reconciles stream metadata.
+the relevant capability, not a claim that the relevant capability independently reconciles stream metadata.
 
 Billing states are deliberately disjoint:
 
@@ -157,7 +157,7 @@ Billing states are deliberately disjoint:
   not yet authoritative, including transport loss, a malformed response, or a
   missing generation record. It is never recorded as zero or as confirmed.
 
-The RB-010 reconciler will make one OpenRouter-only `/generation` lookup when a
+The the relevant capability reconciler will make one OpenRouter-only `/generation` lookup when a
 generation ID is available and store its evidence. It may transition an unknown
 entry to confirmed, but it will not erase the original uncertainty evidence.
 Reporting, admission, and acceptance must keep confirmed and unknown totals
@@ -191,8 +191,8 @@ only.
 | Encrypted conversation/call references                                                                                    | Yes, in rebuilt contracts                                                               | Persistence round trip with ciphertext-only inspection         |
 | Plaintext rebuilt-LLM migration fields and obvious content-bearing log calls                                              | Yes, by the privacy audit                                                               | Negative fixture tests plus CI gate                            |
 | Encryption implementation, permission-before-decrypt, deletion worker, backup/volume wipe                                 | Encryption, read permission, and live-ciphertext deletion; backup wipe remains separate | Integration tests against real storage and the deletion worker |
-| Stream-attested served pair plus quarantine projection                                                                    | Yes, RB-015                                                                             | Live persistence and independent guard-mutation tests          |
-| Independent `/generation` route and billing reconciliation                                                                | Deferred to RB-010 (upstream #941)                                                      | Provider conformance and reconciliation tests                  |
+| Stream-attested served pair plus quarantine projection                                                                    | Yes, the relevant capability                                                            | Live persistence and independent guard-mutation tests          |
+| Independent `/generation` route and billing reconciliation                                                                | Deferred to the relevant capability (upstream #941)                                     | Provider conformance and reconciliation tests                  |
 
 The audit is intentionally conservative and scoped to the rebuilt LLM tree and
 its `itotori_llm_*` migrations. It does not treat older paths as compliant.

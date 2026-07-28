@@ -1,6 +1,6 @@
 # Kaifuu Private-Local Encrypted Corpus Triage
 
-`KAIFUU-036` makes encrypted owned-game corpus triage a **first-class local
+`the relevant capability` makes encrypted owned-game corpus triage a **first-class local
 workflow** that produces **safe aggregate readiness evidence** while remaining
 **absent from public/per-gate CI**. It lets a local operator record encrypted
 corpora as redacted manifests, scan them, and emit only redacted aggregate

@@ -110,7 +110,7 @@ If a planning subagent or audit worker encounters a single node whose
 1. Stop the claim or refuse completion.
 2. Demand a decomposition document (see
    `docs/research/reallive-engine-dag-proposal.md` for the canonical example —
-   it splits UTSUSHI-146 into 22 sub-nodes with concrete behaviours).
+   it splits the relevant capability into 22 sub-nodes with concrete behaviours).
 3. Re-enter the planning loop with the decomposition's sub-nodes.
 
 ### Acceptance criteria that name no observable artifact
@@ -163,50 +163,50 @@ audit until contract tests are added.
 A substrate trait or type that compiles and tests but is never imported by a
 production crate is scaffolding without load. When a substrate spec lands,
 the audit must demonstrate at least one non-test consumer or attach a
-follow-up node whose acceptance criteria includes wiring at least one
+later capability whose acceptance criteria includes wiring at least one
 real-engine adapter to consume the new surface.
 
-The substrate (UTSUSHI-020..120) is **partially consumed**, not wholly
+The substrate (the relevant capability..120) is **partially consumed**, not wholly
 deferred. The port, sink, snapshot, VFS, input, and redaction slices each
 have at least one production (non-test) consumer in a real-engine crate,
 while the embed, recorder, and conformance slices remain deferred with
 no non-test consumers outside `utsushi-core`. Concretely (rg-verified;
 representative import sites):
 
-- **Port** (UTSUSHI-025/056/224 — `EnginePort`, `PortManifest`,
+- **Port** (the relevant capability/056/224 — `EnginePort`, `PortManifest`,
   `PortRequest`, `EnginePortError`, `LifecycleStage`, `PortCapability`,
   `REQUIRED_LIFECYCLE_STAGES`): all three real-engine ports —
   `utsushi-reallive/src/engine_port.rs:45`,
   `utsushi-siglus/src/lib.rs:98`, `utsushi-rpgmaker-mv/src/port.rs:27`.
-- **Sink** (UTSUSHI-022 — `SinkSet`, `TextSurfaceSink`,
+- **Sink** (the relevant capability — `SinkSet`, `TextSurfaceSink`,
   `FrameArtifactSink`, `AudioEventSink`, `TextLine`, `FrameArtifact`):
   `utsushi-reallive/src/engine_port.rs:45`,
   `utsushi-reallive/src/render_pipeline.rs:86`,
   `utsushi-reallive/src/rlop/module_msg.rs:48`,
   `utsushi-siglus/src/vm.rs:46`, `utsushi-rpgmaker-mv/src/port.rs:27`.
-- **Snapshot** (UTSUSHI-023 — `Inspectable`, `Restorable`, `Snapshot`,
+- **Snapshot** (the relevant capability — `Inspectable`, `Restorable`, `Snapshot`,
   `SnapshotError`, `StateTree`, `take_snapshot`, `restore_snapshot`):
   `utsushi-reallive/src/vm.rs:45`,
   `utsushi-reallive/src/var_banks.rs:42`,
   `utsushi-reallive/src/save.rs:71`,
   `utsushi-reallive/src/replay.rs:42`, `utsushi-siglus/src/vm.rs:46`,
   `utsushi-rpgmaker-mv/src/port.rs:27`.
-- **VFS** (UTSUSHI-020 — `AssetPackage`, `AssetId`, `RuntimeVfs`):
+- **VFS** (the relevant capability — `AssetPackage`, `AssetId`, `RuntimeVfs`):
   `utsushi-reallive/src/engine_port.rs:46`,
   `crates/utsushi-reallive/src/rlop/module_obj.rs:498`,
   `utsushi-siglus/src/lib.rs:99`, `utsushi-rpgmaker-mv/src/port.rs:28`,
   `utsushi-kirikiri/src/xp3_vfs_replay.rs:42`.
-- **Input** (UTSUSHI-021 — `InputEvent`, `ChoiceIndex`):
+- **Input** (the relevant capability — `InputEvent`, `ChoiceIndex`):
   `utsushi-reallive/src/syscall.rs:72`,
   `utsushi-reallive/src/rlop/module_sel.rs:109`.
-- **Redaction** (UTSUSHI-056 — `reject_unredacted_local_paths`):
+- **Redaction** (the relevant capability — `reject_unredacted_local_paths`):
   `utsushi-siglus/src/runtime_profile.rs:53`,
   `utsushi-siglus/src/opcode_profile.rs:49`.
 
 Still deferred (no non-test consumers outside `utsushi-core`,
-scaffolding-only): the **embed** capability surface (UTSUSHI-024), the
-**recorder / reference-trace** surface (UTSUSHI-060/062), and the
-**conformance** manifest/check surface (UTSUSHI-025..030). New substrate
+scaffolding-only): the **embed** capability surface (the relevant capability), the
+**recorder / reference-trace** surface (the relevant capability/062), and the
+**conformance** manifest/check surface (the relevant capability..030). New substrate
 work must wire a real-engine consumer for these slices, not extend the
 scaffolding-only pattern.
 
@@ -232,7 +232,7 @@ repository test doubles.
 
 A spec that names "rlvm as research anchor" or "siglus_rs as research
 anchor" without surfacing concrete findings (opcode lists, format invariants,
-sub-format key requirements, etc.) into the DAG as follow-up nodes leaves an
+sub-format key requirements, etc.) into the DAG as later capabilities leaves an
 unbounded scope hole. Research-anchor specs must produce a deliverable that
 populates the DAG with concrete sub-nodes whose acceptance criteria cite the
 research.
@@ -276,7 +276,7 @@ grep` invariant proving the old symbol is gone. Audit workers must reject
 completion when the legacy symbol still exists.
 
 This rule applies to substrate extensions M.1–M.5
-(`UTSUSHI-222`–`UTSUSHI-226`), the UTSUSHI-200..221 RealLive runtime
+(`the relevant capability`–`the relevant capability`), the the relevant capability..221 RealLive runtime
 decomposition, and to every greenfield engine port. The only exceptions
 are externally-defined wire formats (e.g. the published
 `localization-bridge-schema` v0.2 JSON shape) where a documented
@@ -318,10 +318,10 @@ research output, not as scaffolding for it. A node whose deliverable is
 "figure out whether X" instead of "ship X" is not a DAG node; it is a
 conversation that has not happened yet.
 
-The footgun is precise: UTSUSHI-146's original "rlvm as research anchor"
+The footgun is precise: the relevant capability's original "rlvm as research anchor"
 framing collapsed an unknown-scope research effort into a single DAG node
 that never bottomed out and was only made visible by the 2026-06-23 audit
-batch. UTSUSHI-219 ("alpha-corpus XOR-2 key resolution (research-only)")
+batch. the relevant capability ("alpha-corpus XOR-2 key resolution (research-only)")
 is the same shape — a research bench whose outcome ("either key off, or
 key recovered, or follow-up path") cannot be committed to up front — and
 is cancelled in this change. Resolution of the XOR-2 question happens

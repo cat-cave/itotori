@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "itotori-78-qa-reliability-evidence/v0",
+  "schemaVersion": "capability_itotori_78-qa-reliability-evidence/v0",
   "node": "PR-78",
   "title": "flash QA reliability \u2014 post-fix failure taxonomy on a live Sweetie HD after-slice",
   "capturedAt": "2026-07-11T22:22:16Z",

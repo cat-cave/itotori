@@ -1,21 +1,21 @@
 #!/usr/bin/env node
 /*
- * KAIFUU-067 — Private-local key-hunting run workflow (deterministic core).
+ * the relevant capability — Private-local key-hunting run workflow (deterministic core).
  *
  * Pure, deterministic core for the `kaifuu:key-hunt` workflow. It ORCHESTRATES
  * the established private-local + helper + redaction patterns into a key-hunting
  * run: it PLANS which helper attempts apply to a detected engine + capability
- * level (KAIFUU-070 Siglus known-key, XP3 key, MV/MZ key, Wolf archive key,
+ * level (the relevant capability Siglus known-key, XP3 key, MV/MZ key, Wolf archive key,
  * RGSS3 key — plan, never brute-force), turns operator-authored, ALREADY-REDACTED
  * key-hunt manifests into a SAFE AGGREGATE redacted report of per-attempt
  * outcomes, and produces a deterministic REDACTED no-corpus artifact when no
  * private inputs exist.
  *
- * This is a SIBLING of KAIFUU-036 (private-local encrypted corpus triage) and
- * KAIFUU-094 (Siglus private-local validation renderer). It REUSES their
+ * This is a SIBLING of the relevant capability (private-local encrypted corpus triage) and
+ * the relevant capability (Siglus private-local validation renderer). It REUSES their
  * redaction boundary directly — the structural secret scanner (`findSecretLeak`),
  * the recursive deep-scan (`assertNoSecrets`), and the deterministic serializer
- * (`stableStringify`) — and composes them with the KAIFUU-085/090/129 helper
+ * (`stableStringify`) — and composes them with the the relevant capability/090/129 helper
  * result + secret-ref pattern.
  *
  * COPYRIGHT / STRICT-PROOF LAW (this module is the enforcement point):
@@ -27,7 +27,7 @@
  *     helper / key-profile ids, capability levels, helper classes, tool versions,
  *     redacted command lines, per-attempt OUTCOMES, proof HASHES).
  *   - TWO redaction boundaries:
- *       * The emitted REDACTED REPORT is scanned with the KAIFUU-036 base scanner
+ *       * The emitted REDACTED REPORT is scanned with the the relevant capability base scanner
  *         (`assertNoSecrets`), which rejects absolute local paths, `local-secret:`
  *         refs, PEM blocks, and raw key/hex material. The report therefore carries
  *         NO secret refs and NO raw keys — only counts, profile ids, proof hashes,
@@ -48,7 +48,7 @@
  */
 "use strict";
 
-// Reuse the KAIFUU-036 redaction boundary directly.
+// Reuse the the relevant capability redaction boundary directly.
 import {
   assertNoSecrets,
   findSecretLeak,
@@ -71,7 +71,7 @@ export const COMMANDS = {
 };
 
 // Per-engine outcome bins cover the encrypted engines the beta key-hunting lane
-// tracks. Order is fixed so bins serialize deterministically. Matches KAIFUU-036.
+// tracks. Order is fixed so bins serialize deterministically. Matches the relevant capability.
 export const ENGINES = [
   "rpg-maker-mv",
   "rpg-maker-mz",
@@ -95,7 +95,7 @@ export const OUTCOMES = ["attempted", "succeeded", "failed", "skipped", "unsuppo
 
 // Helper capability levels, ordered weakest -> strongest. The attempt planner
 // uses this ordering to decide whether a planned attempt is RUNNABLE at the
-// detected capability (KAIFUU-090 wine-local, KAIFUU-129 native-windows).
+// detected capability (the relevant capability wine-local, the relevant capability native-windows).
 export const CAPABILITY_LEVELS = [
   "detect-only",
   "static-known-key",
@@ -103,7 +103,7 @@ export const CAPABILITY_LEVELS = [
   "native-windows",
 ];
 
-// Helper classes (mirror KAIFUU-036). `none` marks an unsupported engine/variant.
+// Helper classes (mirror the relevant capability). `none` marks an unsupported engine/variant.
 export const HELPER_CLASSES = [
   "staticParser",
   "runtimeHelper",

@@ -1,17 +1,17 @@
 #!/usr/bin/env node
-// ITOTORI-238 — Alternate provider evidence capture.
+// the relevant capability — Alternate provider evidence capture.
 //
 // Goal: validate that one or more ZDR-permitted OpenRouter providers (other
 // than 'fireworks') can host `deepseek/deepseek-v4-flash` for Trevor's
 // account and return a successful response under
 //   provider.only=[<alt>], provider.zdr=true, allow_fallbacks=false.
 //
-// This is the evidence-validation pass mandated by the ITOTORI-238 spec
+// This is the evidence-validation pass mandated by the the relevant capability spec
 // (per the (modelId, providerId) pair rule + the no-optionality, evidence-
 // first rule in user memory): we do NOT enumerate alternates without a
 // per-pair live toy call.
 //
-// Candidate alternates probed (drawn from the ITOTORI-224 catalog block at
+// Candidate alternates probed (drawn from the the relevant capability catalog block at
 // docs/openrouter-integration-evidence/2026-06-25.json call_5
 // metadata.available_providers, MINUS the 'deepseek' tag because Trevor's
 // account excludes it from the ZDR allow-list — empirically proven by
@@ -38,7 +38,7 @@
 //     refuses to leave a leaky file on disk.
 //
 // Not a production helper. Re-run via
-//   `node scripts/itotori-238-alt-provider-evidence.mjs`
+//   `node scripts/the relevant capability.mjs`
 // after sourcing the worktree .env.
 
 import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
@@ -54,20 +54,20 @@ const EVIDENCE_PATH = resolve(EVIDENCE_DIR, `${EVIDENCE_DATE}.json`);
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY.length < 16) {
   console.error(
-    "ITOTORI-238 evidence capture aborted: OPENROUTER_API_KEY is not set in the environment.",
+    "capability_itotori_238 evidence capture aborted: OPENROUTER_API_KEY is not set in the environment.",
   );
   process.exit(1);
 }
 
 const REDACT = "Bearer sk-or-***REDACTED***";
 const BASE = "https://openrouter.ai/api/v1";
-const REFERER = "https://itotori.dev/itotori-238-alt-provider-evidence";
-const TITLE = "itotori-238-alt-provider-evidence";
+const REFERER = "https://itotori.dev/the relevant capability";
+const TITLE = "capability_itotori_238-alt-provider-evidence";
 
 const MODEL_ID = "deepseek/deepseek-v4-flash";
 // Candidate providers to validate. 'deepseek' (the tag) is intentionally
 // EXCLUDED — Trevor's account ZDR allow-list does not include it (see the
-// ITOTORI-224 evidence file, call_3/call_4 at HTTP 404).
+// the relevant capability evidence file, call_3/call_4 at HTTP 404).
 const CANDIDATE_PROVIDERS = ["lambda", "novita", "parasail", "deepinfra"];
 
 function redactHeaders(headers) {
@@ -129,7 +129,7 @@ const HARD_CAP_USD = 0.05;
 for (const altProviderId of CANDIDATE_PROVIDERS) {
   if (accumulatedCost > HARD_CAP_USD) {
     console.error(
-      `[ITOTORI-238] HARD BUDGET CAP exceeded (USD ${accumulatedCost.toFixed(6)} > ${HARD_CAP_USD}); skipping remaining candidates.`,
+      `[capability_itotori_238] HARD BUDGET CAP exceeded (USD ${accumulatedCost.toFixed(6)} > ${HARD_CAP_USD}); skipping remaining candidates.`,
     );
     altSummaries[altProviderId] = {
       validated: false,
@@ -138,7 +138,7 @@ for (const altProviderId of CANDIDATE_PROVIDERS) {
     continue;
   }
   console.error(
-    `[ITOTORI-238] Probing candidate alternate (provider.only=['${altProviderId}'], zdr=true)...`,
+    `[capability_itotori_238] Probing candidate alternate (provider.only=['${altProviderId}'], zdr=true)...`,
   );
   // Plain chat completion first (simpler than json_schema; if even this
   // 404s the candidate is unusable for any structured request).
@@ -176,7 +176,7 @@ for (const altProviderId of CANDIDATE_PROVIDERS) {
   let structuredSupport = "untested";
   if (status === 200 && upstreamProvider !== null) {
     console.error(
-      `[ITOTORI-238]   plain call succeeded — probing json_schema structured-output mode on ${altProviderId}...`,
+      `[capability_itotori_238]   plain call succeeded — probing json_schema structured-output mode on ${altProviderId}...`,
     );
     structuredCall = await captureCall(`call_${altProviderId}_json_schema_probe`, {
       path: "/chat/completions",
@@ -259,8 +259,8 @@ for (const altProviderId of CANDIDATE_PROVIDERS) {
 }
 
 const payload = {
-  schemaVersion: "itotori-238-alt-provider-evidence/v0",
-  node: "ITOTORI-238",
+  schemaVersion: "capability_itotori_238-alt-provider-evidence/v0",
+  node: "capability_itotori_238",
   fetchedAt,
   redactionContract: {
     field: "headers.authorization",
@@ -272,13 +272,13 @@ const payload = {
   candidateProviders: CANDIDATE_PROVIDERS,
   excludedFromCandidates: {
     deepseek:
-      "Tagged endpoint excluded from Trevor's ZDR allow-list (proven by ITOTORI-224 evidence call_3/call_4 — HTTP 404 'No endpoints found matching your data policy'). Per user memory project_zdr_allowlist_excludes_deepseek_implicit_cache. Never propose this tag as an alternate.",
+      "Tagged endpoint excluded from Trevor's ZDR allow-list (proven by capability_itotori_224 evidence call_3/call_4 — HTTP 404 'No endpoints found matching your data policy'). Per user memory project_zdr_allowlist_excludes_deepseek_implicit_cache. Never propose this tag as an alternate.",
   },
   altProviderSummaries: altSummaries,
   calls: callRecords,
   accumulatedUsdCost: accumulatedCost,
   notes: [
-    "ITOTORI-238 alternate-provider validation: each candidate is probed under provider.only=[<alt>] + zdr=true + allow_fallbacks=false (the same posture itotori sends production traffic with).",
+    "capability_itotori_238 alternate-provider validation: each candidate is probed under provider.only=[<alt>] + zdr=true + allow_fallbacks=false (the same posture itotori sends production traffic with).",
     "Validation is binary per pair: status=200 with body.provider matching the candidate = VALIDATED. Anything else = NOT VALIDATED and must NOT be added to alternateProviders[] in the pair-policy preset.",
     "Structured-output mode is probed only on candidates that pass the plain call — alternates we adopt MUST support response_format: { type: 'json_schema' } because QA + speaker-label stages depend on it.",
   ],
@@ -292,7 +292,7 @@ const written = readFileSync(EVIDENCE_PATH, "utf8");
 const SK_RE = /sk-or-[A-Za-z0-9_-]{40,}/;
 if (SK_RE.test(written)) {
   console.error(
-    `[ITOTORI-238] FATAL: API key pattern leaked into ${EVIDENCE_PATH}; deleting evidence file.`,
+    `[capability_itotori_238] FATAL: API key pattern leaked into ${EVIDENCE_PATH}; deleting evidence file.`,
   );
   writeFileSync(
     EVIDENCE_PATH,
@@ -303,12 +303,12 @@ if (SK_RE.test(written)) {
 }
 
 console.error(
-  `[ITOTORI-238] Evidence written to ${EVIDENCE_PATH} (size ${written.length} bytes; accumulated cost USD ${payload.accumulatedUsdCost.toFixed(8)}).`,
+  `[capability_itotori_238] Evidence written to ${EVIDENCE_PATH} (size ${written.length} bytes; accumulated cost USD ${payload.accumulatedUsdCost.toFixed(8)}).`,
 );
 const validatedAlternates = Object.entries(altSummaries)
   .filter(([, summary]) => summary.validated)
   .map(([id]) => id);
 console.error(
-  `[ITOTORI-238] Validated alternates: ${validatedAlternates.length ? validatedAlternates.join(", ") : "<NONE>"}`,
+  `[capability_itotori_238] Validated alternates: ${validatedAlternates.length ? validatedAlternates.join(", ") : "<NONE>"}`,
 );
-console.error("[ITOTORI-238] Done.");
+console.error("[capability_itotori_238] Done.");

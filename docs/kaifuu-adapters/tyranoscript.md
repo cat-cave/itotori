@@ -2,7 +2,7 @@
 
 - Adapter id: `kaifuu.tyranoscript`
 - Crate: `kaifuu-tyrano`
-- Roadmap node: KAIFUU-016 (TyranoScript extraction + patching adapter — a
+- Roadmap node: the relevant capability (TyranoScript extraction + patching adapter — a
   high-reach null-key/plaintext adapter on the layered pipeline).
 - Engine family token: `tyranoscript`
   (`kaifuu_core::compat_profile::CompatEngineFamily::TyranoScript`).

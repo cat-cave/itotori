@@ -8,7 +8,7 @@ Target file:
 `/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/g00/BACK.g00`
 (the task's stated path `.../sweetie-hd/REALLIVEDATA/g00/BACK.g00` does not
 exist; the real corpus is under `.../sweetie-hd/extracted/<title>/REALLIVEDATA/g00/`).
-Decoder under test: `crates/utsushi-reallive/src/g00.rs` (UTSUSHI-216).
+Decoder under test: `crates/utsushi-reallive/src/g00.rs` (the relevant capability).
 
 ---
 

@@ -124,7 +124,7 @@ its human rendering. `since` is the product version under which the current
   `schemaVersion != "0.3.0"` (or whose `format != "kaifuu-delta-package"`)
   before any filesystem work, as the string error
   `unsupported delta schema version <observed>`. The v0.2.0 loader was deleted
-  in KAIFUU-238 (no-legacy-compat): there is no compatibility shim for
+  in the relevant capability (no-legacy-compat): there is no compatibility shim for
   packages without the `sourceProvenance` envelope.
 - **Migration path (v0.2 → v0.3):** re-run `kaifuu diff` with the current tool
   to emit a `0.3.0` package (the new envelope carries the `partial` bit
@@ -156,7 +156,7 @@ its human rendering. `since` is the product version under which the current
   against a `v0.1` client fails hard on both sides. Mutation routes are
   further pinned by the enumerated `apiMutationContract` drift suite
   ([`apps/itotori/test/msw-mutation-handlers.test.ts`](../apps/itotori/test/msw-mutation-handlers.test.ts),
-  ITOTORI-051).
+  the relevant capability).
 - **Migration path:** a version mismatch is a hard reject; redeploy the server
   and the SPA from the same product version. The strict-record helper
   (`asStrictRecord`) makes adding a server-side field without updating the

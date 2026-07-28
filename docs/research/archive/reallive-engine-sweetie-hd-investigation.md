@@ -15,7 +15,7 @@
 > a single shipping title (Sukara's _Oshioki Sweetie + Sweets!! HD_) and from
 > publicly archived format documentation. Replaces the single-line "VFS handoff,
 > Scene/SEEN replay, headless render sink, deterministic clock/input, snapshot
-> primitives" claim that UTSUSHI-146 currently carries with a per-evidence map
+> primitives" claim that the relevant capability currently carries with a per-evidence map
 > of what the engine actually has to do.
 >
 > Provenance discipline: every claim in this document is one of
@@ -117,9 +117,9 @@ groups (the `FOLDNAME` example above). [V]
 Distinct top-level (pre-dot) key prefixes observed in Sweetie HD's
 `Gameexe.ini`: **191**. The `kaifuu-reallive::gameexe` inventory walks
 every line, classifies it into a typed [`GameexeKeyFamily`] variant
-(KAIFUU-190), and emits a `kaifuu.reallive.inventory.unknown_gameexe_key`
+(the relevant capability), and emits a `kaifuu.reallive.inventory.unknown_gameexe_key`
 warning for any line that doesn't match a documented family
-(`crates/kaifuu-reallive/src/gameexe.rs`). As of KAIFUU-190 the
+(`crates/kaifuu-reallive/src/gameexe.rs`). As of the relevant capability the
 catalogue covers 1,345 / 1,345 lines on Sweetie HD's Gameexe.ini (0 %
 fall-through; see `crates/kaifuu-reallive/tests/gameexe_real_bytes.rs`
 for the breakdown). [V — counted with
@@ -676,7 +676,7 @@ A Pure-Rust save implementation has to:
 2. Write the AVG32-compatible byte layout (so on-disk saves are
    interchangeable with the original engine, which is what users will
    expect for a localization port).
-3. Hook the substrate `Snapshot` primitive (UTSUSHI-023) for in-test
+3. Hook the substrate `Snapshot` primitive (the relevant capability) for in-test
    snapshot/restore that doesn't go through the file system.
 
 Numbered save slots are referenced via `#SAVE_INDEX=1`, `#SAVE_CNT=100`,
@@ -768,7 +768,7 @@ long-tail of unused opcodes, no per-title hacks) is realistically:
 
 **Pure-Rust subset port estimate: 20–35 KLoC of new code**, spread across
 ~15–25 sub-nodes — substantially more than the single-node "RealLive runtime
-port" UTSUSHI-146 currently claims. Two
+port" the relevant capability currently claims. Two
 caveats:
 
 - The 250–400 used-opcode estimate is unverified until a real decoder
@@ -784,7 +784,7 @@ caveats:
 
 ### Substrate-readiness summary
 
-The UTSUSHI-120 substrate facade (re-exported in
+The the relevant capability substrate facade (re-exported in
 `crates/utsushi-core/src/substrate.rs`) covers VFS, clock/input, replay
 log, sink set (text/frame/audio), snapshot store, embed ABI, recorder,
 conformance, and port lifecycle. The headless-replay shapes needed by a
@@ -891,7 +891,7 @@ Existing itotori code:
 - `crates/kaifuu-reallive/src/gameexe.rs:71-100` — line-by-line inventory
   classifier (not a structured Gameexe parser).
 - `crates/utsushi-core/src/substrate.rs` — runtime substrate facade
-  (UTSUSHI-120, complete).
-- `roadmap/spec-dag.json:20898-20940` — current single-node UTSUSHI-146.
+  (the relevant capability, complete).
+- `roadmap/spec-dag.json:20898-20940` — current single-node the relevant capability.
 
 ---

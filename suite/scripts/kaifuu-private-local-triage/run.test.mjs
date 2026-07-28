@@ -1,5 +1,5 @@
 /*
- * KAIFUU-036 — deterministic unit + integration tests for the private-local
+ * the relevant capability — deterministic unit + integration tests for the private-local
  * encrypted corpus triage workflow. `node --test`, no network, no DB, no build,
  * no private corpora: the no-corpus path and a MOCK redacted manifest drive
  * everything. Proves:

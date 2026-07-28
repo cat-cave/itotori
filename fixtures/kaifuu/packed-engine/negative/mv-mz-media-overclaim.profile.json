@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "profileId": "packed/rpg_maker_mv_mz_media/negative/overclaim",
   "fixtureId": "mv-mz-media-overclaim",
-  "sourceNodeId": "KAIFUU-103",
+  "sourceNodeId": "capability_kaifuu_103",
   "engineFamily": "rpg_maker_mv_mz_media",
   "container": "project_asset",
   "crypto": "rpg_maker_asset_xor",

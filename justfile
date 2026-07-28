@@ -1,6 +1,6 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
-# The developer surface is intentionally six parameterized delegates.  The
+# The developer surface is intentionally six parameterized delegates. The
 # selector is validated by scripts/developer-command.mjs; aliases belong there
 # only when they describe a real capability, never as another recipe name.
 worktree-setup:

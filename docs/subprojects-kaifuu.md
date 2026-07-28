@@ -151,7 +151,7 @@ delegates to the same validation, redaction, and atomic write gate. Profiles
 include assets, capability reports, and explicit requirements for files,
 platform constraints, and secret keys.
 
-### Partial extract / profile / verify (KAIFUU-193)
+### Partial extract / profile / verify (the relevant capability)
 
 `extract`, `profile`, and `verify` no longer fail closed with `"no registered
 adapter detected"` when an adapter reports `detected == false` but accumulated
@@ -244,7 +244,7 @@ that disposition as a P0 finding requirement. Disjointness of the
 `writtenAssetIds` and `skippedAssetIds` sets, fully covering
 `attemptedAssetIds`, is enforced on both TS and Rust sides.
 
-### Patch transaction harness (KAIFUU-084)
+### Patch transaction harness (the relevant capability)
 
 Engine adapters write patched bytes through the
 `kaifuu_core::patch_transaction::PatchTransaction` harness. The harness runs a
@@ -290,5 +290,5 @@ loses context. The harness never emits `retained_partial`; pre-promote
 failures use `rolled_back` and explicit cancellation uses `cleaned_up`.
 
 The harness is engine-neutral; `crates/kaifuu-reallive/src/patchback/` is
-unchanged. KAIFUU-011 is the first consumer that wires the harness into the
+unchanged. the relevant capability is the first consumer that wires the harness into the
 binary patcher CLI.

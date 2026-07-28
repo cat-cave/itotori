@@ -27,8 +27,8 @@
  *      nodes and be cited in the readiness doc.
  *
  * Checks:
- *   A. Node references (KAIFUU-042, ALPHA-006, ALPHA-007, ALPHA-008,
- *      ITOTORI-116, ITOTORI-117, UTSUSHI-119, SHARED-025, UNIV-013, SHARED-013,
+ *   A. Node references (the relevant capability, ALPHA-006, ALPHA-007, ALPHA-008,
+ *      the relevant capability, the relevant capability, the relevant capability, SHARED-025, UNIV-013, SHARED-013,
  *      SHARED-014, UNIV-021) resolve in the DAG AND are cited in the readiness
  *      doc.
  *   B. Capability + exclusion claim blocks in the readiness doc match the block
@@ -36,7 +36,7 @@
  *   C. Patched-output runtime proof: the SHARED-025 manifest links a PatchResult
  *      AND a runtime report for the SAME source bridge + bundle hash, every
  *      referenced artifact hash matches its committed fixture, and a provider
- *      proof + benchmark report are present — i.e. UTSUSHI-119's contract
+ *      proof + benchmark report are present — i.e. the relevant capability's contract
  *      (runtime observation consumes PatchResult + SHARED-025 manifest ids for
  *      patched-output proof, not a static/pre-patch read) is grounded.
  *   D. Fresh-clone public-fixture demo command exists in the justfile and is
@@ -72,13 +72,13 @@ export const DEMO_RECIPE = "test";
 
 // Required node references the readiness gate must validate.
 export const REQUIRED_NODE_REFS = [
-  "KAIFUU-042",
+  "capability_kaifuu_042",
   "ALPHA-006",
   "ALPHA-007",
   "ALPHA-008",
-  "ITOTORI-116",
-  "ITOTORI-117",
-  "UTSUSHI-119",
+  "capability_itotori_116",
+  "capability_itotori_117",
+  "capability_utsushi_119",
   "SHARED-025",
   "UNIV-013",
   "SHARED-013",
@@ -388,7 +388,7 @@ export function runChecklist() {
   if (!patchResult || patchResult.artifactKind !== "patch_result") {
     fail(
       "patched-output-proof",
-      `SHARED-025 manifest is missing a patch_result artifact ref (UTSUSHI-119 must consume a PatchResult)`,
+      `SHARED-025 manifest is missing a patch_result artifact ref (capability_utsushi_119 must consume a PatchResult)`,
     );
   }
   if (!runtimeReport || runtimeReport.artifactKind !== "runtime_report") {
@@ -445,7 +445,7 @@ export function runChecklist() {
   if (!findings.some((f) => f.check === "patched-output-proof" && f.severity === "blocking")) {
     pass(
       "patched-output-proof",
-      `UTSUSHI-119 patched-output proof grounded: manifest ${manifest.proofManifestId} links PatchResult ${patchResult.artifactId} + runtime report ${runtimeReport.artifactId} on the same source revision (all artifact hashes verified)`,
+      `capability_utsushi_119 patched-output proof grounded: manifest ${manifest.proofManifestId} links PatchResult ${patchResult.artifactId} + runtime report ${runtimeReport.artifactId} on the same source revision (all artifact hashes verified)`,
     );
   }
 

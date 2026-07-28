@@ -21,8 +21,8 @@
   localization surfaces.
 - **Wolf RPG Editor**: Wolf tools show `.wolf` archive decryption, broad
   extension handling, automatic key detection, and Pro protection-key
-  detection. Alpha needs archive/protection detection and the `KAIFUU-040`
-  readiness/helper slice; `KAIFUU-073` full encrypted archive patching remains
+  detection. Alpha needs archive/protection detection and the `the relevant capability`
+  readiness/helper slice; `the relevant capability` full encrypted archive patching remains
   continuous/future and can still wait for binary patching support.
 - **BGI/Ethornell**: public tools emphasize script decoding/encoding,
   string-table or bytecode handling, and original-file-informed encoding. The
