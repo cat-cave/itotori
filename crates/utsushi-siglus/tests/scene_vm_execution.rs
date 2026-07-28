@@ -9,11 +9,11 @@ use utsushi_siglus::scene_vm::{
 
 #[path = "scene_vm_execution/control_flow.rs"]
 mod scene_vm_execution_control_flow;
+#[path = "scene_vm_execution/diagnostics.rs"]
+mod scene_vm_execution_diagnostics;
 #[path = "scene_vm_execution/fixtures.rs"]
 mod scene_vm_execution_fixtures;
 #[path = "scene_vm_execution/included.rs"]
 mod scene_vm_execution_included;
 #[path = "scene_vm_execution/stage.rs"]
 mod scene_vm_execution_stage;
-#[path = "scene_vm_execution/diagnostics.rs"]
-mod scene_vm_execution_diagnostics;
