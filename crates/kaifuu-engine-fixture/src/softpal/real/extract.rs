@@ -3,7 +3,10 @@
 
 use std::collections::BTreeSet;
 
-use kaifuu_core::{AdapterWarning, BridgeBundle, BridgeUnit, PatchRef, sha256_hash_bytes};
+use kaifuu_core::{
+    AdapterWarning, BridgeBundle, BridgeUnit, BridgeUnitContext, BridgeUnitRoute, PatchRef,
+    sha256_hash_bytes,
+};
 use kaifuu_softpal::{ScriptScan, TextDat};
 
 use super::*;
@@ -109,6 +112,11 @@ impl SoftpalProfileDetectorAdapter {
             speaker,
             text_surface: text_surface.to_string(),
             protected_spans: vec![],
+            context: Some(BridgeUnitContext {
+                route: BridgeUnitRoute {
+                    scene_id: SCRIPT_SCENE_ID.to_string(),
+                },
+            }),
             patch_ref: PatchRef {
                 asset_id: SCRIPT_ASSET_ID.to_string(),
                 write_mode: "replace".to_string(),
@@ -116,5 +124,87 @@ impl SoftpalProfileDetectorAdapter {
             },
             source_unit_key,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use kaifuu_softpal::{
+        SCRIPT_MAGIC_PREFIX, TEXT_SHOW_WORD_HI, TEXTDAT_FLAG_PLAINTEXT, TEXTDAT_MAGIC_TAIL,
+    };
+
+    use super::*;
+
+    fn opcode(id: u16) -> [u8; 4] {
+        let mut token = [0; 4];
+        token[..2].copy_from_slice(&id.to_le_bytes());
+        token[2..].copy_from_slice(&1_u16.to_le_bytes());
+        token
+    }
+
+    fn word(value: u32) -> [u8; 4] {
+        value.to_le_bytes()
+    }
+
+    fn target(category: u16, function: u16) -> u32 {
+        (u32::from(category) << 16) | u32::from(function)
+    }
+
+    /// A minimal, decoded Softpal source pair: the script pushes the real
+    /// TEXT.DAT record pointer and invokes TEXT-SHOW.  This deliberately
+    /// exercises the production decoder before checking the coordinate.
+    fn decoded_source_pair() -> SoftpalScripts {
+        let mut textdat = vec![TEXTDAT_FLAG_PLAINTEXT];
+        textdat.extend_from_slice(TEXTDAT_MAGIC_TAIL);
+        textdat.extend_from_slice(&2_u32.to_le_bytes());
+        let text_pointer = textdat.len() as u32;
+        textdat.extend_from_slice(&0_u32.to_le_bytes());
+        textdat.extend_from_slice(b"decoded line\0");
+        let speaker_pointer = textdat.len() as u32;
+        textdat.extend_from_slice(&1_u32.to_le_bytes());
+        textdat.extend_from_slice(b"decoded speaker\0");
+
+        let mut script = Vec::new();
+        script.extend_from_slice(SCRIPT_MAGIC_PREFIX);
+        script.extend_from_slice(b"20");
+        script.extend_from_slice(&[0; 8]);
+        for token in [
+            opcode(0x1f),
+            word(text_pointer),
+            opcode(0x1f),
+            word(speaker_pointer),
+            opcode(0x1f),
+            word(0),
+            opcode(0x17),
+            word(target(TEXT_SHOW_WORD_HI, 2)),
+            word(0),
+        ] {
+            script.extend_from_slice(&token);
+        }
+
+        SoftpalScripts {
+            script,
+            textdat,
+            source_ref: "decoded-test-pair".to_string(),
+        }
+    }
+
+    #[test]
+    fn decoded_script_units_declare_the_structure_script_scene() {
+        let (bridge, warnings) =
+            SoftpalProfileDetectorAdapter::build_bridge(&decoded_source_pair())
+                .expect("decoded Softpal fixture extracts");
+
+        assert!(warnings.is_empty());
+        assert_eq!(bridge.units.len(), 1);
+        let unit = &bridge.units[0];
+        assert_eq!(unit.source_text, "decoded line");
+        assert_eq!(unit.source_unit_key, format!("{DIALOGUE_KEY_PREFIX}16"));
+        assert_eq!(
+            unit.context
+                .as_ref()
+                .map(|context| context.route.scene_id.as_str()),
+            Some(SCRIPT_SCENE_ID),
+        );
     }
 }

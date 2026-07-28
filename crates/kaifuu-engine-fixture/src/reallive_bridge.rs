@@ -203,6 +203,7 @@ impl RealLiveProfileDetectorAdapter {
             speaker,
             text_surface: unit.surface_kind.clone(),
             protected_spans,
+            context: None,
             patch_ref: PatchRef {
                 asset_id: "reallive-seen-txt".to_string(),
                 write_mode: "replace".to_string(),

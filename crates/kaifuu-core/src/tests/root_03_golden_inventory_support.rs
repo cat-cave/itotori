@@ -57,6 +57,7 @@ fn golden_boundary_extraction(adapter_id: &str) -> ExtractionResult {
                 speaker: "Narrator".to_string(),
                 text_surface: "dialogue".to_string(),
                 protected_spans: vec![],
+                context: None,
                 patch_ref: PatchRef {
                     asset_id: deterministic_id("asset", 91),
                     write_mode: "replace_text".to_string(),

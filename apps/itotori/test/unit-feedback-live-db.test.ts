@@ -5,7 +5,10 @@
 
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "@itotori/db";
-import { createSyntheticLargeBridgeBundle } from "../../../packages/localization-bridge-schema/src/synthetic-large-project.js";
+import {
+  assertBridgeBundle,
+  type BridgeBundle,
+} from "../../../packages/localization-bridge-schema/src/index.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import { ItotoriProjectRepository } from "../../../packages/itotori-db/src/repositories/project-repository.js";
 import { testProjectEngineFamilyRegistry } from "../../../packages/itotori-db/test/project-engine-family-registry.js";
@@ -15,6 +18,70 @@ const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
 const localActor: AuthorizationActor = { userId: localUserId };
 const note = "The branch reaches this line with the wrong speaker.";
 const servers: ReturnType<typeof createItotoriServer>[] = [];
+
+// Fixed wire-format excerpts from the native producer regression vectors:
+// kaifuu-siglus emits the declared Scene.pck SceneList id, while kaifuu-softpal
+// emits the sole decoded SCRIPT.SRC structure scene.  These are deliberately
+// bridge *outputs*, not fixtures that provision a route coordinate after the
+// fact.  The Rust producer tests named below derive and assert those values
+// from decoded source bytes; this HTTP test only imports what a producer gave
+// it and proves the dashboard-facing ledger loop.
+const producerBridgeByEngine = {
+  siglus: {
+    schemaVersion: "0.1.0",
+    bridgeId: "siglus-producer-scene-0007",
+    sourceBundleHash: "siglus-decoded-scene-pck",
+    sourceLocale: "ja-JP",
+    extractorName: "kaifuu-siglus",
+    extractorVersion: "0.0.0",
+    units: [
+      {
+        bridgeUnitId: "siglus-producer-unit-0007-0028",
+        sourceUnitKey: "siglus:scene-opening#28",
+        occurrenceId: "siglus:scene-opening#28",
+        sourceHash: "siglus-decoded-text-0028",
+        sourceLocale: "ja-JP",
+        sourceText: "decoded Siglus line",
+        speaker: "",
+        textSurface: "dialogue",
+        protectedSpans: [],
+        context: { route: { sceneId: "siglus:scene-0007" } },
+        patchRef: {
+          assetId: "siglus:scene-opening",
+          writeMode: "replace",
+          sourceUnitKey: "siglus:scene-opening#28",
+        },
+      },
+    ],
+  },
+  softpal: {
+    schemaVersion: "0.1.0",
+    bridgeId: "softpal-producer-script-src",
+    sourceBundleHash: "softpal-decoded-script-src",
+    sourceLocale: "ja-JP",
+    extractorName: "kaifuu-softpal",
+    extractorVersion: "0.0.0",
+    units: [
+      {
+        bridgeUnitId: "softpal-producer-unit-0016",
+        sourceUnitKey: "softpal:dialogue:16",
+        occurrenceId: "softpal:dialogue:16",
+        sourceHash: "softpal-decoded-text-0016",
+        sourceLocale: "ja-JP",
+        sourceText: "decoded Softpal line",
+        speaker: "decoded speaker",
+        textSurface: "dialogue",
+        protectedSpans: [],
+        context: { route: { sceneId: "scene:script-src" } },
+        patchRef: {
+          assetId: "softpal:SCRIPT.SRC",
+          writeMode: "replace",
+          sourceUnitKey: "softpal:dialogue:16",
+        },
+      },
+    ],
+  },
+} as const;
 
 afterEach(async () => {
   await Promise.all(
@@ -40,14 +107,10 @@ postgresDescribe("unit-bound feedback over imported localization units", () => {
       try {
         const projectId = `project-${engine}-addressable`;
         const localeBranchId = `locale-${engine}-addressable`;
-        const bridge = createSyntheticLargeBridgeBundle({
-          seed: `addressable-${engine}`,
-          targetJapaneseCharacters: 1,
-          assetCount: 1,
-        });
+        const bridge = producerBridge(engine);
+        assertBridgeBundle(bridge);
         const bridgeUnitId = bridge.units[0]!.bridgeUnitId;
-        const sceneId = bridge.units[0]!.context.route?.sceneId;
-        expect(sceneId).toBeDefined();
+        const sceneId = bridge.units[0]!.context.route.sceneId;
         await new ItotoriProjectRepository(
           context.db,
           testProjectEngineFamilyRegistry,
@@ -73,7 +136,7 @@ postgresDescribe("unit-bound feedback over imported localization units", () => {
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
               bridgeUnitId,
-              sceneId: sceneId!,
+              sceneId,
               note,
               severity: "warning",
             }),
@@ -131,4 +194,10 @@ async function listen(server: ReturnType<typeof createItotoriServer>): Promise<s
     throw new Error("unit feedback proof server did not bind a TCP port");
   }
   return `http://127.0.0.1:${address.port}`;
+}
+
+function producerBridge(engine: "siglus" | "softpal"): BridgeBundle {
+  // structuredClone keeps the fixture immutable across the two real database
+  // imports; neither this test nor its setup adds or repairs context.route.
+  return structuredClone(producerBridgeByEngine[engine]) as unknown as BridgeBundle;
 }

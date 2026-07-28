@@ -81,6 +81,11 @@ import type { RuntimeBridgeUnitRefRole, RuntimeEvidenceKind } from "../schema.js
 export const defaultWorkspaceId = "local-workspace";
 export const defaultWorkspaceName = "Local workspace";
 
+// Postgres permits at most 65,535 bind parameters in one statement.  A real
+// whole-game bridge can contain more source units than that, so ownership and
+// stable-key checks must not turn the full unit set into one `IN (...)` query.
+const POSTGRES_IN_ARRAY_BATCH_SIZE = 10_000;
+
 /** The adapter-owned extraction descriptor persisted with a project binding. */
 export type ProjectExtractProfile = Record<string, unknown>;
 
@@ -2710,56 +2715,62 @@ async function assertImportOwnership(
 
   const revisionIds = normalized.revisions.map((revisionRecord) => revisionRecord.revisionId);
   if (revisionIds.length > 0) {
-    const revisionRows = await tx
-      .select({
-        sourceRevisionId: sourceRevisions.sourceRevisionId,
-        projectId: sourceRevisions.projectId,
-      })
-      .from(sourceRevisions)
-      .where(inArray(sourceRevisions.sourceRevisionId, revisionIds));
-    for (const row of revisionRows) {
-      if (row.projectId !== projectId) {
-        throw new Error(
-          `source revision ${row.sourceRevisionId} already belongs to project ${row.projectId}`,
-        );
+    for (const revisionIdBatch of inArrayBatches(revisionIds)) {
+      const revisionRows = await tx
+        .select({
+          sourceRevisionId: sourceRevisions.sourceRevisionId,
+          projectId: sourceRevisions.projectId,
+        })
+        .from(sourceRevisions)
+        .where(inArray(sourceRevisions.sourceRevisionId, revisionIdBatch));
+      for (const row of revisionRows) {
+        if (row.projectId !== projectId) {
+          throw new Error(
+            `source revision ${row.sourceRevisionId} already belongs to project ${row.projectId}`,
+          );
+        }
       }
     }
   }
 
   const assetIds = normalized.assets.map((asset) => asset.assetId);
   if (assetIds.length > 0) {
-    const assetRows = await tx
-      .select({
-        assetId: assets.assetId,
-        projectId: assets.projectId,
-        sourceBundleId: assets.sourceBundleId,
-      })
-      .from(assets)
-      .where(inArray(assets.assetId, assetIds));
-    for (const row of assetRows) {
-      if (row.projectId !== projectId || row.sourceBundleId !== normalized.sourceBundleId) {
-        throw new Error(
-          `asset ${row.assetId} already belongs to project ${row.projectId} source bundle ${row.sourceBundleId}`,
-        );
+    for (const assetIdBatch of inArrayBatches(assetIds)) {
+      const assetRows = await tx
+        .select({
+          assetId: assets.assetId,
+          projectId: assets.projectId,
+          sourceBundleId: assets.sourceBundleId,
+        })
+        .from(assets)
+        .where(inArray(assets.assetId, assetIdBatch));
+      for (const row of assetRows) {
+        if (row.projectId !== projectId || row.sourceBundleId !== normalized.sourceBundleId) {
+          throw new Error(
+            `asset ${row.assetId} already belongs to project ${row.projectId} source bundle ${row.sourceBundleId}`,
+          );
+        }
       }
     }
   }
 
   const bridgeUnitIds = normalized.units.map((unit) => unit.bridgeUnitId);
   if (bridgeUnitIds.length > 0) {
-    const unitRows = await tx
-      .select({
-        bridgeUnitId: sourceUnits.bridgeUnitId,
-        projectId: sourceUnits.projectId,
-        sourceBundleId: sourceUnits.sourceBundleId,
-      })
-      .from(sourceUnits)
-      .where(inArray(sourceUnits.bridgeUnitId, bridgeUnitIds));
-    for (const row of unitRows) {
-      if (row.projectId !== projectId || row.sourceBundleId !== normalized.sourceBundleId) {
-        throw new Error(
-          `bridge unit ${row.bridgeUnitId} already belongs to project ${row.projectId} source bundle ${row.sourceBundleId}`,
-        );
+    for (const bridgeUnitIdBatch of inArrayBatches(bridgeUnitIds)) {
+      const unitRows = await tx
+        .select({
+          bridgeUnitId: sourceUnits.bridgeUnitId,
+          projectId: sourceUnits.projectId,
+          sourceBundleId: sourceUnits.sourceBundleId,
+        })
+        .from(sourceUnits)
+        .where(inArray(sourceUnits.bridgeUnitId, bridgeUnitIdBatch));
+      for (const row of unitRows) {
+        if (row.projectId !== projectId || row.sourceBundleId !== normalized.sourceBundleId) {
+          throw new Error(
+            `bridge unit ${row.bridgeUnitId} already belongs to project ${row.projectId} source bundle ${row.sourceBundleId}`,
+          );
+        }
       }
     }
   }
@@ -2792,26 +2803,34 @@ async function assertStableSourceUnitKeys(
     return;
   }
 
-  const unitRows = await tx
-    .select({
-      bridgeUnitId: sourceUnits.bridgeUnitId,
-      sourceUnitKey: sourceUnits.sourceUnitKey,
-    })
-    .from(sourceUnits)
-    .where(
-      and(
-        eq(sourceUnits.sourceBundleId, normalized.sourceBundleId),
-        inArray(sourceUnits.sourceUnitKey, sourceUnitKeys),
-      ),
-    );
-
-  for (const row of unitRows) {
-    const incoming = incomingBySourceUnitKey.get(row.sourceUnitKey);
-    if (incoming !== undefined && incoming.bridgeUnitId !== row.bridgeUnitId) {
-      throw new Error(
-        `sourceUnitKey ${row.sourceUnitKey} is already linked to bridgeUnitId ${row.bridgeUnitId}; reimport cannot change it to ${incoming.bridgeUnitId}`,
+  for (const sourceUnitKeyBatch of inArrayBatches(sourceUnitKeys)) {
+    const unitRows = await tx
+      .select({
+        bridgeUnitId: sourceUnits.bridgeUnitId,
+        sourceUnitKey: sourceUnits.sourceUnitKey,
+      })
+      .from(sourceUnits)
+      .where(
+        and(
+          eq(sourceUnits.sourceBundleId, normalized.sourceBundleId),
+          inArray(sourceUnits.sourceUnitKey, sourceUnitKeyBatch),
+        ),
       );
+
+    for (const row of unitRows) {
+      const incoming = incomingBySourceUnitKey.get(row.sourceUnitKey);
+      if (incoming !== undefined && incoming.bridgeUnitId !== row.bridgeUnitId) {
+        throw new Error(
+          `sourceUnitKey ${row.sourceUnitKey} is already linked to bridgeUnitId ${row.bridgeUnitId}; reimport cannot change it to ${incoming.bridgeUnitId}`,
+        );
+      }
     }
+  }
+}
+
+function* inArrayBatches<T>(values: readonly T[]): Generator<readonly T[]> {
+  for (let start = 0; start < values.length; start += POSTGRES_IN_ARRAY_BATCH_SIZE) {
+    yield values.slice(start, start + POSTGRES_IN_ARRAY_BATCH_SIZE);
   }
 }
 
@@ -2875,15 +2894,17 @@ async function diffSourceBundleImport(
   tx: ItotoriTransaction,
   normalized: NormalizedSourceBundle,
 ): Promise<SourceBundleImportDiff> {
-  const revisionRows = await tx
-    .select()
-    .from(sourceRevisions)
-    .where(
-      inArray(
-        sourceRevisions.sourceRevisionId,
-        normalized.revisions.map((revisionRecord) => revisionRecord.revisionId),
-      ),
+  const revisionRows = [];
+  for (const revisionIdBatch of inArrayBatches(
+    normalized.revisions.map((revisionRecord) => revisionRecord.revisionId),
+  )) {
+    revisionRows.push(
+      ...(await tx
+        .select()
+        .from(sourceRevisions)
+        .where(inArray(sourceRevisions.sourceRevisionId, revisionIdBatch))),
     );
+  }
   const existingRevisions = new Map(
     revisionRows.map((revisionRecord) => [revisionRecord.sourceRevisionId, revisionRecord]),
   );
@@ -3328,7 +3349,8 @@ function normalizeSourceBundle(project: ItotoriProjectRecord): NormalizedSourceB
               displayName: unit.speaker,
             }
           : { knowledgeState: "not_applicable" },
-        context: {},
+        context:
+          unit.context === undefined ? {} : { route: { sceneId: unit.context.route.sceneId } },
         spans: unit.protectedSpans.map((span) => ({
           spanId: `${unit.bridgeUnitId}:${span.start}:${span.end}`,
           spanKind: "variable_placeholder",

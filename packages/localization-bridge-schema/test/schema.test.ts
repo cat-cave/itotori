@@ -1447,6 +1447,26 @@ describe("localization bridge schema guards", () => {
     expect(() => assertBridgeBundleV02(bridge)).toThrow(/UUID7/);
   });
 
+  it("accepts a producer-declared native scene coordinate rather than requiring a database UUID", () => {
+    const bridge = bridgeV02Example();
+    const firstUnit = bridgeV02Units(bridge)[0]!;
+    const context = asTestRecord(firstUnit.context, "first unit context");
+    const route = asTestRecord(context.route, "first unit route");
+    route.sceneId = "siglus:scene-0007";
+
+    expect(() => assertBridgeBundleV02(bridge)).not.toThrow();
+  });
+
+  it("rejects a blank producer scene coordinate", () => {
+    const bridge = bridgeV02Example();
+    const firstUnit = bridgeV02Units(bridge)[0]!;
+    const context = asTestRecord(firstUnit.context, "first unit context");
+    const route = asTestRecord(context.route, "first unit route");
+    route.sceneId = "   ";
+
+    expect(() => assertBridgeBundleV02(bridge)).toThrow(/producer-declared coordinate/);
+  });
+
   it("rejects raw or unknown v0.2 category values", () => {
     const bridge = bridgeV02Example();
     const units = bridgeV02Units(bridge);

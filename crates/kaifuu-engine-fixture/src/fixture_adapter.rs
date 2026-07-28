@@ -190,6 +190,7 @@ impl EngineAdapter for FixtureAdapter {
                         .unwrap_or("dialogue")
                         .to_string(),
                     protected_spans,
+                    context: None,
                     patch_ref: PatchRef {
                         asset_id: "source.json".to_string(),
                         write_mode: "replace".to_string(),

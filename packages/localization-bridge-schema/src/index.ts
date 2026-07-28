@@ -58,6 +58,12 @@ export type BridgeUnit = {
   speaker?: string;
   textSurface: TextSurface;
   protectedSpans: ProtectedSpan[];
+  /** Optional native scene coordinate retained by legacy producers. */
+  context?: {
+    route: {
+      sceneId: string;
+    };
+  };
   patchRef: {
     assetId: string;
     writeMode: PatchWriteMode;
@@ -894,7 +900,13 @@ export type SourceLocationV02 = {
 export type RouteContextV02 = {
   routeId?: Uuid7;
   routeKey?: string;
-  sceneId?: Uuid7;
+  /**
+   * Producer-declared scene coordinate. This is intentionally an opaque
+   * non-empty string rather than a generated database UUID: runtime and
+   * structure exporters address decoded source scenes with their native
+   * coordinate (for example a Scene.pck directory id).
+   */
+  sceneId?: string;
   sceneKey?: string;
   branchId?: Uuid7;
   branchKey?: string;
@@ -2672,6 +2684,11 @@ function assertBridgeUnit(value: unknown, label: string): asserts value is Bridg
   const spans = asArray(unit.protectedSpans, `${label}.protectedSpans`);
   for (const [index, span] of spans.entries()) {
     assertProtectedSpan(span, `${label}.protectedSpans[${index}]`, unit.sourceText);
+  }
+  if (unit.context !== undefined) {
+    const context = asRecord(unit.context, `${label}.context`);
+    const route = asRecord(context.route, `${label}.context.route`);
+    assertString(route.sceneId, `${label}.context.route.sceneId`);
   }
   const patchRef = asRecord(unit.patchRef, `${label}.patchRef`);
   assertString(patchRef.assetId, `${label}.patchRef.assetId`);
@@ -5758,7 +5775,12 @@ function assertRouteContextV02(value: unknown, label: string): asserts value is 
   const route = asRecord(value, label);
   assertOptionalUuid7(route.routeId, `${label}.routeId`);
   assertOptionalString(route.routeKey, `${label}.routeKey`);
-  assertOptionalUuid7(route.sceneId, `${label}.sceneId`);
+  if (route.sceneId !== undefined) {
+    assertString(route.sceneId, `${label}.sceneId`);
+    if (route.sceneId.trim() === "") {
+      throw new Error(`${label}.sceneId must be a non-empty producer-declared coordinate`);
+    }
+  }
   assertOptionalString(route.sceneKey, `${label}.sceneKey`);
   assertOptionalUuid7(route.branchId, `${label}.branchId`);
   assertOptionalString(route.branchKey, `${label}.branchKey`);

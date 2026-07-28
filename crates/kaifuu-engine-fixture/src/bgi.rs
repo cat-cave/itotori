@@ -325,6 +325,7 @@ impl BgiBytecodeAdapter {
                     speaker: String::new(),
                     text_surface: Self::text_surface_name(reference.text_surface).to_string(),
                     protected_spans: vec![],
+                    context: None,
                     patch_ref: PatchRef {
                         asset_id: asset.relative_path.clone(),
                         write_mode: "recompile_bytecode".to_string(),

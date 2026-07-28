@@ -1424,6 +1424,46 @@ describe("ItotoriProjectRepository", () => {
     }
   });
 
+  it("imports more source-unit keys than one Postgres statement can bind", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
+      await repo.reset(localActor);
+      const project = projectFixture();
+      const prototype = project.bridge.units[0]!;
+      const unitCount = 65_536;
+      const units = Array.from({ length: unitCount }, (_, index) => {
+        const suffix = String(index).padStart(5, "0");
+        const sourceUnitKey = `large-import.scene.001.line.${suffix}`;
+        return {
+          ...prototype,
+          bridgeUnitId: `large-import-unit-${suffix}`,
+          sourceUnitKey,
+          occurrenceId: `large-import-occurrence-${suffix}`,
+          sourceHash: `large-import-source-hash-${suffix}`,
+          patchRef: { ...prototype.patchRef, sourceUnitKey },
+        };
+      });
+
+      const imported = await repo.importSourceBundle(
+        localActor,
+        projectFixture({
+          bridge: {
+            ...project.bridge,
+            bridgeId: "large-import-bridge",
+            sourceBundleHash: "large-import-hash",
+            units,
+          },
+        }),
+      );
+
+      expect(imported.unitCount).toBe(unitCount);
+      expect(imported.units).toMatchObject({ added: unitCount, updated: 0, removed: 0 });
+    } finally {
+      await context.close();
+    }
+  }, 180_000);
+
   it("rejects a reimport that reuses a source revision id with different content", async () => {
     // A same-project reimport may NOT reuse a source-revision id with different
     // content. The revision already belongs to this project (so the

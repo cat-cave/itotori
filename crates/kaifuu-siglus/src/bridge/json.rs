@@ -145,7 +145,7 @@ fn build_unit_json(
             "endByte": unit.literal_byte_offset.saturating_add(unit.literal_byte_len),
         },
     });
-    let context = context_json(namespace, scene_name, unit);
+    let context = context_json(namespace, scene_id, scene_name, unit);
     Ok(json!({
         "bridgeUnitId": deterministic_uuid7(namespace, &format!("unit-{}", unit.ordinal)),
         "surfaceId": deterministic_uuid7(namespace, &format!("surface-{}", unit.ordinal)),
@@ -171,8 +171,15 @@ fn build_unit_json(
     }))
 }
 
-fn context_json(namespace: &str, scene_name: &str, unit: &ProtoUnit) -> Value {
-    let route = json!({ "sceneKey": scene_key(scene_name), "position": format!("command-{}", unit.command_offset) });
+fn context_json(namespace: &str, scene_id: u32, scene_name: &str, unit: &ProtoUnit) -> Value {
+    // `scene_id` comes from the Scene.pck SceneList directory, not the bridge
+    // walk position or a packed display name. Utsushi's structure exporter
+    // independently emits this exact declared coordinate for the decoded scene.
+    let route = json!({
+        "sceneId": format!("siglus:scene-{scene_id:04}"),
+        "sceneKey": scene_key(scene_name),
+        "position": format!("command-{}", unit.command_offset),
+    });
     if let Some(choice) = &unit.choice {
         let mut select_site = json!({ "systemFunctionId": GLOBAL_SELBTN_SYSTEM_FUNCTION_ID, "byteOffset": choice.select_offset });
         if let Some(target) = choice.branch_target_offset {
