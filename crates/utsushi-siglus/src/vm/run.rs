@@ -1,5 +1,13 @@
 use super::*;
 
+/// Run the VM text-trace smoke for `fixture` and produce the E1 runtime-evidence
+/// claim.
+///
+/// Reject-before-claim: a [`VmKeyPosture::RequiredUnresolved`] posture returns
+/// `Err(`[`VmError::RequiredKeyUnresolved`]`)` **before** the VM runs and before
+/// any [`VmTraceEvidence`] is constructed. On an admitted posture the raw key
+/// (for the keyed case) is resolved into the module-private
+/// zeroize-on-drop holder, used to descramble in-process, and never serialized.
 pub fn run_vm_trace_smoke(fixture: &SiglusVmFixture) -> Result<VmTraceEvidence, VmError> {
     let profile_id = fixture.profile_id.as_str();
     let ops = canonical_trace_program();

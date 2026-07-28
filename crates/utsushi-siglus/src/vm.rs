@@ -318,15 +318,6 @@ impl TextSurfaceSink for CollectingTextSink {
     }
 }
 
-/// Run the VM text-trace smoke for `fixture` and produce the E1 runtime-evidence
-/// claim.
-///
-/// Reject-before-claim: a [`VmKeyPosture::RequiredUnresolved`] posture returns
-/// `Err(`[`VmError::RequiredKeyUnresolved`]`)` **before** the VM runs and before
-/// any [`VmTraceEvidence`] is constructed. On an admitted posture the raw key
-/// (for the keyed case) is resolved into the module-private
-/// zeroize-on-drop holder, used to descramble in-process, and never serialized.
-
 // --- Canonical fixtures (the committed VM smoke fixtures) --------------------
 
 /// A local secret-ref used by the keyed fixture. `expect` is safe: the literal is
