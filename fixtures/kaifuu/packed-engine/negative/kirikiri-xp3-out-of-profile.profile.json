@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "profileId": "packed/kirikiri_xp3/negative/out_of_profile",
   "fixtureId": "kirikiri-xp3-out-of-profile",
-  "sourceNodeId": "capability_kaifuu_103",
+  "sourceNodeId": "KAIFUU-103",
   "engineFamily": "kirikiri_xp3",
   "container": "siglus_pck",
   "crypto": "null_key",

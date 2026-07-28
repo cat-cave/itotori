@@ -1,4 +1,4 @@
-// the relevant capability records metadata derived from a licensed, read-only KiriKiri XP3
+// KAIFUU-204 records metadata derived from a licensed, read-only KiriKiri XP3
 // archive. No archive member bytes, member names, or scenario text are written
 // to the repository. An operator can regenerate the recorded metadata with
 // `--archive <path>`; the ordinary `--check` path uses the reviewed capture so
@@ -350,7 +350,7 @@ function deriveArchiveFacts(archivePath) {
 function readKaifuu203TagInventory() {
   const manifest = JSON.parse(readFileSync(kaifuu203ManifestPath, "utf8"));
   if (!Array.isArray(manifest.tagInventory)) {
-    throw new Error("capability_kaifuu_203 manifest has no tagInventory");
+    throw new Error("KAIFUU-203 manifest has no tagInventory");
   }
   return [...new Set(manifest.tagInventory)].sort();
 }

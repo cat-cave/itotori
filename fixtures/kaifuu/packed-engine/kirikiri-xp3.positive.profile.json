@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "profileId": "packed/kirikiri_xp3/positive",
   "fixtureId": "kirikiri-xp3.positive",
-  "sourceNodeId": "capability_kaifuu_103",
+  "sourceNodeId": "KAIFUU-103",
   "engineFamily": "kirikiri_xp3",
   "container": "xp3",
   "crypto": "null_key",

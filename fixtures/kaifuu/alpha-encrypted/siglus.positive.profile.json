@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "profileId": "packed/siglus/positive",
   "fixtureId": "siglus.positive",
-  "sourceNodeId": "capability_kaifuu_103",
+  "sourceNodeId": "KAIFUU-103",
   "engineFamily": "siglus",
   "container": "siglus_pck",
   "crypto": "fixed_key",

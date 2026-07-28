@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "manifestId": "kirikiri-xp3-patch-back-manifest",
-  "sourceNodeId": "capability_kaifuu_101",
+  "sourceNodeId": "KAIFUU-101",
   "replacements": [
     {
       "memberId": "scenario/intro.ks",

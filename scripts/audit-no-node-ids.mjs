@@ -10,9 +10,10 @@
 // exemptions below; every other tracked text artifact must be free of node ids.
 //
 // Scope: every tracked text file, regardless of extension. This includes source,
-// documentation, configuration, workflows, manifests, fixtures, and scripts.
-// The only exclusions are `roadmap/`, a qd-generated planning-ledger export, and
-// `packages/itotori-db/migrations/`, applied checksum-locked migration history.
+// documentation, configuration, workflows, manifests, and scripts. The generated,
+// content-addressed artifacts under `fixtures/`, the qd-generated `roadmap/`
+// planning-ledger export, and `packages/itotori-db/migrations/` applied
+// checksum-locked migration history are scoped exemptions below.
 // Binary files are scanned too: node-id tokens are ASCII, so a byte decode can
 // find them without a file-type blind spot.
 //
@@ -26,7 +27,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
 
-const EXCLUDE_PATTERNS = ["roadmap/", "packages/itotori-db/migrations/"];
+const EXCLUDE_ROOTS = ["fixtures/", "roadmap/", "packages/itotori-db/migrations/"];
 
 const NODE_ID_PATTERNS = [
   // Deliberately no word boundaries: `_`, letters, and digits can surround a
@@ -40,7 +41,7 @@ const NODE_ID_PATTERNS = [
 ];
 
 export function isExcludedPath(path) {
-  return EXCLUDE_PATTERNS.some((pattern) => path.includes(pattern));
+  return EXCLUDE_ROOTS.some((root) => path.startsWith(root));
 }
 
 export function shouldScan(path) {
@@ -114,8 +115,9 @@ function main() {
       ? scanFiles(null, options.files)
       : scanFiles(options.root, listScanFiles(options.root));
   const scope =
-    "Scope: all tracked files (including binary files); exempt only generated roadmap/ and " +
-    "applied packages/itotori-db/migrations/. Cannot see untracked or ignored files.\n";
+    "Scope: all tracked files (including binary files); exempt only generated, content-addressed " +
+    "fixtures/, generated roadmap/, and applied packages/itotori-db/migrations/. Cannot see " +
+    "untracked or ignored files.\n";
   if (result.violations.length === 0) {
     process.stdout.write(
       `node-id guard: passed. 0 references across ${result.scanned} scanned files.\n${scope}`,

@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "profileId": "packed/_template",
   "fixtureId": "alpha.readiness.template",
-  "sourceNodeId": "capability_kaifuu_056",
+  "sourceNodeId": "KAIFUU-056",
   "prerequisiteProof": "packed_engine_readiness.EngineProfileSpec",
   "engineFamily": "bgi",
   "capabilities": {

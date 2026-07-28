@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "profileId": "packed/siglus/negative/unsupported_codec",
   "fixtureId": "siglus-unsupported-codec",
-  "sourceNodeId": "capability_kaifuu_103",
+  "sourceNodeId": "KAIFUU-103",
   "engineFamily": "siglus",
   "container": "siglus_pck",
   "crypto": "fixed_key",

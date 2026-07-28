@@ -1,5 +1,5 @@
 {
-  "_doc": "capability_itotori_038 fixture repair loop — replayable trigger set for the end-to-end repair audit trail. On-disk so downstream nodes (e.g. capability_itotori_222's repair stage) can replay the exact QA-finding and protected-span-violation trigger set without re-instantiating RepairJobService. Consumed by apps/itotori/test/repair-job-service.test.ts.",
+  "_doc": "ITOTORI-038 fixture repair loop — replayable trigger set for the end-to-end repair audit trail. On-disk so downstream nodes (e.g. ITOTORI-222's repair stage) can replay the exact QA-finding and protected-span-violation trigger set without re-instantiating RepairJobService. Consumed by apps/itotori/test/repair-job-service.test.ts.",
   "bridgeUnits": {
     "A": "019ed079-0000-7000-8000-00000000aa01",
     "B": "019ed079-0000-7000-8000-00000000aa02",

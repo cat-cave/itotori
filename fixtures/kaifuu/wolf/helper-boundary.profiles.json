@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "boundarySetId": "kaifuu-wolf-helper-boundary-fixtures",
-  "sourceNodeId": "capability_kaifuu_121",
+  "sourceNodeId": "KAIFUU-121",
   "engineFamily": "wolf",
   "profiles": [
     {

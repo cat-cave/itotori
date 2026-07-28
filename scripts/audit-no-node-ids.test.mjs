@@ -65,8 +65,9 @@ test("catches node ids embedded in snake_case, camelCase, and digit identifiers"
   );
 });
 
-test("scope excludes only generated ledger and immutable migration paths", () => {
+test("scope exempts only generated artifacts, ledger, and immutable migration paths", () => {
   assert.equal(isExcludedPath("crates/x/tests/fixtures/seed.rs"), false);
+  assert.equal(isExcludedPath("fixtures/public/kaifuu-kag-synthetic-corpus/01-intro.ks"), true);
   assert.equal(isExcludedPath("packages/itotori-db/migrations/0035_ledger.sql"), true);
   assert.equal(isExcludedPath("roadmap/spec-dag.json"), true);
   assert.equal(isExcludedPath("apps/itotori/src/llm/dispatch.ts"), false);
@@ -74,6 +75,7 @@ test("scope excludes only generated ledger and immutable migration paths", () =>
   assert.equal(shouldScan("crates/foo/src/lib.rs"), true);
   assert.equal(shouldScan(".github/workflows/check.yml"), true);
   assert.equal(shouldScan("docs/research/note.md"), true);
+  assert.equal(shouldScan("fixtures/public/kaifuu-kag-synthetic-corpus/01-intro.ks"), false);
   assert.equal(shouldScan("packages/itotori-db/src/repositories/x.ts"), true);
   assert.equal(shouldScan("packages/itotori-db/migrations/0035_ledger.sql"), false);
 });

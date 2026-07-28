@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "capabilityId": "kaifuu-siglus-knownkey-smoke",
-  "sourceNodeId": "capability_kaifuu_070",
+  "sourceNodeId": "KAIFUU-070",
   "engineFamily": "siglus",
   "profile": {
     "profileId": "siglus-knownkey-smoke-fixture",

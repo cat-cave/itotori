@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "readinessSetId": "kaifuu-bgi-readiness-fixtures",
-  "sourceNodeId": "capability_kaifuu_041",
+  "sourceNodeId": "KAIFUU-041",
   "engineFamily": "bgi",
   "cases": [
     {
