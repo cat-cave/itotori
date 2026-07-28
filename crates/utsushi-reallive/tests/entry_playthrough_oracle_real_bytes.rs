@@ -224,7 +224,7 @@ fn entry_playthrough_emits_an_ordered_subset_of_static_text_bytes() {
 
 #[test]
 #[ignore = "requires ITOTORI_CORPUS_ROOT with the optional second real corpus"]
-fn hydrated_primary_pointer_press_then_release_resolves_the_entry_wait() {
+fn real_entry_gate_chain_stops_at_unhydrated_pointer_geometry() {
     let Some(corpus) = real_corpus::corpus_2() else {
         eprintln!("SKIP pointer entry oracle: reallive/2/plain is unavailable.");
         return;
@@ -233,7 +233,7 @@ fn hydrated_primary_pointer_press_then_release_resolves_the_entry_wait() {
         .entry_scene()
         .expect("real corpus Gameexe.ini must declare #SEEN_START");
     let bytes = fs::read(&corpus.seen_txt).expect("read real Seen.txt");
-    let (engine, _) = staged_engine_and_bytes(&bytes);
+    let (engine, decompressed) = staged_engine_and_bytes(&bytes);
     let g00_dir = real_corpus::g00_dir_for(real_corpus::SECONDARY)
         .expect("full second-corpus install must provide a g00 directory");
     let assets: Arc<dyn AssetPackage> = Arc::new(real_g00_package::RealG00Package::new(g00_dir));
@@ -246,15 +246,110 @@ fn hydrated_primary_pointer_press_then_release_resolves_the_entry_wait() {
     let [press, release] = click.events();
     let after_press = session.send(press).expect("pointer press is consumed");
     let after_release = session.send(release).expect("pointer release is consumed");
+    let gate = decompressed
+        .iter()
+        .find(|scene| scene.scene_id == 50)
+        .and_then(|scene| decode_bytecode_stream(&scene.bytecode).ok())
+        .and_then(|instructions| {
+            instructions
+                .into_iter()
+                .find(|instruction| instruction.byte_offset() == 321)
+        });
+    assert!(matches!(
+        gate,
+        Some(BytecodeElement::Command {
+            module_type: 0,
+            module_id: 3,
+            opcode: 17,
+            arg_count: 0,
+            ..
+        })
+    ));
+    let mut update = after_release.clone();
+    let mut advance_gates = 0usize;
+    let mut pointer_gates = 1usize;
+    let mut choices = 0usize;
+    let mut dialogue = Vec::new();
+    let mut blocker = None;
+    for _ in 0..2_000 {
+        update = match update.state.waiting_for {
+            Some(utsushi_reallive::LiveSessionWait::Advance) => {
+                advance_gates += 1;
+                session.send(utsushi_core::input::InputEvent::advance())
+            }
+            Some(utsushi_reallive::LiveSessionWait::Pointer) => {
+                pointer_gates += 1;
+                let click = match session.hydrated_primary_click() {
+                    Ok(click) => click,
+                    Err(error) => {
+                        blocker = Some((update.state.clone(), error));
+                        break;
+                    }
+                };
+                let [press, release] = click.events();
+                session.send(press).expect("pointer press is observed");
+                session.send(release)
+            }
+            Some(utsushi_reallive::LiveSessionWait::Choice { choice_count: 2 }) => {
+                choices += 1;
+                session.send(utsushi_core::input::InputEvent::choice(0))
+            }
+            state => panic!("unexpected entry-path gate: {state:?}"),
+        }
+        .expect("the actual requested event resumes the retained VM");
+        dialogue.extend(
+            update
+                .emitted_lines
+                .iter()
+                .filter(|line| {
+                    !line
+                        .text_surface
+                        .as_deref()
+                        .is_some_and(|kind| kind.starts_with("choice:"))
+                })
+                .cloned(),
+        );
+        if !dialogue.is_empty() {
+            break;
+        }
+    }
+    let static_text = decompressed.iter().flat_map(|scene| {
+        decode_bytecode_stream(&scene.bytecode)
+            .expect("decode source scene bytecode")
+            .into_iter()
+            .filter_map(|element| match element {
+                BytecodeElement::Textout {
+                    byte_offset,
+                    raw_bytes,
+                    ..
+                } => Some((byte_offset as u32, raw_bytes)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    });
+    let overlap = dialogue
+        .iter()
+        .filter(|line| {
+            line.byte_offset_in_scene
+                .zip(line.body_shift_jis.as_ref())
+                .is_some_and(|(offset, bytes)| {
+                    static_text
+                        .clone()
+                        .any(|source| source == (offset, bytes.clone()))
+                })
+        })
+        .count();
 
     eprintln!(
-        "pointer entry oracle: initial={:?} rectangle={:?} pixel={:?} after_press={:?} after_release={:?} emitted_after_release={}",
+        "pointer entry oracle: initial={:?} rectangle={:?} pixel={:?} after_press={:?} after_release={:?} final={:?} advance_gates={advance_gates} pointer_gates={pointer_gates} choices={choices} executed_dialogue={} overlap={overlap}/{} blocker={blocker:?}",
         initial.state,
         click.rectangle,
         click.pixel,
         after_press.state,
         after_release.state,
-        after_release.emitted_lines.len(),
+        update.state,
+        dialogue.len(),
+        dialogue.len(),
     );
     assert!(
         click.pixel.0 > click.rectangle.x
@@ -270,6 +365,42 @@ fn hydrated_primary_pointer_press_then_release_resolves_the_entry_wait() {
     assert!(
         after_release.state.event_index > after_press.state.event_index,
         "the release must execute the script's state-2 path"
+    );
+    assert_eq!(
+        overlap,
+        dialogue.len(),
+        "executed dialogue must match static bytes"
+    );
+    assert!(
+        dialogue.is_empty(),
+        "this entry chain must not claim dialogue before its blocker"
+    );
+    assert_eq!(advance_gates, 73, "the verified pause chain changed shape");
+    assert_eq!(
+        pointer_gates, 2,
+        "the second polled pointer gate was not reached"
+    );
+    assert!(
+        matches!(
+            blocker,
+            Some((
+                utsushi_reallive::LiveSessionState {
+                    scene: 8502,
+                    pc: 1236,
+                    waiting_for: Some(utsushi_reallive::LiveSessionWait::Pointer),
+                    ..
+                },
+                utsushi_reallive::HydratedPrimaryClickError::RectangleNotHydrated {
+                    rectangle: utsushi_reallive::HitRect {
+                        x: 1024,
+                        y: 333,
+                        width: 220,
+                        height: 47,
+                    },
+                }
+            ))
+        ),
+        "the policy must stop rather than invent a pointer target"
     );
 }
 

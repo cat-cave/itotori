@@ -30,6 +30,7 @@ const USAGE: &str = "usage: utsushi live-player --seen <PATH> --scene <N> --game
 #[serde(tag = "type", rename_all = "snake_case")]
 enum BrowserInput {
     Advance,
+    Pointer,
     Choice { index: u16 },
     Close,
 }
@@ -100,6 +101,11 @@ pub(crate) fn run_live_player_command(args: &[String]) -> Result<(), Box<dyn Err
         let event = match input {
             BrowserInput::Advance => InputEvent::advance(),
             BrowserInput::Choice { index } => InputEvent::choice(index),
+            BrowserInput::Pointer => {
+                let [press, release] = session.hydrated_primary_click()?.events();
+                session.send(press)?;
+                release
+            }
             BrowserInput::Close => unreachable!("handled above"),
         };
         let update = session.send(event)?;
@@ -290,6 +296,7 @@ fn response(
     };
     let wait = match state.waiting_for {
         Some(utsushi_reallive::LiveSessionWait::Advance) => json!({"type": "advance"}),
+        Some(utsushi_reallive::LiveSessionWait::Pointer) => json!({"type": "pointer"}),
         Some(utsushi_reallive::LiveSessionWait::Choice { choice_count }) => {
             json!({"type": "choice", "choiceCount": choice_count, "options": options})
         }

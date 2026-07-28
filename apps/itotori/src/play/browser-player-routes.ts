@@ -111,8 +111,9 @@ function parseBrowserPlayerInput(value: unknown): BrowserPlayerInput {
   if (!isObject(value) || typeof value.type !== "string")
     throw new BrowserPlayerSessionError("player input requires a type");
   if (value.type === "advance") return { type: "advance" };
+  if (value.type === "pointer") return { type: "pointer" };
   if (value.type === "choice") return { type: "choice", index: requiredNumber(value, "index") };
-  throw new BrowserPlayerSessionError("player input type must be advance or choice");
+  throw new BrowserPlayerSessionError("player input type must be advance, pointer, or choice");
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

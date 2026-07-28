@@ -36,7 +36,12 @@ pub struct LiveSessionState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LiveSessionWait {
     Advance,
-    Choice { choice_count: usize },
+    /// A script-owned input polling loop. The caller must send the event the
+    /// loop samples; this is not interchangeable with a message pause.
+    Pointer,
+    Choice {
+        choice_count: usize,
+    },
 }
 
 /// The REAL options behind the current choice gate, read off the parked
@@ -190,7 +195,7 @@ impl LiveSession {
             .or_else(|| {
                 self.event_loop
                     .is_parked()
-                    .then_some(LiveSessionWait::Advance)
+                    .then_some(LiveSessionWait::Pointer)
             });
         LiveSessionState {
             scene: self.vm.scene(),
