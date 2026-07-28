@@ -5,6 +5,13 @@ use std::collections::{BTreeMap, HashMap};
 mod scene_vm_calls;
 mod scene_vm_support;
 pub(crate) use scene_vm_support::point_offsets;
+
+/// Sena initializes `user_mem` with 0x10000 i32 cells, matching the original
+/// engine (`pal-vm/src/runtime.rs:32`, `:957`).
+const USER_MEM_LEN: usize = 0x10000;
+/// Sena allocates the temporary operand bank at the same original-engine size
+/// as `user_mem` (`pal-vm/src/runtime.rs:32`, `:959`).
+const TEMP_MEM_LEN: usize = 0x10000;
 #[derive(Default)]
 struct Frame {
     locals: BTreeMap<u32, i32>,
@@ -19,6 +26,20 @@ pub(crate) struct Vm<'a> {
     frames: Vec<Frame>,
     globals: BTreeMap<u32, i32>,
     shared: BTreeMap<u32, i32>,
+    /// Operand tag `0x1`: `user_mem[vars[lo]]`.
+    ///
+    /// This is a fixed, zero-initialized bank. Unlike Sena's permissive
+    /// fallback, the compact runtime makes an invalid script index a visible
+    /// stop so an unproven script path cannot silently change behavior.
+    user_mem: Vec<i32>,
+    /// Writable `MEM.DAT` i32-word shadow for operand tag `0x6`.
+    mem_dat: Option<Vec<i32>>,
+    /// Operand tag `0x5`: temporary memory addressed through a local slot.
+    temp_mem: Vec<i32>,
+    argument_base: i32,
+    /// Category-18 dynamic strings use a rotating 16-slot native buffer.
+    dynamic_strings: Vec<String>,
+    dynamic_string_cursor: usize,
     returns: Vec<usize>,
     stack: Vec<i32>,
     ip: usize,
@@ -54,6 +75,7 @@ impl<'a> Vm<'a> {
         commands: &'a [RawCommand],
         labels: &'a [usize],
         texts: &'a HashMap<u32, String>,
+        mem_dat: Option<&[u8]>,
     ) -> Self {
         let by_offset = scan
             .instructions
@@ -74,6 +96,17 @@ impl<'a> Vm<'a> {
             frames: vec![Frame::default()],
             globals: BTreeMap::new(),
             shared: BTreeMap::new(),
+            user_mem: vec![0; USER_MEM_LEN],
+            mem_dat: mem_dat.map(|bytes| {
+                bytes
+                    .chunks_exact(4)
+                    .map(|word| i32::from_le_bytes(word.try_into().expect("four-byte word")))
+                    .collect()
+            }),
+            temp_mem: vec![0; TEMP_MEM_LEN],
+            argument_base: 0,
+            dynamic_strings: vec![String::new(); 16],
+            dynamic_string_cursor: 0,
             returns: Vec::new(),
             stack: Vec::new(),
             ip: 0,
@@ -194,9 +227,13 @@ impl<'a> Vm<'a> {
         let Some(left) = self.value(destination, instruction.offset) else {
             return false;
         };
-        let right = operands
-            .get(1)
-            .and_then(|operand| self.value(*operand, instruction.offset));
+        let right = match operands.get(1) {
+            Some(operand) => match self.value(*operand, instruction.offset) {
+                Some(value) => Some(value),
+                None => return false,
+            },
+            None => None,
+        };
         let result = match instruction.opcode.id() {
             0x01 => right,
             0x02 => right.map(|r| left.wrapping_add(r)),
@@ -341,6 +378,32 @@ impl<'a> Vm<'a> {
                 let old_state = self.debug_window_state;
                 self.debug_window_state = new_state;
                 scene_vm_calls::write_call_result(self, instruction, old_state)
+            }
+            // `system_task_value` consumes no VM argument. The native value is
+            // launcher-owned; the reference runtime's active-latch result is
+            // one, so that is the only value modeled here.
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x0012, 0x000f) =>
+            {
+                scene_vm_calls::write_call_result(self, instruction, 1)
+            }
+            // `string_alloc` consumes its ignored source value, clears the
+            // selected native dynamic-string buffer, then advances its fixed
+            // 16-slot cursor and returns the tagged handle.
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x0012, 0x0006) =>
+            {
+                let Some(_ignored) = self.stack.pop() else {
+                    return self.bad("string_alloc_stack_underflow", instruction.offset);
+                };
+                let slot = self.dynamic_string_cursor;
+                self.dynamic_strings[slot].clear();
+                self.dynamic_string_cursor = (slot + 1) % self.dynamic_strings.len();
+                scene_vm_calls::write_call_result(
+                    self,
+                    instruction,
+                    (0x1000_0000_u32 | slot as u32) as i32,
+                )
             }
             // Sena's category-9 handler 52 consumes no VM arguments, cancels
             // its native scene-skip latch, and reports success to the extcall
@@ -564,7 +627,32 @@ impl<'a> Vm<'a> {
                 .get((operand.raw & 0x0fff_ffff).saturating_sub(1) as usize)
                 .copied()
                 .or(Some(0)),
+            OperandTag(0x1) => {
+                let index = self.user_memory_index(operand, offset)?;
+                Some(self.user_mem[index])
+            }
             OperandTag(0x2) => Some(*self.shared.get(&(operand.raw & 0x0fff_ffff)).unwrap_or(&0)),
+            OperandTag(0x5) => {
+                let index = self.temp_memory_index(operand, offset)?;
+                let Some(value) = self.temp_mem.get(index).copied() else {
+                    self.stop("temp_mem_index_out_of_range", offset);
+                    return None;
+                };
+                Some(value)
+            }
+            OperandTag(0x6) => {
+                let index = self.mem_dat_index(operand, offset)?;
+                let Some(value) = self
+                    .mem_dat
+                    .as_ref()
+                    .and_then(|mem_dat| mem_dat.get(index))
+                    .copied()
+                else {
+                    self.stop("mem_dat_index_out_of_range", offset);
+                    return None;
+                };
+                Some(value)
+            }
             OperandTag(0x9) => Some(*self.globals.get(&(operand.raw & 0x0fff_ffff)).unwrap_or(&0)),
             OperandTag::SENTINEL if operand.raw == u32::MAX => Some(-1),
             tag => {
@@ -576,6 +664,12 @@ impl<'a> Vm<'a> {
 
     fn store(&mut self, operand: Operand, value: i32, offset: usize) -> bool {
         match operand.tag() {
+            OperandTag(0x1) => {
+                let Some(index) = self.user_memory_index(operand, offset) else {
+                    return false;
+                };
+                self.user_mem[index] = value;
+            }
             OperandTag::TYPED => {
                 self.frames
                     .last_mut()
@@ -586,12 +680,102 @@ impl<'a> Vm<'a> {
             OperandTag(0x2) => {
                 self.shared.insert(operand.raw & 0x0fff_ffff, value);
             }
+            OperandTag(0x5) => {
+                let Some(index) = self.temp_memory_index(operand, offset) else {
+                    return false;
+                };
+                if index >= self.temp_mem.len() {
+                    self.temp_mem.resize(index + 1, 0);
+                }
+                self.temp_mem[index] = value;
+            }
+            OperandTag(0x6) => {
+                let Some(index) = self.mem_dat_index(operand, offset) else {
+                    return false;
+                };
+                let Some(mem_dat) = self.mem_dat.as_mut() else {
+                    return self.bad("mem_dat_required", offset);
+                };
+                if index >= mem_dat.len() {
+                    mem_dat.resize(index + 1, 0);
+                }
+                mem_dat[index] = value;
+            }
             OperandTag(0x9) => {
                 self.globals.insert(operand.raw & 0x0fff_ffff, value);
             }
             _ => return self.bad("nonlocal_destination", offset),
         }
         true
+    }
+
+    /// Resolves the tag-1 indirection and rejects a negative or out-of-bank
+    /// value. `lo` is a u16 source variable index in the reference decoder,
+    /// and the existing compact local bank supplies the same default-zero
+    /// value for an unset slot.
+    fn user_memory_index(&mut self, operand: Operand, offset: usize) -> Option<usize> {
+        let source_slot = operand.raw & 0xffff;
+        let signed_index = self
+            .frames
+            .last()
+            .and_then(|frame| frame.locals.get(&source_slot).copied())
+            .unwrap_or(0);
+        let Ok(index) = usize::try_from(signed_index) else {
+            self.stop("user_mem_index_out_of_range", offset);
+            return None;
+        };
+        if index >= self.user_mem.len() {
+            self.stop("user_mem_index_out_of_range", offset);
+            return None;
+        }
+        Some(index)
+    }
+
+    /// Tag 6 targets the writable `MEM.DAT` shadow at word
+    /// `bank + vars[lo] + 4`; the four-word offset skips its 16-byte header.
+    /// This is the reference's recovered addressing formula
+    /// (`pal-vm/src/runtime.rs:3053-3066`).
+    fn mem_dat_index(&mut self, operand: Operand, offset: usize) -> Option<usize> {
+        if self.mem_dat.is_none() {
+            self.stop("mem_dat_required", offset);
+            return None;
+        }
+        let source_slot = operand.raw & 0xffff;
+        let variable = self
+            .frames
+            .last()
+            .and_then(|frame| frame.locals.get(&source_slot).copied())
+            .unwrap_or(0);
+        let bank = ((operand.raw >> 16) & 0x0fff) as i32;
+        let index = bank.wrapping_add(variable).wrapping_add(4);
+        let Ok(index) = usize::try_from(index) else {
+            self.stop("mem_dat_index_out_of_range", offset);
+            return None;
+        };
+        Some(index)
+    }
+
+    /// Tag 5 targets `temp_mem[(bank != 0 ? bank + argument_base : 0) +
+    /// vars[lo]]`. The reference permits an in-range write to extend this
+    /// bank; an invalid negative/read-beyond-end path remains visible here.
+    fn temp_memory_index(&mut self, operand: Operand, offset: usize) -> Option<usize> {
+        let source_slot = operand.raw & 0xffff;
+        let variable = self
+            .frames
+            .last()
+            .and_then(|frame| frame.locals.get(&source_slot).copied())
+            .unwrap_or(0);
+        let bank = ((operand.raw >> 16) & 0x0fff) as i32;
+        let base = if bank == 0 {
+            0
+        } else {
+            bank.wrapping_add(self.argument_base)
+        };
+        let Ok(index) = usize::try_from(base.wrapping_add(variable)) else {
+            self.stop("temp_mem_index_out_of_range", offset);
+            return None;
+        };
+        Some(index)
     }
 
     fn label(&mut self, operand: Operand, offset: usize) -> Option<usize> {
