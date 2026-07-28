@@ -274,6 +274,14 @@ describe("P1 agentic whole-scene localizer", () => {
     expect(call.spec.output.name).toBe("wiki-object");
     expect(call.spec.providerPolicy).toMatchObject({ zdr: true, allowFallbacks: true });
     expect(call.spec.providerPolicy).not.toHaveProperty("only");
+    expect(call.prompts[0]!.text).toContain(
+      "Return only one strict translation WikiObject JSON value.",
+    );
+    expect(call.prompts[0]!.text).toContain(
+      "schemaVersion, objectId, version, lang, subject, scope, claims, media, dependencies, provisional, kind, body, and provenance",
+    );
+    expect(call.prompts[0]!.text).toContain("Do not return an analysis or draft wrapper");
+    expect(call.prompts[0]!.text).toContain("never null");
   });
 
   it("reads exact scene/bible context and emits cited, provisional translation WikiObjects", async () => {

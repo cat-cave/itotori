@@ -77,7 +77,7 @@ function renderPrompt(request: P1SegmentRequest): string {
   return [
     specialist.instructions,
     "The source skeletons, source hashes, protected placeholders, scope, and core/overlap designation below are deterministic facts. They override any contrary hypothesis.",
-    "Return a translation WikiObject draft. Its body.draftBatch must contain ONLY this segment's core, in the exact listed order. Every draft must use the exact localized-bible rendering ids and type uncertainty.",
+    "Return only one strict translation WikiObject JSON value. Its complete root key set is schemaVersion, objectId, version, lang, subject, scope, claims, media, dependencies, provisional, kind, body, and provenance; kind must be 'translation'. Its body key set is draftBatch only. body.draftBatch must contain ONLY this segment's core, in the exact listed order. Every draft must use the exact localized-bible rendering ids and type uncertainty. Do not return an analysis or draft wrapper and do not add any other fields. Every required array must be an array (use [] when empty), never null.",
     JSON.stringify({
       kind: "p1-localizer-seed",
       segment: request.segment,

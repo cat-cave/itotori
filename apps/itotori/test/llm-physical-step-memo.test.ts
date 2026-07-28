@@ -1,7 +1,7 @@
 import { LlmMemoConflictError } from "@itotori/db";
 import { describe, expect, it } from "vitest";
 import { PhysicalStepMemoSchema } from "../src/contracts/index.js";
-import { dispatch } from "../src/llm/dispatch.js";
+import { dispatch, hasRequiredUsage, terminalOutputFromReceipt } from "../src/llm/dispatch.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import { reviewVerdictExample } from "./contract-fixtures-core.js";
 import {
@@ -11,6 +11,7 @@ import {
   physicalCallSpec,
   rawStructuredProviderResponse,
   structuredProviderResponse,
+  terminalChunkUsageProviderResponse,
   toolLoopSpec,
   toolProviderResponse,
 } from "./llm-step-test-support.js";
@@ -18,6 +19,52 @@ import {
 const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
 
 postgresDescribe("physical model step durability", () => {
+  it("requires usage from middleware or the validated durable receipt", () => {
+    const usage = {
+      promptTokens: 11,
+      completionTokens: 7,
+      reasoningTokens: 0,
+      cachedTokens: 0,
+    };
+
+    expect(hasRequiredUsage(false, usage)).toBe(true);
+    expect(hasRequiredUsage(false, null)).toBe(false);
+  });
+
+  it("projects only a terminal output from a durable receipt", () => {
+    const output = terminalOutputFromReceipt({
+      outcome: { kind: "terminal", output: reviewVerdictExample },
+    } as Parameters<typeof terminalOutputFromReceipt>[0]);
+    expect(output).toEqual(reviewVerdictExample);
+    expect(
+      terminalOutputFromReceipt({
+        outcome: { kind: "invalid", failureKind: "invalid-json", defects: [] },
+      } as Parameters<typeof terminalOutputFromReceipt>[0]),
+    ).toBeNull();
+  });
+
+  it("accepts terminal-chunk usage retained by the durable memo", async () => {
+    const context = await isolatedMigratedContext();
+    const cipher = new TestMemoCipher();
+    const prompt = "Return a verdict with usage on its terminal chunk.";
+    try {
+      const harness = dispatchHarness({
+        pool: context.pool,
+        cipher,
+        prompt,
+        responses: [terminalChunkUsageProviderResponse(reviewVerdictExample)],
+      });
+
+      await expect(dispatch(physicalCallSpec(prompt), harness.runtime)).resolves.toMatchObject({
+        status: "success",
+        usage: { promptTokens: 11, completionTokens: 7 },
+      });
+      expect(harness.transportCalls()).toBe(1);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("memoizes every model step and response event in a tool loop independently", async () => {
     const context = await isolatedMigratedContext();
     const cipher = new TestMemoCipher();
