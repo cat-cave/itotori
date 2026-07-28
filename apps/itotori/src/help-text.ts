@@ -40,7 +40,9 @@ export function buildHelpText(allCommands = false): string {
   lines.push(
     "                          [--context-scope <scope>] [--output-scope <scope>] [--whole-scene-max-units <N>] [--output <JSON>].",
   );
-  lines.push("                          Persists final accepted outputs; its redacted summary is not patch input.");
+  lines.push(
+    "                          Persists final accepted outputs; its redacted summary is not patch input.",
+  );
   lines.push(
     "  localize-portfolio      Run independent localization drivers from a JSON portfolio.",
   );
@@ -54,7 +56,9 @@ export function buildHelpText(allCommands = false): string {
   lines.push(
     "                          --input <JSON> --source <RO game> --build-root <RW dir> --scope dialogue-only|dialogue+choices --output <receipt JSON>.",
   );
-  lines.push("                          --input is NativePatchbackInput, never localize run-summary.json.");
+  lines.push(
+    "                          --input is NativePatchbackInput, never localize run-summary.json.",
+  );
   lines.push("  validate                Validate a patched game (replay + render).");
   lines.push("");
 
