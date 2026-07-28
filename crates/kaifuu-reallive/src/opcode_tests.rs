@@ -1,4 +1,5 @@
 use super::*;
+use super::{command::*, expression::*};
 
 #[test]
 fn empty_input_surfaces_truncated_bytecode_not_silent_ok() {
