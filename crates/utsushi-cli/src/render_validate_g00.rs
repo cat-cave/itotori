@@ -1,7 +1,7 @@
 //! On-disk G00 asset package used by the RealLive render validator.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use utsushi_core::substrate::{
     AssetBytes, AssetId, AssetKind, AssetMetadata, AssetPackage, AssetSize, CaseRule,
@@ -27,22 +27,30 @@ impl OnDiskG00Package {
     fn host_path(&self, id: &AssetId) -> PathBuf {
         let logical = id.path();
         let stem = logical.strip_prefix("g00/").unwrap_or(logical);
-        let direct = self.g00_dir.join(stem);
-        if direct.exists() {
-            return direct;
-        }
-        fs::read_dir(&self.g00_dir)
-            .ok()
-            .and_then(|entries| {
-                entries.filter_map(Result::ok).find_map(|entry| {
-                    let name = entry.file_name();
-                    name.to_str()
-                        .is_some_and(|name| name.eq_ignore_ascii_case(stem))
-                        .then_some(entry.path())
-                })
-            })
-            .unwrap_or(direct)
+        g00_path(&self.g00_dir, stem)
     }
+}
+
+/// Resolve one authored G00 basename under Siglus/RealLive's ASCII-case-
+/// insensitive filename rule. A miss remains the requested direct path so the
+/// caller emits its normal missing-asset diagnostic rather than substituting.
+pub(crate) fn g00_path(g00_dir: &Path, stem: &str) -> PathBuf {
+    let direct = g00_dir.join(stem);
+    if direct.exists() {
+        return direct;
+    }
+    fs::read_dir(g00_dir)
+        .ok()
+        .and_then(|entries| {
+            entries.filter_map(Result::ok).find_map(|entry| {
+                entry
+                    .file_name()
+                    .to_str()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(stem))
+                    .then_some(entry.path())
+            })
+        })
+        .unwrap_or(direct)
 }
 
 impl AssetPackage for OnDiskG00Package {
@@ -91,5 +99,23 @@ impl AssetPackage for OnDiskG00Package {
 
     fn list(&self, _prefix: &AssetId) -> VfsResult<Vec<AssetId>> {
         Ok(Vec::new())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::g00_path;
+
+    #[test]
+    fn resolves_authored_g00_name_with_ascii_case_fold() {
+        let directory = tempfile::tempdir().expect("temporary G00 directory");
+        let actual = directory.path().join("BG01A01.g00");
+        std::fs::write(&actual, b"real G00 bytes").expect("write G00 fixture");
+
+        assert_eq!(
+            g00_path(directory.path(), "bg01a01.g00"),
+            actual,
+            "removing the case-folded lookup loses the authored asset and must not fall back to a fabricated layer"
+        );
     }
 }

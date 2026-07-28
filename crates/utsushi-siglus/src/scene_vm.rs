@@ -10,6 +10,7 @@ mod eval;
 mod execute;
 mod flow;
 mod model;
+mod pcmch;
 mod program;
 mod stage;
 mod state;
@@ -20,8 +21,8 @@ pub use execute::{
     execute_title_scene_with_stage_snapshots_observed,
 };
 pub use model::{
-    ChoicePolicy, ExecutionOutcome, ExecutionReport, Moment, SceneVm, StageSnapshot, VmError,
-    VmState,
+    ChoicePolicy, ExecutionOutcome, ExecutionReport, Moment, PcmChannelState, SceneVm,
+    StageSnapshot, VmError, VmState,
 };
 pub use program::{SceneProgram, SceneProgramError, TitleProgram, TitleProgramError};
 pub use stage::{StageGeometry, StageObject};

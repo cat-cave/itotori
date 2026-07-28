@@ -2,8 +2,9 @@
 
 use kaifuu_siglus::SiglusIncludedCommand;
 use utsushi_siglus::scene_vm::{
-    Moment, SceneProgram, TitleProgram, VmState, execute_scene, execute_scene_with_stage_objects,
-    execute_title_scene, execute_title_scene_with_stage_snapshots_observed,
+    Moment, SceneProgram, TitleProgram, VmError, VmState, execute_scene,
+    execute_scene_with_stage_objects, execute_title_scene,
+    execute_title_scene_with_stage_snapshots_observed,
 };
 
 #[test]
@@ -351,6 +352,61 @@ fn preserves_structured_system_assignment_for_a_later_branch() {
 }
 
 #[test]
+fn retains_form_44_pcmch_stop_state_before_reaching_authored_text() {
+    let mut code = Vec::new();
+    pcmch_path(&mut code, 0, 5); // PCMCH[0].STOP
+    push_int(&mut code, 240);
+    command(&mut code, 1, 0);
+    push_str(&mut code, 0);
+    text(&mut code);
+    code.push(0x16);
+
+    let program = SceneProgram::from_payload(44, &payload(&code, &[], &["after stop"]))
+        .expect("form-44 PCMCH payload compiles");
+    let mut state = VmState::default();
+    let report = execute_scene_with_stage_objects(&program, &mut state)
+        .expect("the implemented PCMCH stop command reaches the authored boundary");
+
+    assert_eq!(
+        state.pcm_channels.get(&0),
+        Some(&utsushi_siglus::scene_vm::PcmChannelState {
+            stopped: true,
+            stop_fade: Some(240),
+        }),
+        "deleting PCMCH stop state mutation must make this test fail rather than accepting a no-op"
+    );
+    assert_eq!(
+        report.moments,
+        vec![Moment::Text {
+            scene_id: 44,
+            offset: 76,
+            speaker: None,
+            text: "after stop".to_string(),
+        }]
+    );
+}
+
+#[test]
+fn non_stage_execution_keeps_form_44_as_a_terminal_diagnostic() {
+    let mut code = Vec::new();
+    pcmch_path(&mut code, 0, 5);
+    push_int(&mut code, 240);
+    command(&mut code, 1, 0);
+    push_str(&mut code, 0);
+    text(&mut code);
+    code.push(0x16);
+
+    let program = SceneProgram::from_payload(44, &payload(&code, &[], &["must not advance"]))
+        .expect("form-44 PCMCH payload compiles");
+    let error = execute_scene(&program, &mut VmState::default())
+        .expect_err("the non-stage scanner must stop rather than silently advancing PCMCH");
+    assert!(
+        matches!(error, VmError::UnsupportedElementPath { .. }),
+        "unexpected non-stage form-44 diagnostic: {error}"
+    );
+}
+
+#[test]
 fn stage_object_commands_and_properties_populate_slot_geometry_and_order() {
     let mut code = Vec::new();
     stage_alias_path(&mut code, 38, 4, 38);
@@ -540,6 +596,12 @@ fn assign(out: &mut Vec<u8>) {
 fn stage_path(out: &mut Vec<u8>, stage: i32, slot: i32, operation: i32) {
     elm(out);
     for value in [49, -1, stage, 2, -1, slot, operation] {
+        push_int(out, value);
+    }
+}
+fn pcmch_path(out: &mut Vec<u8>, channel: i32, operation: i32) {
+    elm(out);
+    for value in [44, -1, channel, operation] {
         push_int(out, value);
     }
 }

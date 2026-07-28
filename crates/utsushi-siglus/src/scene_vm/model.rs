@@ -39,7 +39,20 @@ pub struct VmState {
     /// Declared root-stage object-list lengths. Sparse slots stay sparse until
     /// an authored operation materialises one.
     pub stage_object_list_sizes: BTreeMap<i32, usize>,
+    /// PCM-channel state mutated by the authored `PCMCH[channel].STOP` command.
+    /// Audio output is outside this headless frame path, but the VM must retain
+    /// the command's state transition rather than silently skipping it.
+    pub pcm_channels: BTreeMap<i32, PcmChannelState>,
     pub(super) structured_system: BTreeMap<(u32, Vec<i32>), Value>,
+}
+
+/// Observable state for the PCM-channel command subset used by the live scene
+/// path. Further PCMCH operations remain explicit terminal diagnostics until
+/// their state effects are implemented.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PcmChannelState {
+    pub stopped: bool,
+    pub stop_fade: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,6 +1,7 @@
 //! Command, text, and selection dispatch.
 
 use super::model::{ChoicePolicy, Moment, SceneVm, Value, VmError};
+use super::pcmch;
 use super::stage;
 use super::state::owner;
 
@@ -14,6 +15,15 @@ impl SceneVm<'_> {
     ) -> Result<(), VmError> {
         let args = self.pop_n(offset, arg_count)?;
         let values = self.frame(offset)?;
+        if self.stage_objects_enabled {
+            if let Some(result) = pcmch::command(self.state, &values, &args, offset, self.scene_id)?
+            {
+                if ret_form != 0 {
+                    self.values.push(result);
+                }
+                return Ok(());
+            }
+        }
         if self.stage_objects_enabled
             && let Some(target) = stage::target(&values)
         {

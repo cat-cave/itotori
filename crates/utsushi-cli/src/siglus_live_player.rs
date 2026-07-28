@@ -345,7 +345,7 @@ fn has_renderable_stage(root: &Path, snapshot: &StageSnapshot) -> bool {
                 } else {
                     format!("{identity}.g00")
                 };
-                root.join("g00").join(file).is_file()
+                crate::render_validate_g00::g00_path(&root.join("g00"), &file).is_file()
             })
         })
 }
@@ -467,7 +467,7 @@ fn load_g00(
     } else {
         format!("{identity}.g00")
     };
-    let path = root.join("g00").join(name);
+    let path = crate::render_validate_g00::g00_path(&root.join("g00"), &name);
     let bytes = std::fs::read(&path).map_err(|error| format!("{}: {error}", path.display()))?;
     let image = decode_siglus_g00(&bytes).map_err(|error| error.to_string())?;
     cache.insert(identity.to_string(), image.clone());
