@@ -8,7 +8,16 @@ use utsushi_softpal::{SceneStep, SoftpalScene};
 
 const CORPORA: [&str; 2] = ["/scratch/corpus/softpal-1", "/scratch/corpus/softpal-2"];
 
-fn inputs(root: &Path) -> Option<(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>)> {
+struct Inputs {
+    archive: Vec<u8>,
+    csv_pac: Vec<u8>,
+    script: Vec<u8>,
+    textdat: Vec<u8>,
+    points: Vec<u8>,
+    mem_dat: Vec<u8>,
+}
+
+fn inputs(root: &Path) -> Option<Inputs> {
     let archive_bytes = fs::read(root.join("data.pac")).ok()?;
     let archive = PacArchive::parse(&archive_bytes).ok()?;
     let extract = |name| {
@@ -17,12 +26,19 @@ fn inputs(root: &Path) -> Option<(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>)> {
             .and_then(|entry| archive.extract(&archive_bytes, entry).ok())
             .map(ToOwned::to_owned)
     };
-    Some((
-        extract("SCRIPT.SRC")?,
-        extract("TEXT.DAT")?,
-        extract("POINT.DAT")?,
-        extract("MEM.DAT")?,
-    ))
+    let script = extract("SCRIPT.SRC")?;
+    let textdat = extract("TEXT.DAT")?;
+    let points = extract("POINT.DAT")?;
+    let mem_dat = extract("MEM.DAT")?;
+    let csv_pac = fs::read(root.join("csv.pac")).ok()?;
+    Some(Inputs {
+        archive: archive_bytes,
+        csv_pac,
+        script,
+        textdat,
+        points,
+        mem_dat,
+    })
 }
 
 fn dialogue_offsets(scene: &SoftpalScene) -> Vec<usize> {
@@ -37,10 +53,10 @@ fn dialogue_offsets(scene: &SoftpalScene) -> Vec<usize> {
 }
 
 #[test]
-fn executes_two_proven_native_state_transitions_before_the_next_visible_gap() {
+fn executes_pac_backed_file_setup_until_the_next_named_native_gap() {
     for (index, root) in CORPORA.iter().enumerate() {
         let root = PathBuf::from(root);
-        let Some((script, textdat, points, mem_dat)) = inputs(&root) else {
+        let Some(inputs) = inputs(&root) else {
             eprintln!(
                 "SKIP corpus {}: missing data.pac or VM inputs at {}",
                 index + 1,
@@ -48,18 +64,20 @@ fn executes_two_proven_native_state_transitions_before_the_next_visible_gap() {
             );
             continue;
         };
-        let first = SoftpalScene::execute_with_points_and_mem_dat(
-            &script,
-            &textdat,
-            Some(&points),
-            Some(&mem_dat),
+        let first = SoftpalScene::execute_with_points_mem_dat_and_pacs(
+            &inputs.script,
+            &inputs.textdat,
+            Some(&inputs.points),
+            Some(&inputs.mem_dat),
+            &[&inputs.archive, &inputs.csv_pac],
         )
         .expect("VM input decodes");
-        let second = SoftpalScene::execute_with_points_and_mem_dat(
-            &script,
-            &textdat,
-            Some(&points),
-            Some(&mem_dat),
+        let second = SoftpalScene::execute_with_points_mem_dat_and_pacs(
+            &inputs.script,
+            &inputs.textdat,
+            Some(&inputs.points),
+            Some(&inputs.mem_dat),
+            &[&inputs.archive, &inputs.csv_pac],
         )
         .expect("repeat VM input decodes");
         assert_eq!(
@@ -73,9 +91,9 @@ fn executes_two_proven_native_state_transitions_before_the_next_visible_gap() {
             "corpus {} exhaustive opcode catalog",
             index + 1
         );
-        let linear = ScriptScan::parse(&script)
+        let linear = ScriptScan::parse(&inputs.script)
             .expect("linear scan")
-            .resolve(&TextDat::parse(&textdat).expect("text pool"));
+            .resolve(&TextDat::parse(&inputs.textdat).expect("text pool"));
         let expected: Vec<_> = linear
             .dialogue
             .iter()
@@ -95,7 +113,7 @@ fn executes_two_proven_native_state_transitions_before_the_next_visible_gap() {
         assert_eq!(observed.len(), 0, "executed setup must not invent text");
         let diagnostics = first.diagnostic_frequencies();
         let terminal_offset = first.diagnostics[0].offset;
-        let terminal = OpcodeScan::parse(&script)
+        let terminal = OpcodeScan::parse(&inputs.script)
             .expect("opcode scan")
             .instructions
             .into_iter()
@@ -129,20 +147,32 @@ fn executes_two_proven_native_state_transitions_before_the_next_visible_gap() {
         );
         assert_eq!(
             first.diagnostics[0].signature,
-            "unimplemented_call_0012_001e",
-            "corpus {} names its next visible gap",
+            "unimplemented_call_000d_0015",
+            "corpus {} keeps the next gap named and visible",
             index + 1
         );
         assert_eq!(
             first.diagnostics[0].offset,
-            [43164, 32892][index],
-            "corpus {} next visible gap offset",
+            [460, 540][index],
+            "corpus {} has the measured native-gap offset",
+            index + 1
+        );
+        assert_eq!(
+            first.steps.len(),
+            [134, 985][index],
+            "corpus {} executed-moment count",
+            index + 1
+        );
+        assert_eq!(
+            first.stats.branch_count,
+            [137, 1401][index],
+            "corpus {} executed-branch count",
             index + 1
         );
         assert_eq!(
             first.stats.instructions_executed,
-            [191, 183][index],
-            "corpus {} advances to the open-file boundary",
+            [3567, 13906][index],
+            "corpus {} advances through PAC-backed file setup",
             index + 1
         );
         assert!(

@@ -118,16 +118,27 @@ The compact VM preserves that allocation and write extension; a negative or
 read-beyond-end access is a visible `temp_mem_index_out_of_range` stop, not a
 silent zero.
 
-The next named gap is `0x0012:0x001e` (`openfile`) in both staged titles. The
-reference pops one name handle, resolves it through resource or script-string
-storage, opens the named asset, and returns an opaque handle (or zero on a
-genuine lookup failure) [extsig.rs:4407-4433](/scratch/oracles/sena-rs/crates/pal-script/src/extsig.rs#L4407-L4433),
-[runtime.rs:11499-11538](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L11499-L11538).
+`openfile` is now executed rather than deferred. The real byte path supplies
+the native resource id `168`, which resolves through `FILE.DAT` to `BGM.CSV`.
+That resource belongs to `csv.pac`, not `data.pac`, so the runtime accepts an
+explicit PAC set, parses each with the existing `kaifuu-softpal::PacArchive`,
+and keeps the exact extracted payload behind a non-zero reusable handle. The
+following `read_file`, `set_file_pointer`, and `file_string` calls execute
+against the parsed CSV table; a failed resource name, missing PAC entry, or
+invalid handle is a named diagnostic and never a fake zero handle. This follows
+the reference's open/handle model [extsig.rs:4407-4496](/scratch/oracles/sena-rs/crates/pal-script/src/extsig.rs#L4407-L4496),
+[runtime.rs:11499-11644](/scratch/oracles/sena-rs/crates/pal-vm/src/runtime.rs#L11499-L11644).
 
-This is **"the source contains it, but I did not implement the extraction"**:
-the compact VM has the call bytes and the PAC, but does not yet carry a
-resource resolver, dynamic-string resolution, or file-handle table. It must
-therefore stop visibly rather than return a fabricated handle or zero. The
-specific next step is one `openfile` implementation plus those three bounded
-state surfaces, then a real-byte proof that records the resolved name and
-whether it maps to an archive entry; it is not a dialogue-decoding claim.
+Measured result: corpus 1 reaches 3,567 instructions, 134 moments, and 137
+branches; corpus 2 reaches 13,906 instructions, 985 moments, and 1,401
+branches. Text, speaker, and text-bearing choice stay zero in both. The next
+named gap is `0x000d:0x0015` at offset 460 (corpus 1) / 540 (corpus 2).
+
+This is a branching-off point, not an implementation claim. The oracle's
+auto-generated signature identifies `0x000d:0x0015` as `set_bgv_volume`, but
+records a zero/unknown argument contract rather than a reversed handler
+([extsig_auto.rs:4111-4119](/scratch/oracles/sena-rs/crates/pal-script/src/extsig_auto.rs#L4111-L4119)). Therefore the source contains the call but does **not** yet establish
+its stack consumption or state effect. The next step is to recover that
+handler's pop count and volume state from the Game/PAL evidence, then add a
+stateful call test; cost is one focused audio-dispatch reversal, not further
+PAC work.
