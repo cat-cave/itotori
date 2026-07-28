@@ -54,6 +54,7 @@ dashboard:
 check:
     pnpm exec vp check
     node --test scripts/itotori-db-compose-config.test.mjs
+    node --test scripts/itotori-db-wait.test.mjs
     node --test scripts/permission-denial-db-gate.test.mjs
     node --test scripts/catalog-replay-db-gate.test.mjs
     node --test scripts/qd-full-ci.test.mjs
@@ -554,7 +555,7 @@ db-down:
 
 db-wait:
     node scripts/itotori-db-compose-env.mjs
-    for i in {1..60}; do docker compose --env-file "$ITOTORI_DB_COMPOSE_ENV_PATH" exec -T postgres sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' && exit 0; sleep 1; done; exit 1
+    node scripts/itotori-db-wait.mjs
 
 db-cli-build:
     pnpm --filter @itotori/localization-bridge-schema build
@@ -721,6 +722,7 @@ ci-tier0: ci-tier0-meta ci-tier0-ts ci-tier0-rust ci-tier0-manifest
 
 ci-tier0-meta:
     node --test scripts/itotori-db-compose-config.test.mjs
+    node --test scripts/itotori-db-wait.test.mjs
     node --test scripts/permission-denial-db-gate.test.mjs
     node --test scripts/catalog-replay-db-gate.test.mjs
     node --test scripts/qd-full-ci.test.mjs
