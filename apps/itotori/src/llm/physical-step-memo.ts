@@ -437,7 +437,7 @@ async function incompleteStep(chunks: StreamChunk[], failure: LlmAttemptFailure)
   const metadata = captureGenerationMetadata(chunks);
   return {
     kind: "incomplete" as const,
-    responseJson: canonicalJson(chunks),
+    responseJson: chunks.length === 0 ? null : canonicalJson(chunks),
     attemptStatus: attemptStatus(failure.kind),
     httpStatus: failure.httpStatus,
     generationId: metadata.generationId,

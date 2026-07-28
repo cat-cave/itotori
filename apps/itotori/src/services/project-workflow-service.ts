@@ -123,6 +123,10 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     return await this.deps.runs.settleCost(this.deps.actor, input);
   }
 
+  async releaseCost(input: Parameters<ItotoriProjectRunRepositoryPort["releaseCost"]>[1]) {
+    return await this.deps.runs.releaseCost(this.deps.actor, input);
+  }
+
   async acquireLease(input: Parameters<ItotoriProjectRunRepositoryPort["acquireLease"]>[1]) {
     return await this.deps.runs.acquireLease(this.deps.actor, input);
   }

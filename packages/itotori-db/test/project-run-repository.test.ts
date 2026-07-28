@@ -285,6 +285,46 @@ describe("ItotoriProjectRunRepository", () => {
     }
   });
 
+  it("terminally releases an unknown-cost reservation without inventing spend", async () => {
+    const fixture = await runFixture("released-cost");
+    try {
+      await fixture.runs.createRun(actor, runInput(fixture, "run-released-cost", 100));
+      const lease = await fixture.runs.acquireLease(
+        actor,
+        leaseInput(fixture, "run-released-cost", "driver-released-cost"),
+      );
+      await fixture.runs.reserveCost(actor, {
+        lease,
+        reservationId: "reservation-released",
+        reservedMicrosUsd: 60,
+      });
+      const released = await fixture.runs.releaseCost(actor, {
+        lease,
+        reservationId: "reservation-released",
+      });
+      expect(released).toMatchObject({
+        state: "released",
+        settledMicrosUsd: null,
+        releasedAt: expect.any(Date),
+      });
+      await expect(
+        fixture.runs.releaseCost(actor, { lease, reservationId: "reservation-released" }),
+      ).resolves.toMatchObject({ state: "released" });
+      const live = await fixture.runs.loadLiveReadModel(
+        actor,
+        fixture.projectId,
+        "run-released-cost",
+      );
+      expect(live?.run.cost).toEqual({
+        capMicrosUsd: 100,
+        spentMicrosUsd: 0,
+        reservedMicrosUsd: 0,
+      });
+    } finally {
+      await fixture.context.close();
+    }
+  });
+
   it("renews a lease, rejects a stale fence, and resumes with a newer fencing token", async () => {
     const fixture = await runFixture("lease");
     try {

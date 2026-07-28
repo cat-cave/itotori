@@ -25,6 +25,7 @@ import {
   dispatchLocalizerCall,
   localizeScene,
   LocalizeError,
+  MAX_P1_CORE_UNITS_PER_REQUEST,
   normalizeScene,
   planSceneLocalization,
   FinalizeError,
@@ -482,6 +483,25 @@ describe("P1 whole-scene localizer — overlapping-chunk mode", () => {
       );
       expect(promptBytes).toBeLessThanOrEqual(40);
     }
+  });
+
+  it("bounds short-unit scenes by recovery-unit count, not source bytes alone", () => {
+    expect(MAX_P1_CORE_UNITS_PER_REQUEST).toBe(24);
+    const shortUnits = Array.from({ length: 49 }, (_, index) =>
+      unitFact(index, { skeleton: `s${index}` }),
+    );
+    const plan = planSceneLocalization(normalizeScene(shortUnits), {
+      budgetBytes: 100_000,
+      overlapUnits: 1,
+    });
+    const chunks = plan.segments.filter((segment) => segment.mode === "overlapping-chunk");
+
+    expect(plan.mode).toBe("overlapping-chunks");
+    expect(chunks).toHaveLength(3);
+    expect(chunks.every((chunk) => chunk.coreUnitIds.length <= 24)).toBe(true);
+    expect(chunks.flatMap((chunk) => chunk.coreUnitIds)).toEqual(
+      shortUnits.map((unit) => unit.value.unitId),
+    );
   });
 
   it("finalizes ONLY non-overlap cores and continues the thread with prior accepted target", async () => {

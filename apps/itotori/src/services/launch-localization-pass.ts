@@ -81,6 +81,7 @@ export type DriveLocalizationPassDeps = {
     | "recordProgress"
     | "reserveCost"
     | "settleCost"
+    | "releaseCost"
     | "loadLiveReadModel"
   >;
   resolvePortSource(

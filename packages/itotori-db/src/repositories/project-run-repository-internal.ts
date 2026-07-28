@@ -91,6 +91,7 @@ type ReservationRow = Row & {
   projectId: string;
   reservedMicrosUsd: number;
   settledMicrosUsd: number | null;
+  releasedAt: Date | null;
   state: string;
 };
 
@@ -116,6 +117,7 @@ export async function reservationById(
     projectId: textOf(row, "project_id"),
     reservedMicrosUsd: numberOf(row, "reserved_micros_usd"),
     settledMicrosUsd: nullableNumberOf(row, "settled_micros_usd"),
+    releasedAt: nullableDateOf(row, "released_at"),
     state: textOf(row, "state"),
   };
 }
@@ -158,9 +160,10 @@ export function reservationFromRow(row: Row): ProjectRunCostReservationRecord {
     reservationId: textOf(row, "reservation_id"),
     reservedMicrosUsd: numberOf(row, "reserved_micros_usd"),
     settledMicrosUsd: nullableNumberOf(row, "settled_micros_usd"),
-    state: textOf(row, "state") as "reserved" | "settled",
+    state: textOf(row, "state") as "reserved" | "settled" | "released",
     createdAt: dateOf(row, "created_at"),
     settledAt: nullableDateOf(row, "settled_at"),
+    releasedAt: nullableDateOf(row, "released_at"),
   };
 }
 
@@ -181,9 +184,10 @@ export function toReservation(row: ReservationRow): ProjectRunCostReservationRec
     reservationId: textOf(row, "reservation_id"),
     reservedMicrosUsd: row.reservedMicrosUsd,
     settledMicrosUsd: row.settledMicrosUsd,
-    state: row.state as "reserved" | "settled",
+    state: row.state as "reserved" | "settled" | "released",
     createdAt: dateOf(row, "created_at"),
     settledAt: nullableDateOf(row, "settled_at"),
+    releasedAt: row.releasedAt,
   };
 }
 

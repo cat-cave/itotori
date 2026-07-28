@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import type { ItotoriApplicationServices } from "../src/services/database-services.js";
 import type { PhysicalAttemptCostObserver } from "../src/llm/physical-attempt-policy.js";
+import type { LlmStepExecution } from "@itotori/db";
 import type {
   AttemptContext,
   AttemptLineageEntry,
@@ -41,6 +42,8 @@ export type RecordedRunState = {
   providerCallCount: number;
   /** When set, draftScene throws after optional observer calls — induces failure. */
   failOnDraft?: Error;
+  /** A terminal provider failure is reported before the draft throws. */
+  failAfterAttempt?: LlmStepExecution;
   reviewEntered: Promise<void>;
   finalizeEntered: Promise<void>;
   patchEntered: Promise<void>;
@@ -153,6 +156,14 @@ export function recordedPorts(
           attempt,
           maxAttemptExposureUsd: "0.000010",
         });
+        if (state.failAfterAttempt !== undefined) {
+          await observer?.onAttemptCompleted({
+            memoKey,
+            attempt,
+            execution: state.failAfterAttempt,
+          });
+          throw new Error("recorded terminal provider failure");
+        }
         // Recorded provider completion: tracker settles the confirmed seven micros.
         await observer?.onAttemptCompleted({
           memoKey,
