@@ -143,6 +143,9 @@ export type ItotoriProjectWorkflowPort = {
   settleCost(
     input: Parameters<ItotoriProjectRunRepositoryPort["settleCost"]>[1],
   ): ReturnType<ItotoriProjectRunRepositoryPort["settleCost"]>;
+  releaseCost(
+    input: Parameters<ItotoriProjectRunRepositoryPort["releaseCost"]>[1],
+  ): ReturnType<ItotoriProjectRunRepositoryPort["releaseCost"]>;
   acquireLease(
     input: Parameters<ItotoriProjectRunRepositoryPort["acquireLease"]>[1],
   ): ReturnType<ItotoriProjectRunRepositoryPort["acquireLease"]>;

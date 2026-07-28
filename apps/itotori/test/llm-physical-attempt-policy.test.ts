@@ -152,11 +152,54 @@ postgresDescribe("physical attempt policy", () => {
         profile,
         retry: { sleep: async () => undefined },
       });
-      expect(await dispatch(physicalCallSpec(normalPrompt), normal.runtime)).toMatchObject({
-        status: "failure",
-        failureKind: "retries-exhausted",
-      });
+      const terminalExecutions: Array<{ kind: string; failureKind: string | null }> = [];
+      expect(
+        await dispatch(physicalCallSpec(normalPrompt), {
+          ...normal.runtime,
+          memo: {
+            ...normal.runtime.memo,
+            runCostObserver: {
+              onAttemptStarted: async () => undefined,
+              onAttemptCompleted: async ({ execution }) => {
+                terminalExecutions.push({
+                  kind: execution.kind,
+                  failureKind: execution.kind === "incomplete" ? execution.failure.kind : null,
+                });
+              },
+            },
+          },
+        }),
+      ).toMatchObject({ status: "failure", failureKind: "retries-exhausted" });
       expect(normal.transportCalls()).toBe(3);
+      expect(terminalExecutions).toEqual(
+        Array.from({ length: 3 }, () => ({ kind: "incomplete", failureKind: "deadline" })),
+      );
+      const terminalFailures = await context.pool.query<{
+        attempt_status: string;
+        failure_class: string;
+        http_status: number | null;
+        response_ciphertext: Uint8Array | null;
+        prompt_token_count: number | null;
+        completion_token_count: number | null;
+        billing_state: string;
+        completed_at: Date | null;
+      }>(`
+        select attempt_status, failure_class, http_status, response_ciphertext,
+               prompt_token_count, completion_token_count, billing_state, completed_at
+        from itotori_llm_http_attempts order by attempt_ordinal
+      `);
+      expect(terminalFailures.rows).toEqual(
+        Array.from({ length: 3 }, () => ({
+          attempt_status: "transport-error",
+          failure_class: "transient",
+          http_status: null,
+          response_ciphertext: null,
+          prompt_token_count: null,
+          completion_token_count: null,
+          billing_state: "billing_unknown",
+          completed_at: expect.any(Date),
+        })),
+      );
 
       const deepPrompt = "Return within the deep deadline.";
       const deep = dispatchHarness({

@@ -4,6 +4,7 @@
 export {
   normalizeScene,
   planSceneLocalization,
+  MAX_P1_CORE_UNITS_PER_REQUEST,
   PlanError,
   type ChunkSegment,
   type LocalizationPlan,

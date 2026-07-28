@@ -62,6 +62,7 @@ export interface LocalizeCommandDeps {
     | "recordProgress"
     | "reserveCost"
     | "settleCost"
+    | "releaseCost"
     | "loadLiveReadModel"
   >;
   resolvePortSource(

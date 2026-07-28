@@ -117,6 +117,14 @@ export interface PlanOptions {
   readonly overlapUnits: number;
 }
 
+/**
+ * One provider request is one recovery unit: its core is independently
+ * memoized and finalized before a later chunk is dispatched. Source bytes do
+ * not bound generation time, because many short units can still require a
+ * large structured response, so cap the core by both bytes and unit count.
+ */
+export const MAX_P1_CORE_UNITS_PER_REQUEST = 24;
+
 export type PlanFailureCode =
   | "empty-scene"
   | "mixed-scene"
@@ -197,7 +205,7 @@ export function planSceneLocalization(
     );
   }
 
-  if (measuredBytes <= options.budgetBytes) {
+  if (measuredBytes <= options.budgetBytes && units.length <= MAX_P1_CORE_UNITS_PER_REQUEST) {
     return {
       sceneId: scene.sceneId,
       mode: "whole-scene",
@@ -243,7 +251,12 @@ function partitionCores(
     let bytes = 0;
     while (index < units.length) {
       const next = units[index]!.bytes;
-      if (index > start && bytes + next > coreBudget) break;
+      if (
+        index > start &&
+        (bytes + next > coreBudget || index - start >= MAX_P1_CORE_UNITS_PER_REQUEST)
+      ) {
+        break;
+      }
       bytes += next;
       index += 1;
     }

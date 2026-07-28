@@ -85,9 +85,10 @@ export type ProjectRunCostReservationRecord = {
   reservationId: string;
   reservedMicrosUsd: number;
   settledMicrosUsd: number | null;
-  state: "reserved" | "settled";
+  state: "reserved" | "settled" | "released";
   createdAt: Date;
   settledAt: Date | null;
+  releasedAt: Date | null;
 };
 
 export type ProjectRunLease = ProjectRunLeaseFence & { leaseExpiresAt: Date };
@@ -123,6 +124,11 @@ export type SettleProjectRunCostInput = {
   lease: ProjectRunLeaseFence;
   reservationId: string;
   settledMicrosUsd: number;
+};
+
+export type ReleaseProjectRunCostInput = {
+  lease: ProjectRunLeaseFence;
+  reservationId: string;
 };
 
 export type AcquireProjectRunLeaseInput = {
@@ -225,6 +231,10 @@ export interface ItotoriProjectRunRepositoryPort {
   settleCost(
     actor: AuthorizationActor,
     input: SettleProjectRunCostInput,
+  ): Promise<ProjectRunCostReservationRecord>;
+  releaseCost(
+    actor: AuthorizationActor,
+    input: ReleaseProjectRunCostInput,
   ): Promise<ProjectRunCostReservationRecord>;
   acquireLease(
     actor: AuthorizationActor,
@@ -433,6 +443,46 @@ export class ItotoriProjectRunRepository implements ItotoriProjectRunRepositoryP
       );
       if (settled[0] === undefined) throw new Error("cost settlement lost its reservation");
       return reservationFromRow(settled[0]);
+    });
+  }
+
+  async releaseCost(
+    actor: AuthorizationActor,
+    input: ReleaseProjectRunCostInput,
+  ): Promise<ProjectRunCostReservationRecord> {
+    await requirePermission(this.db, actor, permissionValues.draftWrite);
+    const lease = normalizeLease(input.lease);
+    const reservationId = requiredText(input.reservationId, "reservationId");
+    return this.db.transaction(async (tx) => {
+      const executor = tx as unknown as SqlExecutor;
+      await requireCurrentLease(executor, lease);
+      const reservation = await reservationById(executor, lease.runId, reservationId, true);
+      if (reservation === null || reservation.projectId !== lease.projectId) {
+        throw new ItotoriProjectRunRepositoryError(
+          "unknown_run",
+          "cost reservation is outside this run",
+        );
+      }
+      if (reservation.state === "released") return toReservation(reservation);
+      if (reservation.state === "settled") {
+        throw new Error("settled cost reservation cannot be released");
+      }
+      await executor.execute(sql`
+        update ${projectRunCostAccounts}
+        set reserved_micros_usd = reserved_micros_usd - ${reservation.reservedMicrosUsd}, updated_at = now()
+        where run_id = ${lease.runId} and project_id = ${lease.projectId}
+      `);
+      const released = await rowsOf(
+        executor,
+        sql`
+        update ${projectRunCostReservations}
+        set state = 'released', released_at = now()
+        where run_id = ${lease.runId} and reservation_id = ${reservationId} and state = 'reserved'
+        returning *
+      `,
+      );
+      if (released[0] === undefined) throw new Error("cost release lost its reservation");
+      return reservationFromRow(released[0]);
     });
   }
 

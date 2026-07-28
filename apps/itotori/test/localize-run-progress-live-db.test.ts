@@ -174,6 +174,89 @@ postgresDescribe("localize run progress over Postgres", () => {
             runStatusCounts: { completed: 2 },
             totalCostMicrosUsd: (firstState.providerCallCount + secondState.providerCallCount) * 7,
           });
+
+          const failedLocaleBranchId = "localize-progress-branch-failed";
+          await workflow.ensureRunProjectScope({
+            projectId,
+            localeBranchId: failedLocaleBranchId,
+            sourceRevisionId: "localize-progress-source",
+            sourceLocale: "ja-JP",
+            targetLocale: "fr-FR",
+            engineFamily: "synthetic_fixture",
+            sourceRoot: "/fixture/localize-progress/source",
+            buildRoot: "/fixture/localize-progress/build",
+            extractProfile: { surface: "localize-run-progress-live-db" },
+          });
+          const failedLocalizationSnapshot = await workflow.putLocalization({
+            contextSnapshotId: contextSnapshot.snapshotId,
+            targetLocale: "fr-FR",
+            localeBranchId: failedLocaleBranchId,
+            acceptedBibleHead: null,
+            acceptedTargetOutputHead: null,
+          });
+          const failedState = recordedRunState();
+          failedState.failAfterAttempt = {
+            kind: "incomplete",
+            responseJson: null,
+            attemptStatus: "transport-error",
+            httpStatus: null,
+            generationId: null,
+            served: { status: "unknown" },
+            routerAttempts: [],
+            usage: null,
+            billing: { status: "billing_unknown" },
+            reportedCostUsd: null,
+            failure: {
+              classification: "transient",
+              kind: "deadline",
+              httpStatus: null,
+              retryAfterMs: null,
+            },
+            completedAt: "2026-07-21T00:00:01.000Z",
+          };
+          await expect(
+            runLocalizeCommand(
+              commandArgs(projectId, "localize-progress-run-failed", failedLocaleBranchId),
+              commandDeps(
+                services,
+                contextSnapshot.snapshotId,
+                failedLocalizationSnapshot.snapshotId,
+                failedState,
+              ),
+            ),
+          ).rejects.toThrow("recorded terminal provider failure");
+          const failedLive = await workflow.loadLiveReadModel(
+            projectId,
+            "localize-progress-run-failed",
+          );
+          expect(failedLive?.run).toMatchObject({
+            status: "failed",
+            cost: { spentMicrosUsd: 0, reservedMicrosUsd: 0 },
+          });
+          expect(failedLive?.progress.blockers).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                blockers: ["draft-failed:deadline:http-status:unknown:billing-unknown"],
+              }),
+            ]),
+          );
+          const reservations = await context.pool.query<{
+            state: string;
+            settled_micros_usd: number | null;
+            released_at: Date | null;
+          }>(`
+            select state, settled_micros_usd, released_at
+            from itotori_project_run_cost_reservations
+            where run_id = 'localize-progress-run-failed'
+          `);
+          expect(reservations.rows).toHaveLength(2);
+          expect(reservations.rows).toEqual(
+            Array.from({ length: 2 }, () => ({
+              state: "released",
+              settled_micros_usd: null,
+              released_at: expect.any(Date),
+            })),
+          );
         } finally {
           // Assertions deliberately inspect in-flight runs. Always open every
           // gate and settle their promises before the DB service scope closes.

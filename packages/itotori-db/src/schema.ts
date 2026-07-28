@@ -2440,6 +2440,7 @@ export const projectRunCostReservations = pgTable(
     state: text("state").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     settledAt: timestamp("settled_at", { withTimezone: true }),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
   },
   (table) => [
     primaryKey({ columns: [table.runId, table.reservationId] }),

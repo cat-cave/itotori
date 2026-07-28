@@ -23,6 +23,7 @@ type RunWorkflow = Pick<
   | "recordProgress"
   | "reserveCost"
   | "settleCost"
+  | "releaseCost"
   | "loadLiveReadModel"
 >;
 
@@ -54,6 +55,7 @@ export class LocalizeRunTracker {
   readonly #reservations = new Map<string, CostReservation>();
   readonly #statusByUnit = new Map<string, ProjectRunProgressStatus>();
   readonly #costByUnit = new Map<string, number>();
+  readonly #failureBlockerByUnit = new Map<string, string>();
   /** Every durable progress/cost write is retained here until it settles. The
    * terminal run transition must not race a callback that still owns the DB
    * service scope. */
@@ -115,17 +117,25 @@ export class LocalizeRunTracker {
       const reservation = this.#reservations.get(reservationId);
       if (reservation === undefined) return;
       this.assertWritesOpen();
-      if (execution.billing.status !== "confirmed") {
-        throw new Error("localize run refused an LLM step without provider-confirmed billed cost");
+      if (execution.kind === "completed" && execution.billing.status === "confirmed") {
+        const settledMicrosUsd = exactMicrosUsd(execution.billing.costUsd, "provider billed cost");
+        await this.trackWrite(async () => {
+          await this.workflow.settleCost({ lease: this.lease(), reservationId, settledMicrosUsd });
+        });
+        this.#reservations.delete(reservationId);
+        for (const [unitId, amount] of allocateMicros(settledMicrosUsd, reservation.unitIds)) {
+          this.#costByUnit.set(unitId, (this.#costByUnit.get(unitId) ?? 0) + amount);
+        }
+        return;
       }
-      const settledMicrosUsd = exactMicrosUsd(execution.billing.costUsd, "provider billed cost");
       await this.trackWrite(async () => {
-        await this.workflow.settleCost({ lease: this.lease(), reservationId, settledMicrosUsd });
+        await this.workflow.releaseCost({ lease: this.lease(), reservationId });
       });
       this.#reservations.delete(reservationId);
-      for (const [unitId, amount] of allocateMicros(settledMicrosUsd, reservation.unitIds)) {
-        this.#costByUnit.set(unitId, (this.#costByUnit.get(unitId) ?? 0) + amount);
-      }
+      const blocker = terminalAttemptBlocker(execution);
+      for (const unitId of reservation.unitIds) this.#failureBlockerByUnit.set(unitId, blocker);
+      if (execution.kind === "incomplete") return;
+      throw new Error("localize run refused an LLM step without provider-confirmed billed cost");
     },
   };
 
@@ -279,7 +289,7 @@ export class LocalizeRunTracker {
       unitIds.map(
         async (unitId) =>
           await this.record(unitId, this.#statusByUnit.get(unitId) ?? "decoded", [
-            `${stage}-failed`,
+            this.#failureBlockerByUnit.get(unitId) ?? `${stage}-failed`,
           ]),
       ),
     );
@@ -431,4 +441,15 @@ function allocateMicros(amount: number, unitIds: readonly string[]): ReadonlyMap
   const each = Math.floor(amount / ids.length);
   const remainder = amount % ids.length;
   return new Map(ids.map((unitId, index) => [unitId, each + (index < remainder ? 1 : 0)]));
+}
+
+/** No source/target text is copied into progress. This is the operator-visible
+ * projection of the durable physical-attempt facts, including explicit nulls. */
+function terminalAttemptBlocker(
+  execution: Parameters<PhysicalAttemptCostObserver["onAttemptCompleted"]>[0]["execution"],
+): string {
+  if (execution.kind === "completed") return "draft-failed:billing-unknown";
+  const status =
+    execution.failure.httpStatus === null ? "unknown" : String(execution.failure.httpStatus);
+  return `draft-failed:${execution.failure.kind}:http-status:${status}:billing-unknown`;
 }

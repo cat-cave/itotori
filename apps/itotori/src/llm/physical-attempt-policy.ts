@@ -53,7 +53,9 @@ export interface PhysicalAttemptCostObserver {
   onAttemptCompleted(input: {
     readonly memoKey: string;
     readonly attempt: LlmStepAttemptContext;
-    readonly execution: Extract<LlmStepExecution, { kind: "completed" }>;
+    /** Every admitted attempt must report one durable terminal execution,
+     * including deadline/transport failures whose bill remains unknown. */
+    readonly execution: LlmStepExecution;
   }): Promise<void>;
 }
 
@@ -232,10 +234,10 @@ export async function memoizedPhysicalAttempt(input: {
   const runCostObserver = input.runtime.runCostObserver ?? currentPhysicalAttemptCostObserver();
   while (true) {
     throwIfCancelled(input.runtime.signal);
-    let completedAttempt:
+    let terminalAttempt:
       | {
           readonly attempt: LlmStepAttemptContext;
-          readonly execution: Extract<LlmStepExecution, { kind: "completed" }>;
+          readonly execution: LlmStepExecution;
         }
       | undefined;
     const stored = await input.store.singleflight({
@@ -259,22 +261,20 @@ export async function memoizedPhysicalAttempt(input: {
             maxAttemptExposureUsd: input.runtime.profile.maxAttemptExposureUsd,
           });
           const execution = await input.execute(attempt, deadline.control);
-          if (execution.kind === "completed") completedAttempt = { attempt, execution };
+          terminalAttempt = { attempt, execution };
           return execution;
         } finally {
           deadline.clear();
         }
       },
     });
-    if (stored.kind === "completed") {
-      if (!stored.memoHit && completedAttempt !== undefined) {
-        await runCostObserver?.onAttemptCompleted({
-          memoKey: input.memo.memoKey,
-          ...completedAttempt,
-        });
-      }
-      return stored;
+    if (!stored.memoHit && terminalAttempt !== undefined) {
+      await runCostObserver?.onAttemptCompleted({
+        memoKey: input.memo.memoKey,
+        ...terminalAttempt,
+      });
     }
+    if (stored.kind === "completed") return stored;
     if (stored.failure.classification !== "transient") {
       throw new LlmPhysicalAttemptError(stored.failure);
     }
