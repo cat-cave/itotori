@@ -30,8 +30,11 @@ export {
   REALLIVE_SJIS_POLICY_ID,
   SIGLUS_UTF16_ADAPTER_ID,
   SIGLUS_UTF16_POLICY_ID,
+  SOFTPAL_SJIS_ADAPTER_ID,
+  SOFTPAL_SJIS_POLICY_ID,
   UTF8_JSON_ADAPTER_ID,
   UTF8_JSON_POLICY_ID,
+  softpalSjisPolicy,
 } from "./policy/index.js";
 export type {
   EncodingViolation,

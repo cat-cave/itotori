@@ -52,7 +52,6 @@ postgresDescribe("localize CLI project-scope provisioning", () => {
       await context.close();
     }
   }, 120_000);
-
   it("provisions an empty database through the shipped localize command before dispatch", async () => {
     const context = await isolatedMigratedContext();
     try {
