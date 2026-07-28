@@ -19,6 +19,22 @@ export type SourceUnitTextRecord = {
   occurrenceId: string;
 };
 
+/** A bridge unit resolved for a player-facing address.  The scene coordinate
+ * is deliberately read only from the bridge producer's `context.route.sceneId`;
+ * source-unit key syntax is opaque to this shared surface. */
+export type AddressableBridgeUnit =
+  | {
+      bridgeUnitId: string;
+      sourceUnitKey: string;
+      state: "resolved";
+      sceneId: string;
+    }
+  | {
+      bridgeUnitId: string;
+      state: "unresolvable";
+      reason: "not_imported_in_branch" | "scene_coordinate_missing";
+    };
+
 export type LoadSourceUnitsInput = {
   bridgeUnitIds: string[];
 };
@@ -45,6 +61,10 @@ export interface ItotoriSourceUnitRepositoryPort {
     actor: AuthorizationActor,
     input: LoadSourceUnitsForScopeInput,
   ): Promise<SourceUnitTextRecord[]>;
+  resolveAddressableBridgeUnits(
+    actor: AuthorizationActor,
+    input: { projectId: string; localeBranchId: string; bridgeUnitIds: readonly string[] },
+  ): Promise<AddressableBridgeUnit[]>;
 }
 
 export class ItotoriSourceUnitRepository implements ItotoriSourceUnitRepositoryPort {
@@ -139,4 +159,48 @@ export class ItotoriSourceUnitRepository implements ItotoriSourceUnitRepositoryP
       occurrenceId: row.occurrenceId,
     }));
   }
+
+  async resolveAddressableBridgeUnits(
+    actor: AuthorizationActor,
+    input: { projectId: string; localeBranchId: string; bridgeUnitIds: readonly string[] },
+  ): Promise<AddressableBridgeUnit[]> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    const requested = [...new Set(input.bridgeUnitIds.map((id) => id.trim()).filter(Boolean))];
+    if (requested.length === 0) return [];
+    const rows = await this.db
+      .select({
+        bridgeUnitId: sourceUnits.bridgeUnitId,
+        sourceUnitKey: sourceUnits.sourceUnitKey,
+        context: sourceUnits.context,
+      })
+      .from(sourceUnits)
+      .innerJoin(localeBranches, eq(localeBranches.sourceBundleId, sourceUnits.sourceBundleId))
+      .where(
+        and(
+          eq(sourceUnits.projectId, input.projectId),
+          eq(localeBranches.localeBranchId, input.localeBranchId),
+          inArray(sourceUnits.bridgeUnitId, requested),
+          isNull(sourceUnits.removedAt),
+        ),
+      );
+    const imported = new Map(rows.map((row) => [row.bridgeUnitId, row]));
+    return requested.map((bridgeUnitId): AddressableBridgeUnit => {
+      const row = imported.get(bridgeUnitId);
+      if (row === undefined)
+        return { bridgeUnitId, state: "unresolvable", reason: "not_imported_in_branch" };
+      const sceneId = routeSceneId(row.context);
+      if (sceneId === null) {
+        return { bridgeUnitId, state: "unresolvable", reason: "scene_coordinate_missing" };
+      }
+      return { bridgeUnitId, sourceUnitKey: row.sourceUnitKey, state: "resolved", sceneId };
+    });
+  }
+}
+
+function routeSceneId(context: unknown): string | null {
+  if (typeof context !== "object" || context === null || Array.isArray(context)) return null;
+  const route = (context as Record<string, unknown>).route;
+  if (typeof route !== "object" || route === null || Array.isArray(route)) return null;
+  const sceneId = (route as Record<string, unknown>).sceneId;
+  return typeof sceneId === "string" && sceneId.trim().length > 0 ? sceneId.trim() : null;
 }

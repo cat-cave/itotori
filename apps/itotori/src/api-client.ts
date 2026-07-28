@@ -49,6 +49,7 @@ import type {
   ApiPlayFlagAnnotationRequest,
   ApiPlayFlagAnnotationResponse,
   ApiPlayUnitFeedbackResponse,
+  ApiPlayAddressableUnitResponse,
   ApiPlayTargetEditRequest,
   ApiPlayTargetEditResponse,
   ApiPlayDeliveryResponse,
@@ -362,6 +363,10 @@ interface ItotoriApiRouteTypeMap {
   "play.unitFeedback": {
     response: ApiPlayUnitFeedbackResponse;
     pathParams: { projectId: string; localeBranchId: string };
+  };
+  "play.addressableUnit": {
+    response: ApiPlayAddressableUnitResponse;
+    pathParams: { projectId: string; localeBranchId: string; bridgeUnitId: string };
   };
   "play.targetEdit": {
     response: ApiPlayTargetEditResponse;

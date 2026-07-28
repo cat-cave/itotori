@@ -1,18 +1,19 @@
 // Entry-level deep-link panel: jumps from a wiki object to the scene(s)/unit(s)
 // its provenance actually addresses. Renders nothing when no target resolves.
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Badge, Panel } from "@itotori/ds";
 import type { WikiSourceObjectView } from "../../../wiki/dashboard/read-model.js";
 import type { WikiBibleScope } from "./client.js";
 import {
+  citedBridgeUnitIds,
   entryDeepLinkSourceFromView,
-  primaryEntryPlayerTarget,
-  resolveEntryPlayerTargets,
   type EntryPlayerTarget,
   type StructureAddressIndex,
 } from "./entry-deeplink.js";
-import { citationScopeFor } from "./player-link.js";
+import { appendReturnToHref, bibleObjectHref } from "./player-link.js";
+import { apiClient } from "../../client.js";
+import { addressableFocusToken, hrefForAddressable } from "../../addressable-routing.js";
 
 export function WikiEntryDeepLinkPanel({
   object,
@@ -23,15 +24,62 @@ export function WikiEntryDeepLinkPanel({
   scope: WikiBibleScope;
   structure?: StructureAddressIndex | null;
 }): ReactNode {
-  const targets = resolveEntryPlayerTargets(
-    entryDeepLinkSourceFromView(object),
-    citationScopeFor(scope, object.objectId),
-    structure,
-  );
+  void structure;
+  const unitIds = citedBridgeUnitIds(entryDeepLinkSourceFromView(object));
+  const [targets, setTargets] = useState<readonly EntryPlayerTarget[]>([]);
+  useEffect(() => {
+    let active = true;
+    void Promise.all(
+      unitIds.map(async (bridgeUnitId) =>
+        apiClient.request("play.addressableUnit", {
+          pathParams: {
+            projectId: scope.projectId,
+            localeBranchId: scope.localeBranchId,
+            bridgeUnitId,
+          },
+        }),
+      ),
+    ).then((results) => {
+      if (!active) return;
+      const returnHref = bibleObjectHref({ ...scope, objectId: object.objectId });
+      const next: EntryPlayerTarget[] = [];
+      for (const result of results) {
+        if (result.state !== "ready" || result.data.unit.state !== "resolved") continue;
+        const unit = result.data.unit;
+        const href = hrefForAddressable({
+          kind: "scene",
+          id: unit.sceneId,
+          unitId: unit.bridgeUnitId,
+          projectId: scope.projectId,
+          localeBranchId: scope.localeBranchId,
+        });
+        next.push({
+          kind: "scene",
+          id: unit.sceneId,
+          unitId: unit.bridgeUnitId,
+          source: "citation",
+          href: appendReturnToHref(href, returnHref),
+          focus: addressableFocusToken({ kind: "unit", id: unit.bridgeUnitId }),
+        });
+      }
+      setTargets(
+        next.sort((a, b) => a.id.localeCompare(b.id) || a.unitId!.localeCompare(b.unitId!)),
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, [
+    object.objectId,
+    scope.projectId,
+    scope.localeBranchId,
+    scope.snapshotId,
+    unitIds.join("\0"),
+  ]);
   if (targets.length === 0) {
     return null;
   }
-  const primary = primaryEntryPlayerTarget(targets);
+  const primary = targets[0] ?? null;
   if (primary === null) {
     return null;
   }

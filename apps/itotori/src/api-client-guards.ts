@@ -37,6 +37,7 @@ const REQUIRED_RESPONSE_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, readonl
   "settings.translationScope.get": ["projectId", "localeBranchId", "scope"],
   "settings.translationScope.save": ["projectId", "localeBranchId", "scope"],
   "play.targetEdit": ["patchVersionId", "resultRevisionId", "selectedAt"],
+  "play.addressableUnit": ["schemaVersion", "projectId", "localeBranchId", "unit"],
   "play.delivery": ["patchVersionId", "artifactHashes", "downloadUrl", "units"],
   "patchIteration.delivery": ["patchVersionId", "artifactHashes", "downloadUrl", "units"],
   "patchIteration.versions": ["schemaVersion", "versions"],

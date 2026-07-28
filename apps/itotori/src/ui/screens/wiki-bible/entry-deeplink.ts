@@ -23,6 +23,7 @@ export type EntryPlayerTarget = {
   readonly source: "subject" | "citation" | "media" | "structure";
   readonly href: string;
   readonly focus: string;
+  readonly unitId?: string;
 };
 
 /** Structure-artifact join: turns unit/character identity into scene ids. */
@@ -118,6 +119,23 @@ export function resolveEntryPlayerTargets(
     }
     return left.id.localeCompare(right.id);
   });
+}
+
+/** Extract only bridge-unit-shaped provenance candidates. Their existence and
+ * scene coordinate are verified by the branch-scoped API before a UI link is
+ * rendered; this helper intentionally performs no engine/key parsing. */
+export function citedBridgeUnitIds(entry: EntryDeepLinkSource): readonly string[] {
+  const ids = new Set<string>();
+  const add = (kind: string, id: string) => {
+    if (kind === "unit" && id.trim().length > 0) ids.add(id.trim());
+  };
+  add(entry.subject.kind, entry.subject.id);
+  for (const citation of entry.citations) add(citation.subject.kind, citation.subject.id);
+  for (const claim of entry.claims ?? [])
+    for (const citation of claim.citations) add(citation.subject.kind, citation.subject.id);
+  for (const media of entry.media ?? [])
+    if (media.unitId !== undefined && media.unitId !== null) add("unit", media.unitId);
+  return [...ids].sort((a, b) => a.localeCompare(b));
 }
 
 /** Primary deep-link: first scene if any, else first unit, else null. */

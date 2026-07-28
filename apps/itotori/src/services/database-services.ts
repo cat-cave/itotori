@@ -13,6 +13,7 @@ import {
   ItotoriModelLedgerRepository,
   ItotoriProjectRepository,
   ItotoriProjectRunRepository,
+  ItotoriSourceUnitRepository,
   localUserId,
   migrate,
   permissionBasedLlmContentRead,
@@ -174,6 +175,7 @@ export async function withDatabaseItotoriServices<T>(
       }),
       manualFeedback: unitBoundFeedback,
       unitFeedback: unitBoundFeedback,
+      addressableUnits: new ItotoriSourceUnitRepository(db),
       wikiObjectApi,
       wikiApply: {
         runner: createLiveWikiEnhancementRunner({
@@ -342,6 +344,7 @@ export function retiredServiceSurface(
     | "patchbackProduce"
     | "manualFeedback"
     | "unitFeedback"
+    | "addressableUnits"
   >,
 ): ItotoriApplicationServices {
   return new Proxy(installed, {
