@@ -89,6 +89,54 @@ describe("dashboard API failure responses", () => {
     expect(JSON.stringify(response.body)).not.toMatch(/select|params|secret/i);
   });
 
+  it("reports a refused configured database endpoint without exposing its credentials", async () => {
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = "postgres://local-user:do-not-display@127.0.0.1:55432/local_db";
+    try {
+      const response = await requestFromFactory(() =>
+        Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:55432"), {
+          address: "127.0.0.1",
+          code: "ECONNREFUSED",
+          port: 55432,
+        }),
+      );
+
+      expect(response.status).toBe(503);
+      expect(response.body).toEqual({
+        code: "database_unreachable",
+        error:
+          "Database at 127.0.0.1:55432/local_db is unreachable. Start it with just dev db-up, then refresh.",
+      });
+      expect(JSON.stringify(response.body)).not.toMatch(/local-user|do-not-display|postgres:/i);
+    } finally {
+      if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previousDatabaseUrl;
+    }
+  });
+
+  it("keeps a refused unrelated endpoint classified as an internal error", async () => {
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = "postgres://local-user:do-not-display@127.0.0.1:55432/local_db";
+    try {
+      const response = await requestFromFactory(() =>
+        Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:55433"), {
+          address: "127.0.0.1",
+          code: "ECONNREFUSED",
+          port: 55433,
+        }),
+      );
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({
+        code: "internal_error",
+        error: "The service could not complete this request. Check the server logs and try again.",
+      });
+    } finally {
+      if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previousDatabaseUrl;
+    }
+  });
+
   it("sanitizes a database failure caught inside a read handler", async () => {
     const server = createItotoriServer({
       serviceFactory: async (callback) =>

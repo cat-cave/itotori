@@ -16,6 +16,7 @@ import {
   type ItotoriReadOnlyServiceFactory,
 } from "./services/database-services.js";
 import { parseItotoriSessionCookie } from "./auth-session-cookie.js";
+import { databaseUnreachableMessage } from "./database-unreachable.js";
 import { isShellNavPath } from "./ui/shell-nav-routes.js";
 import { assertPrivacyRetentionEgressContract } from "./contracts/privacy.js";
 import { studioCapabilityPermissions } from "./auth.js";
@@ -154,7 +155,7 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
         response.writeHead(apiResponse.statusCode, { "content-type": "application/json" });
         response.end(JSON.stringify(apiResponse.body));
       } catch (error) {
-        const failure = apiFailureResponse(error);
+        const failure = apiFailureResponse(error, options.databaseUrl);
         response.writeHead(failure.statusCode, { "content-type": "application/json" });
         response.end(JSON.stringify(failure.body));
       }
@@ -204,8 +205,11 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
   return server;
 }
 
-function apiFailureResponse(error: unknown): {
-  statusCode: 400 | 403 | 500;
+function apiFailureResponse(
+  error: unknown,
+  databaseUrl?: string,
+): {
+  statusCode: 400 | 403 | 500 | 503;
   body: { code: string; error: string };
 } {
   if (error instanceof SyntaxError) {
@@ -222,6 +226,10 @@ function apiFailureResponse(error: unknown): {
         error: "Database migrations are not applied. Run itotori db-migrate, then refresh.",
       },
     };
+  }
+  const databaseMessage = databaseUnreachableMessage(error, databaseUrl);
+  if (databaseMessage !== null) {
+    return { statusCode: 503, body: { code: "database_unreachable", error: databaseMessage } };
   }
   return {
     statusCode: 500,

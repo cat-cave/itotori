@@ -54,6 +54,7 @@ import {
 } from "@itotori/db";
 import { assertBridgeBundleV02, type BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import { resolveStudioCapabilityPermissionView, type ItotoriAuthorizationPort } from "./auth.js";
+import { databaseUnreachableMessage } from "./database-unreachable.js";
 import {
   ApiValidationError,
   REDACTED_RUNTIME_FINDING_MESSAGE,
@@ -3595,6 +3596,10 @@ function errorResponse(error: unknown): ApiJsonResponse {
       "database_migrations_required",
       "Database migrations are not applied. Run itotori db-migrate, then refresh.",
     );
+  }
+  const databaseMessage = databaseUnreachableMessage(error);
+  if (databaseMessage !== null) {
+    return errorBody(503, "database_unreachable", databaseMessage);
   }
   return errorBody(
     500,

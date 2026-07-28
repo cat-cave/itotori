@@ -61,6 +61,7 @@ function check(scope, forwarded) {
   if (scope === "meta")
     return shell(`
 node --test scripts/itotori-db-compose-config.test.mjs
+node --test scripts/developer-command-db.test.mjs
 node --test scripts/justfile-surface.test.mjs
 node --test scripts/itotori-db-wait.test.mjs
 node --test scripts/permission-denial-db-gate.test.mjs
@@ -256,6 +257,7 @@ function ci(lane, forwarded) {
   const lanes = [
     "public",
     "affected",
+    "tier0",
     "tier0-meta",
     "tier0-ts",
     "tier0-rust",
@@ -276,6 +278,10 @@ function ci(lane, forwarded) {
       "node scripts/developer-command.mjs check all\nnode scripts/developer-command.mjs dev build\nnode scripts/developer-command.mjs dev db-migrate\nnode scripts/developer-command.mjs test all\nnode scripts/developer-command.mjs test mutation-differential",
     );
   if (lane === "affected") return run("node", ["scripts/qd-full-ci.mjs", ...forwarded]);
+  if (lane === "tier0")
+    return shell(
+      "node scripts/developer-command.mjs ci tier0-meta\nnode scripts/developer-command.mjs ci tier0-ts\nnode scripts/developer-command.mjs ci tier0-rust\nnode scripts/developer-command.mjs ci tier0-manifest",
+    );
   if (lane === "tier0-meta") return check("meta", forwarded);
   if (lane === "tier0-ts") return check("ts", forwarded);
   if (lane === "tier0-rust") return check("rust", forwarded);
@@ -362,14 +368,16 @@ switch (delegate) {
       shell("qd export --out roadmap/spec-dag.json\nnode scripts/spec-dag.mjs validate");
     else if (selector === "db-up")
       shell(
-        'node scripts/itotori-db-compose-env.mjs\ndocker compose --env-file "$ITOTORI_DB_COMPOSE_ENV_PATH" up -d postgres',
+        'compose_env_path="$(node scripts/itotori-db-compose-env.mjs --print-compose-env-path)"\nITOTORI_DB_COMPOSE_ENV_PATH="$compose_env_path" node scripts/itotori-db-compose-env.mjs\ndocker compose --env-file "$compose_env_path" up -d postgres',
       );
     else if (selector === "db-down")
       shell(
-        'node scripts/itotori-db-compose-env.mjs\ndocker compose --env-file "$ITOTORI_DB_COMPOSE_ENV_PATH" down',
+        'compose_env_path="$(node scripts/itotori-db-compose-env.mjs --print-compose-env-path)"\nITOTORI_DB_COMPOSE_ENV_PATH="$compose_env_path" node scripts/itotori-db-compose-env.mjs\ndocker compose --env-file "$compose_env_path" down',
       );
     else if (selector === "db-wait")
-      shell("node scripts/itotori-db-compose-env.mjs\nnode scripts/itotori-db-wait.mjs");
+      shell(
+        'compose_env_path="$(node scripts/itotori-db-compose-env.mjs --print-compose-env-path)"\nITOTORI_DB_COMPOSE_ENV_PATH="$compose_env_path" node scripts/itotori-db-compose-env.mjs\nITOTORI_DB_COMPOSE_ENV_PATH="$compose_env_path" node scripts/itotori-db-wait.mjs',
+      );
     else if (selector === "db-migrate")
       shell(
         'pnpm exec vp run ts:build\nDATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" node apps/itotori/dist/cli.js db-migrate',
