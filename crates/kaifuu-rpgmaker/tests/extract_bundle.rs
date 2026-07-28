@@ -6,7 +6,7 @@
 //!   runs the bundle through `BridgeBundleV02::validate_json`, a passing
 //!   run also proves v0.2 schema validity.
 //! - An `#[ignore]`d real-bytes test runs against the LustMemory corpus
-//!   (env `ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ`) and asserts a
+//!   (env `private inventory row`) and asserts a
 //!   non-trivial unit count + structure only — never verbatim text.
 
 use std::fs;
@@ -49,7 +49,7 @@ fn resolve_www_dir(root: &Path) -> PathBuf {
     }
     find(root, 5).unwrap_or_else(|| {
         panic!(
-            "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ={} contains no `www/` dir with a `data/` \
+            "rpg-maker-mv-mz/1/plain={} contains no `www/` dir with a `data/` \
              subdirectory (expected an RPG Maker MV/MZ install tree)",
             root.display()
         )
@@ -198,10 +198,11 @@ fn non_rpg_maker_directory_is_rejected() {
 }
 
 #[test]
-#[ignore = "requires ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ (read-only LustMemory corpus)"]
+#[ignore = "requires private inventory row (read-only LustMemory corpus)"]
 fn real_bytes_lustmemory_extracts_non_trivial_unit_count() {
-    let root = std::env::var("ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ")
-        .expect("ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ must be set for the real-bytes test");
+    let root = corpus_registry::resolve_identity("rpg-maker-mv-mz/1/plain")
+        .map(|path| path.to_string_lossy().into_owned())
+        .expect("rpg-maker-mv-mz/1/plain must be set for the real-bytes test");
     let www_root = resolve_www_dir(Path::new(&root));
     let www = www_root.as_path();
 

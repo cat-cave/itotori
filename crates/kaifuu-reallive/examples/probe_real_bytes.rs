@@ -1,10 +1,9 @@
 //! One-shot diagnostic probe: runs the public `kaifuu-reallive` surface
-//! against real bytes pointed at by `KAIFUU_PROBE_SEEN_TXT` /
-//! `KAIFUU_PROBE_GAMEEXE_INI` env vars and prints a compact report.
+//! against real bytes pointed at by `private inventory scene archive` /
+//! `private inventory game configuration` env vars and prints a compact report.
 //! Read-only on the input bytes. Used by the
 //! `docs/audits/real-bytes-validation-2026-06-24.md` validation sweep.
 
-use std::env;
 use std::fs;
 
 use kaifuu_core::RedactedContentSummary;
@@ -13,11 +12,15 @@ use kaifuu_reallive::{
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if let Ok(path) = env::var("KAIFUU_PROBE_SEEN_TXT") {
-        probe_seen_txt(&path)?;
+    if let Ok(path) = corpus_registry::resolve_identity("reallive/1/encrypted")
+        .map(|root| root.join("REALLIVEDATA").join("Seen.txt"))
+    {
+        probe_seen_txt(&path.display().to_string())?;
     }
-    if let Ok(path) = env::var("KAIFUU_PROBE_GAMEEXE_INI") {
-        probe_gameexe_ini(&path)?;
+    if let Ok(path) = corpus_registry::resolve_identity("reallive/1/encrypted")
+        .map(|root| root.join("REALLIVEDATA").join("Gameexe.ini"))
+    {
+        probe_gameexe_ini(&path.display().to_string())?;
     }
     Ok(())
 }

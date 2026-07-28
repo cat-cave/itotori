@@ -464,7 +464,7 @@ export function buildManifest(sources) {
       },
       rpg_maker_mv_mz: {
         description:
-          "RPG Maker MV/MZ event-command extraction/patchback. Real corpus: LustMemory (ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ).",
+          "RPG Maker MV/MZ event-command extraction/patchback. Real corpus: LustMemory (private inventory row).",
         componentGroups: {
           event_command_code: group("rpgMakerCodes", "extracted", rpgMakerCodes),
         },

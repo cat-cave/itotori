@@ -1,7 +1,7 @@
 //! Real-bytes validation of the Softpal `SCRIPT.SRC` **full opcode catalog**
 //! against two owned titles, extracting `SCRIPT.SRC` from each `data.pac` via
 //! the crate's own PAC reader.
-//! `#[ignore]`d and env-gated: set `ITOTORI_SOFTPAL_RESEARCH_ROOT` to the
+//! `#[ignore]`d and env-gated: set `private inventory row` to the
 //! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
 //! `--ignored`. **No raw copyrighted text/bytes live in this file** — only
 //! opcode/command counts, histograms, and the 0-unknown accounting, which the
@@ -15,13 +15,12 @@
 //! the env-gate / skip-when-absent contract.
 
 use std::collections::BTreeSet;
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use kaifuu_softpal::{OpcodeScan, PacArchive, ScriptScan};
 
-const RESEARCH_ROOT_ENV: &str = "ITOTORI_SOFTPAL_RESEARCH_ROOT";
+const GAME_IDENTITIES: [&str; 2] = ["softpal/1/plain", "softpal/2/plain"];
 
 /// One game's opcode-catalog expectations. Counts are the measured ground truth.
 struct GameExpectation {
@@ -111,13 +110,11 @@ fn extract_entry(game: &GameExpectation, root: &Path, name: &str) -> Vec<u8> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_SOFTPAL_RESEARCH_ROOT (read-only Softpal research tree)"]
+#[ignore = "real-bytes; requires private inventory row (read-only Softpal research tree)"]
 fn opcode_catalog_on_two_softpal_titles() {
-    let Some(root) = env::var_os(RESEARCH_ROOT_ENV).map(PathBuf::from) else {
-        panic!("set {RESEARCH_ROOT_ENV} to the read-only Softpal research tree");
-    };
-
-    for game in &GAMES {
+    for (game, identity) in GAMES.iter().zip(GAME_IDENTITIES) {
+        let root = corpus_registry::resolve_identity(identity)
+            .unwrap_or_else(|reason| panic!("registry must resolve {identity}: {reason}"));
         let script_bytes = extract_entry(game, &root, "SCRIPT.SRC");
 
         let scan = OpcodeScan::parse(&script_bytes)

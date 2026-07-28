@@ -21,15 +21,7 @@ pub(crate) fn run_extract_rpgmaker_bundle(
 
     let game_dir = match flag_optional(args, "--game-dir") {
         Some(value) => PathBuf::from(value),
-        None => match std::env::var_os("ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ") {
-            Some(value) => PathBuf::from(value),
-            None => {
-                return Err(
-                    "--game-dir <www> or ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ env var required"
-                        .into(),
-                );
-            }
-        },
+        None => return Err("--game-dir <www> required".into()),
     };
     let game_id = flag(args, "--game-id")?;
     let game_version = flag(args, "--game-version")?;

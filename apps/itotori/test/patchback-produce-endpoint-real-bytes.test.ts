@@ -14,6 +14,7 @@ import { join } from "node:path";
 
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import { describe, expect, it } from "vitest";
+import { resolvePrivateCorpus } from "../src/private-inventory.js";
 
 import { createFieldMemoCipher } from "../src/composition/live/field-cipher.js";
 import { runKaifuuExtract } from "../src/extract/kaifuu-extract-seam.js";
@@ -28,7 +29,7 @@ import type { NarrativeStructure } from "../src/structure/types.js";
 import type { AcceptedUnitOutput } from "../src/patchback/index.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 
-const realGameRoot = process.env.ITOTORI_REAL_GAME_ROOT;
+const realGameRoot = resolvePrivateCorpus("reallive", 1, "encrypted");
 const canRun = Boolean(process.env.DATABASE_URL && realGameRoot && existsSync(realGameRoot));
 
 type RawHttpResponse = {

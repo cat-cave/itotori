@@ -297,15 +297,17 @@ fn from_paths_rejects_a_static_read_forged_patched_trace() {
 
 /// Regenerate the committed patched-output evidence artifacts from a
 /// genuine launched-browser render. Env-gated so it only writes when explicitly
-/// asked (`UTSUSHI_U119_REGEN=1`); prefers real Chromium (via
+/// asked (`REGENERATE_FIXTURES=1`); prefers real Chromium (via
 /// `UTSUSHI_BROWSER_BIN`) and falls back to the deterministic fake-browser
 /// render (identical observation events). Run manually to refresh goldens.
 #[cfg(unix)]
 #[test]
-#[ignore = "regenerates committed patched-output evidence goldens; run manually with UTSUSHI_U119_REGEN=1"]
+#[ignore = "regenerates committed patched-output evidence goldens; run manually with REGENERATE_FIXTURES=1"]
 fn regenerate_committed_patched_artifacts() {
-    if std::env::var("UTSUSHI_U119_REGEN").ok().as_deref() != Some("1") {
-        eprintln!("SKIP regenerate_committed_patched_artifacts: set UTSUSHI_U119_REGEN=1 to write");
+    if std::env::var("REGENERATE_FIXTURES").ok().as_deref() != Some("1") {
+        eprintln!(
+            "SKIP regenerate_committed_patched_artifacts: set REGENERATE_FIXTURES=1 to write"
+        );
         return;
     }
     let out = proof_artifacts_dir();

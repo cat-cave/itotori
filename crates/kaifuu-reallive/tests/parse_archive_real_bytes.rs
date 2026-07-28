@@ -32,7 +32,7 @@ fn unavailable_real_bytes_proof_panics_instead_of_passing() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn parses_primary_corpus_seen_txt_into_198_populated_scene_entries() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(

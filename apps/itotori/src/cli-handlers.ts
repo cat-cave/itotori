@@ -682,7 +682,7 @@ async function runCatalogLocalScan(
   const rootLabel = optionalFlag(args, "--root-label");
   const ownedRaw = optionalFlag(args, "--owned");
   const maxDepthRaw = optionalFlag(args, "--max-depth");
-  const hashKey = optionalFlag(args, "--hash-key") ?? process.env.ITOTORI_LOCAL_CORPUS_HASH_KEY;
+  const hashKey = optionalFlag(args, "--hash-key");
   const report = await scanCatalogLocalRoot({
     rootPath,
     ...(rootLabel === undefined ? {} : { rootLabel }),

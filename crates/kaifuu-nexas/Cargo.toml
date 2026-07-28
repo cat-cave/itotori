@@ -13,6 +13,7 @@ serde = { workspace = true }
 thiserror.workspace = true
 
 [dev-dependencies]
+corpus-registry = { path = "../corpus-registry" }
 sha2.workspace = true
 
 [lints]

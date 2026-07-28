@@ -3,7 +3,6 @@
 //! These tests are deliberately observation-only. They never seed a bank,
 //! invent a coordinate, or convert the static catalogue into execution.
 
-use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -20,8 +19,8 @@ use utsushi_reallive::{
 #[path = "support/real_g00_package.rs"]
 mod real_g00_package;
 
-const SECONDARY_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT_2";
-const PRIMARY_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
+const SECONDARY_ROOT_ENV: &str = "reallive/2/plain";
+const PRIMARY_ROOT_ENV: &str = "reallive/1/encrypted";
 const BLOCKED_SCENE: u16 = 8502;
 const BLOCKED_PC: u32 = 1236;
 
@@ -50,7 +49,7 @@ fn staged_engine_and_bytes(
 }
 
 fn root_paths(env_name: &str) -> Option<(PathBuf, PathBuf, PathBuf)> {
-    let root = PathBuf::from(env::var_os(env_name)?);
+    let root = corpus_registry::resolve_identity(env_name).ok()?;
     [root.clone(), root.join("REALLIVEDATA")]
         .into_iter()
         .find_map(|data_root| {
@@ -113,7 +112,7 @@ fn normalized_primary(point: (i32, i32), screen: (i32, i32)) -> InputEvent {
 }
 
 #[test]
-#[ignore = "requires the existing ITOTORI_REAL_GAME_ROOT_2 Kanon asset root"]
+#[ignore = "requires the existing private inventory row Kanon asset root"]
 fn p2_script_rectangle_click_advances_without_hydrated_object() {
     let Some((seen, _gameexe, g00)) = root_paths(SECONDARY_ROOT_ENV) else {
         eprintln!("SKIP P2 raw-pointer experiment: {SECONDARY_ROOT_ENV} is unavailable.");
@@ -183,7 +182,7 @@ fn p2_script_rectangle_click_advances_without_hydrated_object() {
 }
 
 #[test]
-#[ignore = "requires the existing ITOTORI_REAL_GAME_ROOT_2 Kanon asset root"]
+#[ignore = "requires the existing private inventory row Kanon asset root"]
 fn p2_declared_screen_size_matches_the_live_conversion_candidate() {
     let Some((_seen, gameexe_path, _g00)) = root_paths(SECONDARY_ROOT_ENV) else {
         eprintln!("SKIP P2 coordinate experiment: {SECONDARY_ROOT_ENV} is unavailable.");
@@ -243,7 +242,7 @@ fn target_ref_count(bytes: &[u8]) -> usize {
 }
 
 #[test]
-#[ignore = "requires the existing ITOTORI_REAL_GAME_ROOT_2 Kanon asset root"]
+#[ignore = "requires the existing private inventory row Kanon asset root"]
 fn p2_backward_slice_classifies_the_rectangle_operand_provenance() {
     let Some((seen, _gameexe, _g00)) = root_paths(SECONDARY_ROOT_ENV) else {
         eprintln!("SKIP P2 provenance experiment: {SECONDARY_ROOT_ENV} is unavailable.");
@@ -314,7 +313,7 @@ fn p2_backward_slice_classifies_the_rectangle_operand_provenance() {
 }
 
 #[test]
-#[ignore = "requires the existing ITOTORI_REAL_GAME_ROOT primary asset root"]
+#[ignore = "requires the existing private inventory row primary asset root"]
 fn p2_primary_executed_line_oracle_remains_7750() {
     let Some((seen, gameexe, _g00)) = root_paths(PRIMARY_ROOT_ENV) else {
         eprintln!("SKIP primary regression oracle: {PRIMARY_ROOT_ENV} is unavailable.");

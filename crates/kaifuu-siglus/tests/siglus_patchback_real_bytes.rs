@@ -15,8 +15,8 @@ use kaifuu_siglus::{
     partition_scene, produce_scene_pack_bundle, read_gameexe_inventory, recover_exe_angou_key,
 };
 
-const FIRST_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
-const SECOND_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
+const FIRST_ROOT_ENV: &str = "siglus/1/encrypted";
+const SECOND_ROOT_ENV: &str = "siglus/2/encrypted";
 
 struct DecodedScene {
     scene_id: u32,
@@ -26,10 +26,12 @@ struct DecodedScene {
 }
 
 fn installation_paths(variable: &str) -> Option<(PathBuf, PathBuf, PathBuf)> {
-    let root = std::env::var_os(variable).map(PathBuf::from).or_else(|| {
-        eprintln!("SKIP siglus patchback real bytes: {variable} is unset");
-        None
-    })?;
+    let root = corpus_registry::resolve_identity(variable)
+        .ok()
+        .or_else(|| {
+            eprintln!("SKIP siglus patchback real bytes: {variable} is unset");
+            None
+        })?;
     let directory = if root.is_dir() {
         root
     } else {

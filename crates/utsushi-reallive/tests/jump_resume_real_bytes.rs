@@ -14,7 +14,7 @@
 //!     message the deterministic play-order stream renders at that frame.
 //!  3. **Deterministic across runs.** Two jumps to the same target return
 //!     byte-identical landings (scene, pc, control fingerprint, line).
-//!  4. **Engine-general.** The SAME code exercises primary_corpus HD (compiler
+//!  4. **Engine-general.** The SAME code exercises Sweetie HD (compiler
 //!     `110002`, `use_xor_2`) and Kanon (compiler `1.2.6`, plaintext) — no
 //!     per-game branch. Kanon's headless-gated title flow may render no
 //!     reachable frame; the test documents that and still proves the SAME
@@ -22,8 +22,8 @@
 //!
 //! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE (no
 //! opt-out; runs only in the periodic ground-truth oracle
-//! `just real-bytes-oracle`). Run with
-//! `ITOTORI_REAL_GAME_ROOT=<primary_corpus> ITOTORI_REAL_GAME_ROOT_2=<kanon>
+//! `just test real-bytes-oracle`). Run with
+//! `private inventory row=<sweetie> private inventory row=<kanon>
 //! cargo test -p utsushi-reallive --test jump_resume_real_bytes -- --ignored`.
 
 #[path = "support/real_corpus.rs"]
@@ -92,7 +92,7 @@ fn discover_renderable_scene(engine: &ReplayEngine, entry_scene: Option<u16>) ->
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT + _2"]
+#[ignore = "real-bytes; requires private inventory row + _2"]
 fn jump_resume_lands_on_expected_frame_deterministically() {
     let corpora = real_corpus::corpora();
     if corpora.len() < 2 {
@@ -225,7 +225,7 @@ fn jump_resume_lands_on_expected_frame_deterministically() {
 /// the typed `FrameNotReached` (naming how far the stream reached), never a
 /// silent land-at-zero. Runs on whichever corpus has a renderable scene.
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT + _2"]
+#[ignore = "real-bytes; requires private inventory row + _2"]
 fn jump_past_stream_end_surfaces_typed_miss() {
     let corpora = real_corpus::corpora();
     if corpora.len() < 2 {

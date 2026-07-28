@@ -27,6 +27,7 @@ import {
   serveBrowserPlayerRequest,
   type BrowserPlayerLaunchRegistry,
 } from "./play/browser-player-routes.js";
+import { realliveBrowserPlayerLaunchFromInventory } from "./play/reallive-browser-player-launch.js";
 import {
   isPatchbackProduceRoute,
   parsePatchIterationDeliveryArchiveRoute,
@@ -80,7 +81,8 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
   const readOnlyServiceFactory =
     options.readOnlyServiceFactory ?? toReadOnlyServiceFactory(serviceFactory);
   const browserPlayerSessions = options.browserPlayerSessions ?? new BrowserPlayerSessionManager();
-  const browserPlayerLaunches = options.browserPlayerLaunches ?? browserPlayerLaunchesFromEnv();
+  const browserPlayerLaunches =
+    options.browserPlayerLaunches ?? browserPlayerLaunchesFromInventory();
   const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
     if (isItotoriApiPath(url.pathname)) {
@@ -297,34 +299,9 @@ async function canReveal(
   }
 }
 
-function browserPlayerLaunchesFromEnv(): BrowserPlayerLaunchRegistry {
-  const seenPath = process.env.ITOTORI_PLAYER_E2E_SEEN;
-  const gameexePath = process.env.ITOTORI_PLAYER_E2E_GAMEEXE;
-  const g00Dir = process.env.ITOTORI_PLAYER_E2E_G00_DIR;
-  const artifactRoot = process.env.ITOTORI_PLAYER_E2E_ARTIFACT_ROOT;
-  const scene = Number(process.env.ITOTORI_PLAYER_E2E_SCENE ?? "");
-  if (
-    seenPath === undefined ||
-    gameexePath === undefined ||
-    g00Dir === undefined ||
-    artifactRoot === undefined ||
-    seenPath.trim() === "" ||
-    gameexePath.trim() === "" ||
-    g00Dir.trim() === "" ||
-    artifactRoot.trim() === "" ||
-    !Number.isInteger(scene)
-  ) {
-    return {};
-  }
-  return {
-    [process.env.ITOTORI_PLAYER_E2E_SESSION_ID ?? "e2e"]: {
-      seenPath,
-      gameexePath,
-      g00Dir,
-      artifactRoot,
-      scene,
-    },
-  };
+function browserPlayerLaunchesFromInventory(): BrowserPlayerLaunchRegistry {
+  const launch = realliveBrowserPlayerLaunchFromInventory();
+  return launch === undefined ? {} : { e2e: launch };
 }
 
 function contentType(path: string): string {

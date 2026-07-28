@@ -47,7 +47,7 @@
 //! - **Writing to the read-only research mount must be banned at the
 //!   test layer.** The real-bytes test in
 //!   `tests/save_real_bytes.rs` reads observed save bytes
-//!   from `$ITOTORI_REAL_GAME_ROOT` (mode 0444, dr-x------) but
+//!   from `$private inventory row` (mode 0444, dr-x------) but
 //!   the test source has **no** `fs::write` / `fs::create_dir_all`
 //!   `OpenOptions::write` calls — the audit grep
 //!   `tests/save_real_bytes.rs` keeps the "no writes against the

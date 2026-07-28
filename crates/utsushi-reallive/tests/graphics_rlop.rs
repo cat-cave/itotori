@@ -272,7 +272,7 @@ fn grp_buffer_then_display_promotes_offscreen_dc_to_screen() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn grp_openbg_bg01a1_registers_bg_plane() {
     let Some(g00_dir) = real_g00_dir() else {
         real_corpus::require_real_bytes("utsushi-reallive grp_openbg_bg01a1_registers_bg_plane");

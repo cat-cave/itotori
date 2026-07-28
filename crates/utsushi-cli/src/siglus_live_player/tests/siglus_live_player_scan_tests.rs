@@ -38,7 +38,7 @@ fn player_response_reports_the_real_nonbackground_pixel_count() {
 
 #[test]
 fn corpus_two_scene_85_renders_its_authored_bg01a01_text_boundary() {
-    let Some(root) = std::env::var_os("ITOTORI_REAL_GAME_ROOT_SIGLUS_2").map(PathBuf::from) else {
+    let Some(root) = corpus_registry::resolve_identity("siglus/2/encrypted").ok() else {
         return;
     };
     let (title, _, message_window) = load_title(&root).expect("load corpus-two Siglus title");

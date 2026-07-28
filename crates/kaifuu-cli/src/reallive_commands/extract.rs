@@ -11,7 +11,7 @@ use super::paths::{
     game_root_gameexe_path, read_gameexe_inventory_bytes, resolve_reallive_game_root,
     resolve_reallive_game_root_via_vault,
 };
-use crate::{REAL_GAME_ROOT_ENV, flag, flag_optional, flag_present};
+use crate::{flag, flag_optional, flag_present};
 
 use super::run_scope::parse_requested_scope;
 
@@ -33,26 +33,16 @@ pub(crate) fn run_extract_reallive_bundle(
     let requested_scope = parse_requested_scope(args)?;
     // Alpha sourcing route (production): resolve the corpus BY-ID through the
     // read-only vault adapter (`kaifuu-vault-source`). `--game-root` /
-    // ITOTORI_REAL_GAME_ROOT is retained only as the env-gated raw-path helper
-    // that serves unit tests.
+    // A raw source is always explicit. Durable private roots belong in the
+    // platform inventory; this command consumes the selected path as an arg.
     let resolved_game_root = if let Some(canonical_id) = flag_optional(args, "--vault-canonical-id")
     {
         let tree_root = resolve_reallive_game_root_via_vault(canonical_id)?;
         resolve_reallive_game_root(&tree_root)?
     } else {
-        let game_root = match flag_optional(args, "--game-root") {
-            Some(value) => PathBuf::from(value),
-            None => match std::env::var_os(REAL_GAME_ROOT_ENV) {
-                Some(value) => PathBuf::from(value),
-                None => {
-                    return Err(format!(
-                        "--vault-canonical-id <ID> (vault by-id sourcing), \
-                         or --game-root <PATH> / {REAL_GAME_ROOT_ENV} (raw-path test helper) required"
-                    )
-                    .into());
-                }
-            },
-        };
+        let game_root = PathBuf::from(flag_optional(args, "--game-root").ok_or(
+            "--vault-canonical-id <ID> (vault by-id sourcing) or --game-root <PATH> required",
+        )?);
         resolve_reallive_game_root(&game_root)?
     };
     let seen_path = resolved_game_root.join("REALLIVEDATA").join("Seen.txt");

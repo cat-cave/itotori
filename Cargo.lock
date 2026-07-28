@@ -143,9 +143,11 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 name = "corpus-registry"
 version = "0.0.0"
 dependencies = [
+ "dirs",
+ "engine-contract",
  "serde",
- "serde_json",
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]
@@ -651,6 +653,7 @@ dependencies = [
 name = "kaifuu-core"
 version = "0.0.0"
 dependencies = [
+ "corpus-registry",
  "encoding_rs",
  "flate2",
  "kaifuu-kirikiri",
@@ -677,6 +680,7 @@ dependencies = [
 name = "kaifuu-engine-fixture"
 version = "0.0.0"
 dependencies = [
+ "corpus-registry",
  "engine-contract",
  "kaifuu-core",
  "kaifuu-reallive",
@@ -689,6 +693,7 @@ dependencies = [
 name = "kaifuu-kirikiri"
 version = "0.0.0"
 dependencies = [
+ "corpus-registry",
  "encoding_rs",
  "flate2",
  "kaifuu-core",
@@ -702,6 +707,7 @@ dependencies = [
 name = "kaifuu-nexas"
 version = "0.0.0"
 dependencies = [
+ "corpus-registry",
  "encoding_rs",
  "serde",
  "sha2",
@@ -726,6 +732,7 @@ dependencies = [
 name = "kaifuu-rpgmaker"
 version = "0.0.0"
 dependencies = [
+ "corpus-registry",
  "kaifuu-core",
  "kaifuu-delta",
  "serde",
@@ -739,6 +746,7 @@ dependencies = [
 name = "kaifuu-siglus"
 version = "0.0.0"
 dependencies = [
+ "corpus-registry",
  "encoding_rs",
  "kaifuu-core",
  "serde",
@@ -753,6 +761,7 @@ dependencies = [
 name = "kaifuu-softpal"
 version = "0.0.0"
 dependencies = [
+ "corpus-registry",
  "encoding_rs",
  "serde",
  "sha2",
@@ -1594,6 +1603,7 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 name = "utsushi-cli"
 version = "0.0.0"
 dependencies = [
+ "corpus-registry",
  "encoding_rs",
  "image",
  "kaifuu-core",
@@ -1620,6 +1630,7 @@ name = "utsushi-core"
 version = "0.0.0"
 dependencies = [
  "bytes",
+ "corpus-registry",
  "jsonschema",
  "rustix",
  "serde",
@@ -1659,6 +1670,7 @@ dependencies = [
 name = "utsushi-kirikiri-xp3"
 version = "0.0.0"
 dependencies = [
+ "corpus-registry",
  "kaifuu-kirikiri",
  "serde",
  "serde_json",
@@ -1704,6 +1716,7 @@ dependencies = [
 name = "utsushi-siglus"
 version = "0.0.0"
 dependencies = [
+ "corpus-registry",
  "image",
  "kaifuu-siglus",
  "serde",

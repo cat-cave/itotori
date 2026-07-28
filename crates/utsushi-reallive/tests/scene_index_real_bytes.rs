@@ -1,8 +1,8 @@
 //! Real-bytes integration test for the `utsushi-reallive`
 //! 10,000-slot `Seen.txt` directory parser.
 //!
-//! Anchors the parser against the primary_corpus HD corpus supplied via
-//! `ITOTORI_REAL_GAME_ROOT` and
+//! Anchors the parser against the Sweetie HD corpus supplied via
+//! `private inventory row` and
 //! re-uses the format invariants documented in
 //! `docs/research/reallive-engine.md` §D plus
 //! `docs/audits/real-bytes-validation-2026-06-24.md` §2.8.
@@ -13,7 +13,7 @@
 //! corpora before its node is merged-complete. The MV/MZ and KAG
 //! corpora are different engines and do not contain a `Seen.txt`.
 //! `utsushi-reallive` is therefore in the same single-RealLive-corpus
-//! position as `kaifuu-reallive` was for: primary_corpus HD is the
+//! position as `kaifuu-reallive` was for: Sweetie HD is the
 //! only RealLive title currently staged. mirrors that
 //! pattern — the node stays `planned` until a second RealLive corpus is
 //! sourced and exercised by an additional
@@ -21,7 +21,7 @@
 //! must not approve completion until that happens.
 //!
 //! Until the second corpus is staged this test is `#[ignore]`-gated and
-//! only runs when `ITOTORI_REAL_GAME_ROOT` is set (the same env
+//! only runs when `private inventory row` is set (the same env
 //! var uses, so a single export drives both projects).
 
 #[path = "support/real_corpus.rs"]
@@ -32,10 +32,10 @@ use std::path::PathBuf;
 
 use utsushi_reallive::{REAL_SCENE_DIRECTORY_BYTE_LEN, RealSceneIndex};
 
-// Relative path under the primary_corpus HD extraction root that holds the
+// Relative path under the Sweetie HD extraction root that holds the
 // raw `Seen.txt` envelope.
 
-/// primary_corpus HD is the only RealLive corpus currently staged, so its
+/// Sweetie HD is the only RealLive corpus currently staged, so its
 /// populated-slot count is the alpha-gate anchor. Mirrors the
 /// equivalent constant in `kaifuu-reallive`'s integration test — both
 /// parsers see the same archive, both must agree on the count.
@@ -50,11 +50,11 @@ const PRIMARY_CORPUS_FIRST_SCENE_BYTE_OFFSET: u64 = 0x13880;
 const PRIMARY_CORPUS_FIRST_SCENE_BYTE_LEN: u32 = 0x5fa;
 
 /// Documented final populated scene id. RealLive reserves slot 9999 as
-/// the syscall-handler scene; primary_corpus HD populates it.
+/// the syscall-handler scene; Sweetie HD populates it.
 const PRIMARY_CORPUS_LAST_SCENE_ID: u16 = 9999;
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn scene_index_real_bytes_parses_reallive_real_bytes_seen_txt_into_198_populated_scene_entries() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(
@@ -71,13 +71,13 @@ fn scene_index_real_bytes_parses_reallive_real_bytes_seen_txt_into_198_populated
     // than the one the audit documented.
     assert!(
         bytes.len() >= REAL_SCENE_DIRECTORY_BYTE_LEN,
-        "primary_corpus HD Seen.txt should be at least the directory size ({} bytes); got {}",
+        "Sweetie HD Seen.txt should be at least the directory size ({} bytes); got {}",
         REAL_SCENE_DIRECTORY_BYTE_LEN,
         bytes.len(),
     );
 
     let index = RealSceneIndex::parse(&bytes).expect(
-        "primary_corpus HD REALLIVEDATA/Seen.txt must parse cleanly through \
+        "Sweetie HD REALLIVEDATA/Seen.txt must parse cleanly through \
          utsushi-reallive's own parser; silent zero-state on real bytes is the bug \
           fixes",
     );
@@ -85,7 +85,7 @@ fn scene_index_real_bytes_parses_reallive_real_bytes_seen_txt_into_198_populated
     assert_eq!(
         index.len(),
         PRIMARY_CORPUS_POPULATED_SLOT_COUNT,
-        "expected {} populated slots in primary_corpus HD Seen.txt; got {}",
+        "expected {} populated slots in Sweetie HD Seen.txt; got {}",
         PRIMARY_CORPUS_POPULATED_SLOT_COUNT,
         index.len(),
     );
@@ -98,7 +98,7 @@ fn scene_index_real_bytes_parses_reallive_real_bytes_seen_txt_into_198_populated
     let first = index
         .entries
         .first()
-        .expect("primary_corpus HD has 198 populated slots; first one must exist");
+        .expect("Sweetie HD has 198 populated slots; first one must exist");
     assert_eq!(first.scene_id, 1, "first populated slot must be scene 1");
     assert_eq!(
         first.byte_offset, PRIMARY_CORPUS_FIRST_SCENE_BYTE_OFFSET,
@@ -106,7 +106,7 @@ fn scene_index_real_bytes_parses_reallive_real_bytes_seen_txt_into_198_populated
     );
     assert_eq!(
         first.byte_len, PRIMARY_CORPUS_FIRST_SCENE_BYTE_LEN,
-        "first scene payload size matches the documented primary_corpus HD value",
+        "first scene payload size matches the documented Sweetie HD value",
     );
 
     // `lookup` must agree with `entries.first()`.

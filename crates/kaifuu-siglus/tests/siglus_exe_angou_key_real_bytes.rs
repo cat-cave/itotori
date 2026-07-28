@@ -22,8 +22,8 @@ use kaifuu_siglus::{
     EXE_ANGOU_KEY_BYTE_LEN, SiglusSecondLayerKey, decode_gameexe_dat, recover_exe_angou_key,
 };
 
-const FIRST_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
-const SECOND_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
+const FIRST_TITLE_ENV: &str = "siglus/1/encrypted";
+const SECOND_TITLE_ENV: &str = "siglus/2/encrypted";
 
 /// One-way sha256 commitments to the two known-good exe-angou keys. These are
 /// hashes, not keys: they pin *which* key was recovered without disclosing any
@@ -36,11 +36,13 @@ const KNOWN_KEY_SHA256: [&str; 2] = [
 /// Resolve a game root env var to `(SiglusEngine.exe, Gameexe.dat)` paths, or a
 /// clean skip when the var is unset / the files are absent.
 fn title_paths(variable: &str) -> Option<(PathBuf, PathBuf)> {
-    let value = std::env::var_os(variable).or_else(|| {
-        eprintln!("SKIP siglus exe-angou real bytes: {variable} is unset");
-        None
-    })?;
-    let root = PathBuf::from(value);
+    let value = corpus_registry::resolve_identity(variable)
+        .ok()
+        .or_else(|| {
+            eprintln!("SKIP siglus exe-angou real bytes: {variable} is unset");
+            None
+        })?;
+    let root = value;
     // Accept either the game directory or a direct file inside it.
     let dir = if root.is_dir() {
         root

@@ -9,7 +9,7 @@
 //      real file read-back + real schema validation.
 //   2. WIRE-CONTRACT: parseProjectDecodeExtractRequest dispatches the required
 //      engine discriminant to the matching adapter-owned source + mode shape.
-//   3. ENV-GATED real: when ITOTORI_REAL_CORPUS_ROOT is exported, the runner
+//   3. ENV-GATED real: when private inventory row is exported, the runner
 //      drives the REAL kaifuu-cli against the operator's game tree and asserts a
 //      real v0.2 BridgeBundle with text units landed. No retail bytes committed.
 //
@@ -19,6 +19,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { resolvePrivateCorpus } from "../src/private-inventory.js";
 import { createDecodeExtractRunner } from "../src/extract/decode-extract-runner.js";
 import {
   buildExtractArgs,
@@ -239,13 +240,13 @@ describe("parseProjectDecodeExtractRequest (wire contract)", () => {
 // ENV-GATED real-primary_corpus proof — the runner drives the REAL kaifuu-cli.
 // ---------------------------------------------------------------------------
 
-const REAL_CORPUS_ROOT = process.env.ITOTORI_REAL_CORPUS_ROOT;
+const REAL_CORPUS_ROOT = resolvePrivateCorpus("reallive", 1, "encrypted");
 
 describe("in-studio decode/extract runner (env-gated real-primary_corpus byte proof)", () => {
   it.skipIf(!REAL_CORPUS_ROOT)(
     "produces a REAL v0.2 bridge from a real game root via the real kaifuu-cli (per-scene)",
     async () => {
-      const sceneEnv = process.env.ITOTORI_REAL_CORPUS_SCENE;
+      const sceneEnv = undefined;
       const scene = sceneEnv ? Number.parseInt(sceneEnv, 10) : 2031;
       // No injected runExtract -> the REAL kaifuu-cli runs.
       const runner = createDecodeExtractRunner();

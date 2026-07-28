@@ -7,10 +7,10 @@
 //! background/sprite ops fell through to the catalog `Advance` stub and the
 //! terminal graphics stack was EMPTY.
 //!
-//! Two titles (primary_corpus HD + Kanon). Env-gated + STRICT (an absent corpus is
+//! Two titles (Sweetie HD + Kanon). Env-gated + STRICT (an absent corpus is
 //! a HARD failure); these `#[ignore]`-d suites run in the periodic
 //! ground-truth oracle. Run with:
-//! `ITOTORI_REAL_GAME_ROOT=<primary_corpus> ITOTORI_REAL_GAME_ROOT_2=<kanon>
+//! `private inventory row=<sweetie> private inventory row=<kanon>
 //!  cargo test -p utsushi-reallive --test render_opcode_semantics_real_bytes -- --ignored --nocapture`.
 
 #[path = "support/real_corpus.rs"]
@@ -84,7 +84,7 @@ fn richest_graphics_scene(engine: &ReplayEngine) -> (u16, usize) {
 /// background/sprite op fell through to the catalog `Advance` stub and the
 /// stack stayed empty.)
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT + _2"]
+#[ignore = "real-bytes; requires private inventory row + _2"]
 fn render_ops_populate_graphics_stack_on_real_bytes() {
     let corpora = corpora_or_skip("render_ops_populate_graphics_stack_on_real_bytes");
     if corpora.is_empty() {
@@ -139,7 +139,7 @@ fn render_ops_populate_graphics_stack_on_real_bytes() {
 /// The richest render scene of each title replays with ZERO unknown
 /// opcodes (the render family + catalog together cover every real tuple).
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT + _2"]
+#[ignore = "real-bytes; requires private inventory row + _2"]
 fn render_scene_replays_with_zero_unknown_opcodes() {
     let corpora = corpora_or_skip("render_scene_replays_with_zero_unknown_opcodes");
     if corpora.is_empty() {

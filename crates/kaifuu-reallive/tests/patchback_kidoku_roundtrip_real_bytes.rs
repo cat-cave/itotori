@@ -369,7 +369,7 @@ fn real_corpus_gameexe(corpus: &real_corpus::RealCorpus) -> Option<Vec<u8>> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (primary_corpus HD) + ITOTORI_REAL_GAME_ROOT_2 (Kanon)"]
+#[ignore = "real-bytes; requires private inventory row (Sweetie HD) + private inventory row (Kanon)"]
 fn kidoku_and_name_control_markup_round_trips_on_two_reallive_titles() {
     let corpora = real_corpus::corpora();
     if corpora.is_empty() {
@@ -383,7 +383,7 @@ fn kidoku_and_name_control_markup_round_trips_on_two_reallive_titles() {
     assert!(
         corpora.len() >= 2,
         "control-markup round-trip requires >=2 RealLive corpora (set \
-         ITOTORI_REAL_GAME_ROOT + ITOTORI_REAL_GAME_ROOT_2); got {}",
+         reallive/1/encrypted + reallive/2/plain); got {}",
         corpora.len()
     );
     let preferred = [1017u16, 50u16];

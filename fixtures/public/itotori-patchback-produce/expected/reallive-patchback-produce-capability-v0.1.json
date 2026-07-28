@@ -12,7 +12,7 @@
   "realBytes": {
     "suite": "apps/itotori/test/patchback-produce-build.test.ts",
     "strictLane": "just test real-bytes",
-    "corpusEnvironment": ["ITOTORI_REAL_GAME_ROOT", "ITOTORI_REAL_GAME_ROOT_2"],
+    "corpusEnvironment": ["private inventory row", "private inventory row"],
     "minimumDistinctGames": 2,
     "assertions": [
       "the CLI persists a patched REALLIVEDATA/Seen.txt tree",

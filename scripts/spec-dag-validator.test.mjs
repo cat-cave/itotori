@@ -1034,7 +1034,7 @@ test("accepts qd export alpha commands that name existing recipes, tasks, and ex
         {
           type: "command",
           value:
-            "ITOTORI_REAL_GAME_ROOT=/scratch/itotori-research/sweetie-hd/extracted direnv exec . cargo test -p utsushi-core --test engine_port_sinks_bridge_real_bytes engine_port_sinks_bridge_real_bytes_pushes_text_and_frame_for_ten_ticks -- --include-ignored",
+            "private inventory row=/scratch/itotori-research/sweetie-hd/extracted direnv exec . cargo test -p utsushi-core --test engine_port_sinks_bridge_real_bytes engine_port_sinks_bridge_real_bytes_pushes_text_and_frame_for_ten_ticks -- --include-ignored",
         },
       ],
     }),

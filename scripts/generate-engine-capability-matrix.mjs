@@ -492,7 +492,7 @@ function buildReallivePatchbackProduceRow(inputs) {
     v.engineFamily === "reallive" &&
     v.realBytes?.strictLane === "just test real-bytes" &&
     v.realBytes?.minimumDistinctGames >= 2 &&
-    ["ITOTORI_REAL_GAME_ROOT", "ITOTORI_REAL_GAME_ROOT_2"].every((name) =>
+    ["private inventory row", "private inventory row"].every((name) =>
       (v.realBytes?.corpusEnvironment ?? []).includes(name),
     ) &&
     JSON.stringify([...(v.artifactKeys ?? [])].sort()) === JSON.stringify(exactArtifactKeys);
@@ -646,7 +646,7 @@ function buildProductionPlainXp3Row(inputs) {
     adapterId: "kaifuu.kirikiri-xp3.plain-writer",
     scenario: "xp3-plain-extract-patch",
     tupleKind: "plain_xp3_writer",
-    corpusEnvironment: ["KAIFUU_XP3_PROFILE_A_ARCHIVE"],
+    corpusEnvironment: ["private inventory archive"],
     minimumDistinctCorpora: 1,
     outcome: "byte_exact_archive_rebuild",
     productionPath: {
@@ -813,10 +813,7 @@ function buildProductionRpgMakerRow(inputs) {
     adapterId: "kaifuu.rpg-maker-mv-mz",
     scenario: "json-text-extract-patch",
     tupleKind: "mv_mz_json_text",
-    corpusEnvironment: [
-      "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ",
-      "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2",
-    ],
+    corpusEnvironment: ["private inventory row", "private inventory row"],
     minimumDistinctCorpora: 2,
     outcome: "byte_surgical_extract_patch_delta_apply",
     productionPath: {

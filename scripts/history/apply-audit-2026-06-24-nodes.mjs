@@ -77,7 +77,7 @@ const NEW_NODES = [
       "Rewrite of `kaifuu-reallive::parse_archive` in `crates/kaifuu-reallive/src/archive.rs` to read a 10,000-slot (u32 LE offset, u32 LE size) directory starting at byte 0, skipping all-zero slots and validating `offset >= 80000` and `offset + size <= archive_len` for nonzero slots.",
       "Updated `reallive_seen_txt_envelope_ok` in `crates/kaifuu-engine-fixture/src/lib.rs` to accept the fixed-table envelope (zero-prefix tolerated) and reject only truncated archives.",
       "New regression test in `crates/kaifuu-reallive/tests/archive.rs` that loads the first 256 KiB of Sweetie HD's `REALLIVEDATA/Seen.txt` (synthesised fixture mirroring the real header layout) and asserts entry count >= 1000 with first nonzero entry at offset 0x13880.",
-      "Updated `crates/kaifuu-reallive/examples/probe_real_bytes.rs` exit code 0 when KAIFUU_PROBE_SEEN_TXT points at the real Sweetie HD bytes.",
+      "Updated `crates/kaifuu-reallive/examples/probe_real_bytes.rs` exit code 0 when private inventory scene archive points at the real Sweetie HD bytes.",
     ],
     acceptanceCriteria: [
       "`parse_archive` on Sweetie HD's REALLIVEDATA/Seen.txt returns a `SceneIndex` whose `entries.len()` is >= 1000.",
@@ -93,7 +93,7 @@ const NEW_NODES = [
       {
         type: "command",
         value:
-          "KAIFUU_PROBE_SEEN_TXT=<reallive-game-root>/REALLIVEDATA/Seen.txt direnv exec . cargo run -p kaifuu-reallive --example probe_real_bytes",
+          "private inventory scene archive=<reallive-game-root>/REALLIVEDATA/Seen.txt direnv exec . cargo run -p kaifuu-reallive --example probe_real_bytes",
       },
     ],
     auditFocus: [

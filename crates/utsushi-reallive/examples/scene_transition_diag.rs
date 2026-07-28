@@ -12,7 +12,7 @@
 //! # What is REAL vs STAGED
 //!
 //! - The SCENE CHAIN (which scene ids the play-loop crosses, in dispatch
-//!   order) is REAL when a corpus is reachable via `ITOTORI_REAL_GAME_ROOT_2`
+//!   order) is REAL when a corpus is reachable via `private inventory row`
 //!   (Kanon): the montage is labelled with the actual `observe_playthrough`
 //!   scene ids (e.g. 9030 → 9031). This is the true engine behaviour.
 //! - The message CONTENT is STAGED English (the product output; an
@@ -27,7 +27,7 @@
 //! Run:
 //!   cargo run -p utsushi-reallive --example scene_transition_diag
 //!   # optionally grounded with a real scene chain:
-//!   ITOTORI_REAL_GAME_ROOT_2=/path/to/kanon \
+//!   private inventory row=/path/to/kanon \
 //!     cargo run -p utsushi-reallive --example scene_transition_diag
 //!
 //! Writes `.private-render/diag/scene-transition-seq.png` (gitignored).
@@ -108,8 +108,7 @@ fn background_frame(bg: SceneBackground) -> Framebuffer {
 /// `observe_playthrough`, so the montage is labelled with actual engine scene
 /// ids. Returns `None` (staged-only) when no corpus is reachable.
 fn real_scene_chain() -> Option<Vec<u16>> {
-    let root = std::env::var_os("ITOTORI_REAL_GAME_ROOT_2")?;
-    let root = PathBuf::from(root);
+    let root = corpus_registry::resolve_identity("reallive/2/plain").ok()?;
     let seen = find_ci(&root, "seen.txt")?;
     let gameexe = find_ci(&root, "gameexe.ini")?;
     let entry = u16::try_from(
@@ -161,7 +160,7 @@ fn main() {
         if grounded {
             "REAL observe_playthrough dispatch order"
         } else {
-            "staged placeholder — set ITOTORI_REAL_GAME_ROOT_2 for real ids"
+            "staged placeholder — set reallive/2/plain for real ids"
         },
     );
 

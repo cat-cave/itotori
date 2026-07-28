@@ -1,23 +1,23 @@
 //! Real-bytes integration test for the AVG32 LZSS + XOR
 //! scene decompressor.
 //!
-//! Pins the decompressor against the primary_corpus HD corpus supplied via
-//! `ITOTORI_REAL_GAME_ROOT`
+//! Pins the decompressor against the Sweetie HD corpus supplied via
+//! `private inventory row`
 //! using the documented decompressed-output values from
 //! `RealLive encryption research notes`
-//! (outcome A: no second-level XOR for xor_two-branch titles).
+//! (outcome A: no second-level XOR for Sukara-branch titles).
 //!
 //! **Multi-game validation status.** Per the itotori operating model
 //! (`docs/dev/orchestration-operating-model.md`), a parser that targets a
 //! real engine substrate must be exercised against at least two real
-//! corpora before its node is merged-complete. primary_corpus HD is the only
+//! corpora before its node is merged-complete. Sweetie HD is the only
 //! RealLive title currently staged. mirrors the pattern
 //! its predecessors landed: the node stays `planned`
 //! until a second RealLive corpus is sourced and exercised by an
 //! additional `decompressor_second_reallive_real_bytes.rs` test.
 //!
 //! Until the second corpus is staged this test is `#[ignore]`-gated and
-//! only runs when `ITOTORI_REAL_GAME_ROOT` is set.
+//! only runs when `private inventory row` is set.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -30,15 +30,15 @@ use utsushi_reallive::{
     DecompressWarning, RealSceneIndex, SCENE_HEADER_BYTE_LEN, SceneHeader,
 };
 
-// Relative path under the primary_corpus HD extraction root that holds the
+// Relative path under the Sweetie HD extraction root that holds the
 // raw `Seen.txt` envelope.
 
-/// Documented decompressed-output values for primary_corpus HD scene #0001.
+/// Documented decompressed-output values for Sweetie HD scene #0001.
 /// Sourced from `RealLive encryption research notes` §1.
 const PRIMARY_CORPUS_SCENE_ONE_BYTECODE_COMPRESSED_SIZE: u32 = 1062;
 const PRIMARY_CORPUS_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE: u32 = 1660;
 
-/// First 8 bytes of the decompressed bytecode payload for primary_corpus HD
+/// First 8 bytes of the decompressed bytecode payload for Sweetie HD
 /// scene #0001. Sourced verbatim from
 /// `RealLive encryption research notes` §1 and
 /// re-confirmed by the kaifuu-reallive `probe_scene_1_encryption`
@@ -48,7 +48,7 @@ const PRIMARY_CORPUS_SCENE_ONE_DECOMPRESSED_FIRST_EIGHT_BYTES: [u8; 8] =
     [0x0a, 0x02, 0x00, 0x0a, 0x03, 0x00, 0x21, 0x00];
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn scene1_decompressor_matches_reallive_real_bytes_outcome_a() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(
@@ -65,10 +65,10 @@ fn scene1_decompressor_matches_reallive_real_bytes_outcome_a() {
     // hard-coding the file offsets) so a regression earlier in the chain
     // surfaces here as a chain-level diagnostic.
     let index = RealSceneIndex::parse(&bytes)
-        .expect("primary_corpus HD Seen.txt must parse through the  directory parser");
+        .expect("Sweetie HD Seen.txt must parse through the  directory parser");
     let entry = index
         .lookup(1)
-        .expect("primary_corpus HD must contain a populated scene 1 entry");
+        .expect("Sweetie HD must contain a populated scene 1 entry");
 
     let blob_start =
         usize::try_from(entry.byte_offset).expect("file offset must fit in usize on this platform");
@@ -85,15 +85,15 @@ fn scene1_decompressor_matches_reallive_real_bytes_outcome_a() {
     );
 
     let (header, header_warnings) = SceneHeader::parse(blob)
-        .expect("primary_corpus HD scene 1 must produce a typed SceneHeader ( anchor)");
+        .expect("Sweetie HD scene 1 must produce a typed SceneHeader ( anchor)");
     assert!(
         header_warnings.is_empty(),
-        "primary_corpus HD scene 1 uses compiler_version 110002 which is documented; got: \
+        "Sweetie HD scene 1 uses compiler_version 110002 which is documented; got: \
          {header_warnings:?}",
     );
     assert_eq!(
         header.compiler_version, COMPILER_VERSION_1_10,
-        "compiler_version must be 110002 (primary_corpus HD is RealLive 1.10)",
+        "compiler_version must be 110002 (Sweetie HD is RealLive 1.10)",
     );
     assert_eq!(
         header.bytecode_compressed_size, PRIMARY_CORPUS_SCENE_ONE_BYTECODE_COMPRESSED_SIZE,
@@ -145,7 +145,7 @@ fn scene1_decompressor_matches_reallive_real_bytes_outcome_a() {
          RealLive encryption research notes §4.1",
     );
 
-    // Decompress. Outcome A: xor2_key = None for xor_two-branch titles.
+    // Decompress. Outcome A: xor2_key = None for Sukara-branch titles.
     let (decompressed, warnings) = AvgDecompressor::new()
         .decompress(
             compressed,
@@ -153,11 +153,11 @@ fn scene1_decompressor_matches_reallive_real_bytes_outcome_a() {
             None,
             header.compiler_version,
         )
-        .expect("primary_corpus HD scene 1 must decompress cleanly with xor2_key=None (outcome A)");
+        .expect("Sweetie HD scene 1 must decompress cleanly with xor2_key=None (outcome A)");
 
     // The compiler_version=110002 path with xor2_key=None *intentionally*
     // emits the Xor2NotApplied warning per the alpha-gate "no silent skip"
-    // contract. This is the correct, documented choice for xor_two-branch
+    // contract. This is the correct, documented choice for Sukara-branch
     // titles — outcome A in
     // RealLive encryption research notes.
     assert_eq!(
@@ -192,7 +192,7 @@ fn scene1_decompressor_matches_reallive_real_bytes_outcome_a() {
     );
 
     // Assertion #3: first byte is in the documented BytecodeElement opener
-    // set OR is a printable Shift-JIS lead byte. For primary_corpus HD scene #0001
+    // set OR is a printable Shift-JIS lead byte. For Sweetie HD scene #0001
     // we know it's 0x0A (MetaLine), which is in the opener set.
     let first = decompressed[0];
     assert!(

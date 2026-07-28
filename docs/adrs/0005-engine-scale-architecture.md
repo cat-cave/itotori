@@ -47,7 +47,7 @@ and 75 recipes. A source search confirms that a bare prefix search is not a
 usable inventory: it finds exported code constants and test-only identifiers as
 well as process reads. This ADR therefore retains 121 as the frozen migration
 baseline and makes the classifier, rather than a grep count, authoritative. The
-apparent outlier, `ITOTORI_STRICT_API_BODY_KEYS`, has 156 repository
+apparent outlier, `STRICT_API_BODY_KEYS`, has 156 repository
 references but is not process configuration: it is an exported API-schema
 constant ([`api-schema.ts`](../../apps/itotori/src/api-schema.ts#L273-L686))
 consumed to derive strict OpenAPI envelopes ([`api-contract.ts`](../../apps/itotori/src/api-contract.ts#L25-L38)).

@@ -44,6 +44,6 @@ artifacts/
 
 # Playwright per-run output (e2e/playwright.config.ts default outputDir).
 test-results/
-# Per-machine registry of private, non-redistributable corpora. Copy the
-# committed role-shaped example before running `just real-bytes` locally.
+# Legacy per-machine registry of private, non-redistributable corpora. New
+# inventory records live under the platform configuration directory instead.
 /corpora/manifest.v1.json

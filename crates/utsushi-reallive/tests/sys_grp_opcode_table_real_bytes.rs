@@ -72,7 +72,7 @@ fn staged_engine(scenes: &[DecompressedScene], seen: &[u8]) -> ReplayEngine {
 /// Real-byte inventory for the two staged corpora. This test intentionally
 /// prints the complete raw decoder surface while its expectations are derived.
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT + _2"]
+#[ignore = "real-bytes; requires private inventory row + _2"]
 fn decoder_reports_sys_grp_opcode_inventory_from_both_real_archives() {
     let corpora = real_corpus::corpora();
     if corpora.len() < 2 {

@@ -71,7 +71,7 @@ fn public_summary_reproduces_from_synthetic_inputs() {
 
     let rendered = format!("{}\n", summary.stable_json().expect("stable json"));
     let committed_path = private_local_dir().join("public-summary.json");
-    if std::env::var_os("KAIFUU_XP3_PRIVATE_LOCAL_SUMMARY_REGEN").is_some() {
+    if std::env::var_os("REGENERATE_FIXTURES").is_some() {
         std::fs::write(&committed_path, &rendered).expect("write public summary fixture");
     }
     let committed = std::fs::read_to_string(committed_path)

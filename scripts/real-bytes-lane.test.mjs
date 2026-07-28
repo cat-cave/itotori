@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import { executedTestCount, selectProofs } from "./real-bytes-lane.mjs";
@@ -41,24 +44,23 @@ test("a cargo receipt with zero passed tests is distinguishable from execution",
   assert.equal(executedTestCount("test result: ok. 3 passed; 0 failed;"), 3);
 });
 
-function withoutRequiredInput(...names) {
-  const env = { ...process.env };
-  for (const name of names) delete env[name];
-  return env;
-}
-
 test("the Kaifuu Siglus proof refuses missing declared titles", () => {
-  const result = spawnSync(
-    "cargo",
-    ["test", "-p", "kaifuu-siglus", "--test", "siglus_gameexe_dat_real_bytes", "--", "--ignored"],
-    {
-      cwd: new URL("..", import.meta.url),
-      encoding: "utf8",
-      env: withoutRequiredInput("ITOTORI_REAL_GAME_ROOT_SIGLUS", "ITOTORI_REAL_GAME_ROOT_SIGLUS_2"),
-    },
-  );
-  assert.notEqual(result.status, 0, "missing input must not receive a green Cargo receipt");
-  assert.match(result.stdout + result.stderr, /REAL-BYTES SKIP .*siglus\/1\/encrypted/u);
+  const configHome = mkdtempSync(join(tmpdir(), "itotori-empty-config-"));
+  try {
+    const result = spawnSync(
+      "cargo",
+      ["test", "-p", "kaifuu-siglus", "--test", "siglus_gameexe_dat_real_bytes", "--", "--ignored"],
+      {
+        cwd: new URL("..", import.meta.url),
+        encoding: "utf8",
+        env: { ...process.env, XDG_CONFIG_HOME: configHome },
+      },
+    );
+    assert.notEqual(result.status, 0, "missing input must not receive a green Cargo receipt");
+    assert.match(result.stdout + result.stderr, /REAL-BYTES SKIP .*siglus\/1\/encrypted/u);
+  } finally {
+    rmSync(configHome, { force: true, recursive: true });
+  }
 });
 
 test("the Softpal Pal.dll proof has a missing-binary regression assertion", () => {
@@ -75,7 +77,7 @@ test("the Softpal Pal.dll proof has a missing-binary regression assertion", () =
     {
       cwd: new URL("..", import.meta.url),
       encoding: "utf8",
-      env: withoutRequiredInput("ITOTORI_SOFTPAL_RESEARCH_ROOT"),
+      env: process.env,
     },
   );
   assert.equal(

@@ -182,7 +182,7 @@ fn probe_one_corpus(label: &str, g00_dir: PathBuf) {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT and ITOTORI_REAL_GAME_ROOT_2"]
+#[ignore = "real-bytes; requires private inventory row and private inventory row"]
 fn button_choice_geometry_is_decoded_from_both_real_corpora() {
     let Some(first) = real_corpus::g00_dir_for(real_corpus::PRIMARY) else {
         real_corpus::require_real_bytes("button_choice_geometry_is_decoded_from_both_real_corpora");

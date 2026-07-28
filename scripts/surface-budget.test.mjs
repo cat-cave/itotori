@@ -22,7 +22,6 @@ test("finds every supported source form in the coverage fixture", () => {
   assert.deepEqual([...names].sort(), [
     "ITOTORI_PRODUCT_VERSION",
     "ITOTORI_TARGET_LOCALE",
-    "KAIFUU_ARCHIVE_KEY",
     "UTSUSHI_BROWSER_BIN",
   ]);
 });

@@ -32,6 +32,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -56,8 +57,7 @@ export const REQUIRED_CORPORA = [
   {
     id: "reallive-alpha-corpus",
     role: "content-addressed RealLive alpha corpus — extract/structure/patch/replay ground truth",
-    rootEnv: "ITOTORI_REAL_GAME_ROOT",
-    contentAddressEnv: "ITOTORI_PRIVATE_ENGINE_CORPUS_CONTENT_ADDRESS",
+    inventoryId: "corpus-reallive-1-encrypted",
   },
 ];
 
@@ -84,7 +84,7 @@ export function evaluateProofGate({ corpora, zdr }) {
       failures.push({
         id: c.id,
         kind: "unpinned-content-address",
-        reason: "content-address not pinned via env",
+        reason: "content-address is not pinned in the private inventory",
       });
     } else if (c.contentAddressActual !== c.contentAddressExpected) {
       failures.push({
@@ -108,13 +108,24 @@ export function evaluateProofGate({ corpora, zdr }) {
 
 // Build gate probes from the environment (+ filesystem). Impure; the pure gate
 // above does the deciding.
-export function probeFromEnv(env, fsOps) {
+export function probeFromEnv(env, fsOps, inventoryText) {
+  const inventoryPath = join(
+    env.XDG_CONFIG_HOME || join(homedir(), ".config"),
+    "itotori",
+    "inventory.toml",
+  );
+  const inventory =
+    inventoryText ?? (existsSync(inventoryPath) ? readFileSync(inventoryPath, "utf8") : "");
   const corpora = REQUIRED_CORPORA.map((spec) => {
-    const rootPath = env[spec.rootEnv];
+    const section = inventory
+      .split(/^\[\[corpus\]\]$/mu)
+      .find((part) => new RegExp(`^id\\s*=\\s*"${spec.inventoryId}"\\s*$`, "mu").test(part));
+    const rootPath = /^root\s*=\s*"([^"]+)"\s*$/mu.exec(section ?? "")?.[1];
     const rootPresent = Boolean(rootPath) && fsOps.isDir(rootPath);
     const hashListPath = rootPath ? join(rootPath, HASH_LIST_BASENAME) : null;
     const hashListPresent = Boolean(hashListPath) && fsOps.isFile(hashListPath);
-    const contentAddressExpected = env[spec.contentAddressEnv] || null;
+    const contentAddressExpected =
+      /^content_address\s*=\s*"([^"]+)"\s*$/mu.exec(section ?? "")?.[1] ?? null;
     const contentAddressActual = hashListPresent ? fsOps.sha256File(hashListPath) : null;
     return {
       id: spec.id,
@@ -330,7 +341,12 @@ function emitManifest() {
     process.exit(1);
   }
   const results = JSON.parse(readFileSync(resultsPath, "utf8"));
-  const rootPath = process.env.ITOTORI_REAL_GAME_ROOT;
+  const probe = probeFromEnv(process.env, {
+    isDir: (path) => existsSync(path),
+    isFile: (path) => existsSync(path),
+    sha256File,
+  });
+  const rootPath = probe.corpora[0]?.rootPath;
   if (!rootPath || !existsSync(join(rootPath, HASH_LIST_BASENAME))) {
     process.stderr.write(
       "emit-manifest: RealLive alpha-corpus root / hash list absent; run --preflight first.\n",

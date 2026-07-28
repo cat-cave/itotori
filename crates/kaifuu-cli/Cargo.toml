@@ -7,6 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+corpus-registry = { path = "../corpus-registry" }
 kaifuu-core = { path = "../kaifuu-core" }
 kaifuu-delta = { path = "../kaifuu-delta" }
 kaifuu-engine-fixture = { path = "../kaifuu-engine-fixture" }

@@ -1,7 +1,7 @@
 // fnd-api-client — the typed DATA LAYER the Studio screens consume.
 //
 // This is a UI-FOUNDATION leaf: a TYPED API client generated from `api-schema.ts` (the ItotoriApiRouteId union + the route /
-// response / error types) and `api-contract.ts` (the ITOTORI_API_ROUTES
+// response / error types) and `api-contract.ts` (the API_ROUTES
 // registry — the SINGLE authority for method / path / path-params). It does
 // NOT re-implement the contract: every call's request + response types come
 // straight from api-schema.ts, every response is validated by the SAME
@@ -28,7 +28,7 @@ import type {
   ProjectDashboardStatus,
   RuntimeDashboardStatus,
 } from "@itotori/db";
-import { ITOTORI_API_ROUTES, interpolateRoutePath } from "./api-routes.js";
+import { API_ROUTES, interpolateRoutePath } from "./api-routes.js";
 import {
   assertBrowserItotoriApiErrorResponse,
   assertBrowserItotoriApiResponse,
@@ -619,7 +619,7 @@ export class ItotoriApiClient {
     routeId: R,
     options: ApiRequestOptionsFor<R>,
   ): Promise<ApiCallSettledState<ApiRouteResponse<R>>> {
-    const route = ITOTORI_API_ROUTES[routeId];
+    const route = API_ROUTES[routeId];
     const url = this.buildUrl(routeId, options);
     const init: RequestInit = {};
     if (route.method === "POST") {

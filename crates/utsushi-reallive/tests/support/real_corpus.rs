@@ -1,7 +1,6 @@
 // reason: shared real-bytes test-support helpers; not every consumer test uses every helper.
 #![allow(dead_code)]
 use corpus_registry::{Need, resolve};
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 pub const PRIMARY: Need<'static> = Need {
@@ -17,8 +16,8 @@ pub const SECONDARY: Need<'static> = Need {
 
 // Legacy callers outside the migrated RealLive slice still name their local
 // corpus roots directly. Keep this compatibility surface until that follow-up.
-pub const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
-pub const REAL_GAME_ROOT_2_ENV: &str = "ITOTORI_REAL_GAME_ROOT_2";
+pub const REAL_GAME_ROOT_ENV: &str = "reallive/1/encrypted";
+pub const REAL_GAME_ROOT_2_ENV: &str = "reallive/2/plain";
 
 /// Fails loudly when required registry-identified real bytes are unavailable.
 /// Returns `()` (not `!`) so call sites retain `return` without an
@@ -26,14 +25,13 @@ pub const REAL_GAME_ROOT_2_ENV: &str = "ITOTORI_REAL_GAME_ROOT_2";
 pub fn require_real_bytes(test_name: &str) {
     panic!(
         "real-bytes coverage is STRICT: reallive/1/encrypted is unavailable; \
-         {test_name} did not exercise real bytes (set ITOTORI_CORPUS_ROOT=/path/to/corpora \
-         and configure reallive/1/encrypted in corpora/manifest.v1.json)."
+         {test_name} did not exercise real bytes; configure it in the private platform inventory."
     );
 }
 
 /// A resolved real-bytes RealLive corpus: the game root plus the located
 /// SEEN archive. Supports both observed on-disk layouts — modern
-/// `<root>/REALLIVEDATA/Seen.txt` (primary_corpus HD) and flat `<root>/SEEN.TXT`
+/// `<root>/REALLIVEDATA/Seen.txt` (Sweetie HD) and flat `<root>/SEEN.TXT`
 /// (older 1.2.6.x titles such as Kanon, which keep the archive directly in
 /// the game root with no `REALLIVEDATA/` subdirectory).
 pub struct RealCorpus {
@@ -59,7 +57,7 @@ pub fn corpora() -> Vec<RealCorpus> {
 
 impl RealCorpus {
     /// The game's configured ENTRY scene, read from `#SEEN_START` in the
-    /// `Gameexe.ini` that sits beside the SEEN archive (primary_corpus HD: scene
+    /// `Gameexe.ini` that sits beside the SEEN archive (Sweetie HD: scene
     /// 1; Kanon: scene 9030). This is the scene the engine begins the
     /// game at — the target of the entry-scene-to-terminus acceptance.
     /// Returns `None` if the Gameexe cannot be located / parsed or does
@@ -146,7 +144,7 @@ pub fn g00_dir_for(need: Need<'_>) -> Option<PathBuf> {
 
 /// Legacy accessor retained for the unmigrated RealLive tests.
 pub fn g00_dir_for_env(env_var: &str) -> Option<PathBuf> {
-    let root = PathBuf::from(env::var_os(env_var)?);
+    let root = corpus_registry::resolve_identity(env_var).ok()?;
     find_g00_dir(&root, 4)
 }
 

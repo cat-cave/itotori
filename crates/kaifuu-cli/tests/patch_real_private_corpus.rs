@@ -1,7 +1,7 @@
 //! CLI integration test for
 //! `kaifuu-cli patch --engine reallive --source <readonly> --target <writable> --bundle <translated.json>`.
-//! Env-gated on `ITOTORI_REAL_GAME_ROOT`. Runs the kaifuu-cli
-//! binary against the real primary_corpus HD extracted root, asserts:
+//! Env-gated on `private inventory row`. Runs the kaifuu-cli
+//! binary against the real Sweetie HD extracted root, asserts:
 //! - The command exits 0.
 //! - The output `<target>/REALLIVEDATA/Seen.txt` exists, is non-empty,
 //!   and starts with the canonical 10,000-slot directory shape (10,000
@@ -104,7 +104,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
     let reason = real_corpus::unavailable_message("CLI patch real-bytes test");
     let source_root = real_corpus::game_root().unwrap_or_else(|| panic!("{reason}"));
@@ -130,11 +130,11 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
         .arg("--game-root")
         .arg(&source_root)
         .arg("--game-id")
-        .arg("primary_corpus-hd")
+        .arg("sweetie-hd")
         .arg("--game-version")
         .arg("1.0.0")
         .arg("--source-profile-id")
-        .arg("kaifuu-reallive-primary_corpus-hd")
+        .arg("kaifuu-reallive-sweetie-hd")
         .arg("--source-locale")
         .arg("ja-JP")
         .output()
@@ -278,7 +278,7 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
     // validation bar is a property of the corpus, not the key.
     let src_index = kaifuu_reallive::parse_archive(&source_seen_bytes).expect("source parses");
     let xor2_cipher = recover_archive_xor2_cipher(&source_seen_bytes, &src_index)
-        .expect("pristine primary_corpus HD source must yield a validated xor_2 cipher");
+        .expect("pristine Sweetie HD source must yield a validated xor_2 cipher");
     let src_decompressed =
         decompress_scene(&source_seen_bytes, DIALOGUE_SCENE_ID, Some(&xor2_cipher));
     let tgt_decompressed =

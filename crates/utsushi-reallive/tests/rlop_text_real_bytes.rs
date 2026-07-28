@@ -11,7 +11,7 @@
 //! - The text body decodes from Shift-JIS without `had_errors`.
 //!
 //! The test is `#[ignore]`-gated. Pass `--include-ignored` and set
-//! `ITOTORI_REAL_GAME_ROOT` to run it.
+//! `private inventory row` to run it.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -63,7 +63,7 @@ fn real_seen_txt_path() -> Option<PathBuf> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(

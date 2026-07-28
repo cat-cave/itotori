@@ -11,6 +11,7 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runItotoriCliCommand, type ItotoriCliDependencies } from "../src/cli-handlers.js";
 import type { NativeCliProcessResult } from "../src/native-bin/cli-bin-resolver.js";
+import { resolvePrivateCorpus } from "../src/private-inventory.js";
 
 function depsWithNativeRunner(
   calls: Array<{ command: string; args: string[] }>,
@@ -73,7 +74,7 @@ function resolveRealLiveDataDir(sourceRoot: string): string {
   }
 
   throw new Error(
-    `[patch-validate-real] ITOTORI_CLI_REAL_CORPUS_ROOT must point at a RealLive tree with REALLIVEDATA/Seen.txt: ${sourceRoot}`,
+    `[patch-validate-real] selected private inventory corpus must contain REALLIVEDATA/Seen.txt: ${sourceRoot}`,
   );
 }
 
@@ -237,7 +238,7 @@ describe("itotori validate", () => {
         "--game-dir",
         "/tmp/patched/REALLIVEDATA",
         "--source-seen",
-        "/games/primary_corpus/REALLIVEDATA/Seen.txt",
+        "/games/sweetie/REALLIVEDATA/Seen.txt",
         "--artifact-root",
         "/run/render-artifacts",
         "--render-output",
@@ -293,7 +294,7 @@ describe("itotori validate", () => {
       "--output",
       "/run/render-evidence.json",
       "--source-seen",
-      "/games/primary_corpus/REALLIVEDATA/Seen.txt",
+      "/games/sweetie/REALLIVEDATA/Seen.txt",
       "--bg-asset",
       "BG001",
       "--expect-text-contains",
@@ -335,15 +336,22 @@ describe("itotori validate", () => {
   });
 });
 
-describe("itotori patch + validate (env-gated real primary_corpus proof)", () => {
-  const sourceRoot = process.env.ITOTORI_CLI_REAL_CORPUS_ROOT;
-  const translatedBundlePath = process.env.ITOTORI_CLI_REAL_CORPUS_TRANSLATED_BUNDLE;
-  const expectedText = process.env.ITOTORI_CLI_REAL_CORPUS_EXPECT_TEXT;
-  const scene = process.env.ITOTORI_CLI_REAL_CORPUS_SCENE ?? "1";
-  const bgAsset = process.env.ITOTORI_CLI_REAL_CORPUS_BG_ASSET;
+describe("itotori patch + validate (env-gated real Sweetie proof)", () => {
+  const sourceRoot = resolvePrivateCorpus("reallive", 1, "encrypted");
+  const validationRoot = sourceRoot ? join(sourceRoot, ".itotori", "patch-validate") : undefined;
+  const translatedBundlePath = validationRoot ? join(validationRoot, "translated.json") : undefined;
+  const expectedTextPath = validationRoot ? join(validationRoot, "expected.txt") : undefined;
+  const expectedText =
+    expectedTextPath && existsSync(expectedTextPath)
+      ? readFileSync(expectedTextPath, "utf8").trim()
+      : undefined;
+  const scene = "1";
+  const bgAsset = validationRoot ? join(validationRoot, "background.g00") : undefined;
 
-  it.skipIf(!sourceRoot || !translatedBundlePath || !expectedText)(
-    "applies a real translated primary_corpus bundle and validates replay + render output",
+  it.skipIf(
+    !sourceRoot || !translatedBundlePath || !existsSync(translatedBundlePath) || !expectedText,
+  )(
+    "applies a real translated Sweetie bundle and validates replay + render output",
     async () => {
       const realSourceRoot = sourceRoot as string;
       const sourceDataDir = resolveRealLiveDataDir(realSourceRoot);

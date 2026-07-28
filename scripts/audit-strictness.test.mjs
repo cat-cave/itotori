@@ -137,7 +137,7 @@ test("rule 5 parses the ci-real-bytes lane and detects real-bytes crates", () =>
   // A real-bytes file, or an #[ignore] naming a live corpus, marks the crate.
   assert.equal(crateOwnsRealBytes("crates/foo/tests/x_real_bytes.rs", "fn t() {}"), true);
   assert.equal(
-    crateOwnsRealBytes("crates/foo/tests/x.rs", '#[ignore = "requires ITOTORI_REAL_GAME_ROOT"]'),
+    crateOwnsRealBytes("crates/foo/tests/x.rs", '#[ignore = "requires private inventory row"]'),
     true,
   );
   assert.equal(
@@ -149,7 +149,7 @@ test("rule 5 parses the ci-real-bytes lane and detects real-bytes crates", () =>
   assert.equal(
     crateOwnsRealBytes(
       "crates/foo/tests/x.rs",
-      '#[ignore = "real-bytes; requires ITOTORI_SOFTPAL_RESEARCH_ROOT"]',
+      '#[ignore = "real-bytes; requires private inventory row"]',
     ),
     true,
   );

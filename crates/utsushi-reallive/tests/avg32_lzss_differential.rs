@@ -338,7 +338,7 @@ fn synthetic_corpus_hash_is_pinned() {
 // bytes are committed; the corpus is supplied at runtime via env var.
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (+ ITOTORI_REAL_GAME_ROOT_2)"]
+#[ignore = "real-bytes; requires private inventory row (+ private inventory row)"]
 fn differential_on_real_scene_bytecode() {
     use utsushi_reallive::{RealSceneIndex, SCENE_HEADER_BYTE_LEN, SceneHeader};
 

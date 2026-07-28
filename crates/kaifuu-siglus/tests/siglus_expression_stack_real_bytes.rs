@@ -2,7 +2,7 @@
 //! (siglus-09), stacked on the siglus-08 partitioner.
 //!
 //! Copyrighted title bytes stay outside this repository, so the two game roots
-//! are supplied via `ITOTORI_REAL_GAME_ROOT_SIGLUS` / `_2` (each a directory —
+//! are supplied via `private inventory row` / `_2` (each a directory —
 //! or a path inside one — holding `SiglusEngine.exe` + `Scene.pck`). When either
 //! root is absent the test panics with a named `REAL-BYTES SKIP` receipt.
 //!
@@ -29,17 +29,19 @@ use kaifuu_siglus::{
     parse_scene_pck, recover_exe_angou_key,
 };
 
-const FIRST_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
-const SECOND_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
+const FIRST_TITLE_ENV: &str = "siglus/1/encrypted";
+const SECOND_TITLE_ENV: &str = "siglus/2/encrypted";
 
 const EXPECTED_SCENE_COUNTS: [usize; 2] = [298, 278];
 
 fn title_paths(variable: &str) -> Option<(PathBuf, PathBuf)> {
-    let value = std::env::var_os(variable).or_else(|| {
-        eprintln!("SKIP siglus expression-stack real bytes: {variable} is unset");
-        None
-    })?;
-    let root = PathBuf::from(value);
+    let value = corpus_registry::resolve_identity(variable)
+        .ok()
+        .or_else(|| {
+            eprintln!("SKIP siglus expression-stack real bytes: {variable} is unset");
+            None
+        })?;
+    let root = value;
     let dir = if root.is_dir() {
         root
     } else {

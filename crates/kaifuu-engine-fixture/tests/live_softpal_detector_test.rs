@@ -9,7 +9,7 @@
 //!   Pal.dll and PAC-only detection paths.
 //!   `#[ignore]`d by default; run explicitly against the read-only corpus:
 //!   ```text
-//!   ITOTORI_SOFTPAL_RESEARCH_ROOT=/scratch/softpal-research \
+//!   private inventory row=/scratch/softpal-research \
 //!   cargo test -p kaifuu-engine-fixture \
 //!   --test live_softpal_detector_test -- --ignored --nocapture
 //!   NEVER prints raw copyrighted bytes: file names, counts, sizes, container
@@ -17,7 +17,7 @@
 //!
 //! Wired into the PERIODIC `ci-real-bytes` lane (the wider
 //! `-p kaifuu-engine-fixture -- --ignored` invocation already picks this up);
-//! soft-skips when `ITOTORI_SOFTPAL_RESEARCH_ROOT` is unset (skip-when-absent
+//! soft-skips when `private inventory row` is unset (skip-when-absent
 //! is legitimate for the periodic lane — the Softpal corpus lives under its
 //! own root, separate from the RealLive/RPG-Maker/vault tree).
 
@@ -29,7 +29,9 @@ use kaifuu_engine_fixture::SoftpalProfileDetectorAdapter;
 /// Root that holds two extracted installs. Gated on an explicit env var so
 /// nothing runs against the corpus unless a human opts in.
 fn require_corpus_root() -> Option<PathBuf> {
-    let root = std::env::var("ITOTORI_SOFTPAL_RESEARCH_ROOT").ok()?;
+    let root = corpus_registry::resolve_identity("softpal/1/plain")
+        .map(|path| path.to_string_lossy().into_owned())
+        .ok()?;
     let path = PathBuf::from(root);
     path.is_dir().then_some(path)
 }
@@ -157,20 +159,20 @@ fn confirm_softpal(label: &str, title_root: &Path) {
 }
 
 #[test]
-#[ignore = "requires ITOTORI_SOFTPAL_RESEARCH_ROOT=/scratch/softpal-research (read-only owned Softpal corpus)"]
+#[ignore = "requires private inventory row=/scratch/softpal-research (read-only owned Softpal corpus)"]
 fn first_staged_install_detects_softpal() {
     let Some(root) = require_corpus_root() else {
-        eprintln!("skipping: set ITOTORI_SOFTPAL_RESEARCH_ROOT to run this proof");
+        eprintln!("skipping: set softpal/1/plain to run this proof");
         return;
     };
     confirm_staged_install(&root, 0);
 }
 
 #[test]
-#[ignore = "requires ITOTORI_SOFTPAL_RESEARCH_ROOT=/scratch/softpal-research (read-only owned Softpal corpus)"]
+#[ignore = "requires private inventory row=/scratch/softpal-research (read-only owned Softpal corpus)"]
 fn second_staged_install_detects_softpal() {
     let Some(root) = require_corpus_root() else {
-        eprintln!("skipping: set ITOTORI_SOFTPAL_RESEARCH_ROOT to run this proof");
+        eprintln!("skipping: set softpal/1/plain to run this proof");
         return;
     };
     confirm_staged_install(&root, 1);

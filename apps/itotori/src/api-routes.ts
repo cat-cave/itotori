@@ -44,7 +44,7 @@ export type ItotoriApiBinaryRouteId =
  * method + path from here, and the emitter reflects it into OpenAPI + the
  * JSON-Schema bundle.
  */
-export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRoute>> = {
+export const API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRoute>> = {
   "projects.list": {
     method: "GET",
     pathTemplate: "/api/projects",
@@ -615,8 +615,8 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
 };
 
 /** Stable, sorted list of every route id (deterministic iteration order). */
-export const ITOTORI_API_ROUTE_IDS: readonly ItotoriApiRouteId[] = Object.keys(
-  ITOTORI_API_ROUTES,
+export const API_ROUTE_IDS: readonly ItotoriApiRouteId[] = Object.keys(
+  API_ROUTES,
 ).sort() as ItotoriApiRouteId[];
 
 /**
@@ -624,9 +624,7 @@ export const ITOTORI_API_ROUTE_IDS: readonly ItotoriApiRouteId[] = Object.keys(
  * route registry because the typed JSON response guard/client must never try
  * to parse archive bytes as an API response body.
  */
-export const ITOTORI_API_BINARY_ROUTES: Readonly<
-  Record<ItotoriApiBinaryRouteId, ItotoriApiBinaryRoute>
-> = {
+export const API_BINARY_ROUTES: Readonly<Record<ItotoriApiBinaryRouteId, ItotoriApiBinaryRoute>> = {
   "play.deliveryArchive": {
     method: "GET",
     pathTemplate: "/api/play/runs/{runId}/delivery/archive",
@@ -681,7 +679,7 @@ export function interpolateRoutePath(
   routeId: ItotoriApiRouteId,
   params?: Readonly<Record<string, string>>,
 ): string {
-  const template = ITOTORI_API_ROUTES[routeId].pathTemplate;
+  const template = API_ROUTES[routeId].pathTemplate;
   return template.replace(/\{(\w+)\}/g, (_match, name: string) => {
     const value = params?.[name];
     if (value === undefined) {

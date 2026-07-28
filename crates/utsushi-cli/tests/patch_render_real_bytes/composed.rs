@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (primary_corpus HD)"]
+#[ignore = "real-bytes; requires private inventory row (Sweetie HD)"]
 fn patch_render_composes_patchback_and_render_on_real_bytes() {
     let Some(seen_path) = real_corpus::seen_txt_path() else {
         real_corpus::require_real_bytes("patch_render_composes_patchback_and_render_on_real_bytes");

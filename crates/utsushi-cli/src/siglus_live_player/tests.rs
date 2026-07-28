@@ -72,7 +72,7 @@ fn decoded_mwnd_template_controls_message_projection() {
 
 #[test]
 fn real_siglus_positioned_message_boundary_is_measured() {
-    let Some(root) = std::env::var_os("ITOTORI_REAL_GAME_ROOT_SIGLUS").map(PathBuf::from) else {
+    let Some(root) = corpus_registry::resolve_identity("siglus/1/encrypted").ok() else {
         return;
     };
     let (title, scene_ids, _) = load_title(&root).expect("load real Siglus title");

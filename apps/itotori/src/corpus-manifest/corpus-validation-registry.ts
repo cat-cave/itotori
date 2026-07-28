@@ -9,8 +9,8 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { runKaifuuExtract } from "../extract/kaifuu-extract-seam.js";
 import { runUtsushiStructureExport } from "../structure-export/utsushi-structure-seam.js";
+import { resolvePrivateCorpus } from "../private-inventory.js";
 import {
-  REAL_CORPUS_ROOT_ENV,
   sha256Bytes,
   type CorpusInputMap,
   type CorpusManifest,
@@ -140,16 +140,17 @@ const realliveCorpusValidationAdapter: CorpusValidationAdapter<"reallive"> = {
     return validateInputMap(inputs, this.inputNames);
   },
   resolve(manifest, env) {
-    const configuredRoot = env[REAL_CORPUS_ROOT_ENV];
+    void env;
+    const configuredRoot = resolvePrivateCorpus("reallive", 1, "encrypted");
     if (configuredRoot === undefined || configuredRoot.length === 0) {
       return {
         kind: "skip",
-        reason: `${REAL_CORPUS_ROOT_ENV} is unset; no private corpus bytes were read.`,
+        reason: "private inventory has no selected corpus; no private corpus bytes were read.",
       };
     }
     const root = resolve(configuredRoot);
     if (!existsSync(root) || !statSync(root).isDirectory()) {
-      throw new Error(`private corpus root ${REAL_CORPUS_ROOT_ENV} is not a directory`);
+      throw new Error("private inventory corpus root is not a directory");
     }
     const candidates = [...new Set(findRealliveGameRoots(root, 4))];
     if (candidates.length !== 1) {
@@ -242,11 +243,12 @@ function unavailableCorpusValidationAdapter<
       return validateInputMap(inputs, inputNames);
     },
     resolve(_manifest, env) {
-      const configuredRoot = env[REAL_CORPUS_ROOT_ENV];
+      void env;
+      const configuredRoot = resolvePrivateCorpus("reallive", 1, "encrypted");
       if (configuredRoot === undefined || configuredRoot.length === 0) {
         return {
           kind: "skip",
-          reason: `${REAL_CORPUS_ROOT_ENV} is unset; no private corpus bytes were read.`,
+          reason: "private inventory has no selected corpus; no private corpus bytes were read.",
         };
       }
       return {

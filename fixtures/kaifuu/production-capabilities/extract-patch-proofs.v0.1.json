@@ -20,10 +20,7 @@
         "status": "passed",
         "strictLane": "just test real-bytes",
         "minimumDistinctCorpora": 2,
-        "corpusEnvironment": [
-          "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ",
-          "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2"
-        ],
+        "corpusEnvironment": ["private inventory row", "private inventory row"],
         "outcome": "byte_surgical_extract_patch_delta_apply"
       }
     },
@@ -45,7 +42,7 @@
         "status": "passed",
         "strictLane": "just test real-bytes",
         "minimumDistinctCorpora": 1,
-        "corpusEnvironment": ["KAIFUU_XP3_PROFILE_A_ARCHIVE"],
+        "corpusEnvironment": ["private inventory archive"],
         "outcome": "byte_exact_archive_rebuild"
       }
     }

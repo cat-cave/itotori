@@ -20,6 +20,7 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 
 import { describe, expect, it } from "vitest";
+import { resolvePrivateCorpus } from "../src/private-inventory.js";
 
 import { runKaifuuExtract } from "../src/extract/kaifuu-extract-seam.js";
 import { runNativeCli } from "../src/native-bin/cli-bin-resolver.js";
@@ -31,8 +32,8 @@ type RawBundle = {
 };
 
 const realCorpora: readonly RealCorpus[] = [
-  { label: "real-corpus-1", root: process.env.ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ },
-  { label: "real-corpus-2", root: process.env.ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2 },
+  { label: "real-corpus-1", root: resolvePrivateCorpus("rpg-maker-mv-mz", 1, "plain") },
+  { label: "real-corpus-2", root: resolvePrivateCorpus("rpg-maker-mv-mz", 2, "plain") },
 ];
 const nativeBin = process.env.ITOTORI_KAIFUU_BIN;
 const enabled =

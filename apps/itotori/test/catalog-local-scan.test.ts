@@ -201,7 +201,7 @@ describe("catalog local scanner", () => {
         rootPath: root,
         now: fixedClock(),
       }),
-    ).rejects.toThrow(/requires --hash-key or ITOTORI_LOCAL_CORPUS_HASH_KEY/u);
+    ).rejects.toThrow(/requires --hash-key/u);
   });
 
   it("labels local archive detection rows so canonical Kaifuu 0.1.0 consumers cannot accept them", async () => {

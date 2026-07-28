@@ -3,7 +3,7 @@
 //! the same `data.pac` via the crate's own PAC reader. It also surveys the SELECT
 //! choice-label encoding across the corpus (direct immediate vs typed-flow
 //! indirect label) — see the `GAMES` note for the four-title finding.
-//! `#[ignore]`d and env-gated: set `ITOTORI_SOFTPAL_RESEARCH_ROOT` to the
+//! `#[ignore]`d and env-gated: set `private inventory row` to the
 //! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
 //! `--ignored`. **No raw copyrighted text lives in this file** — only command
 //! counts, the 100 %-pointer-resolution result, and byte offsets, which the
@@ -14,13 +14,12 @@
 //! Wired into the PERIODIC `ci-real-bytes` lane; see `pac_real_corpus.rs` for
 //! the env-gate / skip-when-absent contract.
 
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use kaifuu_softpal::{PacArchive, RawCommand, ScriptScan, TextDat};
 
-const RESEARCH_ROOT_ENV: &str = "ITOTORI_SOFTPAL_RESEARCH_ROOT";
+const GAME_IDENTITIES: [&str; 3] = ["softpal/1/plain", "softpal/2/plain", "softpal/3/plain"];
 
 /// One game's `SCRIPT.SRC` disassembly expectations. Counts are the measured
 /// ground truth (verified against the SoftPal-Tool oracle scan logic).
@@ -121,7 +120,12 @@ fn find_data_pacs(dir: &Path, out: &mut Vec<PathBuf>) {
 /// Extract one named entry from the game's `data.pac` (selected by entry count),
 /// via the crate's PAC reader.
 fn extract_entry(game: &GameExpectation, root: &Path, name: &str) -> Vec<u8> {
-    let game_dir = root.join(game.subdir);
+    let nested = root.join(game.subdir);
+    let game_dir = if nested.is_dir() {
+        nested
+    } else {
+        root.to_path_buf()
+    };
     let mut pacs = Vec::new();
     find_data_pacs(&game_dir, &mut pacs);
     assert!(!pacs.is_empty(), "no data.pac under {}", game_dir.display());
@@ -146,13 +150,11 @@ fn extract_entry(game: &GameExpectation, root: &Path, name: &str) -> Vec<u8> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_SOFTPAL_RESEARCH_ROOT (read-only Softpal research tree)"]
+#[ignore = "real-bytes; requires private inventory row (read-only Softpal research tree)"]
 fn script_disassembler_on_two_softpal_titles() {
-    let Some(root) = env::var_os(RESEARCH_ROOT_ENV).map(PathBuf::from) else {
-        panic!("set {RESEARCH_ROOT_ENV} to the read-only Softpal research tree");
-    };
-
-    for game in &GAMES {
+    for (game, identity) in GAMES.iter().zip(GAME_IDENTITIES) {
+        let root = corpus_registry::resolve_identity(identity)
+            .unwrap_or_else(|reason| panic!("registry must resolve {identity}: {reason}"));
         let script_bytes = extract_entry(game, &root, "SCRIPT.SRC");
         let textdat_bytes = extract_entry(game, &root, "TEXT.DAT");
 

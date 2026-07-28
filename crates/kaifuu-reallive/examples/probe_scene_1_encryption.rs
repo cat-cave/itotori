@@ -1,6 +1,6 @@
 //! Scene-1 encryption-mechanism probe for an explicit RealLive corpus.
 //! Reads `Seen.txt` from an explicit CLI path or from
-//! `$ITOTORI_REAL_GAME_ROOT`, isolates scene #0001's compressed bytecode
+//! `$private inventory row`, isolates scene #0001's compressed bytecode
 //! payload, applies the rlvm-documented AVG32 LZSS+XOR decompression
 //! (no second-level XOR), and reports:
 //! - redacted summaries of compressed and decompressed byte windows,
@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use kaifuu_core::RedactedContentSummary;
 use kaifuu_reallive::decompressor::AVG32_XOR_MASK;
 
-const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
+const REAL_GAME_ROOT_ENV: &str = "reallive/1/encrypted";
 
 /// Documented BytecodeElement opener bytes (rlvm `bytecode.cc`).
 fn is_opener_byte(b: u8) -> bool {
@@ -191,8 +191,8 @@ fn explicit_seen_input() -> Result<(PathBuf, &'static str), Box<dyn std::error::
         return Ok((seen_path, "cli"));
     }
 
-    if let Some(root) = env::var_os(REAL_GAME_ROOT_ENV) {
-        return Ok((resolve_seen_path(&PathBuf::from(root)), REAL_GAME_ROOT_ENV));
+    if let Ok(root) = corpus_registry::resolve_identity(REAL_GAME_ROOT_ENV) {
+        return Ok((resolve_seen_path(&root), REAL_GAME_ROOT_ENV));
     }
 
     Err(format!(

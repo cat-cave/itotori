@@ -68,7 +68,6 @@ pub(crate) use softpal_commands::run_softpal_command;
 pub(crate) use wolf_commands::run_wolf_command;
 pub(crate) use xp3_commands::run_xp3_command;
 const APPLY_REPORT_FILE_NAME: &str = "patch-result.json";
-const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
 
 fn main() {
     if let Err(error) = run() {
@@ -116,7 +115,7 @@ fn run_with_args_and_registry(
             // routes through the kaifuu-reallive bridge producer rather
             // than the registry adapter surface. The `game_dir` positional
             // is optional under --engine reallive — if absent we read
-            // `ITOTORI_REAL_GAME_ROOT` as a generic real-corpus fixture
+            // `private inventory row` as a generic real-corpus fixture
             // convenience.
             if let Some(engine) = flag_optional(&args, "--engine")
                 && engine == "reallive"

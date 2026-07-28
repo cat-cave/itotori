@@ -11,17 +11,17 @@ fn reference_report() -> AssetOcrReport {
 #[test]
 fn committed_public_fixture_png_matches_renderer_bytes() {
     // The public fixture PNG is byte-pinned to `render_reference_title_card`.
-    // Set KAIFUU_026_REGEN=1 to (re)write it after an intentional change.
+    // Set REGENERATE_FIXTURES=1 to (re)write it after an intentional change.
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../fixtures/public/ocr-ui/title-card.png");
     let rendered = render_reference_title_card();
-    if std::env::var_os("KAIFUU_026_REGEN").is_some() {
+    if std::env::var_os("REGENERATE_FIXTURES").is_some() {
         std::fs::write(&path, &rendered).expect("regen png");
     }
     let committed = std::fs::read(&path).expect("committed fixture png");
     assert_eq!(
         committed, rendered,
-        "committed OCR fixture PNG drifted from the renderer; regen with KAIFUU_026_REGEN=1"
+        "committed OCR fixture PNG drifted from the renderer; regen with REGENERATE_FIXTURES=1"
     );
 }
 

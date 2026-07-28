@@ -8,21 +8,16 @@
 //
 // Nothing here is stubbed: real dashboard server, real engine child process,
 // real archive bytes, real Chromium. It is skipped — never faked — when the
-// runtime descriptor env vars are absent, because those bytes are not
+// private inventory lacks the runtime descriptor, because those bytes are not
 // redistributable and cannot live in the repo.
 
 import { expect, test, type Page } from "@playwright/test";
+import { realliveBrowserPlayerLaunchFromInventory } from "../src/play/reallive-browser-player-launch.js";
 
-const seenPath = process.env.ITOTORI_PLAYER_E2E_SEEN ?? "";
-const gameexePath = process.env.ITOTORI_PLAYER_E2E_GAMEEXE ?? "";
-const g00Dir = process.env.ITOTORI_PLAYER_E2E_G00_DIR ?? "";
-const artifactRoot = process.env.ITOTORI_PLAYER_E2E_ARTIFACT_ROOT ?? "";
-const entryScene = Number(process.env.ITOTORI_PLAYER_E2E_SCENE ?? "1");
-const session = process.env.ITOTORI_PLAYER_E2E_SESSION_ID ?? "e2e";
+const launch = realliveBrowserPlayerLaunchFromInventory();
+const session = "e2e";
 
-const descriptorPresent =
-  [seenPath, gameexePath, g00Dir, artifactRoot].every((value) => value.trim().length > 0) &&
-  Number.isInteger(entryScene);
+const descriptorPresent = launch !== undefined;
 
 // One engine frame is multiple megabytes of base64 over the wire, and the
 // engine rasterises a fresh one per input, so each step is seconds not
@@ -30,10 +25,7 @@ const descriptorPresent =
 const STEP_TIMEOUT_MS = 120_000;
 
 test.describe("browser player progress", () => {
-  test.skip(
-    !descriptorPresent,
-    "set ITOTORI_PLAYER_E2E_SEEN / _GAMEEXE / _G00_DIR / _ARTIFACT_ROOT to a real runtime descriptor",
-  );
+  test.skip(!descriptorPresent, "configure the selected RealLive corpus in the private inventory");
   test.slow();
 
   test("successive inputs through the browser move the VM to distinct addresses", async ({

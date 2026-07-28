@@ -9,8 +9,8 @@ use kaifuu_siglus::{
 };
 use utsushi_siglus::scene_vm::{Moment, SceneProgram, VmError, VmState, execute_scene};
 
-const FIRST: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
-const SECOND: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
+const FIRST: &str = "siglus/1/encrypted";
+const SECOND: &str = "siglus/2/encrypted";
 
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Totals {
@@ -42,7 +42,7 @@ fn two_real_corpora_execute_deterministically_and_preserve_static_overlap() {
 }
 
 fn root(variable: &str) -> Option<PathBuf> {
-    let root = std::env::var_os(variable).map(PathBuf::from)?;
+    let root = corpus_registry::resolve_identity(variable).ok()?;
     ["Scene.pck", "SiglusEngine.exe"]
         .iter()
         .all(|name| root.join(name).is_file())

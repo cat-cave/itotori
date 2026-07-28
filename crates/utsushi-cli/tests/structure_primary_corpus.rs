@@ -8,7 +8,7 @@
 //! scene), spanning many scenes — the artifact the whole-game localize driver
 //! joins to the kaifuu-produced bridge by `context.route.sceneKey`.
 //!
-//! Env-gated on `ITOTORI_REAL_GAME_ROOT`; runs only in the periodic
+//! Env-gated on `private inventory row`; runs only in the periodic
 //! ground-truth oracle where the corpus is staged.
 
 #[path = "support/real_corpus.rs"]
@@ -42,7 +42,7 @@ fn utsushi_cli_binary() -> PathBuf {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn utsushi_structure_primary_corpus_writes_real_dispatch_order() {
     let (Some(gameexe), Some(seen)) = (
         real_corpus::gameexe_ini_path(),
@@ -168,7 +168,7 @@ fn utsushi_structure_primary_corpus_writes_real_dispatch_order() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn utsushi_structure_primary_corpus_rejects_truncation_without_an_artifact() {
     let (Some(gameexe), Some(seen)) = (
         real_corpus::gameexe_ini_path(),
@@ -200,7 +200,7 @@ fn utsushi_structure_primary_corpus_rejects_truncation_without_an_artifact() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT and ITOTORI_REAL_BRIDGE_PATH"]
+#[ignore = "real-bytes; requires private inventory row and ITOTORI_REAL_BRIDGE_PATH"]
 fn utsushi_structure_primary_corpus_v2_matches_bridge_and_graph() {
     let (Some(gameexe), Some(seen), Some(bridge_path)) = (
         real_corpus::gameexe_ini_path(),
@@ -208,7 +208,7 @@ fn utsushi_structure_primary_corpus_v2_matches_bridge_and_graph() {
         std::env::var_os("ITOTORI_REAL_BRIDGE_PATH").map(PathBuf::from),
     ) else {
         eprintln!(
-            "set ITOTORI_REAL_GAME_ROOT and ITOTORI_REAL_BRIDGE_PATH for expanded structure proof"
+            "set reallive/1/encrypted and ITOTORI_REAL_BRIDGE_PATH for expanded structure proof"
         );
         return;
     };

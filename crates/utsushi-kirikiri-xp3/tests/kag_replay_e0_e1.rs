@@ -14,7 +14,7 @@ use utsushi_kirikiri_xp3::{KagReplayInput, emit_kag_replay_e0_e1_trace};
 
 const CORPUS_MANIFEST_PATH: &str = "fixtures/public/kaifuu-kag-synthetic-corpus.manifest.json";
 const SNAPSHOT_PATH: &str = "fixtures/kag-corpus-e0-e1-trace.json";
-const STAGED_CORPUS_ROOT_ENV: &str = "UTSUSHI_KAG_CORPUS_ROOT";
+const STAGED_CORPUS_ROOT_ENV: &str = "kirikiri-xp3/1/plain";
 
 struct CorpusScript {
     source_file: String,
@@ -126,7 +126,7 @@ fn replay_emits_deterministic_bridge_linked_e0_e1_trace_for_manifest_corpus() {
 
 #[test]
 fn configured_corpus_replay_skips_when_root_is_not_staged() {
-    let Some(root) = std::env::var_os(STAGED_CORPUS_ROOT_ENV).map(PathBuf::from) else {
+    let Some(root) = corpus_registry::resolve_identity(STAGED_CORPUS_ROOT_ENV).ok() else {
         eprintln!("SKIP: {STAGED_CORPUS_ROOT_ENV} not staged");
         return;
     };

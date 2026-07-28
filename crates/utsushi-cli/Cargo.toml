@@ -34,6 +34,7 @@ utsushi-rpgmaker-mv = { path = "../utsushi-rpgmaker-mv" }
 utsushi-siglus = { path = "../utsushi-siglus" }
 
 [dev-dependencies]
+corpus-registry = { path = "../corpus-registry" }
 # Real-bytes single-scene xor2 replay test: synthesises a localized
 # (English) patched Seen.txt from a real Sweetie HD dialogue scene via the
 # kaifuu patchback, then drives the replay-validate binary against it and

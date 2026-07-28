@@ -98,7 +98,7 @@ below are the precedent:
 - **Typed API client — `fnd-api-client`** (`apps/itotori/src/api-client.ts`).
   Framework-agnostic; every route is generated from `api-schema.ts` (the
   `ItotoriApiRouteId` union + the route / response / error types) and
-  `api-contract.ts` (the `ITOTORI_API_ROUTES` registry). Every response is
+  `api-contract.ts` (the `API_ROUTES` registry). Every response is
   validated by the same `assertItotoriApiResponse` guard the server uses; the
   error state carries the typed `ApiErrorResponse` (`{ code, error }`).
   Consumers read a discriminated `{ loading | ready | empty | error }` state;

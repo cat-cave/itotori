@@ -1,6 +1,6 @@
 //! real-bytes integration test for the RealLive `REALLIVEDATA/`
-//! detector. Walks the depth-N descent against the actual primary_corpus HD
-//! installation tree under `$ITOTORI_REAL_GAME_ROOT` and confirms
+//! detector. Walks the depth-N descent against the actual Sweetie HD
+//! installation tree under `$private inventory row` and confirms
 //! that the resolved path ends with `REALLIVEDATA` on disk. A
 //! synthetic-positive companion test exercises depth-2 descent against
 //! author-controlled bytes (`tmp/parent/REALLIVEDATA/Seen.txt`), and a
@@ -17,7 +17,7 @@
 //! RealLive title since AVG32) and is NOT a title-specific token. The
 //! depth-N descent contract this test exercises is therefore a
 //! structural invariant of the engine family, not a behavioural fact
-//! about primary_corpus HD specifically. A second RealLive corpus would
+//! about Sweetie HD specifically. A second RealLive corpus would
 //! re-confirm the same invariant; no new bug surface is opened by the
 //! single-corpus exercise here.
 //! # Three-state contract
@@ -58,7 +58,7 @@ fn unique_temp_dir(label: &str) -> PathBuf {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn detects_reallivedata_under_primary_corpus_root_with_resolved_path() {
     let Some(env_path) = real_corpus::game_root() else {
         // Visible skip — "no silent zero-state" requires the
@@ -71,7 +71,7 @@ fn detects_reallivedata_under_primary_corpus_root_with_resolved_path() {
     };
 
     let evidence = detect_reallive_data_dir(&env_path)
-        .expect("readable primary_corpus HD root must not error")
+        .expect("readable Sweetie HD root must not error")
         .unwrap_or_else(|| {
             panic!(
                 "registry corpus reallive/1/encrypted at {} failed to locate \
@@ -84,7 +84,7 @@ fn detects_reallivedata_under_primary_corpus_root_with_resolved_path() {
 
     // Acceptance #1: the reported path ends with the on-disk
     // `REALLIVEDATA` directory name (case-sensitive on the on-disk
-    // file_name). primary_corpus HD ships the marker upper-cased.
+    // file_name). Sweetie HD ships the marker upper-cased.
     let file_name = evidence
         .reallive_data_path
         .file_name()
@@ -92,7 +92,7 @@ fn detects_reallivedata_under_primary_corpus_root_with_resolved_path() {
         .expect("resolved REALLIVEDATA path must have a UTF-8 file name");
     assert_eq!(
         file_name, REALLIVE_DATA_DIR_NAME,
-        "primary_corpus HD REALLIVEDATA on-disk casing must match the documented marker"
+        "Sweetie HD REALLIVEDATA on-disk casing must match the documented marker"
     );
 
     // Acceptance #2: the reported path is reachable on the filesystem.
@@ -155,7 +155,7 @@ fn detects_reallivedata_under_primary_corpus_root_with_resolved_path() {
     let seen_txt = evidence.reallive_data_path.join("Seen.txt");
     let seen_meta = fs::metadata(&seen_txt).unwrap_or_else(|err| {
         panic!(
-            "primary_corpus HD REALLIVEDATA must contain Seen.txt; got {err} at {}",
+            "Sweetie HD REALLIVEDATA must contain Seen.txt; got {err} at {}",
             seen_txt.display()
         )
     });
@@ -168,13 +168,13 @@ fn detects_reallivedata_under_primary_corpus_root_with_resolved_path() {
 
 #[test]
 fn detects_reallivedata_in_synthetic_nested_layout() {
-    // Mirrors primary_corpus HD's `<root>/<title subdir>/REALLIVEDATA/Seen.txt`
+    // Mirrors Sweetie HD's `<root>/<title subdir>/REALLIVEDATA/Seen.txt`
     // shape using author-controlled bytes. This is the "supplementary
     // synthetic positive" test required: it confirms the
     // depth-N descent contract holds on bytes we constructed, not just
     // on the single real corpus we have access to.
     let root = unique_temp_dir("synthetic-nested-positive");
-    let title_subdir = root.join("primary corpusprimary_corpus＋Sweets!! HD_DL版");
+    let title_subdir = root.join("オシオキSweetie＋Sweets!! HD_DL版");
     let realivedata = title_subdir.join("REALLIVEDATA");
     fs::create_dir_all(&realivedata).expect("create synthetic REALLIVEDATA");
     // Drop a Seen.txt so the test mirrors the real-bytes shape closely.

@@ -30,11 +30,6 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.label.name == 'real-byte-proof' }}
     runs-on: [self-hosted, itotori-corpora]
     env:
-      # Content-address + approved ZDR profile come from repo VARIABLES (not
-      # secrets — a corpus hash and a model/provider id are not secret, and the
-      # emitted manifest stays content-free). A misconfigured/absent value makes
-      # the preflight gate FAIL rather than skip.
-      ITOTORI_PRIVATE_ENGINE_CORPUS_CONTENT_ADDRESS: ${{ vars.ITOTORI_PRIVATE_ENGINE_CORPUS_CONTENT_ADDRESS }}
       ITOTORI_ZDR_PROFILE: ${{ vars.ITOTORI_ZDR_PROFILE }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

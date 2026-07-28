@@ -28,7 +28,7 @@ use kaifuu_core::{
 /// for the real-bytes round-trip smoke. The committed fixture is
 /// metadata-only; this variable is the ONLY way the real archive bytes
 /// enter the smoke process. Mirrors the integration-test env gate.
-pub const XP3_SMOKE_SOURCE_ARCHIVE_ENV: &str = "KAIFUU_XP3_PROFILE_A_ARCHIVE";
+pub const XP3_SMOKE_SOURCE_ARCHIVE_ENV: &str = "kirikiri-xp3/1/plain";
 
 /// Entry point for `kaifuu xp3 smoke --fixture <id> [--archive <path>]`.
 pub fn run_xp3_real_bytes_smoke(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
@@ -50,8 +50,8 @@ pub fn run_xp3_real_bytes_smoke(args: &[String]) -> Result<(), Box<dyn std::erro
 
     let archive_path = match flag_optional(args, "--archive").map(PathBuf::from) {
         Some(path) => path,
-        None => match std::env::var_os(XP3_SMOKE_SOURCE_ARCHIVE_ENV) {
-            Some(value) => PathBuf::from(value),
+        None => match corpus_registry::resolve_identity(XP3_SMOKE_SOURCE_ARCHIVE_ENV).ok() {
+            Some(value) => value,
             None => {
                 return Err(format!(
                     "kaifuu xp3 smoke: pass --archive <path> or set {XP3_SMOKE_SOURCE_ARCHIVE_ENV} (semantic: kaifuu.xp3_smoke.archive_missing)"

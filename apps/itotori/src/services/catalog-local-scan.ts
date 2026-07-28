@@ -350,11 +350,9 @@ export async function scanCatalogLocalRoot(
     throw new Error("catalog-local-corpus-scan --max-depth must be a non-negative integer");
   }
 
-  const hashKey = options.hashKey ?? process.env.ITOTORI_LOCAL_CORPUS_HASH_KEY;
+  const hashKey = options.hashKey;
   if (hashKey === undefined || hashKey.length === 0) {
-    throw new Error(
-      "catalog-local-corpus-scan requires --hash-key or ITOTORI_LOCAL_CORPUS_HASH_KEY for stable private hashes",
-    );
+    throw new Error("catalog-local-corpus-scan requires --hash-key for stable private hashes");
   }
   const privateHash = createPrivateHash(hashKey);
   const root = await profileDirectory(rootPath, "", 0, maxDepth);

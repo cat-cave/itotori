@@ -41,15 +41,15 @@ test("real-bytes: a *_real_bytes.rs path is real-bytes regardless of contents", 
   assert.equal(isRealBytes(RUST_PATH, "fn main() {}\n"), true);
 });
 
-test("real-bytes: a #[ignore] reason naming the corpus env is real-bytes", () => {
-  const contents = '#[ignore = "set ITOTORI_REAL_GAME_ROOT to run"]\nfn live() {}\n';
+test("real-bytes: a #[ignore] reason naming the corpus inventory is real-bytes", () => {
+  const contents = '#[ignore = "set private inventory row to run"]\nfn live() {}\n';
   assert.equal(isRealBytes(RUST_SRC_PATH, contents), true);
   const vaultContents = '#[ignore = "needs ITOTORI_VAULT_ROOT"]\nfn live() {}\n';
   assert.equal(isRealBytes(RUST_SRC_PATH, vaultContents), true);
-  // Softpal real-corpus env is a live corpus signal too (wired into the
+  // A private inventory row is a live corpus signal (wired into the
   // periodic ci-real-bytes lane).
   const softpalContents =
-    '#[ignore = "real-bytes; requires ITOTORI_SOFTPAL_RESEARCH_ROOT"]\nfn live() {}\n';
+    '#[ignore = "real-bytes; requires private inventory row"]\nfn live() {}\n';
   assert.equal(isRealBytes(RUST_SRC_PATH, softpalContents), true);
 });
 

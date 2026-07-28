@@ -4,7 +4,7 @@
 //! Pins the decoder against primary_corpus HD's `REALLIVEDATA/koe/z0001.ovk`
 //! (337,086 bytes, 2 entries — the canonical spec fixture).
 //! Mirrors the `g00_real_bytes.rs` env-gating pattern
-//! (`ITOTORI_REAL_GAME_ROOT` must be set).
+//! (`private inventory row` must be set).
 //!
 //! # Acceptance criteria pinned here
 //!
@@ -80,7 +80,7 @@ fn real_koe_dir() -> Option<PathBuf> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row env var"]
 fn ovk_z0001_two_entries() {
     let Some(koe_dir) = real_koe_dir() else {
         real_corpus::require_real_bytes("utsushi-reallive ovk_z0001_two_entries");
@@ -178,8 +178,8 @@ fn ovk_real_bytes_skips_when_env_unset() {
         return;
     }
     eprintln!(
-        "ITOTORI_REAL_GAME_ROOT not set — OVK real-bytes tests are #[ignore]-gated and \
-         only run with ITOTORI_REAL_GAME_ROOT set.",
+        "reallive/1/encrypted not set — OVK real-bytes tests are #[ignore]-gated and \
+         only run with reallive/1/encrypted set.",
     );
 }
 

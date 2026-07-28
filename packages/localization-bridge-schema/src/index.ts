@@ -699,7 +699,7 @@ export const PATCH_PARTIAL_WRITE_DISPOSITIONS_V02 = [
 ] as const;
 export type PatchPartialWriteDispositionV02 = (typeof PATCH_PARTIAL_WRITE_DISPOSITIONS_V02)[number];
 
-export const ITOTORI_PERMISSION_VALUES_V02 = [
+export const PERMISSION_VALUES_V02 = [
   "project.import",
   "draft.write",
   "patch.export",
@@ -711,7 +711,7 @@ export const ITOTORI_PERMISSION_VALUES_V02 = [
   "catalog.write",
   "system.reset",
 ] as const;
-export type ItotoriPermissionV02 = (typeof ITOTORI_PERMISSION_VALUES_V02)[number];
+export type ItotoriPermissionV02 = (typeof PERMISSION_VALUES_V02)[number];
 
 export const CONTRACT_FIXTURE_KINDS_V02 = [
   "alpha-vertical-proof-manifest-v0.2",
@@ -3619,14 +3619,10 @@ export function assertPermissionLocalUserFixtureV02(
   assertEqual(user.displayName, "Local user", "PermissionLocalUserFixtureV02.user.displayName");
   const grants = assertEnumArrayV02(
     fixture.grants,
-    ITOTORI_PERMISSION_VALUES_V02,
+    PERMISSION_VALUES_V02,
     "PermissionLocalUserFixtureV02.grants",
   );
-  assertExactStringSetV02(
-    grants,
-    ITOTORI_PERMISSION_VALUES_V02,
-    "PermissionLocalUserFixtureV02.grants",
-  );
+  assertExactStringSetV02(grants, PERMISSION_VALUES_V02, "PermissionLocalUserFixtureV02.grants");
   assertStringArray(fixture.compatibilityNotes, "PermissionLocalUserFixtureV02.compatibilityNotes");
 }
 

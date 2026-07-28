@@ -255,8 +255,8 @@ fn xp3_profile_proof_command_leaked_archive_path_fails_and_redacts_path() {
 /// the redacted proof; it never decrypts, never extracts, and never
 /// claims patch-back on archives whose index cannot be inventoried by
 /// the plain reader.
-/// The test no-ops when `ITOTORI_REAL_GAME_ROOT_KIRIKIRI_PLAIN`
-/// and `ITOTORI_REAL_GAME_ROOT_KIRIKIRI_ENCRYPTED` are unset; public
+/// The test no-ops when `private inventory row`
+/// and `private inventory row` are unset; public
 /// CI is satisfied by the synthetic fixtures above.
 #[test]
 fn xp3_profile_proof_command_real_bytes_kirikiri_corpus_when_available() {
@@ -270,21 +270,21 @@ fn xp3_profile_proof_command_real_bytes_kirikiri_corpus_when_available() {
     // produce a patch_back capability claim.
     let real_cases: &[(&str, &str)] = &[
         (
-            "ITOTORI_REAL_GAME_ROOT_KIRIKIRI_PLAIN",
+            "kirikiri-xp3/1/plain",
             "kaifuu-real-kirikiri-plain-corpus",
         ),
         (
-            "ITOTORI_REAL_GAME_ROOT_KIRIKIRI_ENCRYPTED",
+            "kirikiri-xp3/2/encrypted",
             "kaifuu-real-kirikiri-encrypted-corpus",
         ),
     ];
 
     let mut exercised = 0u32;
     for (env_var, fixture_id) in real_cases {
-        let Some(game_root) = std::env::var_os(env_var) else {
+        let Some(game_root) = corpus_registry::resolve_identity(env_var).ok() else {
             continue;
         };
-        let archive = PathBuf::from(game_root).join("data.xp3");
+        let archive = game_root.join("data.xp3");
         assert!(
             archive.is_file(),
             "{env_var} must point to a KiriKiri game root containing data.xp3"

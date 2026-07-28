@@ -3,7 +3,7 @@
 //! envelope** used by every RealLive title since AVG32, as documented at
 //! `docs/research/reallive-engine.md` §C and confirmed against the
 //! Observed `REALLIVEDATA/Seen.txt` bytes supplied via
-//! `ITOTORI_REAL_GAME_ROOT` per
+//! `private inventory row` per
 //! `docs/audits/real-bytes-validation-2026-06-24.md` §2.8.
 //! Layout
 //! ```text

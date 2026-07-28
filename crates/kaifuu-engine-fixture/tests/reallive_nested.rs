@@ -184,7 +184,7 @@ fn flat_game_does_not_emit_nested_data_dir_resolved() {
 /// Snapshot guard: the full nested-detection JSON is pinned to
 /// `tests/fixtures/reallive-nested-detect.json` so the evidence codes,
 /// resolved path, and prefixed marker paths cannot silently drift. Set
-/// `ITOTORI_UPDATE_SNAPSHOT=1` to regenerate the fixture after an
+/// `REGENERATE_FIXTURES=1` to regenerate the fixture after an
 /// intentional change.
 #[test]
 fn nested_data_dir_resolved_matches_json_snapshot() {
@@ -198,7 +198,7 @@ fn nested_data_dir_resolved_matches_json_snapshot() {
     let fixture =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/reallive-nested-detect.json");
 
-    if std::env::var_os("ITOTORI_UPDATE_SNAPSHOT").is_some() {
+    if std::env::var_os("REGENERATE_FIXTURES").is_some() {
         fs::create_dir_all(fixture.parent().unwrap()).unwrap();
         fs::write(&fixture, format!("{actual}\n")).unwrap();
         return;
@@ -206,13 +206,13 @@ fn nested_data_dir_resolved_matches_json_snapshot() {
 
     let expected = fs::read_to_string(&fixture).unwrap_or_else(|err| {
         panic!(
-            "missing snapshot fixture {} ({err}); regenerate with ITOTORI_UPDATE_SNAPSHOT=1",
+            "missing snapshot fixture {} ({err}); regenerate with REGENERATE_FIXTURES=1",
             fixture.display()
         )
     });
     assert_eq!(
         actual.trim_end(),
         expected.trim_end(),
-        "nested-detection JSON drifted from the pinned snapshot; regenerate with ITOTORI_UPDATE_SNAPSHOT=1 if intentional"
+        "nested-detection JSON drifted from the pinned snapshot; regenerate with REGENERATE_FIXTURES=1 if intentional"
     );
 }
