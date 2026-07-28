@@ -1,7 +1,9 @@
-//! Env-gated evidence for RealLive's standalone scene-override convention.
+//! Real-bytes evidence for RealLive's standalone scene-override convention.
+
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
 
 use std::collections::BTreeMap;
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -10,13 +12,12 @@ use kaifuu_reallive::{
     parse_real_bytecode, parse_scene_override_file_name,
 };
 
-const SECOND_CORPUS_ENV: &str = "ITOTORI_REAL_GAME_ROOT_2";
-
 #[test]
+#[ignore = "SKIP real-bytes; public CI has no registered secondary corpus; ci-real-bytes runs this assertion"]
 fn reports_when_effective_scene_bytes_contain_no_extractable_prose() {
     let Some(data_dir) = second_corpus_data_dir() else {
-        eprintln!(
-            "SKIP override-scene prose evidence: {SECOND_CORPUS_ENV} is unset or has no RealLive data directory"
+        real_corpus::require_real_bytes(
+            "reports_when_effective_scene_bytes_contain_no_extractable_prose",
         );
         return;
     };
@@ -87,36 +88,7 @@ fn decompress_scene(blob: &[u8]) -> Vec<u8> {
 }
 
 fn second_corpus_data_dir() -> Option<PathBuf> {
-    let mut current = PathBuf::from(env::var_os(SECOND_CORPUS_ENV)?);
-    for _ in 0..=4 {
-        if find_child_ci(&current, "seen.txt").is_some() {
-            return Some(current);
-        }
-        if let Some(data) = find_child_ci(&current, "reallivedata")
-            && find_child_ci(&data, "seen.txt").is_some()
-        {
-            return Some(data);
-        }
-        let children = fs::read_dir(&current)
-            .ok()?
-            .flatten()
-            .map(|entry| entry.path())
-            .filter(|path| path.is_dir())
-            .collect::<Vec<_>>();
-        let data_children = children
-            .iter()
-            .filter(|path| find_child_ci(path, "seen.txt").is_some())
-            .cloned()
-            .collect::<Vec<_>>();
-        if data_children.len() == 1 {
-            return data_children.into_iter().next();
-        }
-        if children.len() != 1 {
-            return None;
-        }
-        current = children.into_iter().next()?;
-    }
-    None
+    real_corpus::corpus_2().map(|corpus| corpus.root)
 }
 
 fn scene_overrides(data_dir: &Path) -> BTreeMap<u16, Vec<u8>> {
