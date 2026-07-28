@@ -62,6 +62,19 @@ fn fatal_after_text_engine() -> ReplayEngine {
     ReplayEngine::from_store(store, HashSet::from([(1, 0)]))
 }
 
+/// A detached scene whose real control flow reaches `rtl()` after producing
+/// text. With no caller frame (as in structure export's cold-seeded replay),
+/// `rtl` reports `EmptyStack { expected: "far_call" }`; that is a natural
+/// standalone terminus, not a truncation.
+fn top_level_rtl_after_text_engine() -> ReplayEngine {
+    let (text, text_len) = textout(0, "text before standalone rtl");
+    let rtl = command_element(JMP_MODULE_TYPE, JMP_MODULE_ID, 13, text_len);
+    let scene = Scene::new(1, vec![text, rtl]).expect("top-level rtl scene");
+    let mut store = InMemorySceneStore::new();
+    store.insert(scene);
+    ReplayEngine::from_store(store, HashSet::from([(1, 0)]))
+}
+
 // Helpers for objbtn chain's port-pass prompt-trace alignment tests.
 fn prompt(id: u64, line_id: &str) -> crate::rlop::module_sel::SelectionPrompt {
     crate::rlop::module_sel::SelectionPrompt {
