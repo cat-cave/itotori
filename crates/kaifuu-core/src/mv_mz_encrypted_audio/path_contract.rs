@@ -1,4 +1,20 @@
-use super::*;
+use serde::{Deserialize, Serialize};
+
+use super::{
+    FINDING_MISSING_KEY, FINDING_UNSUPPORTED_SURFACE, FINDING_UNSUPPORTED_VARIANT,
+    FINDING_WRONG_KEY, MV_MZ_ENCRYPTED_AUDIO_CRYPTO_PROFILE_ID,
+    MV_MZ_ENCRYPTED_AUDIO_ENGINE_FAMILY, MV_MZ_ENCRYPTED_AUDIO_FIXTURE_ID,
+    MV_MZ_ENCRYPTED_AUDIO_REQUIREMENT_ID, MV_MZ_ENCRYPTED_AUDIO_SCHEMA_VERSION,
+    MV_MZ_ENCRYPTED_AUDIO_SUPPORT_BOUNDARY, MV_MZ_ENCRYPTED_AUDIO_VARIANT,
+    RPGMAKER_AUDIO_XOR_PREFIX_LEN, SEMANTIC_MV_MZ_AUDIO_MISSING_KEY,
+    SEMANTIC_MV_MZ_AUDIO_UNSUPPORTED_SURFACE, SEMANTIC_MV_MZ_AUDIO_UNSUPPORTED_VARIANT,
+    SEMANTIC_MV_MZ_AUDIO_WRONG_KEY,
+};
+use crate::{
+    CodecTransform, ContainerTransform, CryptoTransform, KaifuuResult, KeyMaterialKind,
+    PartialDiagnosticSeverity, PatchBackTransform, ProofHash, RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER,
+    SurfaceTransform, sha256_hash_bytes, stable_json,
+};
 
 /// The named MV/MZ audio surfaces this path handles. Each owns a stable
 /// [`MvMzAudioSurface::surface_id`].
