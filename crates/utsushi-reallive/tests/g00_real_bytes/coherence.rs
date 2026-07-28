@@ -72,18 +72,18 @@ pub(super) fn assert_type0_corpus_coherent(title: &str, g00_dir: &PathBuf) {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (and optionally _2) env var"]
+#[ignore = "real-bytes; requires private inventory rows reallive/1/encrypted or reallive/2/plain"]
 fn g00_type0_corpus_coherence_both_titles() {
     let mut ran = false;
-    for env_var in [real_corpus::PRIMARY, real_corpus::SECONDARY] {
-        if let Some(dir) = real_corpus::g00_dir_for(env_var) {
+    for need in [real_corpus::PRIMARY, real_corpus::SECONDARY] {
+        if let Some(dir) = real_corpus::g00_dir_for(need) {
             ran = true;
-            assert_type0_corpus_coherent(env_var.engine, &dir);
+            assert_type0_corpus_coherent(need.engine, &dir);
         }
     }
     if !ran {
         real_corpus::require_real_bytes(
-            "utsushi-reallive g00 type-0 corpus coherence (needs ITOTORI_REAL_GAME_ROOT or ITOTORI_REAL_GAME_ROOT_2)",
+            "utsushi-reallive g00 type-0 corpus coherence (needs reallive/1/encrypted or reallive/2/plain)",
         );
     }
 }

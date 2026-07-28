@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row reallive/1/encrypted"]
 fn g00_type0_back_decodes() {
     let Some(g00_dir) = real_g00_dir() else {
         real_corpus::require_real_bytes("utsushi-reallive g00_type0_back_decodes");

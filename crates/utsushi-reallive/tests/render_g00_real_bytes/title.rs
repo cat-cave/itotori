@@ -1,6 +1,8 @@
 use super::geometry::{distinct_rect_colours, rect_differs, rect_has_non_colour_pixel};
 use super::*;
 
+/// The whole per-title assertion battery (Node 1 + Node 2). Runs against
+/// one real corpus's g00 directory.
 pub(super) fn run_title_render_proof(g00_dir: PathBuf, title: &str) {
     let (stem, image) = pick_varied_type0_g00(&g00_dir).unwrap_or_else(|| {
         panic!(

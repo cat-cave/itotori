@@ -3,7 +3,7 @@ use super::title::run_title_render_proof;
 use super::*;
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var (title 1)"]
+#[ignore = "real-bytes; requires private inventory row reallive/1/encrypted (title 1)"]
 fn render_pass_applies_state_and_rasterises_g00_title1_real_bytes() {
     let Some(g00_dir) = real_corpus::g00_dir_for(real_corpus::PRIMARY) else {
         real_corpus::require_real_bytes(
@@ -15,11 +15,11 @@ fn render_pass_applies_state_and_rasterises_g00_title1_real_bytes() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT_2 env var (title 2)"]
+#[ignore = "real-bytes; requires private inventory row reallive/2/plain (title 2)"]
 fn render_pass_applies_state_and_rasterises_g00_title2_real_bytes() {
     let Some(g00_dir) = real_corpus::g00_dir_for(real_corpus::SECONDARY) else {
         real_corpus::require_real_bytes(
-            "utsushi-reallive render_pass_applies_state_and_rasterises_g00_title2_real_bytes (title 2 / ITOTORI_REAL_GAME_ROOT_2)",
+            "utsushi-reallive render_pass_applies_state_and_rasterises_g00_title2_real_bytes (title 2 / reallive/2/plain)",
         );
         return;
     };

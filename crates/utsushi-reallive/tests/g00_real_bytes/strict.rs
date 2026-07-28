@@ -116,18 +116,18 @@ fn assert_strict_validator_accepts_clean_decodes(title: &str, g00_dir: &PathBuf)
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (and optionally _2) env var"]
+#[ignore = "real-bytes; requires private inventory rows reallive/1/encrypted or reallive/2/plain"]
 fn g00_strict_validator_accepts_real_corpus_both_titles() {
     let mut ran = false;
-    for env_var in [real_corpus::PRIMARY, real_corpus::SECONDARY] {
-        if let Some(dir) = real_corpus::g00_dir_for(env_var) {
+    for need in [real_corpus::PRIMARY, real_corpus::SECONDARY] {
+        if let Some(dir) = real_corpus::g00_dir_for(need) {
             ran = true;
-            assert_strict_validator_accepts_clean_decodes(env_var.engine, &dir);
+            assert_strict_validator_accepts_clean_decodes(need.engine, &dir);
         }
     }
     if !ran {
         real_corpus::require_real_bytes(
-            "utsushi-reallive g00 strict-validator vs decoder (needs ITOTORI_REAL_GAME_ROOT or ITOTORI_REAL_GAME_ROOT_2)",
+            "utsushi-reallive g00 strict-validator vs decoder (needs reallive/1/encrypted or reallive/2/plain)",
         );
     }
 }

@@ -2,11 +2,10 @@
 //! decoder.
 //!
 //! Pins the decoder against the primary_corpus HD `$GAME/REALLIVEDATA/g00/`
-//! corpus (2,450 files) following the same pattern as
+//! corpus (2,450 files) following the same inventory-backed pattern as
 //! `decompressor_real_bytes.rs` / `scene_header_real_bytes.rs`: the
-//! tests are `#[ignore]`-gated and only run when
-//! `ITOTORI_REAL_GAME_ROOT` is set (the same env var the rest of
-//! the real-bytes suite uses — see `tests/gameexe_real_bytes.rs` for
+//! tests are `#[ignore]`-gated and only run when the `reallive/1/encrypted`
+//! private-inventory row resolves (see `tests/engine_port_real_bytes.rs` for
 //! the canonical pattern).
 //!
 //! # Acceptance criteria pinned here
@@ -76,12 +75,10 @@ const PRIMARY_CORPUS_G00_CORPUS_SIZE: u64 = 2450;
 const PRIMARY_CORPUS_BACK_WIDTH: u32 = 1280;
 const PRIMARY_CORPUS_BACK_HEIGHT: u32 = 720;
 
-/// Resolve the primary_corpus HD g00 directory under
-/// `ITOTORI_REAL_GAME_ROOT`. Returns `None` when the env var is
-/// unset so each test can skip with a documented diagnostic (no silent
-/// pass).
+/// Resolve the primary g00 directory through its private-inventory identity.
+/// Returns `None` when that row is unavailable so each test can fail loudly.
 fn real_g00_dir() -> Option<PathBuf> {
-    real_corpus::reallivedata_subdir("g00")
+    real_corpus::g00_dir_for(real_corpus::PRIMARY)
 }
 
 /// Coherent-image threshold: mean absolute difference between

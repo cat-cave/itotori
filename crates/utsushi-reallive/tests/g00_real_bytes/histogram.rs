@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row reallive/1/encrypted"]
 fn g00_corpus_histogram_real_bytes_2450_files() {
     let Some(g00_dir) = real_g00_dir() else {
         real_corpus::require_real_bytes(
@@ -86,7 +86,7 @@ fn g00_corpus_histogram_real_bytes_2450_files() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+#[ignore = "real-bytes; requires private inventory row reallive/1/encrypted"]
 fn g00_type2_btn000_decodes_header_and_regions() {
     let Some(g00_dir) = real_g00_dir() else {
         real_corpus::require_real_bytes(
@@ -202,18 +202,16 @@ fn g00_type2_btn000_decodes_header_and_regions() {
 }
 
 #[test]
-fn g00_corpus_histogram_no_path_set_documents_skip() {
-    // Mirror the `gameexe_real_bytes.rs::verify_real_bytes_known_values_skips_when_env_unset`
-    // pattern: when the env var is unset, the real-bytes tests above
-    // print a diagnostic and return. This test makes the skip
-    // explicit so the CI run records the "skipped, not silently
-    // passed" semantics.
-    if real_corpus::game_root().is_some() {
+fn g00_corpus_histogram_no_inventory_row_documents_skip() {
+    // When the inventory row is unavailable, the ignored real-bytes tests
+    // above fail loudly through `require_real_bytes`. This default-lane test
+    // records that the absence is explicit rather than a silent pass.
+    if real_g00_dir().is_some() {
         return;
     }
     eprintln!(
-        "ITOTORI_REAL_GAME_ROOT not set — g00 corpus histogram real-bytes tests are \
-         #[ignore]-gated and only run with ITOTORI_REAL_GAME_ROOT set.",
+        "reallive/1/encrypted is unavailable — g00 corpus histogram real-bytes tests require \
+         its private inventory row.",
     );
 }
 

@@ -6,11 +6,11 @@
 //! These tests decode REAL g00 art from a staged RealLive corpus and
 //! composite it through [`RenderPass`], then assert PIXEL-CATEGORY
 //! INVARIANTS only — never an embedded/committed real-art pixel value.
-//! They are `#[ignore]`-gated and env-driven, following the crate's
+//! They are `#[ignore]`-gated and inventory-driven, following the crate's
 //! real-bytes convention:
 //!
-//! - `ITOTORI_REAL_GAME_ROOT` — title 1 (primary_corpus HD).
-//! - `ITOTORI_REAL_GAME_ROOT_2` — title 2 (Kanon).
+//! - `reallive/1/encrypted` — title 1 (primary_corpus HD).
+//! - `reallive/2/plain` — title 2 (Kanon).
 //!
 //! The full-fidelity (real-art) frame is written ONLY to a private
 //! uncommitted path under the repo's gitignored `/.private-render/`
@@ -236,8 +236,5 @@ mod geometry;
 mod synthetic;
 #[path = "tests.rs"]
 mod tests;
-/// The whole per-title assertion battery (Node 1 + Node 2). Runs against
-/// one real corpus's g00 directory.
-
 #[path = "title.rs"]
 mod title;
