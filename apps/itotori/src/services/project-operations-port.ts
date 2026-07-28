@@ -1,17 +1,67 @@
 import type {
+  BenchmarkReportSummary,
+  CostDrilldownFilter,
+  CostDrilldownPage,
+  DashboardDecisionReadModel,
+  ItotoriConformanceRepositoryPort,
   ItotoriLlmSnapshotRepository,
   ItotoriProjectRepositoryPort,
   ItotoriProjectRunRepositoryPort,
+  LocaleBranchIdentity,
+  ProjectCostReport,
+  ProjectDashboardStatus,
+  ProjectRunPortfolioProgressSummary,
+  RuntimeDashboardStatus,
 } from "@itotori/db";
+import type {
+  BenchmarkReportV02,
+  BridgeBundle,
+  BridgeBundleV02,
+  ConformanceManifestV01,
+  ConformanceResultV01,
+  FindingRecordV02,
+  PatchResultV02,
+  RuntimeEvidenceReportV02,
+  RuntimeVerificationReport,
+} from "@itotori/localization-bridge-schema";
+import type { DecodeExtractPort } from "../extract/decode-extract-runner.js";
+import type {
+  ProjectOverviewReadModel,
+  ProjectOverviewReadModelOptions,
+} from "../project-overview-read-model.js";
+import type { ProjectState } from "./project-types.js";
 
 /**
  * The type-only project-operations boundary shared by the retained CLI and API
  * handlers. Implementations are injected by composition; this module owns no
  * workflow or provider behavior.
  */
-export type RuntimeIngestResult = any;
-export type FindingRecordResult = any;
-export type BenchmarkRecordResult = any;
+export type RuntimeIngestResult = {
+  status: "hello_world_passed" | "hello_world_failed";
+  bridgeId: string;
+  localeBranchId: string;
+  patchExportId: string | undefined;
+  patchResultId: string;
+  runtimeReportId: string;
+  dashboard: ProjectDashboardStatus;
+};
+
+export type FindingRecordResult = {
+  findingId: string;
+  status: "open" | "resolved" | "superseded";
+};
+
+export type BenchmarkRecordResult = {
+  benchmarkRunId: string;
+  artifactId: string;
+  status: string;
+  systemCount: number;
+  findingCount: number;
+};
+
+export type ProjectPortfolioEntry = ProjectDashboardStatus & {
+  progress: ProjectRunPortfolioProgressSummary;
+};
 
 export type LaunchLocalizationPassResult =
   | {
@@ -25,24 +75,49 @@ export type LaunchLocalizationPassResult =
     };
 
 export type ItotoriProjectWorkflowPort = {
-  reset(): Promise<any>;
-  listLocaleBranchIdentities(...args: any[]): Promise<any>;
-  listPortfolio(...args: any[]): Promise<any>;
-  getDashboardStatus(...args: any[]): Promise<any>;
-  getRuntimeStatus(...args: any[]): Promise<any>;
-  getDashboardDecisions(...args: any[]): Promise<any>;
-  getProjectOverview(...args: any[]): Promise<any>;
-  getCostReport(...args: any[]): Promise<any>;
-  getCostDrilldown(...args: any[]): Promise<any>;
-  getBenchmarkReports(...args: any[]): Promise<any>;
-  importBridge(...args: any[]): Promise<any>;
-  decodeExtract(...args: any[]): Promise<any>;
-  ingestRuntimeReport(...args: any[]): Promise<any>;
-  ingestPatchResult(...args: any[]): Promise<any>;
-  ingestConformanceReport(...args: any[]): Promise<any>;
-  recordFinding(...args: any[]): Promise<any>;
-  recordBenchmarkReport(...args: any[]): Promise<any>;
-  launchNextLocalizationPass(...args: any[]): Promise<any>;
+  reset(): Promise<void>;
+  listLocaleBranchIdentities(projectId: string): Promise<LocaleBranchIdentity[]>;
+  listPortfolio(): Promise<ProjectPortfolioEntry[]>;
+  getDashboardStatus(projectId?: string): Promise<ProjectDashboardStatus>;
+  getDashboardStatusForProject(projectId: string): Promise<ProjectDashboardStatus>;
+  getRuntimeStatus(runtimeRunId?: string, projectId?: string): Promise<RuntimeDashboardStatus>;
+  getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel>;
+  getProjectOverview(options?: ProjectOverviewReadModelOptions): Promise<ProjectOverviewReadModel>;
+  getCostReport(projectId?: string): Promise<ProjectCostReport>;
+  getCostDrilldown(filter?: CostDrilldownFilter): Promise<CostDrilldownPage>;
+  getBenchmarkReports(projectId?: string): Promise<BenchmarkReportSummary[]>;
+  importBridge(bridge: BridgeBundle | BridgeBundleV02): Promise<ProjectState>;
+  decodeExtract(
+    input: Parameters<DecodeExtractPort["runDecodeExtract"]>[0],
+  ): ReturnType<DecodeExtractPort["runDecodeExtract"]>;
+  ingestRuntimeReport(
+    project: ProjectState,
+    runtimeReport: RuntimeVerificationReport | RuntimeEvidenceReportV02,
+  ): Promise<{ project: ProjectState; result: RuntimeIngestResult }>;
+  ingestPatchResult(project: ProjectState, patchResult: PatchResultV02): Promise<never>;
+  ingestConformanceReport(
+    project: ProjectState,
+    input: { manifest?: ConformanceManifestV01; results: ConformanceResultV01[] },
+  ): Promise<{
+    project: ProjectState;
+    result: Awaited<ReturnType<ItotoriConformanceRepositoryPort["saveConformanceRun"]>>;
+  }>;
+  recordFinding(
+    projectId: string,
+    input: {
+      localeBranchId?: string;
+      finding: FindingRecordV02;
+      status?: "open" | "resolved" | "superseded";
+    },
+  ): Promise<FindingRecordResult>;
+  recordBenchmarkReport(
+    projectId: string,
+    input: { benchmarkReport: BenchmarkReportV02 },
+  ): Promise<BenchmarkRecordResult>;
+  launchNextLocalizationPass(input: {
+    projectId: string;
+    localeBranchId: string;
+  }): Promise<LaunchLocalizationPassResult>;
 } & {
   ensureRunProjectScope(
     input: Parameters<ItotoriProjectRepositoryPort["ensureRunProjectScope"]>[1],

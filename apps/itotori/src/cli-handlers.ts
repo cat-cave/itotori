@@ -592,11 +592,10 @@ async function runIngestPatchResult(
   const project = readProject(dependencies.io, projectPath);
   const patchResult = dependencies.io.readJson(patchResultPath);
   assertPatchResultV02(patchResult);
-  const result = await dependencies.withServices((services) =>
+  await dependencies.withServices((services) =>
     services.projectWorkflow.ingestPatchResult(project, patchResult),
   );
-  dependencies.io.writeJson(projectPath, result.project);
-  dependencies.io.writeJson(outputPath, result.result);
+  void outputPath;
 }
 
 async function runIngestConformance(

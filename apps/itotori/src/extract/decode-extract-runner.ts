@@ -21,7 +21,8 @@ import { join } from "node:path";
 import { assertBridgeBundleV02, type BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import {
   runKaifuuExtract,
-  type ExtractOutcome,
+  type ExtractEngineId,
+  type ExtractModeForEngine,
   type ExtractSource,
   type KaifuuExtractArgs,
   type KaifuuExtractResult,
@@ -42,7 +43,12 @@ type DecodeExtractOutcomeEnvelope = {
 };
 
 /** The adapter-derived result discriminant plus the common bridge output. */
-export type DecodeExtractOutcome = DecodeExtractOutcomeEnvelope & ExtractOutcome;
+export type DecodeExtractOutcome = {
+  [E in ExtractEngineId]: DecodeExtractOutcomeEnvelope & {
+    engine: E;
+    mode: ExtractModeForEngine<E>;
+  };
+}[ExtractEngineId];
 
 export type DecodeExtractPort = {
   runDecodeExtract(input: DecodeExtractInput): Promise<DecodeExtractOutcome>;

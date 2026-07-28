@@ -344,6 +344,7 @@ export type ItotoriReadOnlyApiServices = {
     | "listLocaleBranchIdentities"
     | "listPortfolio"
     | "getDashboardStatus"
+    | "getDashboardStatusForProject"
     | "getDashboardDecisions"
     | "getProjectOverview"
     | "getRuntimeStatus"
@@ -472,6 +473,7 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
     | "listLocaleBranchIdentities"
     | "listPortfolio"
     | "getDashboardStatus"
+    | "getDashboardStatusForProject"
     | "getDashboardDecisions"
     | "getRuntimeStatus"
     | "getCostReport"
@@ -605,11 +607,11 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
       listLocaleBranchIdentities: (projectId) =>
         services.projectWorkflow.listLocaleBranchIdentities(projectId),
       listPortfolio: () => services.projectWorkflow.listPortfolio(),
-      // The workflow port is structurally typed as `(...args: any[])`, so a
-      // forwarder that drops a parameter still type-checks. Every project-scope
-      // argument is therefore forwarded EXPLICITLY here: the read-only façade
-      // must not be the place a caller's scope silently disappears.
+      // Scoped reads use a required project id at this boundary, so the
+      // read-only façade cannot silently erase a caller's scope.
       getDashboardStatus: (projectId) => services.projectWorkflow.getDashboardStatus(projectId),
+      getDashboardStatusForProject: (projectId) =>
+        services.projectWorkflow.getDashboardStatusForProject(projectId),
       getProjectOverview: (options) => services.projectWorkflow.getProjectOverview(options),
       getDashboardDecisions: (projectId) =>
         services.projectWorkflow.getDashboardDecisions(projectId),
@@ -999,12 +1001,7 @@ async function routeItotoriApiRequest(
     const body = parseProjectDecodeExtractRequest(request.body);
     await requireApiPermission(services, apiMutationPermissionGates.decodeExtract);
     const outcome = await services.projectWorkflow.decodeExtract(body);
-    return ok("projects.decodeExtract", {
-      bridge: outcome.bridge,
-      engine: outcome.engine,
-      mode: outcome.mode,
-      command: outcome.command,
-    });
+    return ok("projects.decodeExtract", outcome);
   }
 
   if (request.method === "POST" && request.pathname === "/api/imports/bridge") {
@@ -2075,7 +2072,9 @@ async function routeReadOnlyItotoriApiRequest(
       projectId: catalogContextRoute.projectId,
       localeBranchId: catalogContextRoute.localeBranchId,
     });
-    const dashboard = await services.projectWorkflow.getDashboardStatus();
+    const dashboard = await services.projectWorkflow.getDashboardStatusForProject(
+      catalogContextRoute.projectId,
+    );
     if (dashboard.projectId !== scope.projectId) {
       return errorBody(
         404,
