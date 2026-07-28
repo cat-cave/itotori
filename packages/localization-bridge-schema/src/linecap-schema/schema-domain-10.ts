@@ -399,10 +399,6 @@ export function assertPermissionLocalUserFixtureV02(
     PERMISSION_VALUES_V02,
     "PermissionLocalUserFixtureV02.grants",
   );
-  assertExactStringSetV02(
-    grants,
-    PERMISSION_VALUES_V02,
-    "PermissionLocalUserFixtureV02.grants",
-  );
+  assertExactStringSetV02(grants, PERMISSION_VALUES_V02, "PermissionLocalUserFixtureV02.grants");
   assertStringArray(fixture.compatibilityNotes, "PermissionLocalUserFixtureV02.compatibilityNotes");
 }

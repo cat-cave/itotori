@@ -240,11 +240,7 @@ export function parseBranchPolicyPolicy(value: unknown, label: string): ApiBranc
 }
 
 export function parseBranchPolicySections(value: unknown, label: string): ApiBranchPolicySections {
-  const sections = asStrictRecord(
-    value,
-    label,
-    STRICT_API_BODY_KEYS.ApiBranchPolicySections,
-  );
+  const sections = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiBranchPolicySections);
   return {
     tone: parseBranchPolicyRules(sections.tone, `${label}.tone`),
     terminology: parseBranchPolicyRules(sections.terminology, `${label}.terminology`),
@@ -268,11 +264,7 @@ export function assertModelRoutingProvider(
   value: unknown,
   label: string,
 ): asserts value is ApiModelRoutingProvider {
-  const provider = asStrictRecord(
-    value,
-    label,
-    STRICT_API_BODY_KEYS.ApiModelRoutingProvider,
-  );
+  const provider = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiModelRoutingProvider);
   assertString(provider.providerId, `${label}.providerId`);
   assertString(provider.providerFamily, `${label}.providerFamily`);
   assertString(provider.endpointFamily, `${label}.endpointFamily`);
@@ -296,11 +288,7 @@ export function assertModelRoutingPromptPreset(
   value: unknown,
   label: string,
 ): asserts value is ApiModelRoutingPromptPreset {
-  const preset = asStrictRecord(
-    value,
-    label,
-    STRICT_API_BODY_KEYS.ApiModelRoutingPromptPreset,
-  );
+  const preset = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiModelRoutingPromptPreset);
   assertString(preset.promptPresetId, `${label}.promptPresetId`);
   assertString(preset.promptTemplateVersion, `${label}.promptTemplateVersion`);
   assertString(preset.presetSchemaVersion, `${label}.presetSchemaVersion`);

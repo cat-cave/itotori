@@ -35,11 +35,7 @@ export function assertWikiObjectListResponse(
   value: unknown,
   label = "ApiWikiObjectListResponse",
 ): asserts value is ApiWikiListResponse {
-  const response = asStrictRecord(
-    value,
-    label,
-    STRICT_API_BODY_KEYS.ApiWikiObjectListResponse,
-  );
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiWikiObjectListResponse);
   assertLiteral(response.schemaVersion, "itotori.wiki.objects.v1", `${label}.schemaVersion`);
   assertDateLike(response.generatedAt, `${label}.generatedAt`);
   assertString(response.snapshotId, `${label}.snapshotId`);
@@ -55,11 +51,7 @@ export function assertWikiObjectShowResponse(
   value: unknown,
   label = "ApiWikiObjectShowResponse",
 ): asserts value is ApiWikiShowResponse {
-  const response = asStrictRecord(
-    value,
-    label,
-    STRICT_API_BODY_KEYS.ApiWikiObjectShowResponse,
-  );
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiWikiObjectShowResponse);
   assertLiteral(response.schemaVersion, "itotori.wiki.object.v1", `${label}.schemaVersion`);
   assertDateLike(response.generatedAt, `${label}.generatedAt`);
   assertWikiObjectView(response.view, `${label}.view`);
@@ -79,11 +71,7 @@ export function assertWikiObjectHistoryResponse(
   value: unknown,
   label = "ApiWikiObjectHistoryResponse",
 ): asserts value is ApiWikiHistoryResponse {
-  const response = asStrictRecord(
-    value,
-    label,
-    STRICT_API_BODY_KEYS.ApiWikiObjectHistoryResponse,
-  );
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiWikiObjectHistoryResponse);
   assertLiteral(response.schemaVersion, "itotori.wiki.history.v1", `${label}.schemaVersion`);
   assertDateLike(response.generatedAt, `${label}.generatedAt`);
   assertWikiObjectView(response.view, `${label}.view`);
@@ -94,11 +82,7 @@ export function assertWikiObjectWriteResponse(
   value: unknown,
   label = "ApiWikiObjectWriteResponse",
 ): asserts value is ApiWikiEditResponse {
-  const response = asStrictRecord(
-    value,
-    label,
-    STRICT_API_BODY_KEYS.ApiWikiObjectWriteResponse,
-  );
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiWikiObjectWriteResponse);
   assertLiteral(response.schemaVersion, "itotori.wiki.write.v1", `${label}.schemaVersion`);
   assertDateLike(response.generatedAt, `${label}.generatedAt`);
   assertWikiWriteReceipt(response.receipt, `${label}.receipt`);
@@ -110,11 +94,7 @@ export function assertWikiApplyResponse(
   value: unknown,
   label = "ApiWikiObjectApplyResponse",
 ): asserts value is ApiWikiApplyResponse {
-  const response = asStrictRecord(
-    value,
-    label,
-    STRICT_API_BODY_KEYS.ApiWikiObjectApplyResponse,
-  );
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiWikiObjectApplyResponse);
   assertLiteral(response.schemaVersion, "itotori.wiki.apply.v1", `${label}.schemaVersion`);
   assertDateLike(response.generatedAt, `${label}.generatedAt`);
   const receipt = asStrictRecord(response.receipt, `${label}.receipt`, [

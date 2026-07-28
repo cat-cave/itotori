@@ -40,7 +40,6 @@ import {
 } from "./dependencies.js";
 import { API_ERROR_RESPONSE_CODES, ApiErrorResponse } from "./api-domain-01.js";
 import { STRICT_API_BODY_KEYS } from "./api-domain-02.js";
-import { assertItotoriApiResponse } from "./api-domain-09.js";
 import { asStrictRecord, assertEnum, assertString } from "./api-domain-29.js";
 
 export type ItotoriStrictApiBodyName = keyof typeof STRICT_API_BODY_KEYS;

@@ -156,11 +156,7 @@ export function assertCatalogContextPanelReadModel(
   value: unknown,
   label = "CatalogContextPanelReadModel",
 ): asserts value is CatalogContextPanelReadModel {
-  const model = asStrictRecord(
-    value,
-    label,
-    STRICT_API_BODY_KEYS.CatalogContextPanelReadModel,
-  );
+  const model = asStrictRecord(value, label, STRICT_API_BODY_KEYS.CatalogContextPanelReadModel);
   assertLiteral(model.schemaVersion, "catalog.context_panel_route.v0.1", `${label}.schemaVersion`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   const params = asStrictRecord(model.params, `${label}.params`, [

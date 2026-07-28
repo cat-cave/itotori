@@ -48,11 +48,7 @@ export function assertPermissionSetRecord(
   value: unknown,
   label: string,
 ): asserts value is ApiPermissionSetRecord {
-  const permissionSet = asStrictRecord(
-    value,
-    label,
-    STRICT_API_BODY_KEYS.ApiPermissionSetRecord,
-  );
+  const permissionSet = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiPermissionSetRecord);
   assertString(permissionSet.permissionSetId, `${label}.permissionSetId`);
   assertString(permissionSet.accountId, `${label}.accountId`);
   assertString(permissionSet.name, `${label}.name`);

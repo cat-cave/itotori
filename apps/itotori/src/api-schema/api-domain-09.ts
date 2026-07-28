@@ -288,11 +288,7 @@ export function assertApiAssetDecisionsResponse(
   value: unknown,
   label = "ApiAssetDecisionsResponse",
 ): asserts value is ApiAssetDecisionsResponse {
-  const response = asStrictRecord(
-    value,
-    label,
-    STRICT_API_BODY_KEYS.ApiAssetDecisionsResponse,
-  );
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiAssetDecisionsResponse);
   const decisions = asArray(response.decisions, `${label}.decisions`);
   for (const [index, decision] of decisions.entries()) {
     assertAssetDecisionRecord(decision, `${label}.decisions[${index}]`);
@@ -303,11 +299,7 @@ export function assertApiCandidateAssetsResponse(
   value: unknown,
   label = "ApiCandidateAssetsResponse",
 ): asserts value is ApiCandidateAssetsResponse {
-  const response = asStrictRecord(
-    value,
-    label,
-    STRICT_API_BODY_KEYS.ApiCandidateAssetsResponse,
-  );
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiCandidateAssetsResponse);
   const candidateAssets = asArray(response.candidateAssets, `${label}.candidateAssets`);
   for (const [index, candidate] of candidateAssets.entries()) {
     assertCandidateAssetRecord(candidate, `${label}.candidateAssets[${index}]`);

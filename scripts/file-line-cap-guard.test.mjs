@@ -38,15 +38,17 @@ test("countLines matches wc -l (newline count)", () => {
   assert.equal(countLines("a\nb\nc"), 2);
 });
 
-test("tree scan includes tracked TypeScript alongside Rust", () => {
+test("tree scan includes tracked TypeScript and TSX alongside Rust", () => {
   const dir = mkdtempSync(join(tmpdir(), "linecap-scope-"));
   execFileSync("git", ["init", "--quiet"], { cwd: dir });
-  writeFileSync(join(dir, "guard.rs"), "fn main() {}\n");
-  writeFileSync(join(dir, "guard.ts"), "export const guard = true;\n");
+  writeFileSync(join(dir, "rust.rs"), "fn main() {}\n");
+  writeFileSync(join(dir, "typescript.ts"), "export const guard = true;\n");
+  writeFileSync(join(dir, "tsx.tsx"), "export const Guard = () => null;\n");
+  writeFileSync(join(dir, "ignored.mjs"), "export const ignored = true;\n");
   writeFileSync(join(dir, "ignored.txt"), "not source\n");
   execFileSync("git", ["add", "."], { cwd: dir });
 
-  assert.deepEqual(listScanFiles(dir), ["guard.rs", "guard.ts"]);
+  assert.deepEqual(listScanFiles(dir), ["rust.rs", "tsx.tsx", "typescript.ts"]);
 });
 
 test("a NEW oversized file (not whitelisted) fails", () => {

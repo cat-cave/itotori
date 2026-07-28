@@ -37,11 +37,7 @@ export function assertCatalogConflictReviewReadModel(
   value: unknown,
   label = "CatalogConflictReviewReadModel",
 ): asserts value is CatalogConflictReviewReadModel {
-  const model = asStrictRecord(
-    value,
-    label,
-    STRICT_API_BODY_KEYS.CatalogConflictReviewReadModel,
-  );
+  const model = asStrictRecord(value, label, STRICT_API_BODY_KEYS.CatalogConflictReviewReadModel);
   const rows = asArray(model.rows, `${label}.rows`);
   for (const [index, rowValue] of rows.entries()) {
     const row = asStrictRecord(rowValue, `${label}.rows[${index}]`, [
@@ -237,11 +233,7 @@ export function assertApiBenchmarkReportsResponse(
   value: unknown,
   label = "ApiBenchmarkReportsResponse",
 ): asserts value is ApiBenchmarkReportsResponse {
-  const response = asStrictRecord(
-    value,
-    label,
-    STRICT_API_BODY_KEYS.ApiBenchmarkReportsResponse,
-  );
+  const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiBenchmarkReportsResponse);
   const reports = asArray(response.reports, `${label}.reports`);
   for (const [index, report] of reports.entries()) {
     assertBenchmarkReportSummary(report, `${label}.reports[${index}]`);

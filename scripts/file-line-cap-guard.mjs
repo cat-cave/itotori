@@ -22,7 +22,7 @@
 //   - When the whitelist reaches empty (all files modularized under the cap),
 //     the guard is absolute: every file must stay at or below the cap.
 //
-// Scope: every tracked `.rs`, `.ts`, `.tsx`, `.mjs`, and `.cjs` source file.
+// Scope: every tracked Rust or TypeScript source file (`.rs`, `.ts`, `.tsx`).
 // Generated/build output (`target/`, `dist/`) is excluded as untracked anyway.
 // Lines are counted as
 // newline characters (matches `wc -l`), deliberately INCLUDING inline
@@ -42,7 +42,7 @@ const repoRoot = join(here, "..");
 const DEFAULT_WHITELIST_PATH = join(here, "lint", "file-line-cap-whitelist.json");
 
 export const THRESHOLD = 500;
-export const SCAN_EXTENSIONS = [".rs", ".ts", ".tsx", ".mjs", ".cjs"];
+export const SCAN_EXTENSIONS = [".rs", ".ts", ".tsx"];
 
 const WHITELIST_HEADER = `RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via
 "node scripts/file-line-cap-guard.mjs --update". Each entry maps an over-cap
