@@ -17,14 +17,30 @@
 //! **No copyrighted text lives in this file** — only ASCII engine-format
 //! markers.
 
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const RESEARCH_ROOT_ENV: &str = "ITOTORI_SOFTPAL_RESEARCH_ROOT";
-const CORPORA: [(&str, &str); 2] = [
-    ("softpal/Pal.dll v21465", "v21465/dll/Pal.dll"),
-    ("softpal/Pal.dll v60663", "v60663/dll/Pal.dll"),
+use corpus_registry::{Need, resolve};
+
+const CORPORA: [(&str, Need<'static>, &str); 2] = [
+    (
+        "softpal/Pal.dll v21465",
+        Need {
+            engine: "softpal",
+            ordinal: 1,
+            variant: "plain",
+        },
+        "v21465/dll/Pal.dll",
+    ),
+    (
+        "softpal/Pal.dll v60663",
+        Need {
+            engine: "softpal",
+            ordinal: 2,
+            variant: "plain",
+        },
+        "v60663/dll/Pal.dll",
+    ),
 ];
 
 /// A `<dir>\<file>` path-join template — the loose-file half of the resolver.
@@ -52,18 +68,14 @@ fn required_binary(label: &str, path: &Path) -> Vec<u8> {
 #[test]
 #[ignore = "real-bytes; requires both staged Softpal Pal.dll binaries"]
 fn pal_dll_carries_loose_and_archive_path_machinery() {
-    let root = env::var_os(RESEARCH_ROOT_ENV).map_or_else(
-        || {
+    let mut checked = 0usize;
+    for (label, need, raw_path) in CORPORA {
+        let root = resolve(need).unwrap_or_else(|reason| {
             panic!(
                 "REAL-BYTES SKIP pal_dll_carries_loose_and_archive_path_machinery: \
-             softpal/Pal.dll requires {RESEARCH_ROOT_ENV}, which is unavailable; \
-             refusing a passing real-bytes proof without its required input"
+                 {need} is unavailable ({reason}); refusing a passing real-bytes proof without its required input"
             )
-        },
-        PathBuf::from,
-    );
-    let mut checked = 0usize;
-    for (label, raw_path) in CORPORA {
+        });
         let dll = root.join(raw_path);
         let bytes = required_binary(label, &dll);
         assert!(
