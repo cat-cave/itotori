@@ -302,7 +302,9 @@ pub use encrypted_media_proof::encrypted_media_proof;
 
 #[path = "lib/encrypted_media_finalize.rs"]
 mod encrypted_media_finalize;
-use encrypted_media_finalize::finalize_encrypted_media_report;
+use encrypted_media_finalize::{
+    EncryptedMediaReportFinalizeInput, finalize_encrypted_media_report,
+};
 
 #[path = "lib/helper_contracts.rs"]
 mod helper_contracts;

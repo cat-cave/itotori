@@ -460,18 +460,20 @@ pub fn encrypted_media_proof(
         });
     }
 
-    return Ok(finalize_encrypted_media_report(
-        fixture,
-        assets,
-        diagnostics,
-        key_profile_status,
-        system_json_proof_hash,
-        system_json_present,
-        system_json_key_present,
-        system_json_key_well_formed,
-        expected_system_json_key_hash,
-        system_json_key_hash,
-        has_encrypted_images_flag,
-        has_encrypted_audio_flag,
-    ));
+    Ok(finalize_encrypted_media_report(
+        EncryptedMediaReportFinalizeInput {
+            fixture,
+            assets,
+            diagnostics,
+            key_profile_status,
+            system_json_proof_hash,
+            system_json_present,
+            system_json_key_present,
+            system_json_key_well_formed,
+            expected_system_json_key_hash,
+            system_json_key_hash,
+            has_encrypted_images_flag,
+            has_encrypted_audio_flag,
+        },
+    ))
 }

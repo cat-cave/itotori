@@ -2,20 +2,38 @@
 
 use super::*;
 
+pub(super) struct EncryptedMediaReportFinalizeInput<'a> {
+    pub(super) fixture: &'a EncryptedMediaProofFixture,
+    pub(super) assets: Vec<EncryptedMediaProofAsset>,
+    pub(super) diagnostics: Vec<EncryptedMediaProofDiagnostic>,
+    pub(super) key_profile_status: EncryptedMediaKeyRefStatus,
+    pub(super) system_json_proof_hash: Option<ProofHash>,
+    pub(super) system_json_present: bool,
+    pub(super) system_json_key_present: bool,
+    pub(super) system_json_key_well_formed: bool,
+    pub(super) expected_system_json_key_hash: Option<ProofHash>,
+    pub(super) system_json_key_hash: Option<ProofHash>,
+    pub(super) has_encrypted_images_flag: Option<bool>,
+    pub(super) has_encrypted_audio_flag: Option<bool>,
+}
+
 pub(super) fn finalize_encrypted_media_report(
-    fixture: &EncryptedMediaProofFixture,
-    assets: Vec<EncryptedMediaProofAsset>,
-    diagnostics: Vec<EncryptedMediaProofDiagnostic>,
-    key_profile_status: EncryptedMediaKeyRefStatus,
-    system_json_proof_hash: Option<ProofHash>,
-    system_json_present: bool,
-    system_json_key_present: bool,
-    system_json_key_well_formed: bool,
-    expected_system_json_key_hash: Option<ProofHash>,
-    system_json_key_hash: Option<ProofHash>,
-    has_encrypted_images_flag: Option<bool>,
-    has_encrypted_audio_flag: Option<bool>,
+    input: EncryptedMediaReportFinalizeInput<'_>,
 ) -> EncryptedMediaProofReport {
+    let EncryptedMediaReportFinalizeInput {
+        fixture,
+        assets,
+        diagnostics,
+        key_profile_status,
+        system_json_proof_hash,
+        system_json_present,
+        system_json_key_present,
+        system_json_key_well_formed,
+        expected_system_json_key_hash,
+        system_json_key_hash,
+        has_encrypted_images_flag,
+        has_encrypted_audio_flag,
+    } = input;
     // Aggregate readiness: `Ready` requires *all* encrypted assets to
     // be `Ready` and no blocking diagnostics. Plaintext-only fixtures
     // resolve to `PlaintextEvidence`. Anything else routes to
