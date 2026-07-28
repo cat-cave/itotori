@@ -72,6 +72,14 @@ pub(crate) struct Vm<'a> {
     work_process_attached: bool,
     /// Category `0x000f:0x0005` exchanges this PAL-owned mode value.
     debug_window_state: i32,
+    /// Category `0x0012:0x0023` retains the script point selected for the
+    /// next native work process. The compact VM has no PAL process scheduler,
+    /// but must retain and consume this contract exactly.
+    last_process_point: i32,
+    /// Category `0x000d:0x0015`'s script-visible BGV level.  PAL initializes
+    /// this audio field to 50; it is deliberately distinct from an audio
+    /// renderer, which this compact VM does not own.
+    bgv_volume: i32,
     /// Category `0x000f:0x0004`'s three native overlay arguments.
     system_window_overlay: Option<(i32, i32, i32)>,
     /// Category `0x0009:0x0034` cancels this native scene-skip latch.
@@ -142,6 +150,8 @@ impl<'a> Vm<'a> {
             diagnostics: Vec::new(),
             work_process_attached: false,
             debug_window_state: 0,
+            last_process_point: 0,
+            bgv_volume: 50,
             system_window_overlay: None,
             scene_skip_active: false,
             text_auto_enabled: false,
@@ -196,7 +206,16 @@ impl<'a> Vm<'a> {
                     }
                     self.ip = next;
                 }
-                0x15 => break,
+                0x15 => {
+                    // The script bootstrap can end immediately after attaching
+                    // PAL's work-process pump. The callback registration and
+                    // task data live in launcher-native state, not SCRIPT.SRC;
+                    // ending here as success would hide the absent text path.
+                    if self.work_process_attached {
+                        self.stop("work_process_callback_unavailable", instruction.offset);
+                    }
+                    break;
+                }
                 0x18 => {
                     let Some(return_ip) = self.returns.pop() else {
                         break;
@@ -239,6 +258,16 @@ impl<'a> Vm<'a> {
                     break;
                 }
             }
+        }
+        // Some bootstraps leave through a root-level `return` rather than the
+        // `end` opcode. Keep the missing native work callback visible at either
+        // script terminus; otherwise a worker-less run would appear complete.
+        if self.work_process_attached && self.diagnostics.is_empty() {
+            let offset = self
+                .instructions
+                .get(self.ip)
+                .map_or(12, |instruction| instruction.offset);
+            self.stop("work_process_callback_unavailable", offset);
         }
         VmResult {
             steps: self.steps,
@@ -408,6 +437,30 @@ impl<'a> Vm<'a> {
                 self.debug_window_state = new_state;
                 scene_vm_calls::write_call_result(self, instruction, old_state)
             }
+            // `set_bgv_volume` consumes the requested script-visible level,
+            // retains it in PAL audio state, and reports success.  The compact
+            // VM intentionally records no synthetic sound output.
+            //
+            // Sena: `dispatch_text_stub` indexes this call as 69 and pops one
+            // argument before writing `text_state.bgv_volume`
+            // (`pal-vm/src/runtime.rs:3308-3309`, `:4383-4391`).
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x000d, 0x0015) =>
+            {
+                let Some(volume) = self.stack.pop() else {
+                    return self.bad("set_bgv_volume_stack_underflow", instruction.offset);
+                };
+                self.bgv_volume = volume;
+                scene_vm_calls::write_call_result(self, instruction, 1)
+            }
+            // The paired query consumes no arguments and exposes exactly the
+            // level retained by `set_bgv_volume`, rather than an invented
+            // default at each call site (Sena `runtime.rs:4434-4436`).
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x000d, 0x0016) =>
+            {
+                scene_vm_calls::write_call_result(self, instruction, self.bgv_volume)
+            }
             // Category 15:4 has a proven three-value stack contract. The
             // backing window object is outside this compact VM, but retaining
             // every supplied value preserves the state transition rather than
@@ -468,6 +521,21 @@ impl<'a> Vm<'a> {
                 if (target.category, target.function) == (0x0012, 0x0022) =>
             {
                 self.file_string(instruction)
+            }
+            // `set_last_process` consumes one script point id and stores the
+            // native cached process target. The scheduler that later uses this
+            // cache is outside the compact VM, but neither its argument nor
+            // its success result may be silently discarded.
+            //
+            // Sena's recovered handler: `pal-vm/src/runtime.rs:11670-11678`.
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x0012, 0x0023) =>
+            {
+                let Some(point_id) = self.stack.pop() else {
+                    return self.bad("set_last_process_stack_underflow", instruction.offset);
+                };
+                self.last_process_point = point_id;
+                scene_vm_calls::write_call_result(self, instruction, 1)
             }
             CommandFamily::Call { target }
                 if (target.category, target.function) == (0x0012, 0x0021) =>

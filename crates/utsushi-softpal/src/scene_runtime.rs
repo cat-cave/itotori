@@ -489,6 +489,101 @@ mod tests {
     }
 
     #[test]
+    fn bgv_volume_round_trip_controls_execution() {
+        let (textdat, pointer) = textdat();
+        // The setter must consume and retain 73; the query must return that
+        // retained value. Deleting either implementation makes the equality
+        // false and reaches the decoded message at point 1.
+        let tokens = [
+            op(0x1f),
+            word(73),
+            op(0x17),
+            word(0x000d_0015),
+            word(0x4000_0001),
+            op(0x17),
+            word(0x000d_0016),
+            word(0x4000_0002),
+            op(0x0c),
+            word(0x4000_0002),
+            word(73),
+            op(0x0a),
+            word(1),
+            word(0x4000_0002),
+            op(0x15),
+            op(0x1f),
+            word(pointer),
+            op(0x1f),
+            word(0x0fff_ffff),
+            op(0x1f),
+            word(0),
+            op(0x17),
+            word(0x0002_0002),
+            word(0),
+            op(0x15),
+        ];
+        let mut points = Vec::from(&b"_POINT_LIST_****"[..]);
+        points.extend_from_slice(&60_u32.to_le_bytes());
+        let scene = SoftpalScene::execute_with_points(&program(&tokens), &textdat, Some(&points))
+            .expect("BGV-volume calls execute");
+
+        assert!(scene.diagnostics.is_empty());
+        assert_eq!(
+            scene.stats.dialogue_count, 0,
+            "stored volume bypasses message"
+        );
+        assert_eq!(scene.stats.branch_count, 1);
+    }
+
+    #[test]
+    fn set_last_process_consumes_its_point_before_the_next_native_call() {
+        let (textdat, pointer) = textdat();
+        // 0023's cache has no compact scheduler consumer yet, so this checks
+        // its observable stack contract: it must remove point 9 before the
+        // following BGV setter consumes 73. Leaving 9 on the stack makes the
+        // BGV query fail the comparison and emits the decoded message.
+        let tokens = [
+            op(0x1f),
+            word(73),
+            op(0x1f),
+            word(9),
+            op(0x17),
+            word(0x0012_0023),
+            word(0x4000_0001),
+            op(0x17),
+            word(0x000d_0015),
+            word(0x4000_0002),
+            op(0x17),
+            word(0x000d_0016),
+            word(0x4000_0003),
+            op(0x0c),
+            word(0x4000_0003),
+            word(73),
+            op(0x0a),
+            word(1),
+            word(0x4000_0003),
+            op(0x15),
+            op(0x1f),
+            word(pointer),
+            op(0x1f),
+            word(0x0fff_ffff),
+            op(0x1f),
+            word(0),
+            op(0x17),
+            word(0x0002_0002),
+            word(0),
+            op(0x15),
+        ];
+        let mut points = Vec::from(&b"_POINT_LIST_****"[..]);
+        points.extend_from_slice(&80_u32.to_le_bytes());
+        let scene = SoftpalScene::execute_with_points(&program(&tokens), &textdat, Some(&points))
+            .expect("set-last-process call executes");
+
+        assert!(scene.diagnostics.is_empty());
+        assert_eq!(scene.stats.dialogue_count, 0, "point id was consumed");
+        assert_eq!(scene.stats.branch_count, 1);
+    }
+
+    #[test]
     fn scene_skip_cancel_returns_success_and_bypasses_failure_path() {
         let (textdat, pointer) = textdat();
         // Category 9/index 52 consumes no arguments and returns success. If
