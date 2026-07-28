@@ -5,7 +5,7 @@
 //! store, [`ReplayEngine::jump_to`] resolves a `(scene, line)` target from the
 //! decoded structure and lands DETERMINISTICALLY on it, and the reviewer
 //! address seam round-trips. The real-bytes counterpart
-//! (`jump_resume_real_bytes.rs`) exercises the frame fast-forward on Sweetie HD
+//! (`jump_resume_real_bytes.rs`) exercises the frame fast-forward on primary_corpus HD
 //! Kanon.
 
 use utsushi_reallive::{

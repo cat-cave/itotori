@@ -143,11 +143,12 @@ fn composite_asset_package_real_bytes_primary_corpus_realivedata() {
     assert_eq!(
         directives.len(),
         13,
-        "Sweetie HD's Gameexe.ini must declare exactly 13 #FOLDNAME.* directives per the \
+        "primary_corpus HD's Gameexe.ini must declare exactly 13 #FOLDNAME.* directives per the \
          M.1 audit evidence (docs/audits/substrate-honesty.md §M.1)"
     );
 
-    let public_source = PackageSource::PublicName("public-fixture:sweetie-hd-realivedata".into());
+    let public_source =
+        PackageSource::PublicName("public-fixture:primary_corpus-hd-realivedata".into());
     let plaintext = PlaintextDirPackage::new(
         "reallive.realivedata",
         &realivedata,
@@ -197,7 +198,7 @@ fn composite_asset_package_real_bytes_primary_corpus_realivedata() {
     }
 
     eprintln!(
-        "Sweetie HD multi-engine validation: 13 FOLDNAME directives enumerated; \
+        "primary_corpus HD multi-engine validation: 13 FOLDNAME directives enumerated; \
          {resolved_count} resolved via plaintext source; \
          {} absent on this corpus (archive-only directives without a PAK reader); \
          first resolved IDs: {first_resolved:?}",
@@ -215,11 +216,11 @@ fn composite_asset_package_real_bytes_primary_corpus_realivedata() {
     // reshuffle is loud.
     assert!(
         resolved_count > 0,
-        "Composite must resolve at least one Sweetie HD FOLDNAME directive via plaintext source"
+        "Composite must resolve at least one primary_corpus HD FOLDNAME directive via plaintext source"
     );
 
     // Verify a known plaintext file inside one of the resolved folders
-    // round-trips byte-for-byte. Sweetie HD has `g00/` populated; pick
+    // round-trips byte-for-byte. primary_corpus HD has `g00/` populated; pick
     // the first entry there.
     let g00 = realivedata.join("g00");
     if g00.is_dir() {
@@ -235,7 +236,7 @@ fn composite_asset_package_real_bytes_primary_corpus_realivedata() {
         }
         let Some(g00_path) = first_g00 else {
             eprintln!(
-                "  Sweetie HD g00/ folder present but contained no files; skipping byte check"
+                "  primary_corpus HD g00/ folder present but contained no files; skipping byte check"
             );
             return;
         };
@@ -257,7 +258,7 @@ fn composite_asset_package_real_bytes_primary_corpus_realivedata() {
             "composite open must return byte-equal bytes to fs::read for {logical:?}"
         );
         eprintln!(
-            "  Sweetie HD plaintext byte-equality verified for {logical:?} ({} bytes)",
+            "  primary_corpus HD plaintext byte-equality verified for {logical:?} ({} bytes)",
             disk_bytes.len()
         );
     }

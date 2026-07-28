@@ -49,7 +49,7 @@ async function settle(root: HTMLElement): Promise<void> {
   await branchExplorerPending(root);
 }
 
-describe("branch explorer dashboard view (UTSUSHI-068)", () => {
+describe("branch explorer dashboard view (policy)", () => {
   it("renders every required field per branch row from the 067 page", async () => {
     const root = mount();
     await renderBranchExplorer(root, BRANCH_EXPLORER_TEST_ENDPOINT, { pageSize: 100 });

@@ -1,4 +1,4 @@
-// ITOTORI-025 — SourceBridgeView.
+// policy — SourceBridgeView.
 //
 // The patch-export preflight needs to know the current source bridge's
 // hash (for the `sourceBridgeIntegrity` check), the per-source-unit

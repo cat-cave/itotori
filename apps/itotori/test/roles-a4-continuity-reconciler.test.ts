@@ -89,7 +89,7 @@ function a4Recorded(draft: A4ArcDraft): A4ModelCaller {
 }
 
 describe("clause 1 — A4 adopts the spine and never reconstructs topology", () => {
-  it("PROOF: the registered A4 specialist is an immutable analyst with the RB-025 validator/tools", () => {
+  it("PROOF: the registered A4 specialist is an immutable analyst with the policy validator/tools", () => {
     const a4 = validateRosterManifest(Object.values(ROSTER)).A4;
     expect(a4).toBe(ROSTER.A4);
     expect(a4.shape).toBe("analyst");

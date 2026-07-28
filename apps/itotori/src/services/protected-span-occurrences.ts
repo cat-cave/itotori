@@ -1,4 +1,4 @@
-// ITOTORI-144 — Shared duplicate protected-span OCCURRENCE logic.
+// policy — Shared duplicate protected-span OCCURRENCE logic.
 //
 // The legacy standalone protected-span check tool and the deterministic pre-export QA suite
 // (runDeterministicPreExportQa) MUST agree on how repeated protected-span
@@ -9,7 +9,7 @@
 /**
  * Counts non-overlapping literal occurrences of `raw` in `targetText`. Returns
  * 0 for an empty needle. Shared so the standalone protected-span check and the
- * deterministic pre-export QA count occurrences identically (ITOTORI-144).
+ * deterministic pre-export QA count occurrences identically (policy).
  */
 export function countProtectedSpanOccurrences(targetText: string, raw: string): number {
   if (raw.length === 0) {
@@ -37,7 +37,7 @@ export function countProtectedSpanOccurrences(targetText: string, raw: string): 
  *
  * Shared by the standalone protected-span check tool and the deterministic
  * pre-export QA so the two paths cannot drift on repeated-token handling
- * (ITOTORI-144).
+ * (policy).
  */
 export function missingRequiredProtectedSpanOccurrences(
   requiredSpans: string[],

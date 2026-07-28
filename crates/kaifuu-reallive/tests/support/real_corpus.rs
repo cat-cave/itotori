@@ -36,7 +36,7 @@ pub fn namae_display_and_box(value: &str) -> Option<(String, String)> {
 /// A resolved real-bytes RealLive corpus: the game root plus the located
 /// SEEN archive.
 /// Supports both observed on-disk layouts:
-/// - **modern** `<root>/REALLIVEDATA/Seen.txt` (Sweetie HD, the newer
+/// - **modern** `<root>/REALLIVEDATA/Seen.txt` (primary_corpus HD, the newer
 ///   compiler line);
 /// - **flat** `<root>/SEEN.TXT` (older 1.2.6.x titles such as Kanon, which
 ///   keep the archive directly in the game root with no `REALLIVEDATA/`
@@ -56,7 +56,7 @@ pub struct RealCorpus {
 
 impl RealCorpus {
     /// Locate this corpus's `Gameexe.ini` under either supported layout:
-    /// the modern `<root>/REALLIVEDATA/Gameexe.ini` (Sweetie HD) or the
+    /// the modern `<root>/REALLIVEDATA/Gameexe.ini` (primary_corpus HD) or the
     /// flat `<root>/Gameexe.ini` (older 1.2.6.x titles such as Kanon).
     /// Case-insensitive to absorb `GAMEEXE.INI` on case-sensitive volumes.
     pub fn gameexe_ini(&self) -> Option<PathBuf> {

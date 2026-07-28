@@ -227,7 +227,7 @@ export const CallSpecSchema = z
     }
   });
 
-// ITOTORI-241 - the requested route records only the model. The provider
+// policy - the requested route records only the model. The provider
 // policy names NO provider (capability + ZDR + automatic fallback), so
 // there is no requested provider order to record; the actually-served
 // (model, provider) pair is captured separately as `served` telemetry.

@@ -1,4 +1,4 @@
-// Env-gated real-Sweetie oracle: a real rendered frame resolves through the
+// Env-gated real-primary_corpus oracle: a real rendered frame resolves through the
 // EXISTING sanitized artifact server + the DEFAULT-REDACTED frame surface.
 //
 // Runs only when `ITOTORI_REAL_GAME_ROOT` points at a real RealLive install
@@ -11,7 +11,7 @@
 //   4. createItotoriServer          -> the real /artifact-store/ surface
 //   5. resolveMediaRef              -> observed redaction + typed failures
 // and proves the guarantees only real (copyrighted) bytes can prove:
-//   - a real Sweetie ref resolves through the sanitized server and is REDACTED
+//   - a real primary_corpus ref resolves through the sanitized server and is REDACTED
 //     by default (the committed proof never reveals a copyrighted frame);
 //   - a reveal without the cap is an explicit unauthorized-reveal (the clear
 //     copyrighted frame is never served);
@@ -83,7 +83,7 @@ const ADMIN_VIEW: MediaRevealGrant = {
   shareRedaction: false,
 };
 
-describe("real-Sweetie media ref resolution through the sanitized server", () => {
+describe("real-primary_corpus media ref resolution through the sanitized server", () => {
   const corpus = realCorpus();
   const maybe = corpus ? it : it.skip;
   if (!corpus) {

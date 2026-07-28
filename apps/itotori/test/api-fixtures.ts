@@ -115,7 +115,7 @@ export const costReportFixture: ProjectCostReport = {
       reasoningTokens: null,
       cachedInputTokens: null,
       totalTokens: 20,
-      // ITOTORI-230 — fixture posture for a fake-provider draft run.
+      // policy — fixture posture for a fake-provider draft run.
       // FakeModelProvider records the canonical localOnlyRoutingPosture
       // (zdr=true) since no data leaves the process.
       routingPosture: {
@@ -146,7 +146,7 @@ export const costReportFixture: ProjectCostReport = {
       promptHash: "sha256:2222222222222222222222222222222222222222222222222222222222222222",
       fallbackUsed: true,
       fallbackPlan: ["itotori-fake-qa-v0", "itotori-fake-qa-v1"],
-      // ITOTORI-225 — was previously `provider_estimate`; the audited
+      // policy — was previously `provider_estimate`; the audited
       // run actually carried a real upstream charge captured from
       // `usage.cost`, so it correctly tags as `billed`.
       costKind: "billed",
@@ -157,7 +157,7 @@ export const costReportFixture: ProjectCostReport = {
       reasoningTokens: null,
       cachedInputTokens: null,
       totalTokens: 16,
-      // ITOTORI-230 — fixture posture for an OR-routed benchmark-qa
+      // policy — fixture posture for an OR-routed benchmark-qa
       // run. Matches the canonical alpha shape from
       // docs/openrouter-integration-evidence/2026-06-25.json.
       routingPosture: {
@@ -374,7 +374,7 @@ export const localizationRunConfigFixture: ApiLocalizationRunConfigResponse = {
   updatedAt: "2026-07-08T00:00:00.000Z",
 };
 
-// ITOTORI-053 — cost drilldown fixture. Carries all three DISTINCT cost
+// policy — cost drilldown fixture. Carries all three DISTINCT cost
 // states (billed / zero / unknown) so the dashboard render + API-schema
 // assertion exercise the zero-vs-unknown distinction, and adapter metadata
 // that is CURATED (no raw provider payload — the repository strips those
@@ -1367,7 +1367,7 @@ export const benchmarkReportFixture = readFixture<BenchmarkReportV02>(
   "../../../packages/localization-bridge-schema/test/examples/benchmark-report-v0.2.json",
 );
 
-// ITOTORI-027 — the dashboard benchmark read model derived from the REAL
+// policy — the dashboard benchmark read model derived from the REAL
 // recorded benchmark report fixture (same QA calibration the workflow
 // persists), so the MSW handler stays in lockstep with the real schema.
 export const benchmarkReportSummaryFixture: BenchmarkReportSummary = {
@@ -1462,7 +1462,7 @@ function readFixture<T>(path: string): T {
   return JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as T;
 }
 
-// ITOTORI-051 — project MUTATION route fixtures.
+// policy — project MUTATION route fixtures.
 //
 // Each project mutation route the dashboard / SPA mutation layer POSTs to has
 // a SUCCESS request + response pair. The response shapes are the EXACT types
@@ -1474,7 +1474,7 @@ function readFixture<T>(path: string): T {
 // `apiMutationBadRequestResponseFixture` and
 // `apiMutationForbiddenResponseFixture` are the shared typed error responses
 // every mutation route may emit (a `bad_request` validation failure and a
-// `forbidden` permission / scoping denial — ITOTORI-050). They are checked
+// `forbidden` permission / scoping denial — policy). They are checked
 // against `assertItotoriApiErrorResponse`.
 
 export const bridgeImportRequestFixture: ApiProjectImportRequest = {
@@ -1529,7 +1529,7 @@ export const runtimeEvidenceIngestResponseFixture: ApiRuntimeEvidenceResponse =
   runtimeIngestResultFixture;
 
 /**
- * ITOTORI-051 — the typed validation-failure response every project mutation
+ * policy — the typed validation-failure response every project mutation
  * route emits when `parseXxxRequest` rejects the body (ApiValidationError →
  * 400 bad_request). The `error` message is the parser's, but the SHAPE is
  * stable across routes.
@@ -1541,7 +1541,7 @@ export const apiMutationBadRequestResponseFixture: ApiErrorResponse = {
 };
 
 /**
- * ITOTORI-050 / ITOTORI-051 — the typed permission / scoping-denial response
+ * policy / policy — the typed permission / scoping-denial response
  * every project mutation route emits when either the permission gate
  * (AuthorizationError → 403 forbidden) or the server-side project/branch
  * ownership scope check (ProjectMutationScopeError → 403 forbidden) refuses
@@ -1553,7 +1553,7 @@ export const apiMutationForbiddenResponseFixture: ApiErrorResponse = {
 };
 
 /**
- * ITOTORI-051 — the per-route mutation contract surface. Each entry binds a
+ * policy — the per-route mutation contract surface. Each entry binds a
  * project mutation {@link ItotoriApiRouteId} to its MSW origin URL, its
  * request fixture (the SUCCESS body the api-schema parser MUST accept), and
  * its response fixture (the SUCCESS body `assertItotoriApiResponse` MUST

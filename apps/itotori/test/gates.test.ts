@@ -416,7 +416,7 @@ describe("render-ocr gate", () => {
   });
 });
 
-describe("gates over the real RB-024 fact snapshot", () => {
+describe("gates over the real policy fact snapshot", () => {
   it("runs cardinality + patch-coverage over genuine decoded units", () => {
     const snapshot = buildRb024Snapshot();
     const order = reachableUnitFactIdsInOrder(snapshot);

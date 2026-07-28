@@ -1,7 +1,7 @@
 //! Synthetic-byte round-trip tests for the AVG-derived
 //! save format.
 //!
-//! These tests do **not** require the Sweetie HD research mount;
+//! These tests do **not** require the primary_corpus HD research mount;
 //! every byte they consume is produced by the
 //! [`SaveRoundTrip`](utsushi_reallive::SaveRoundTrip) builder. They
 //! exercise the spec acceptance criteria that don't depend on the
@@ -9,7 +9,7 @@
 //!
 //! - The `SystemSave` round-trip (`encode(decode(bytes)) == bytes`).
 //! - The `GlobalSave` round-trip.
-//! - The `ReadFlags` round-trip, including the Sweetie HD title bytes
+//! - The `ReadFlags` round-trip, including the primary_corpus HD title bytes
 //!   decoded from Shift-JIS.
 //! - The substrate `SnapshotStore` round-trip for the in-memory
 //!   `SaveState` backing.
@@ -32,16 +32,16 @@ use utsushi_reallive::{
     SystemSave,
 };
 
-/// Sweetie HD's `REALLIVE.sav` total byte length (audit doc § J).
+/// primary_corpus HD's `REALLIVE.sav` total byte length (audit doc § J).
 const PRIMARY_CORPUS_SYSTEM_SAVE_BYTES: usize = 24_876;
 
-/// Sweetie HD's `save999.sav` total byte length (audit doc § J).
+/// primary_corpus HD's `save999.sav` total byte length (audit doc § J).
 const PRIMARY_CORPUS_GLOBAL_SAVE_BYTES: usize = 6_748;
 
-/// Sweetie HD's `read.sav` total byte length (audit doc § J).
+/// primary_corpus HD's `read.sav` total byte length (audit doc § J).
 const PRIMARY_CORPUS_READ_FLAGS_BYTES: usize = 44_495;
 
-/// Sweetie HD title bytes embedded at offset 0x18 of `read.sav`. The
+/// primary_corpus HD title bytes embedded at offset 0x18 of `read.sav`. The
 /// 38-byte Shift-JIS string before the null terminator.
 fn reallive_real_bytes_title_bytes() -> Vec<u8> {
     vec![
@@ -51,9 +51,9 @@ fn reallive_real_bytes_title_bytes() -> Vec<u8> {
     ]
 }
 
-/// UTF-8 form of the Sweetie HD title (`オシオキSweetie＋Sweets!! HD Edition`
+/// UTF-8 form of the primary_corpus HD title (`primary corpusprimary_corpus＋Sweets!! HD Edition`
 /// IDEOGRAPHIC SPACE U+3000).
-const PRIMARY_CORPUS_TITLE_UTF8: &str = "オシオキSweetie＋Sweets!! HD Edition\u{3000}";
+const PRIMARY_CORPUS_TITLE_UTF8: &str = "primary corpusprimary_corpus＋Sweets!! HD Edition\u{3000}";
 
 // `SystemSave` (REALLIVE.sav, `AVG_SYSTEM_SAVE`).
 
@@ -195,7 +195,7 @@ fn save_preamble_round_trips_reallive_real_bytes_shaped_values() {
         tail: 0x02DC,
     };
     let bytes = preamble.encode();
-    // Audit-focus: byte-for-byte match against the documented Sweetie HD
+    // Audit-focus: byte-for-byte match against the documented primary_corpus HD
     // header prefix.
     assert_eq!(&bytes[0x00..0x04], &[0x2C, 0x61, 0x00, 0x00]);
     assert_eq!(&bytes[0x04..0x08], &[0x12, 0x27, 0x00, 0x00]);

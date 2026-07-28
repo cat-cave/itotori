@@ -1,7 +1,7 @@
 //! Speaker name-box + per-speaker text-colour diagnostic renderer
-//! (`investigate-sweetie-name-box-speaker-decode-gap` fix).
+//! (`investigate-primary_corpus-name-box-speaker-decode-gap` fix).
 //!
-//! Proves the decode fix END-TO-END on a real Sweetie HD `Gameexe.ini`:
+//! Proves the decode fix END-TO-END on a real primary_corpus HD `Gameexe.ini`:
 //! the `#NAMAE` middle field is a `#COLOR_TABLE` row index (the speaker's
 //! dialogue TEXT COLOUR), NOT a voice slot. Two staged translated lines —
 //! keyed by REAL `#NAMAE` display keys — are rendered into the real

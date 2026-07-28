@@ -69,7 +69,7 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
     options.serviceFactory ??
     ((callback, serviceOptions) =>
       withDatabaseItotoriServices({ ...databaseOptions(options), ...serviceOptions }, callback));
-  // itotori-043-followup-transport-level-readonly-routing — GET (read-only)
+  // policy-followup-transport-level-readonly-routing — GET (read-only)
   // requests are served through the read-only service factory so a GET can
   // NEVER reach a mutation service: the factory hands the handler only the
   // narrowed read-only surface (`ItotoriReadOnlyApiServices`), which has no
@@ -137,7 +137,7 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
         };
         const sessionId = parseItotoriSessionCookie(request.headers.cookie);
         const serviceOptions = sessionId === undefined ? undefined : { sessionId };
-        // itotori-043-followup-transport-level-readonly-routing — dispatch by
+        // policy-followup-transport-level-readonly-routing — dispatch by
         // HTTP method at the transport boundary: a GET runs through the
         // read-only factory + read-only handler (least-privilege, no mutation
         // surface); any other method runs through the full factory + full

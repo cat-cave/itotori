@@ -1,7 +1,7 @@
 import type { LocaleBranchIdentity } from "@itotori/db";
 
 /**
- * ITOTORI-050 — Project mutation scoping policy (IDOR / broken object-level
+ * policy — Project mutation scoping policy (IDOR / broken object-level
  * authorization hardening).
  *
  * THE POLICY. A project mutation route MUST NOT trust a client-supplied

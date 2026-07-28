@@ -7,7 +7,7 @@
 //! root is absent the test reports a skip and succeeds.
 //!
 //! When both are present it proves, for every scene of both owned titles
-//! (karetoshi = 298, gamekoi = 278):
+//! (siglus_corpus_one = 298, siglus_corpus_two = 278):
 //!   1. every instruction's operand bytes decode to a typed operand, consuming
 //!      **exactly** the span the partition assigned — zero unparsed operand
 //!      bytes (`typed_operand_bytes == total_operand_bytes`, scene-wide);

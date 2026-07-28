@@ -17,7 +17,7 @@
 //! - `kaifuu verify <fixture> --output …` exits 0 (no P0/P1 diagnostics)
 //!   while still reporting `partial == true`.
 //!   No real-bytes dependency: all fixtures are synthetic. The kaifuu-reallive
-//!   `parse_archive` is the same code path that consumes the Sweetie HD
+//!   `parse_archive` is the same code path that consumes the primary_corpus HD
 //!   Seen.txt in production, so a passing partial smoke here implies the
 //!   envelope ingests cleanly for the real game too.
 

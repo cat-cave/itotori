@@ -30,7 +30,7 @@ pub fn require_real_bytes(test_name: &str) {
 
 /// A resolved real-bytes RealLive corpus: the game root plus the located
 /// SEEN archive. Supports both observed on-disk layouts — modern
-/// `<root>/REALLIVEDATA/Seen.txt` (Sweetie HD) and flat `<root>/SEEN.TXT`
+/// `<root>/REALLIVEDATA/Seen.txt` (primary_corpus HD) and flat `<root>/SEEN.TXT`
 /// (older 1.2.6.x titles such as Kanon, which keep the archive directly in
 /// the game root with no `REALLIVEDATA/` subdirectory).
 pub struct RealCorpus {
@@ -56,7 +56,7 @@ pub fn corpora() -> Vec<RealCorpus> {
 
 impl RealCorpus {
     /// The game's configured ENTRY scene, read from `#SEEN_START` in the
-    /// `Gameexe.ini` that sits beside the SEEN archive (Sweetie HD: scene
+    /// `Gameexe.ini` that sits beside the SEEN archive (primary_corpus HD: scene
     /// 1; Kanon: scene 9030). This is the scene the engine begins the
     /// game at — the target of the entry-scene-to-terminus acceptance.
     /// Returns `None` if the Gameexe cannot be located / parsed or does

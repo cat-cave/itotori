@@ -3,8 +3,8 @@
 // The `analyst` casting that reads each COMPLETE scene and serially folds the
 // prior accepted story-so-far into a cited scene-summary and an updated
 // story-so-far, in the SOURCE LANGUAGE, dispatching deepseek-v4-flash through the
-// sole ZDR boundary. It consumes the roster (RB-040), the read-tool fact
-// snapshot (RB-024), and claim validation (RB-031) READ-ONLY, imports nothing
+// sole ZDR boundary. It consumes the roster (policy), the read-tool fact
+// snapshot (policy), and claim validation (policy) READ-ONLY, imports nothing
 // from the legacy agents tree, and owns a private barrel a sibling role never
 // edits.
 

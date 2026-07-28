@@ -155,7 +155,7 @@ function request(
   };
 }
 
-const ORG_KEY = { orgId: "org:sweetie-house", userId: null, genre: "genre:romance-vn" };
+const ORG_KEY = { orgId: "org:primary_corpus-house", userId: null, genre: "genre:romance-vn" };
 
 describe("A1 clause 1 — a cited source-language style-contract, claim-validated", () => {
   it("PROOF: the prompt's ExampleVN few-shot object parses through the A1 terminal WikiObject schema", () => {

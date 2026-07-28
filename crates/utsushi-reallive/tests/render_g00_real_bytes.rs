@@ -9,7 +9,7 @@
 //! They are `#[ignore]`-gated and env-driven, following the crate's
 //! real-bytes convention:
 //!
-//! - `ITOTORI_REAL_GAME_ROOT` — title 1 (Sweetie HD).
+//! - `ITOTORI_REAL_GAME_ROOT` — title 1 (primary_corpus HD).
 //! - `ITOTORI_REAL_GAME_ROOT_2` — title 2 (Kanon).
 //!
 //! The full-fidelity (real-art) frame is written ONLY to a private

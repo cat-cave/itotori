@@ -1,7 +1,7 @@
 use super::*;
 
 /// The Choice-bearing scene the config-driven-scope tests exercise:
-/// Sweetie HD scene 2011 carries a real `module_sel` Choice (op #33, before
+/// primary_corpus HD scene 2011 carries a real `module_sel` Choice (op #33, before
 /// all 213 dialogue units) with two Shift-JIS options.
 const CHOICE_SCENE_ID: u16 = 2011;
 
@@ -57,7 +57,7 @@ fn scope_dialogue_and_choices_patches_scene_2011_choice_nextstring_safe_round_tr
     };
     let seen_bytes = fs::read(&seen_path).expect("read Seen.txt");
     let cipher = recover_archive_xor2_cipher(&seen_bytes)
-        .expect("Sweetie HD must yield a validated xor_2 cipher");
+        .expect("primary_corpus HD must yield a validated xor_2 cipher");
 
     let (mut bundle_value, choice_keys) = scene_2011_source_bundle(&seen_bytes);
 
@@ -146,7 +146,7 @@ fn scope_dialogue_only_carries_scene_2011_choice_byte_identical() {
     };
     let seen_bytes = fs::read(&seen_path).expect("read Seen.txt");
     let cipher = recover_archive_xor2_cipher(&seen_bytes)
-        .expect("Sweetie HD must yield a validated xor_2 cipher");
+        .expect("primary_corpus HD must yield a validated xor_2 cipher");
 
     // Capture the SOURCE choice options.
     let source_bytecode = decrypt_scene(&seen_bytes, CHOICE_SCENE_ID, &cipher);

@@ -18,7 +18,7 @@ export function titleCardOcrDocumentFixture(): AssetOcrDocument {
   return {
     assetRef: "bridgeAssetRef:title-card.png",
     assetKind: "imageWithText",
-    sourceNodeId: "KAIFUU-026",
+    sourceNodeId: "policy",
     regions: [
       {
         regionId: "region-0001",

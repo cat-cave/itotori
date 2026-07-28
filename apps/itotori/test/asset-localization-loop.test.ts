@@ -39,7 +39,7 @@ describe("asset-localization loop — draft stage", () => {
     expect(newDraft.provenance.assetName).toBe("title-card.png");
     expect(newDraft.provenance.region).toEqual({ x: 3, y: 3, width: 17, height: 7 });
     expect(newDraft.provenance.sourceUncertain).toBe(false);
-    expect(newDraft.provenance.ocrSourceNodeId).toBe("KAIFUU-026");
+    expect(newDraft.provenance.ocrSourceNodeId).toBe("policy");
     expect(newDraft.draftUnitHash).toMatch(/^sha256:/);
 
     // The uncertain region still drafts (candidate is evidence, not truth).

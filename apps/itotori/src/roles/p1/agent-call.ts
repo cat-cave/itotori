@@ -95,7 +95,7 @@ function renderPrompt(request: P1SegmentRequest): string {
 }
 
 /** Build P1's certified draft call for one planned segment. No provider is named;
- * the role references the roster's RB-019 profile key and its ZDR policy. */
+ * the role references the roster's policy profile key and its ZDR policy. */
 export function buildP1AgentCall(
   modelSnapshotId: `sha256:${string}`,
   localizationSnapshotId: `sha256:${string}`,

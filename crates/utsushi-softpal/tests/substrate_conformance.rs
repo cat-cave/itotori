@@ -31,7 +31,7 @@ fn target(category: u16, function: u16) -> u32 {
 }
 
 /// A synthetic extracted scene: two dialogue lines (one with a speaker) then a
-/// two-option choice menu (both text-bearing, v21465 immediate-label idiom).
+/// two-option choice menu (both text-bearing, softpal_corpus_one immediate-label idiom).
 fn synthetic_scene() -> (Vec<u8>, Vec<u8>) {
     let mut textdat = vec![TEXTDAT_FLAG_PLAINTEXT];
     textdat.extend_from_slice(TEXTDAT_MAGIC_TAIL);

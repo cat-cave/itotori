@@ -2,9 +2,9 @@ use super::*;
 
 /// rlvm-shape LZSS+XOR decompressor restated in our own words from
 /// `libreallive::compression::Decompress` (BSD 2006, Peter Jolly). Does
-/// **not** apply the per-game second-level XOR — Sukara-branch titles
-/// (Sweetie HD) do not need it (outcome A in
-/// `docs/research/reallive-sweetie-hd-encryption-mechanism.md`).
+/// **not** apply the per-game second-level XOR — xor_two-branch titles
+/// (primary_corpus HD) do not need it (outcome A in
+/// `docs/research/reallive-primary_corpus-hd-encryption-mechanism.md`).
 ///
 /// The 256-byte XOR mask is the single shared
 /// `kaifuu_reallive::decompressor::AVG32_XOR_MASK` constant — this

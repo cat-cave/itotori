@@ -117,7 +117,7 @@ describe("qualifying artifact-lineage telemetry", () => {
     ).toThrow(/ablation/u);
   });
 
-  it("rejects an RB-064 attempt lineage when a physical attempt lacks telemetry", async () => {
+  it("rejects an policy attempt lineage when a physical attempt lacks telemetry", async () => {
     const store = new InMemoryQualifyingAttemptTelemetryStore();
     const entries = [attempt(5), attempt(6, "review", "Q1")];
 

@@ -174,7 +174,7 @@ export function buildEditCall(input: BuildEditCallInput): EditCall {
 
 export type EditorRuntimeBase = Omit<DispatchRuntime, "readPayload">;
 
-/** Bind P2 to RB-019's one certified model route and account-wide ZDR policy
+/** Bind P2 to policy's one certified model route and account-wide ZDR policy
  * in every run mode, including test-dev where shared dispatch is permissive. */
 export function assertCertifiedP2Route(spec: CallSpec): void {
   const specialist = specialistFor("P2");

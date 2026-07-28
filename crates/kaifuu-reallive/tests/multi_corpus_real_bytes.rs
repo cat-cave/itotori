@@ -1,7 +1,7 @@
 //! FIX-4 multi-game-validation real-bytes harness.
 //! Project law (`docs/dev/orchestration-operating-model.md`,
 //! multi-game-validation): RealLive engine-family behaviour must validate
-//! against **>= 2 real RealLive games**. On main only Oshioki Sweetie HD was
+//! against **>= 2 real RealLive games**. On main only primary_corpus primary_corpus HD was
 //! staged; FIX-4 sources a second genuine RealLive title (Kanon, a 1.2.6.8
 //! fan-patched / rlBabel tree) and exposes it to this harness via
 //! [`real_corpus::REAL_GAME_ROOT_2_ENV`] (`ITOTORI_REAL_GAME_ROOT_2`).
@@ -11,11 +11,11 @@
 //! - each staged corpus resolves, is a real RealLive SEEN archive with >= 1
 //!   populated scene;
 //! - when two corpora are staged their SEEN archives have **distinct
-//!   sha256** (audit-focus: "2nd corpus actually Sweetie HD again" — caught
+//!   sha256** (audit-focus: "2nd corpus actually primary_corpus HD again" — caught
 //!   here);
 //! - the merged decompiler **runs** over every scene of every corpus without
 //!   panicking and recognises non-trivial real structure;
-//! - BOTH complete real archives — Kanon (`10002`, no `xor_2`) and Sweetie
+//! - BOTH complete real archives — Kanon (`10002`, no `xor_2`) and primary_corpus
 //!   HD (`110002`, second-level `xor_2` decrypted in-process) — decode with
 //!   ZERO unknown commands, ZERO malformed expressions, and ZERO parse
 //!   failures across every populated scene (the alpha 100% bar).
@@ -40,14 +40,14 @@
 //!   parse failures across every populated scene. Supersedes the prior
 //!   `reallive-command-module-catalogue`, which counted the generic blob as
 //!   recognised (framing, not semantics).
-//! - **Sweetie HD second-level XOR — DONE
-//!   (`reallive-xor2-sukara-decryptor`).** corpus-1 (Sweetie HD, compiler
+//! - **primary_corpus HD second-level XOR — DONE
+//!   (`reallive-xor2-xor_two-decryptor`).** corpus-1 (primary_corpus HD, compiler
 //!   `110002`) carries a second-level per-game `xor_2` over a bounded
 //!   `[256, 513)` segment of every scene's decompressed bytecode (rlvm's
 //!   `XorKey { xor_offset = 256, xor_length = 257 }` shape; clean-room from
 //!   `compression.cc`). Forensic signature: byte-equality autocorrelation
 //!   spikes at lag 16 / lag 32 against a ≈0.4 % baseline — a 16-byte-period
-//!   XOR over structured plaintext. Sukara's key is absent from rlvm's
+//!   XOR over structured plaintext. xor_two's key is absent from rlvm's
 //!   published table AND is not stored anywhere in the shipped game (a full
 //!   static scan of `RealLive.exe` + all 2,843 game files finds it under no
 //!   rotation): the retail interpreter derives it at run time. It is
@@ -55,7 +55,7 @@
 //!   own encrypted corpus (cross-scene known-plaintext over the `0x00`-modal
 //!   segment) and validated before consumption — see
 //!   [`kaifuu_reallive::xor2`]. With the segment decrypted, the SAME command
-//!   catalogue that decodes Kanon decodes all 198 Sweetie scenes 100% clean
+//!   catalogue that decodes Kanon decodes all 198 primary_corpus scenes 100% clean
 //!   (was 45/198 clean, 121 parse failures). corpus-1 is now asserted at the
 //!   SAME hard zero bar as corpus-2.
 //!   This test's contract is corpus availability + harness execution + the
@@ -318,13 +318,13 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
     cases::multi_game_validation_runs_against_two_distinct_reallive_corpora();
 }
 
-/// Historical snapshot: the Sweetie HD menu / boot / system scenes that the
+/// Historical snapshot: the primary_corpus HD menu / boot / system scenes that the
 /// earlier `work-scope` carve trace
 /// (`apps/itotori/src/agents/work-scope/carve.ts`, 2026-07-04)
 /// recorded as UNDECODABLE before the ExpressionPiece grammar
 /// (`reallive-expr-eval-bank-refs`), the semantic command catalogue
 /// (`reallive-semantic-command-cataloguing`) and the second-level `xor_2`
-/// decryptor (`reallive-xor2-sukara-decryptor`) landed:
+/// decryptor (`reallive-xor2-xor_two-decryptor`) landed:
 /// - **9996** — the New-Game routine (`farcall` (0,1,18) target from the title
 ///   menu's `goto_case($store)`). The historical carve trace recorded it FAILING with
 ///   `MalformedExpression @~offset 271`; the completed expression grammar now
@@ -344,28 +344,28 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
 const PRIMARY_CORPUS_HARD_MENU_BOOT_SYSTEM_SCENES: &[u16] =
     &[2, 3, 10, 8500, 8507, 8600, 9996, 9999];
 
-/// alpha true-100%-coverage: every Sweetie HD menu / boot / system scene the
+/// alpha true-100%-coverage: every primary_corpus HD menu / boot / system scene the
 /// earlier carve trace flagged as undecodable now decodes to ZERO unknown
 /// opcodes on real bytes — proven by NAME, not just in the aggregate.
 /// The `reallive-boot-menu-system-scene-decode-gap` directive is "true 100%
 /// coverage even for scenes not strictly needed for dialogue" — decode the
 /// menu/boot/system scenes (New-Game 9996, boot 8507, title/menu 2/3/10, …),
-/// no skipped scenes. This test resolves the real Sweetie HD corpus, runs the
+/// no skipped scenes. This test resolves the real primary_corpus HD corpus, runs the
 /// full envelope -> header -> AVG32 -> xor_2 -> decode chain, and asserts each
 /// named hard scene both (a) reached the decoder (is present in
 /// `per_scene_clean` — a silently-dropped scene is absent and fails HERE) and
 /// (b) decoded to zero unknown opcodes. No raw copyrighted bytes/text — scene
 /// ids and the clean/unclean verdict only.
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (Sweetie HD)"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (primary_corpus HD)"]
 fn every_menu_boot_system_scene_decodes_to_zero_unknown() {
     cases::every_menu_boot_system_scene_decodes_to_zero_unknown();
 }
 
-/// Known Sweetie HD (`ITOTORI_REAL_GAME_ROOT`, corpus-1) SEEN sha256, recorded
+/// Known primary_corpus HD (`ITOTORI_REAL_GAME_ROOT`, corpus-1) SEEN sha256, recorded
 /// from this harness's own `[corpus-1] seen_sha256=...` line. The Kanon-only
 /// generalization test below asserts corpus-2's SEEN archive does NOT match it,
-/// so `ITOTORI_REAL_GAME_ROOT_2` accidentally re-pointed at Sweetie HD is caught
+/// so `ITOTORI_REAL_GAME_ROOT_2` accidentally re-pointed at primary_corpus HD is caught
 /// even when corpus-1 is not staged in the same run. (One-way digest of an
 /// already-committed corpus fingerprint — no raw bytes.)
 const PRIMARY_CORPUS_SEEN_SHA256: &str =
@@ -375,7 +375,7 @@ const PRIMARY_CORPUS_SEEN_SHA256: &str =
 /// Distinct from
 /// [`multi_game_validation_runs_against_two_distinct_reallive_corpora`] (which
 /// needs BOTH corpora staged), this test gates on `ITOTORI_REAL_GAME_ROOT_2`
-/// (Kanon) ALONE and proves the Sweetie-HD opcode coverage GENERALIZES to a
+/// (Kanon) ALONE and proves the primary_corpus-HD opcode coverage GENERALIZES to a
 /// second, independently-authored RealLive title: the SAME command catalogue
 /// and expression grammar decode the whole Kanon archive at the hard SEMANTIC
 /// zero bar (zero generic `Command`, zero `Unknown`, zero malformed
@@ -383,7 +383,7 @@ const PRIMARY_CORPUS_SEEN_SHA256: &str =
 /// Kanon is a 1.2.6.8 (`10002`) title that carries NO second-level `xor_2`, so
 /// it is decoded by the catalogue alone with no game-specific decrypt path —
 /// which is precisely why it is the generalization witness: nothing
-/// Sweetie-HD-specific is in the loop, and no game-specific special-casing or
+/// primary_corpus-HD-specific is in the loop, and no game-specific special-casing or
 /// generic-`Command` escape may mask an unknown (the `is_recognized` bar is
 /// `false` for the generic blob, so a masked tuple would fail this test, not
 /// pass it). No raw copyrighted bytes/text are emitted — counts, opcode

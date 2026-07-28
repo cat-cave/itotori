@@ -144,7 +144,7 @@ export type ZdrPostureRead =
 /**
  * Read the ZDR posture from a cost report's recent runs. Returns
  * `unavailable` when there are no runs or the captured posture is missing /
- * the pre-ITOTORI-230 sentinel (no zdr + data_collection scalars). Never
+ * the pre-policy sentinel (no zdr + data_collection scalars). Never
  * throws — a malformed posture reads as unavailable, not a crash.
  */
 export function readZdrPosture(cost: ProjectCostReport): ZdrPostureRead {

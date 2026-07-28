@@ -1351,7 +1351,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       schemaVersion: "itotori.play.delivery.v0",
     }),
 
-  // p0-core-iterative-patch-versioning-and-playtest-feedback — historical
+  // planning-item — historical
   // patch play surface. Public schemas deliberately carry hashes/identity,
   // not private artifact refs or filesystem paths.
   ApiPatchIterationDeliveryResponse: (ref) =>

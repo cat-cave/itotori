@@ -32,7 +32,7 @@ const CREATED_AT = "2026-07-15T12:00:00.000Z";
 const OBJECT_ID = wikiObjectExample.objectId;
 const WIKI_KIND = "source-object" as const;
 
-postgresDescribe("RB-033 non-blocking human edit + bounded feedback enhancement", () => {
+postgresDescribe("policy non-blocking human edit + bounded feedback enhancement", () => {
   it("PROOF (non-blocking + memoized): edit and feedback append immutable non-provisional versions before one real child enhancement", async () => {
     const context = await isolatedMigratedContext();
     const cipher = new TestMemoCipher();

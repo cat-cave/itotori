@@ -44,28 +44,28 @@ struct GameExpectation {
     /// Expected number of indirect-label candidates that actually land on a
     /// `TEXT.DAT` record boundary — i.e. are **real, translatable choice labels**.
     /// This is the load-bearing discriminator for the indirect mechanism: it is
-    /// non-zero for **exactly one** title (v60663). See the module note below.
+    /// non-zero for **exactly one** title (softpal_corpus_two). See the module note below.
     indirect_resolved_count: usize,
 }
 
 // SELECT-ENCODING SURVEY across four CRYSTALiA/Softpal titles — measured on real
 // bytes. The indirect typed-value mechanism resolves real labels on exactly one
-// title (v60663, 16). Every other title carries its choice labels directly on the
+// title (softpal_corpus_two, 16). Every other title carries its choice labels directly on the
 // SELECT immediate (the "direct" encoding):
-//   * v21465 (2024) — 11 choices, all direct; zero indirect candidates.
-//   * v60663 (2026) — INDIRECT encoding: 16 candidates, all resolve to real labels.
-//   * v57740 CRACK≡TRICK! (2025-10, nearest sibling of v60663) — 5 story choices,
+//   * softpal_corpus_one (2024) — 11 choices, all direct; zero indirect candidates.
+//   * softpal_corpus_two (2026) — INDIRECT encoding: 16 candidates, all resolve to real labels.
+//   * softpal_corpus_four CRACK≡TRICK! (2025-10, nearest sibling of softpal_corpus_two) — 5 story choices,
 //     all direct; its 5-select system cluster at script start has typed values
 //     that do not flow to a plain label source (indirect_resolved_count == 0).
-//   * v55293 Suzaku Shijuusou (2025-05) — trial script with ZERO SELECTs; it
+//   * softpal_corpus_three Suzaku Shijuusou (2025-05) — trial script with ZERO SELECTs; it
 //     cannot exercise the mechanism and is therefore not enrolled below.
 // A typed operand alone is not evidence of an indirect label: it must trace to a
 // plain source and resolve to a record boundary. The resolver handles both
 // encodings and keeps every title's choices translatable.
 const GAMES: [GameExpectation; 3] = [
-    // v21465 — direct encoding: all 11 SELECT immediates are text pointers.
+    // softpal_corpus_one — direct encoding: all 11 SELECT immediates are text pointers.
     GameExpectation {
-        subdir: "v21465",
+        subdir: "softpal_corpus_one",
         pac_count: 417,
         text_show_count: 30165,
         with_speaker_count: 19990,
@@ -75,12 +75,12 @@ const GAMES: [GameExpectation; 3] = [
         indirect_candidate_count: 0,
         indirect_resolved_count: 0,
     },
-    // v60663 — indirect encoding: the typed SELECT value flows through moves to
+    // softpal_corpus_two — indirect encoding: the typed SELECT value flows through moves to
     // a plain source earlier in the menu block. Sixteen of 21 SELECTs reach real
     // label records; the remaining five are genuine system/menu selects and stay
     // out-of-pool (nontext_select_count == 5).
     GameExpectation {
-        subdir: "v60663",
+        subdir: "softpal_corpus_two",
         pac_count: 160,
         text_show_count: 39832,
         with_speaker_count: 28665,
@@ -90,11 +90,11 @@ const GAMES: [GameExpectation; 3] = [
         indirect_candidate_count: 16,
         indirect_resolved_count: 16,
     },
-    // v57740 CRACK≡TRICK! — the five story choices resolve directly. Its typed
+    // softpal_corpus_four CRACK≡TRICK! — the five story choices resolve directly. Its typed
     // system-select cluster has no plain label source, proving that the indirect
     // encoding is selected by bytecode shape rather than generation or identity.
     GameExpectation {
-        subdir: "v57740",
+        subdir: "softpal_corpus_four",
         pac_count: 142,
         text_show_count: 10098,
         with_speaker_count: 6471,

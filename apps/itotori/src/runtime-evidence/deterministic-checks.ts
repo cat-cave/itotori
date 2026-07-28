@@ -1,4 +1,4 @@
-// UTSUSHI-011 — Deterministic runtime-evidence checks.
+// policy — Deterministic runtime-evidence checks.
 //
 // This is the NON-LLM lane. It resolves the runtime report through the managed
 // store and runs every unambiguous detector (missing-text, wrong-branch, exact

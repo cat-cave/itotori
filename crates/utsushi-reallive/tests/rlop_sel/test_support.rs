@@ -67,7 +67,7 @@ pub(super) fn sel_command(offset: usize, opcode: u16) -> BytecodeElement {
 
 /// A `module_sel` select command framed as a REAL `SelectElement`: an
 /// 8-byte header followed by a `{ opt0 \n opt1 }` option block — the exact
-/// framing `extract_select_choice_texts` walks on real Sweetie/Kanon bytes.
+/// framing `extract_select_choice_texts` walks on real primary_corpus/Kanon bytes.
 /// The VM's dispatch path recovers the option labels from this block (a
 /// select with no options is not a presentable prompt and is advanced), so
 /// a VM-stepped select must carry one.

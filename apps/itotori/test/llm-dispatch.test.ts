@@ -466,7 +466,7 @@ describe("the rebuilt LLM dispatcher", () => {
     });
     expect(captured[0]?.body).not.toHaveProperty("provider.allowFallbacks");
     expect(captured[0]?.body).not.toHaveProperty("provider.dataCollection");
-    // ITOTORI-241 - the wire names no provider: automatic fallback (zdr:true)
+    // policy - the wire names no provider: automatic fallback (zdr:true)
     // confines routing to the account ZDR allow-list without an only/order pin.
     expect(captured[0]?.body).not.toHaveProperty("provider.only");
     expect(captured[0]?.body).not.toHaveProperty("provider.order");
@@ -531,7 +531,7 @@ describe("the rebuilt LLM dispatcher", () => {
   });
 
   it("permits OpenRouter fallback and retries a single-provider 429 without aborting", async () => {
-    // ITOTORI-241 - proves fallback is genuinely ENABLED without a live outage:
+    // policy - proves fallback is genuinely ENABLED without a live outage:
     // inject a 429 on the first upstream, then a valid response. This shows the
     // wire permits OpenRouter to fall back and the dispatcher does not treat a
     // single-provider rate limit as a terminal failure. (Server-side alternate

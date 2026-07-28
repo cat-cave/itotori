@@ -1,6 +1,6 @@
 //! Real-bytes proof for `reallive-adapter-expose-length-changing-patchback`.
 //! Drives the FULL RealLive adapter surface (`extract` -> `patch`) on the real
-//! Sweetie HD archive at `$ITOTORI_REAL_GAME_ROOT` and proves a LENGTH-CHANGING
+//! primary_corpus HD archive at `$ITOTORI_REAL_GAME_ROOT` and proves a LENGTH-CHANGING
 //! adapter patch routes through the bundle-driven driver and round-trips
 //! byte-correct: the patched archive re-parses with the same scene directory
 //! count (offset table rewritten), the patched scene decrypts + re-decompiles
@@ -126,7 +126,7 @@ fn find_gameexe_ini(root: &Path) -> Option<PathBuf> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (Sweetie HD)"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (primary_corpus HD)"]
 fn reallive_adapter_length_changing_patch_round_trips_on_primary_corpus() {
     let Ok(root) = std::env::var(REAL_GAME_ROOT_ENV) else {
         // Strict-by-default: an absent corpus is a skip only when the env is
@@ -139,7 +139,7 @@ fn reallive_adapter_length_changing_patch_round_trips_on_primary_corpus() {
 
     let extract = adapter
         .extract(ExtractRequest { game_dir: &root })
-        .expect("adapter extracts real Sweetie HD");
+        .expect("adapter extracts real primary_corpus HD");
     assert!(
         !extract.bridge.units.is_empty(),
         "real extract must yield bridge units"
@@ -248,7 +248,7 @@ fn reallive_adapter_length_changing_patch_round_trips_on_primary_corpus() {
             "scene {scene_id:04}: patched archive must keep the scene directory count"
         );
 
-        // Decrypt + decompress both scenes to plaintext bytecode. (Sweetie HD
+        // Decrypt + decompress both scenes to plaintext bytecode. (primary_corpus HD
         // scenes are `xor_2`; `apply_translated_bundle` re-encrypts the patched
         // scene at rest, so verification decrypts before re-decompiling.)
         let patched_cipher = recover_cipher(&patched_seen);
@@ -300,7 +300,7 @@ fn reallive_adapter_length_changing_patch_round_trips_on_primary_corpus() {
             .expect("stage Gameexe.ini for re-extract");
         let reextract = adapter
             .extract(ExtractRequest { game_dir: &out_dir })
-            .expect("adapter re-extracts patched Sweetie HD output");
+            .expect("adapter re-extracts patched primary_corpus HD output");
         let reread_unit = reextract
             .bridge
             .units

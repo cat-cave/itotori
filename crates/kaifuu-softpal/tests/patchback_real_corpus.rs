@@ -38,13 +38,13 @@ struct Game {
 
 const GAMES: [Game; 2] = [
     Game {
-        subdir: "v21465",
+        subdir: "softpal_corpus_one",
         pac_count: 417,
         flag: EncFlag::Encrypted,
         text_show_count: 30165,
     },
     Game {
-        subdir: "v60663",
+        subdir: "softpal_corpus_two",
         pac_count: 160,
         flag: EncFlag::Plaintext,
         text_show_count: 39832,

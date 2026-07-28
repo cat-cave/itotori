@@ -1,13 +1,13 @@
 //! real-bytes integration test for the RealLive opcode
 //! dispatch.
-//! Reads scene 1 from Sweetie HD's `REALLIVEDATA/Seen.txt` at
+//! Reads scene 1 from primary_corpus HD's `REALLIVEDATA/Seen.txt` at
 //! `$ITOTORI_REAL_GAME_ROOT`, runs the AVG32 LZSS + 256-byte XOR
 //! decompression through its sibling support module (a test-local helper —
 //! see `examples/probe_scene_1_encryption.rs` for the full probe), then
 //! dispatches the plaintext bytecode through the new
 //! [`kaifuu_reallive::parse_real_bytecode`].
 //! # Scope: a SCENE-1 pin, NOT the full-archive 100% gate
-//! This test pins the decode of **Sweetie HD scene 1 only**. It is an
+//! This test pins the decode of **primary_corpus HD scene 1 only**. It is an
 //! honest single-scene regression pin — it asserts that scene 1's known
 //! prologue, text/voice structure and byte-framing decode correctly and
 //! that scene 1 in particular carries zero un-recognised elements. It does
@@ -16,14 +16,14 @@
 //! (`multi_game_validation_runs_against_two_distinct_reallive_corpora`),
 //! which asserts the SEMANTIC-zero bar (zero generic `Command`, zero
 //! `Unknown`, zero `MalformedExpression`, zero parse-failure) across EVERY
-//! populated scene of BOTH full archives (Sweetie HD + Kanon). A single
-//! scene being clean says nothing about the other 197 Sweetie / 79 Kanon
+//! populated scene of BOTH full archives (primary_corpus HD + Kanon). A single
+//! scene being clean says nothing about the other 197 primary_corpus / 79 Kanon
 //! scenes — only the multi-corpus gate does.
 //! # Decompressor provenance
 //! The sibling support module's AVG32 LZSS + 256-byte XOR decompressor is restated in our
 //! own words from rlvm's BSD-licensed `compression.cc::Decompress`
-//! (Peter Jolly, 2006) and confirmed against Sweetie HD's scene 1 in
-//! `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4. No
+//! (Peter Jolly, 2006) and confirmed against primary_corpus HD's scene 1 in
+//! `docs/research/reallive-primary_corpus-hd-encryption-mechanism.md` §4. No
 //! rlvm source is vendored; the 256-byte mask constant and the LZSS
 //! cycle (flag-byte, literal-XOR, back-reference) are documented
 //! behavior of a fixed file format.
@@ -65,7 +65,7 @@ use kaifuu_reallive::{
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn pins_primary_corpus_scene_1_dispatch_with_zero_unknown_opcodes() {
     let Some(seen_path) = real_seen_txt_path() else {
-        real_corpus::require_real_bytes("Sweetie HD scene-1 dispatch test");
+        real_corpus::require_real_bytes("primary_corpus HD scene-1 dispatch test");
         return;
     };
 
@@ -93,7 +93,7 @@ fn pins_primary_corpus_scene_1_dispatch_with_zero_unknown_opcodes() {
 
     // Parse the plaintext scene header (the first 0x1d0 bytes are
     // plaintext per docs/research/reallive-engine.md §D and
-    // docs/research/reallive-sweetie-hd-encryption-mechanism.md §2).
+    // docs/research/reallive-primary_corpus-hd-encryption-mechanism.md §2).
     let header_size = u32::from_le_bytes([blob[0], blob[1], blob[2], blob[3]]);
     let compiler_version = u32::from_le_bytes([blob[4], blob[5], blob[6], blob[7]]);
     let bytecode_offset =
@@ -105,20 +105,20 @@ fn pins_primary_corpus_scene_1_dispatch_with_zero_unknown_opcodes() {
     assert_eq!(header_size, 0x1d0, "scene header size must be 0x1d0");
     assert_eq!(
         compiler_version, 110002,
-        "Sweetie HD scene 1 must report compiler version 110002"
+        "primary_corpus HD scene 1 must report compiler version 110002"
     );
     assert_eq!(
         bytecode_uncompressed, 1660,
-        "Sweetie HD scene 1 uncompressed size must be 1660 bytes"
+        "primary_corpus HD scene 1 uncompressed size must be 1660 bytes"
     );
     assert_eq!(
         bytecode_compressed, 1062,
-        "Sweetie HD scene 1 compressed size must be 1062 bytes"
+        "primary_corpus HD scene 1 compressed size must be 1062 bytes"
     );
 
     // Decompress: AVG32 LZSS + 256-byte XOR first-level transform.
-    // Sukara-branch titles (Sweetie HD) do NOT apply a second-level XOR
-    // (outcome A in docs/research/reallive-sweetie-hd-encryption-mechanism.md).
+    // xor_two-branch titles (primary_corpus HD) do NOT apply a second-level XOR
+    // (outcome A in docs/research/reallive-primary_corpus-hd-encryption-mechanism.md).
     let compressed = &blob[bytecode_offset..bytecode_offset + bytecode_compressed];
     let decompressed = decompress_avg32(compressed, bytecode_uncompressed)
         .unwrap_or_else(|err| panic!("decompress failed: {err}"));
@@ -190,7 +190,7 @@ fn pins_primary_corpus_scene_1_dispatch_with_zero_unknown_opcodes() {
         .iter()
         .filter(|op| matches!(op, RealLiveOpcode::VoicePlay { .. }))
         .count();
-    // The exact opcode catalogue for Sweetie HD scene 1 may not include
+    // The exact opcode catalogue for primary_corpus HD scene 1 may not include
     // a recognised VoicePlay (the scene 1 prologue is largely meta +
     // text). Per the spec we record the count rather than fail
     // outright; the strict zero-unknown pin below catches any general
@@ -207,7 +207,7 @@ fn pins_primary_corpus_scene_1_dispatch_with_zero_unknown_opcodes() {
     let recognized = total - unknown;
     let recognition_rate = (recognized as f64) / (total as f64);
     eprintln!(
-        " Sweetie HD scene-1 opcode dispatch: total_opcodes={total} \
+        " primary_corpus HD scene-1 opcode dispatch: total_opcodes={total} \
          recognized={recognized} unknown={unknown} recognition_rate={:.2}%",
         recognition_rate * 100.0,
     );
@@ -253,7 +253,7 @@ fn pins_primary_corpus_scene_1_dispatch_with_zero_unknown_opcodes() {
     }
     // Scene-1 regression pin: the full ExpressionPiece evaluator +
     // goto-family pointer handling + catch-all Textout partition resolve
-    // EVERY byte of real Sweetie HD scene 1 into a typed BytecodeElement, so
+    // EVERY byte of real primary_corpus HD scene 1 into a typed BytecodeElement, so
     // scene 1 carries zero un-recognised elements. This pins scene 1 only;
     // it is NOT a full-archive completeness claim — the SEMANTIC-zero bar
     // across every scene of both full archives is asserted solely by
@@ -261,7 +261,7 @@ fn pins_primary_corpus_scene_1_dispatch_with_zero_unknown_opcodes() {
     assert_eq!(
         unknown,
         0,
-        "scene-1 pin: every byte of Sweetie HD scene 1 must resolve to a typed \
+        "scene-1 pin: every byte of primary_corpus HD scene 1 must resolve to a typed \
          BytecodeElement (recognized={recognized}, unknown={unknown}, total={total}, \
          scene_1_recognition_rate={:.2}%)",
         recognition_rate * 100.0
@@ -293,7 +293,7 @@ fn decompressed_scene_1(seen_path: &PathBuf) -> Vec<u8> {
         .unwrap_or_else(|err| panic!("decompress failed: {err}"))
 }
 
-/// Pin the exact arg/expression byte-framing of real Sweetie HD scene 1.
+/// Pin the exact arg/expression byte-framing of real primary_corpus HD scene 1.
 /// # Why this test exists (the regression it guards)
 /// `decode_command` / `parse_arg_list` once treated raw `0x29` (`)`) and
 /// `0x2C` (`,`) bytes as structural arg-list delimiters even when they
@@ -322,7 +322,7 @@ fn decompressed_scene_1(seen_path: &PathBuf) -> Vec<u8> {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn scene_1_arg_expression_framing_offsets_are_pinned_byte_exact() {
     let Some(seen_path) = real_seen_txt_path() else {
-        real_corpus::require_real_bytes("Sweetie HD scene-1 framing-offset pin");
+        real_corpus::require_real_bytes("primary_corpus HD scene-1 framing-offset pin");
         return;
     };
     let decompressed = decompressed_scene_1(&seen_path);
@@ -364,7 +364,7 @@ fn scene_1_arg_expression_framing_offsets_are_pinned_byte_exact() {
     // maps to a named operation family keyed on its `module_id`, never a
     // generic `"command"` blob. The element at offset 30 is module (type=1,
     // id=5, opcode=120) — a `module_sys`-class control op per
-    // `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4.2, so it
+    // `docs/research/reallive-primary_corpus-hd-encryption-mechanism.md` §4.2, so it
     // is `"system_control"`; offset 201 is a `module_msg` window directive
     // (`"message_control"`); the 8/16/22-byte `module_sys` ops previously
     // shown as the generic `"command"` are now `"system_control"`. The

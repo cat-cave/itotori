@@ -21,7 +21,7 @@ import {
   missingRequiredProtectedSpanOccurrences,
 } from "./protected-span-occurrences.js";
 
-const CHECK_VERSION = "itotori-020.1";
+const CHECK_VERSION = "policy.1";
 const CREATED_AT = "2026-06-19T00:00:00.000Z";
 
 /**
@@ -421,7 +421,7 @@ function deterministicQaErrorMessage(failures: DeterministicPreExportQaFailure[]
 }
 
 // ---------------------------------------------------------------------------
-// Registry-tool output contract (ITOTORI-143)
+// Registry-tool output contract (policy)
 //
 // The deterministic pre-export QA registry tool result was previously typed at
 // the tool boundary as `{ failures: object[]; findings: object[] }` — arbitrary

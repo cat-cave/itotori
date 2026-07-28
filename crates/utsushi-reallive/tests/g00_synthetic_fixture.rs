@@ -27,7 +27,7 @@ use utsushi_reallive::{
     G00Type, G00Warning, GraphicsObject, GraphicsObjectKind, ImageRef, decode_g00,
 };
 
-/// Retail Sweetie HD canvas dimensions, pinned here purely so the
+/// Retail primary_corpus HD canvas dimensions, pinned here purely so the
 /// synthetic fixtures can assert they are NOT those dimensions. These
 /// are public header byte-counts (not pixel data); referencing them
 /// numerically is explicitly permitted by the FIX-3 non-copyright rule.

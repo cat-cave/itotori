@@ -237,7 +237,7 @@ describe("itotori validate", () => {
         "--game-dir",
         "/tmp/patched/REALLIVEDATA",
         "--source-seen",
-        "/games/sweetie/REALLIVEDATA/Seen.txt",
+        "/games/primary_corpus/REALLIVEDATA/Seen.txt",
         "--artifact-root",
         "/run/render-artifacts",
         "--render-output",
@@ -293,7 +293,7 @@ describe("itotori validate", () => {
       "--output",
       "/run/render-evidence.json",
       "--source-seen",
-      "/games/sweetie/REALLIVEDATA/Seen.txt",
+      "/games/primary_corpus/REALLIVEDATA/Seen.txt",
       "--bg-asset",
       "BG001",
       "--expect-text-contains",
@@ -335,7 +335,7 @@ describe("itotori validate", () => {
   });
 });
 
-describe("itotori patch + validate (env-gated real Sweetie proof)", () => {
+describe("itotori patch + validate (env-gated real primary_corpus proof)", () => {
   const sourceRoot = process.env.ITOTORI_CLI_REAL_CORPUS_ROOT;
   const translatedBundlePath = process.env.ITOTORI_CLI_REAL_CORPUS_TRANSLATED_BUNDLE;
   const expectedText = process.env.ITOTORI_CLI_REAL_CORPUS_EXPECT_TEXT;
@@ -343,7 +343,7 @@ describe("itotori patch + validate (env-gated real Sweetie proof)", () => {
   const bgAsset = process.env.ITOTORI_CLI_REAL_CORPUS_BG_ASSET;
 
   it.skipIf(!sourceRoot || !translatedBundlePath || !expectedText)(
-    "applies a real translated Sweetie bundle and validates replay + render output",
+    "applies a real translated primary_corpus bundle and validates replay + render output",
     async () => {
       const realSourceRoot = sourceRoot as string;
       const sourceDataDir = resolveRealLiveDataDir(realSourceRoot);

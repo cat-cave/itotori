@@ -14,7 +14,7 @@
 //!     message the deterministic play-order stream renders at that frame.
 //!  3. **Deterministic across runs.** Two jumps to the same target return
 //!     byte-identical landings (scene, pc, control fingerprint, line).
-//!  4. **Engine-general.** The SAME code exercises Sweetie HD (compiler
+//!  4. **Engine-general.** The SAME code exercises primary_corpus HD (compiler
 //!     `110002`, `use_xor_2`) and Kanon (compiler `1.2.6`, plaintext) — no
 //!     per-game branch. Kanon's headless-gated title flow may render no
 //!     reachable frame; the test documents that and still proves the SAME
@@ -22,8 +22,8 @@
 //!
 //! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE (no
 //! opt-out; runs only in the periodic ground-truth oracle
-//! `just test real-bytes-oracle`). Run with
-//! `ITOTORI_REAL_GAME_ROOT=<sweetie> ITOTORI_REAL_GAME_ROOT_2=<kanon>
+//! `just real-bytes-oracle`). Run with
+//! `ITOTORI_REAL_GAME_ROOT=<primary_corpus> ITOTORI_REAL_GAME_ROOT_2=<kanon>
 //! cargo test -p utsushi-reallive --test jump_resume_real_bytes -- --ignored`.
 
 #[path = "support/real_corpus.rs"]

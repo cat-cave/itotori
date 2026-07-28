@@ -2,7 +2,7 @@
 //!
 //! The narrative-structure producer lives on the UTSUSHI side (it needs the
 //! replay runtime; deps flow utsushi → kaifuu, never back). This drives the
-//! `utsushi-cli` binary's `structure` subcommand over the REAL Sweetie HD
+//! `utsushi-cli` binary's `structure` subcommand over the REAL primary_corpus HD
 //! archive and asserts it emits a `utsushi.narrative-structure.v1` whose
 //! `sceneDispatchOrder` is the REAL play-loop dispatch order (led by the entry
 //! scene), spanning many scenes — the artifact the whole-game localize driver
@@ -56,7 +56,7 @@ fn utsushi_structure_primary_corpus_writes_real_dispatch_order() {
     };
 
     let tmp_dir = tempfile::tempdir().expect("tmp dir");
-    let structure_out = tmp_dir.path().join("sweetie-hd.structure.json");
+    let structure_out = tmp_dir.path().join("primary_corpus-hd.structure.json");
 
     let output = Command::new(utsushi_cli_binary())
         .arg("structure")
@@ -99,7 +99,7 @@ fn utsushi_structure_primary_corpus_writes_real_dispatch_order() {
     // reaches the store-gated narrative a single #SEEN_START chain cannot).
     assert!(
         scene_ids.len() >= 10,
-        "expected the Sweetie structure to span ≥10 scenes; got {}",
+        "expected the primary_corpus structure to span ≥10 scenes; got {}",
         scene_ids.len()
     );
 

@@ -1,6 +1,6 @@
 use super::*;
 
-/// A real Sweetie HD **select-block** scene. Scene 1018 decodes 100% clean
+/// A real primary_corpus HD **select-block** scene. Scene 1018 decodes 100% clean
 /// (0 unknown, 0 generic) and carries exactly ONE `module_sel` `{ … }`
 /// select block with two translatable Shift-JIS options, plus 13
 /// goto-family jump pointers — 3 of whose targets sit AFTER the select
@@ -22,7 +22,7 @@ const SELECT_OPT_0: &str = "[EN] Go left, into the (bright) hall!";
 const SELECT_OPT_1: &str = "[EN] Wait - not yet, hold on...";
 
 /// Real select-block patchback round-trip (choice_label round-trip) on a
-/// genuine multi-option `module_sel` `{ … }` block (Sweetie HD scene 1018).
+/// genuine multi-option `module_sel` `{ … }` block (primary_corpus HD scene 1018).
 /// Extracts the scene, translates ONLY the two choice labels (dialogue is
 /// carried byte-identical via source-identity targets, so the select-block
 /// edit is the SOLE length change — a crisp, attributable proof), patches
@@ -49,7 +49,7 @@ fn select_block_patchback_round_trips_byte_correct_on_real_scene_1018() {
     };
     let seen_bytes = fs::read(&seen_path).expect("read Seen.txt");
     let cipher = recover_archive_xor2_cipher(&seen_bytes)
-        .expect("Sweetie HD must yield a validated xor_2 cipher");
+        .expect("primary_corpus HD must yield a validated xor_2 cipher");
 
     let source_bytecode = decrypt_scene(&seen_bytes, SELECT_BLOCK_SCENE_ID, &cipher);
     let source_ops = parse_real_bytecode(&source_bytecode).expect("source scene decompiles clean");

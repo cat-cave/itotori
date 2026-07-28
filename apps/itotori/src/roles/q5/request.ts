@@ -56,7 +56,7 @@ export function assertBuildLqaOnlyToolGrant(): void {
   }
 }
 
-/** Thrown when a call attempts to leave Q5's RB-019 certified reviewer route. */
+/** Thrown when a call attempts to leave Q5's policy certified reviewer route. */
 export class Q5RouteError extends Error {
   constructor() {
     super("build-LQA dispatch route is not the certified deepseek-v4-flash reviewer profile");

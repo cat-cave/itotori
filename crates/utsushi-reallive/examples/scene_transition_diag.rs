@@ -39,7 +39,7 @@ use utsushi_reallive::{
     build_scene_store_from_decompressed, decompress_all_scenes, encode_png_rgba_deterministic,
 };
 
-/// Native port canvas (RealLive Sweetie HD `#SCREENSIZE_MOD=999,1280,720`).
+/// Native port canvas (RealLive primary_corpus HD `#SCREENSIZE_MOD=999,1280,720`).
 const FRAME_W: u32 = 1280;
 const FRAME_H: u32 = 720;
 

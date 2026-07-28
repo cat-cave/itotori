@@ -1,7 +1,7 @@
 //! Real-bytes integration tests for the OVK voice-archive
 //! decoder.
 //!
-//! Pins the decoder against Sweetie HD's `REALLIVEDATA/koe/z0001.ovk`
+//! Pins the decoder against primary_corpus HD's `REALLIVEDATA/koe/z0001.ovk`
 //! (337,086 bytes, 2 entries — the canonical spec fixture).
 //! Mirrors the `g00_real_bytes.rs` env-gating pattern
 //! (`ITOTORI_REAL_GAME_ROOT` must be set).
@@ -28,7 +28,7 @@
 //!
 //! Per the itotori operating model, a parser that targets a real
 //! engine substrate must be exercised against at least two real
-//! corpora before its node is merged-complete. Sweetie HD is the only
+//! corpora before its node is merged-complete. primary_corpus HD is the only
 //! RealLive title currently staged. The OVK module mirrors the
 //! single-corpus posture its sibling parsers ( g00 etc.)
 //! landed; the commit message records the gap explicitly.

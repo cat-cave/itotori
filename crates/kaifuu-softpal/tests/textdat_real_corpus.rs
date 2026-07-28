@@ -10,9 +10,9 @@
 //! `ci-real-bytes` lane; see `pac_real_corpus.rs` for the env-gate /
 //! skip-when-absent contract.
 //! Coverage across the two titles:
-//! - **v21465** — `TEXT.DAT` byte 0 is `'$'` (**encrypted**): decrypt raises the
+//! - **softpal_corpus_one** — `TEXT.DAT` byte 0 is `'$'` (**encrypted**): decrypt raises the
 //!   SJIS-valid-byte ratio (~0.76 → ~0.91); re-encrypt round-trips byte-identical.
-//! - **v60663** — `TEXT.DAT` byte 0 is `'_'` (**plaintext**): decrypt is a no-op;
+//! - **softpal_corpus_two** — `TEXT.DAT` byte 0 is `'_'` (**plaintext**): decrypt is a no-op;
 //!   `decrypt(encrypt(plaintext))` still round-trips byte-identical.
 //! - Both: header count == the number of records the pool actually yields, and
 //!   each record's absolute byte offset is recovered.
@@ -43,14 +43,14 @@ struct GameExpectation {
 
 const GAMES: [GameExpectation; 2] = [
     GameExpectation {
-        subdir: "v21465",
+        subdir: "softpal_corpus_one",
         pac_count: 417,
         flag: EncFlag::Encrypted,
         record_count: 51260,
         raw_sha256_hex: "03048a9e89d88768010515ec0316384f3e5eead7ecd355fe3f9e6f0c41423405",
     },
     GameExpectation {
-        subdir: "v60663",
+        subdir: "softpal_corpus_two",
         pac_count: 160,
         flag: EncFlag::Plaintext,
         record_count: 70112,

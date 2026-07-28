@@ -1,4 +1,4 @@
-// ITOTORI-025 — PatchExporter.
+// policy — PatchExporter.
 //
 // Patch-export service. Loads a draft artifact bundle, resolves every
 // referenced asset decision, runs the preflight battery, and emits a
@@ -154,7 +154,7 @@ export class DeliveredPatchExporter {
  * Repository-style port: loads a draft artifact bundle by id along
  * with its drafted-against source bridge hash. The exporter never
  * re-runs drafting; it strictly consumes upstream output. The bundle
- * shape mirrors the ITOTORI-019 `DraftArtifactBundle`.
+ * shape mirrors the policy `DraftArtifactBundle`.
  *
  * `sourceBridgeHash` is the bridge revision the draft job was run
  * against. The preflight `sourceBridgeIntegrity` check compares this

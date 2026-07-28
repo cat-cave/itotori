@@ -1,4 +1,4 @@
-// ITOTORI-119 — Project CONTEXT PANEL.
+// policy — Project CONTEXT PANEL.
 //
 // A play tester who does NOT read the source language still needs the work's CATALOG
 // CONTEXT: which work this is (identity + source IDs + aliases), which edition,

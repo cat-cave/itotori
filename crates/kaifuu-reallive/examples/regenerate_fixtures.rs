@@ -6,7 +6,7 @@
 //! regeneration tool only.
 //! All fixtures use the real RealLive 10,000-slot fixed-offset-table
 //! envelope. The single populated scene sits at slot 1
-//! (`reallive:scene-0001`), mirroring Sweetie HD's first-scene layout.
+//! (`reallive:scene-0001`), mirroring primary_corpus HD's first-scene layout.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -157,7 +157,7 @@ fn bridge_inventory_001() -> Vec<u8> {
 /// Wrap raw decompressed `bytecode` in a real `SceneHeader` (0x1d0 bytes) +
 /// AVG32-LZSS-compressed bytecode, matching the shape `SceneHeader::parse` +
 /// `decompress_avg32` expect. `compiler_version` is a non-`xor_2` value
-/// (Sweetie HD's `110002` triggers the second-level cipher; `10002` does
+/// (primary_corpus HD's `110002` triggers the second-level cipher; `10002` does
 /// not), so the synthetic scene decompresses to plaintext bytecode directly.
 fn scene_header_wrapped(bytecode: &[u8]) -> Vec<u8> {
     let compressed = compress_avg32_literal(bytecode).expect("synthetic bytecode compresses");

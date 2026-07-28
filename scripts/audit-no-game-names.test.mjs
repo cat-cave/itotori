@@ -1,4 +1,4 @@
-// Regression suite for the absolute no-game-name CI guard.
+// Regression suite for the absolute corpus-identity guard.
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -12,105 +12,48 @@ import { findGameNameViolations, isExcludedPath, shouldScan } from "./audit-no-g
 
 const here = dirname(fileURLToPath(import.meta.url));
 const scriptPath = join(here, "audit-no-game-names.mjs");
-const CRATE = "crates/utsushi-reallive/src/lib.rs";
-const SLUG = "sweetie";
-const FIRST_PREVIOUSLY_MISSED_TITLE = ["kizu", "na-kira", "meku-koi-iro", "ha.v21465"].join("");
-const SECOND_PREVIOUSLY_MISSED_TITLE = ["dimen", "sion-totsu-lo", "vers.v60663"].join("");
+const DOC = "docs/probe.md";
 
-test("extracts one token per game reference, including multiple per line", () => {
-  const found = findGameNameViolations(
-    CRATE,
-    `// ${SLUG} HD save format; the sukara decompressor mirrors it.\n`,
+test("rejects a newly shaped corpus title without a vocabulary edit", () => {
+  const found = findGameNameViolations(DOC, "The corpus is comet-signal.v70991.\n");
+  assert.deepEqual(
+    found.map((entry) => entry.token),
+    ["comet-signal.v70991"],
   );
-  assert.deepEqual(found.map((entry) => entry.token).sort(), ["sukara", "sweetie"]);
 });
 
-test("catches every curated title, id, and corpus marker", () => {
+test("rejects title-shaped test names and encoded Shift-JIS title literals", () => {
   const found = findGameNameViolations(
-    CRATE,
-    `/// ${SLUG} / karetoshi / gamekoi / oshioki / sukara all match.\n` +
-      "/// Japanese title オシオキ matches too.\n" +
-      "/// Real VNDB ids v60663 and v21465 match; synthetic v1234 does NOT.\n" +
-      "/// A corpus-observed cap is a game-coupling smell.\n",
-  );
-  assert.deepEqual(found.map((entry) => entry.token).sort(), [
-    "corpus-observed",
-    "gamekoi",
-    "karetoshi",
-    "oshioki",
-    "sukara",
-    "sweetie",
-    "v21465",
-    "v60663",
-    "オシオキ",
-  ]);
-});
-
-test("catches title fragments embedded in snake_case, camelCase, and digit identifiers", () => {
-  const found = findGameNameViolations(
-    CRATE,
-    "fn parses_sweetie_hd_2() {}\nfn parsesSweetieHd2() {}\nfn parses2sweetie3() {}\n",
+    "crates/example/tests/probe.rs",
+    "fn v70991_comet_signal_story_detects_engine() {}\nconst title: &[u8] = &[0x83, 0x65, 0x83, 0x58, 0x83, 0x67, 0x54, 0x45, 0x53, 0x54];\n",
   );
   assert.deepEqual(
     found.map((entry) => entry.token),
-    ["sweetie", "sweetie", "sweetie"],
+    ["v70991_comet_signal_story_detects_engine", "shift-jis-title-literal"],
   );
 });
 
-test("catches the previously missed Softpal title slugs", () => {
-  const found = findGameNameViolations(
-    CRATE,
-    `// ${FIRST_PREVIOUSLY_MISSED_TITLE} and ${SECOND_PREVIOUSLY_MISSED_TITLE} must not be hardcoded.\n`,
-  );
-  assert.deepEqual(
-    found.map((entry) => entry.token),
-    [
-      FIRST_PREVIOUSLY_MISSED_TITLE.slice(0, 6),
-      FIRST_PREVIOUSLY_MISSED_TITLE.slice(7, 15),
-      FIRST_PREVIOUSLY_MISSED_TITLE.split(".")[0].split("-").slice(2).join("-"),
-      SECOND_PREVIOUSLY_MISSED_TITLE.split("-").slice(0, 2).join("-"),
-      SECOND_PREVIOUSLY_MISSED_TITLE.split("-").slice(1).join("-").split(".")[0],
-      FIRST_PREVIOUSLY_MISSED_TITLE.split(".")[1],
-      SECOND_PREVIOUSLY_MISSED_TITLE.split(".")[1],
-    ],
-  );
+test("scans docs, roadmap, and tests while exempting only the guard pair", () => {
+  assert.equal(shouldScan("docs/probe.md"), true);
+  assert.equal(shouldScan("roadmap/spec-dag.json"), true);
+  assert.equal(shouldScan("crates/example/tests/probe.rs"), true);
+  assert.equal(isExcludedPath("scripts/audit-no-game-names.mjs"), true);
+  assert.equal(isExcludedPath("scripts/audit-no-game-names.test.mjs"), true);
 });
 
-test("does not treat synthetic VNDB ids as game names", () => {
-  assert.deepEqual(findGameNameViolations(CRATE, "// v1001, v1234, v9999, v12345\n"), []);
-});
-
-test("scope excludes data and tests but includes shared source", () => {
-  for (const path of [
-    "crates/x/tests/real_bytes.rs",
-    "crates/x/src/foo_test.rs",
-    "apps/itotori/src/x.test.ts",
-    "crates/kaifuu-engine-fixture/src/lib.rs",
-    "packages/x/src/corpus.fixtures.ts",
-    "crates/x/examples/demo.rs",
-    "packages/x/dist/index.js",
-    "docs/research/note.mjs",
-    "scripts/audit-no-game-names.mjs",
-  ])
-    assert.equal(isExcludedPath(path), true);
-  assert.equal(shouldScan("crates/utsushi-reallive/src/syscall.rs"), true);
-  assert.equal(shouldScan("apps/itotori/src/play/launcher.ts"), true);
-});
-
-test("CLI rejects a planted game name and accepts clean source", () => {
+test("CLI reports file and line for a planted title-shaped identity", () => {
   const dir = mkdtempSync(join(tmpdir(), "game-name-cli-"));
-  const probe = join(dir, "probe.rs");
-  writeFileSync(probe, `// ${SLUG} HD must not be hardcoded.\n`);
+  const probe = join(dir, "probe.md");
+  writeFileSync(probe, "corpus: comet-signal.v70991\n");
   const failed = runCli(probe);
   assert.equal(failed.code, 1);
-  assert.match(failed.stderr, /game-name guard: FAILED/u);
-  assert.match(failed.stderr, /sweetie/u);
+  assert.match(failed.stderr, /probe\.md:1/u);
+  assert.match(failed.stderr, /comet-signal\.v70991/u);
 
-  writeFileSync(probe, "// compiler-110002 corpus must not be hardcoded.\n");
+  writeFileSync(probe, "corpus: softpal/1/default\n");
   const clean = runCli(probe);
   assert.equal(clean.code, 0);
-  assert.match(clean.stdout, /0 references/u);
-  assert.match(clean.stdout, /stated limit:/u);
+  assert.match(clean.stdout, /0 enforced references/u);
 });
 
 function runCli(...args) {

@@ -508,7 +508,7 @@ describe("decodeFactSourceFrom key resolution (real bridge id shape)", () => {
     // Real bridge data: factId = `unit:<id>` (provenance-prefixed) while the draft
     // sequence (projectDecodeStructure scene.units) queries by the BARE unit id.
     // Keying the fact map by factId alone misses every bare-id lookup (regression:
-    // "snapshot has no ordered fact for unit <id>" on real Sweetie bytes).
+    // "snapshot has no ordered fact for unit <id>" on real primary_corpus bytes).
     const base = orderedUnit("bare-x", "reallive:scene-0001#0000", 0, HASH1, []);
     const fact = { ...base, factId: "unit:bare-x", bridgeUnitId: "bare-x" } as typeof base;
     const snap = { ...snapshot, orderedUnits: [fact] } as typeof snapshot;

@@ -11,7 +11,7 @@
 //!
 //! # What is asserted (structural facts only)
 //! Each title's inventory must carry its exact real entry count (the first root
-//! is `karetoshi` = 690 entries, the second is `gamekoi` = 689), and the
+//! is `siglus_corpus_one` = 690 entries, the second is `siglus_corpus_two` = 689), and the
 //! `GAMENAME` category must be present **as a count of 1** — the title text
 //! itself is never read or logged. The `NAMAE` speaker-name family (the feed for
 //! the downstream speaker-resolution layer) must be present as a category. The
@@ -29,8 +29,8 @@ use kaifuu_siglus::{
 const FIRST_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
 const SECOND_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
 
-/// Expected real entry count per root: the first root (`karetoshi`) parses 690
-/// entries, the second (`gamekoi`) 689. Structural counts, not content.
+/// Expected real entry count per root: the first root (`siglus_corpus_one`) parses 690
+/// entries, the second (`siglus_corpus_two`) 689. Structural counts, not content.
 const EXPECTED_ENTRY_COUNT: [usize; 2] = [690, 689];
 
 /// Resolve a game-root env var to `(SiglusEngine.exe, Gameexe.dat)` paths, or a

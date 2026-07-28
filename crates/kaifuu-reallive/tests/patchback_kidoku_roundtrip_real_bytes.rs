@@ -369,7 +369,7 @@ fn real_corpus_gameexe(corpus: &real_corpus::RealCorpus) -> Option<Vec<u8>> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (Sweetie HD) + ITOTORI_REAL_GAME_ROOT_2 (Kanon)"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (primary_corpus HD) + ITOTORI_REAL_GAME_ROOT_2 (Kanon)"]
 fn kidoku_and_name_control_markup_round_trips_on_two_reallive_titles() {
     let corpora = real_corpus::corpora();
     if corpora.is_empty() {

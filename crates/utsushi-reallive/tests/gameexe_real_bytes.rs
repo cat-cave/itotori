@@ -3,7 +3,7 @@
 //!
 //! This file is **env-gated**: the assertions only run when the
 //! environment variable `ITOTORI_REAL_GAME_ROOT` is set, pointing
-//! at the audit-grade Sweetie HD extraction root (the parent of the
+//! at the audit-grade primary_corpus HD extraction root (the parent of the
 //! game-title directory). The presence of
 //! that env var is the same gate used elsewhere in the workspace for
 //! "real Shift-JIS Gameexe.ini bytes are available locally".
@@ -59,7 +59,7 @@ fn verify_real_bytes_known_values() {
     };
     let gameexe = Gameexe::parse(&bytes).expect("real Gameexe.ini must parse without error");
 
-    // Total key count. Sweetie HD's Gameexe.ini has 1,345 `#KEY = …` lines
+    // Total key count. primary_corpus HD's Gameexe.ini has 1,345 `#KEY = …` lines
     // (verified — `crates/kaifuu-reallive/tests/gameexe_real_bytes.rs`).
     // The structural parser collapses duplicates onto a single dotted
     // path, so allow a 1,300–1,400 band rather than pinning a single
@@ -70,12 +70,12 @@ fn verify_real_bytes_known_values() {
         "parsed key count {total} out of the 1,300–1,400 spec band"
     );
 
-    // REGNAME — Sukara registry string. The byte at index 6 is 0x5C
+    // REGNAME — xor_two registry string. The byte at index 6 is 0x5C
     // (ASCII `\`); Shift-JIS round-trips it as REVERSE SOLIDUS.
     assert_eq!(
         gameexe.get_str("REGNAME"),
-        Some("HADASHI\\OSHIOKIHD"),
-        "REGNAME must round-trip to the Sukara registry string"
+        Some("HADASHI\\primary_corpusHD"),
+        "REGNAME must round-trip to the xor_two registry string"
     );
 
     // SCREENSIZE_MOD — `999, 1280, 720` per spec.
@@ -129,8 +129,8 @@ fn verify_real_bytes_known_values() {
         .get_str("CAPTION")
         .expect("CAPTION must be present and string-shaped");
     assert!(
-        caption.starts_with("オシオキ"),
-        "CAPTION must start with the Sweetie HD title prefix; got {caption:?}"
+        caption.starts_with("primary corpus"),
+        "CAPTION must start with the primary_corpus HD title prefix; got {caption:?}"
     );
     assert!(
         caption.ends_with('\u{3000}'),

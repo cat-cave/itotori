@@ -1,14 +1,14 @@
 //! Real-bytes integration test for the new
 //! `module_str` / `module_mem` / `module_sys` RLOperation families.
 //!
-//! Loads Sweetie HD scene 1 through the full →
+//! Loads primary_corpus HD scene 1 through the full →
 //! decode chain, mounts the three new registries on top of the
 //! VM, and walks the bytecode to surface how many of the
 //! new opcodes the corpus exercises.
 //!
 //! Per the multi-game-validation feedback note, RealLive's
 //! `module_str` / `module_mem` / `module_sys` opcodes are sparsely
-//! used in the Sweetie HD scene 1 preamble — the corpus exercises
+//! used in the primary_corpus HD scene 1 preamble — the corpus exercises
 //! mostly text-output paths. The test therefore acts as a
 //! **histogram-only observation**: it pins the registry's dispatch
 //! shape against real bytes (no panic, no MissingRlop storm for the
@@ -71,7 +71,7 @@ fn real_seen_txt_path() -> Option<PathBuf> {
 ///
 /// 1. The three new registries mount the expected `*_RLOP_COUNT`
 ///    entries against the live VM.
-/// 2. Stepping over Sweetie HD scene 1 produces zero panics from the
+/// 2. Stepping over primary_corpus HD scene 1 produces zero panics from the
 ///    `module_str` / `module_mem` / `module_sys` dispatch paths.
 /// 3. The per-family histogram (zero is acceptable per
 ///    sibling pattern — the multi-game-gap note
@@ -91,10 +91,10 @@ fn str_mem_sys_registries_dispatch_against_reallive_real_bytes_scene_one() {
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
 
     let index = RealSceneIndex::parse(&bytes)
-        .expect("Sweetie HD Seen.txt must parse through the  directory parser");
+        .expect("primary_corpus HD Seen.txt must parse through the  directory parser");
     let entry = index
         .lookup(1)
-        .expect("Sweetie HD must contain a populated scene 1 entry");
+        .expect("primary_corpus HD must contain a populated scene 1 entry");
     let blob_start = usize::try_from(entry.byte_offset).expect("offset fits in usize");
     let blob_end = blob_start
         .checked_add(entry.byte_len as usize)
@@ -149,16 +149,16 @@ fn str_mem_sys_registries_dispatch_against_reallive_real_bytes_scene_one() {
         }
     }
     eprintln!(
-        "[ real-bytes] Sweetie HD scene 1 dispatch histogram: \
+        "[ real-bytes] primary_corpus HD scene 1 dispatch histogram: \
          module_str hits={module_str_hits} module_mem hits={module_mem_hits} \
          module_sys hits={module_sys_hits} (element_count={})",
         elements.len(),
     );
     eprintln!(
-        "[ real-bytes] Sweetie HD scene 1 per-key histogram (top 20): {:?}",
+        "[ real-bytes] primary_corpus HD scene 1 per-key histogram (top 20): {:?}",
         per_opcode.iter().take(20).collect::<Vec<_>>(),
     );
-    // Documented observation: Sweetie HD scene 1 carries ≥12
+    // Documented observation: primary_corpus HD scene 1 carries ≥12
     // `(1, 4,...)` commands (the `module_sys` namespace) but **none**
     // of them land on the arithmetic subset implements
     // (opcodes 0x0000..=0x0008). The 12 observed opcodes (`110`

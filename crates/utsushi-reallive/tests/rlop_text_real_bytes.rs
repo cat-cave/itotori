@@ -1,7 +1,7 @@
 //! Real-bytes integration test for the `module_msg`
 //! text/messaging RLOperation family.
 //!
-//! Loads Sweetie HD scene 1 through the full →
+//! Loads primary_corpus HD scene 1 through the full →
 //! decode chain, mounts the [`utsushi_reallive::register_text_rlops`]
 //! registry on top of the VM, and steps for ≥100
 //! `step_many` iterations. The acceptance criterion is:
@@ -28,7 +28,7 @@ use utsushi_reallive::{
     VmEvent, decode_bytecode_stream, dispatch_textout, register_text_rlops,
 };
 
-// Relative path under the Sweetie HD extraction root that holds the
+// Relative path under the primary_corpus HD extraction root that holds the
 // raw `Seen.txt` envelope. Mirrors the other real-bytes integration
 // tests in this crate.
 
@@ -77,10 +77,10 @@ fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
 
     // > -> ->
     let index = RealSceneIndex::parse(&bytes)
-        .expect("Sweetie HD Seen.txt must parse through the  directory parser");
+        .expect("primary_corpus HD Seen.txt must parse through the  directory parser");
     let entry = index
         .lookup(1)
-        .expect("Sweetie HD must contain a populated scene 1 entry");
+        .expect("primary_corpus HD must contain a populated scene 1 entry");
     let blob_start = usize::try_from(entry.byte_offset).expect("offset fits in usize");
     let blob_end = blob_start
         .checked_add(entry.byte_len as usize)
@@ -89,7 +89,7 @@ fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
     assert!(blob.len() >= SCENE_HEADER_BYTE_LEN);
 
     let (header, _header_warnings) =
-        SceneHeader::parse(blob).expect("Sweetie HD scene 1 header must parse");
+        SceneHeader::parse(blob).expect("primary_corpus HD scene 1 header must parse");
     let bytecode_offset = header.bytecode_offset as usize;
     let bytecode_compressed_size = header.bytecode_compressed_size as usize;
     let compressed_end = bytecode_offset
@@ -104,9 +104,9 @@ fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
             None,
             header.compiler_version,
         )
-        .expect("Sweetie HD scene 1 must decompress cleanly");
+        .expect("primary_corpus HD scene 1 must decompress cleanly");
     let elements = decode_bytecode_stream(&decompressed)
-        .expect("Sweetie HD scene 1 must lex into a BytecodeElement stream");
+        .expect("primary_corpus HD scene 1 must lex into a BytecodeElement stream");
     let element_count = elements.len();
 
     // --- surface under test ----------------------------
@@ -152,7 +152,7 @@ fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
         }
     }
     eprintln!(
-        "[ real-bytes] Sweetie HD scene #0001 element histogram (n={element_count}): \
+        "[ real-bytes] primary_corpus HD scene #0001 element histogram (n={element_count}): \
          {counts:?} (textout shift_jis={textout_shift_jis} other={textout_other})",
     );
 

@@ -22,7 +22,7 @@ fn patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_ide
     assert_eq!(
         index.entries.len(),
         198,
-        "Sweetie HD must have 198 populated scene slots"
+        "primary_corpus HD must have 198 populated scene slots"
     );
 
     let (scene_blob, decompressed, header) = scene_bytes(&seen_bytes, DIALOGUE_SCENE_ID);
@@ -131,7 +131,7 @@ fn patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_ide
     // the patched archive, whose edited scene the patchback re-encrypted.
     if compiler_version_uses_xor2(new_header.compiler_version) {
         recover_archive_xor2_cipher(&seen_bytes)
-            .expect("Sweetie HD source archive must yield a validated xor_2 cipher")
+            .expect("primary_corpus HD source archive must yield a validated xor_2 cipher")
             .apply_segment(&mut new_decompressed);
     }
 

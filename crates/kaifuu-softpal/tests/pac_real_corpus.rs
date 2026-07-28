@@ -44,7 +44,7 @@ struct GameExpectation {
 
 const GAMES: [GameExpectation; 2] = [
     GameExpectation {
-        subdir: "v21465",
+        subdir: "softpal_corpus_one",
         count: 417,
         entry0: ("ANI_ANGEL_STAND.ANI", 47, 18732),
         files: [
@@ -63,7 +63,7 @@ const GAMES: [GameExpectation; 2] = [
         ],
     },
     GameExpectation {
-        subdir: "v60663",
+        subdir: "softpal_corpus_two",
         count: 160,
         entry0: ("ANI_ANGEL_STAND.ANI", 47, 8452),
         files: [
@@ -150,7 +150,7 @@ fn enumerates_and_extracts_two_softpal_titles() {
             game_dir.display()
         );
 
-        // Select the data.pac whose parsed count matches this game (the v21465
+        // Select the data.pac whose parsed count matches this game (the softpal_corpus_one
         // tree also contains csv.pac / system.pac siblings, but only one
         // data.pac with the expected 417-entry index).
         let mut matched: Option<(PathBuf, PacArchive, Vec<u8>)> = None;

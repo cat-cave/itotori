@@ -1,4 +1,4 @@
-// ITOTORI-059 — Branch-aware seed fixtures for the API + dashboard surfaces.
+// policy — Branch-aware seed fixtures for the API + dashboard surfaces.
 //
 // A project can carry MORE THAN ONE target locale branch at once (e.g. two
 // competing drafts of the same target locale, or distinct localization

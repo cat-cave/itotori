@@ -6,7 +6,7 @@
 //!
 //! This is the substrate-side, in-crate smoke (a labelled `SmokePort`
 //! not an engine). The REAL-bytes producer proof — a real RealLive port
-//! driving all three sinks from decoded Sweetie HD / Kanon bytes — lives
+//! driving all three sinks from decoded primary_corpus HD / Kanon bytes — lives
 //! in `utsushi-reallive`'s `tests/engine_port_real_bytes.rs`.
 
 use std::sync::{Arc, Mutex};

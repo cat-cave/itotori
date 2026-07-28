@@ -39,7 +39,7 @@ import {
 } from "./api-fixtures.js";
 
 /**
- * ITOTORI-051 — the SUCCESS handlers for the project mutation routes.
+ * policy — the SUCCESS handlers for the project mutation routes.
  * Defined before {@link itotoriApiMswHandlers} so the dashboard MSW server
  * can spread them in without a temporal-dead-zone reference. Exported on its
  * own so a contract test can register JUST the mutation surface (or swap in
@@ -82,7 +82,7 @@ export const itotoriProjectMutationMswHandlers = [
 ];
 
 /**
- * ITOTORI-051 — typed VALIDATION FAILURE handlers for the project
+ * policy — typed VALIDATION FAILURE handlers for the project
  * mutation routes. Each one feeds the SUCCESS request fixture to the parser
  * (proving the fixture parses cleanly) and then returns the shared
  * `bad_request` error response shape every mutation emits when the parser
@@ -113,7 +113,7 @@ export const itotoriProjectMutationValidationFailureMswHandlers = [
 ];
 
 /**
- * ITOTORI-050 / ITOTORI-051 — typed PERMISSION / SCOPING DENIAL handlers for
+ * policy / policy — typed PERMISSION / SCOPING DENIAL handlers for
  * the project mutation routes. Each returns the shared `forbidden` error
  * response shape every mutation emits when either the permission gate
  * (`AuthorizationError`) or the server-side project/branch ownership scope
@@ -176,7 +176,7 @@ export const itotoriApiMswHandlers = [
   http.get("http://itotori.test/api/runtime/v0.2/status", () =>
     apiJson("runtime.status", runtimeStatusFixture),
   ),
-  // ITOTORI-051 — project MUTATION routes. The dashboard / SPA mutation
+  // policy — project MUTATION routes. The dashboard / SPA mutation
   // layer POSTs to these endpoints (form submits + fetch wrappers). Read
   // handlers above stay UNCHANGED; the mutation surface is appended so the
   // dashboard MSW server picks up the contract handlers automatically.
@@ -218,7 +218,7 @@ export function apiJson(routeId: ItotoriApiRouteId, body: ItotoriApiResponseBody
 }
 
 /**
- * ITOTORI-051 — wrap a typed {@link ApiErrorResponse} in an HTTP response at
+ * policy — wrap a typed {@link ApiErrorResponse} in an HTTP response at
  * the given status. The body shape is asserted via
  * {@link assertItotoriApiErrorResponse} so a typed error-shape change (a
  * renamed `code` enum value, a missing `error` string, an extra leaked

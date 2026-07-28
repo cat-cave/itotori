@@ -4,7 +4,7 @@
 // The shared dispatcher temporarily permits a relaxed route check in test-dev.
 // A2 closes that escape hatch before calling its injected port: its model
 // profile, profile version, requested model, and account-wide ZDR/fallback
-// policy must exactly match the RB-019 role binding. This module names no
+// policy must exactly match the policy role binding. This module names no
 // provider and owns no retry policy.
 
 import { CallSpecSchema, type CallResult, type CallSpec } from "../../contracts/index.js";
@@ -20,7 +20,7 @@ export class TermAnalystRouteError extends Error {
   }
 }
 
-/** Assert A2's full RB-019 route in every run mode, including test-dev. */
+/** Assert A2's full policy route in every run mode, including test-dev. */
 export function assertTermAnalystCertifiedRoute(specInput: CallSpec): void {
   const spec = CallSpecSchema.parse(specInput);
   const certified = resolveRoleModelProfile(spec.roleId);

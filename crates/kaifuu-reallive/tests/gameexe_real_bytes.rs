@@ -14,9 +14,9 @@
 //! is now a typed `Dll` family).
 //! **Multi-game validation.** Per project law an engine-family parser
 //! validates against ≥2 real corpora. This test iterates over every
-//! staged corpus (`ITOTORI_REAL_GAME_ROOT` = Sweetie HD 1.6.x, plus
+//! staged corpus (`ITOTORI_REAL_GAME_ROOT` = primary_corpus HD 1.6.x, plus
 //! `ITOTORI_REAL_GAME_ROOT_2` = Kanon 1.2.6.x when staged) and enforces
-//! zero-unknown on each. The Sweetie-HD-specific total-count envelope and
+//! zero-unknown on each. The primary_corpus-HD-specific total-count envelope and
 //! per-family floors additionally anchor the dominant families.
 //! Env-gating, STRICT: this test reads bytes only when
 //! `ITOTORI_REAL_GAME_ROOT` is set; otherwise an absent corpus is an
@@ -35,14 +35,14 @@ use kaifuu_reallive::{GameexeKeyFamily, GameexeKeyTreatment, parse_gameexe_inven
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn classifies_every_staged_gameexe_ini_to_zero_unknown() {
-    // STRICT gate: corpus-1 (Sweetie HD) must be staged. An absent
+    // STRICT gate: corpus-1 (primary_corpus HD) must be staged. An absent
     // primary corpus is an unconditional hard failure (no silent pass).
     if real_corpus::corpus_1().is_none() {
         real_corpus::require_real_bytes("Gameexe.ini zero-unknown real-bytes test");
         return;
     }
 
-    // Validate every staged corpus (Sweetie HD, plus Kanon when
+    // Validate every staged corpus (primary_corpus HD, plus Kanon when
     // ITOTORI_REAL_GAME_ROOT_2 is set). Each must reach zero-unknown.
     let corpora = real_corpus::corpora();
     for corpus in &corpora {
@@ -137,7 +137,7 @@ fn classifies_every_staged_gameexe_ini_to_zero_unknown() {
             report.warnings.len(),
         );
 
-        // Sweetie-HD-specific total envelope + per-family floors anchor
+        // primary_corpus-HD-specific total envelope + per-family floors anchor
         // the dominant families for the primary corpus.
         if corpus.label == "corpus-1" {
             assert_primary_corpus_family_shape(total, &family_counts, &treatment_counts);
@@ -145,7 +145,7 @@ fn classifies_every_staged_gameexe_ini_to_zero_unknown() {
     }
 }
 
-/// Sweetie-HD-specific shape anchors: total-count envelope and the
+/// primary_corpus-HD-specific shape anchors: total-count envelope and the
 /// dominant per-family / per-treatment floors documented at
 /// `docs/research/reallive-engine.md` §B. Kept scoped to corpus-1 because
 /// these counts are title-specific.
@@ -160,11 +160,11 @@ fn assert_primary_corpus_family_shape(
     // tweak drift without losing the bound.
     assert!(
         (1300..=1400).contains(&total),
-        "Sweetie HD Gameexe.ini should yield 1300..=1400 entries; got {total}"
+        "primary_corpus HD Gameexe.ini should yield 1300..=1400 entries; got {total}"
     );
 
     // Specific-family presence + count floors. These exercise the
-    // dominant Sweetie HD families documented at
+    // dominant primary_corpus HD families documented at
     // `docs/research/reallive-engine.md` §B.
     assert_family_count(family_counts, "FolderName", 13);
     assert_family_count(family_counts, "Object", 7);

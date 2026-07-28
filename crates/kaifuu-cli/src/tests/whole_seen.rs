@@ -13,7 +13,7 @@ fn test_manifest_dir() -> PathBuf {
         .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")), PathBuf::from)
 }
 
-/// ALPHA-006a — the alpha extract entrypoint sources Oshioki Sweetie HD
+/// ALPHA-006a — the alpha extract entrypoint sources primary_corpus primary_corpus HD
 /// BY-ID through the read-only vault adapter and yields a `Seen.txt` whose
 /// per-file sha256 equals the known direct-path bytes. Env-gated + ignored;
 /// run against the real vault with:
@@ -27,7 +27,7 @@ fn vault_sourced_extract_resolves_primary_corpus_by_id_to_known_seen_bytes() {
     use std::fmt::Write as _;
 
     const PRIMARY_CORPUS_CANONICAL_ID: &str =
-        "oshioki-sweetie-koi-suru-onee-san-wa-urahara-desu.vj013077.v1-0.ja";
+        "primary_corpus-primary_corpus-koi-suru-onee-san-wa-urahara-desu.vj013077.v1-0.ja";
     const PRIMARY_CORPUS_SEEN_SHA256: &str =
         "903f538b821a9b1e6cb3d399582915c0bcf73b0a058ecc907caf6017a4fa209f";
 
@@ -44,7 +44,7 @@ fn vault_sourced_extract_resolves_primary_corpus_by_id_to_known_seen_bytes() {
     );
 
     let tree_root = resolve_reallive_game_root_via_vault(PRIMARY_CORPUS_CANONICAL_ID)
-        .expect("by-id vault sourcing must resolve Sweetie HD");
+        .expect("by-id vault sourcing must resolve primary_corpus HD");
     let seen_path = resolve_reallive_seen_path(&tree_root)
         .expect("REALLIVEDATA/Seen.txt under the vault-sourced tree");
     let bytes = std::fs::read(&seen_path).expect("read vault-sourced Seen.txt");
@@ -54,7 +54,7 @@ fn vault_sourced_extract_resolves_primary_corpus_by_id_to_known_seen_bytes() {
         let _ = write!(acc, "{b:02x}");
         acc
     });
-    eprintln!("[alpha-006a] vault-sourced Sweetie HD Seen.txt sha256 = {sha}");
+    eprintln!("[alpha-006a] vault-sourced primary_corpus HD Seen.txt sha256 = {sha}");
     assert_eq!(
         sha, PRIMARY_CORPUS_SEEN_SHA256,
         "vault by-id sourced Seen.txt must equal the known direct-path bytes"

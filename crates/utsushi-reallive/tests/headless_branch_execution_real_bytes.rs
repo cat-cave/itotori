@@ -1,6 +1,6 @@
 //! Real-bytes acceptance for `reallive-utsushi-headless-branch-execution`.
 //!
-//! Drives a full scene of BOTH titles (Sweetie HD + Kanon) to its NATURAL
+//! Drives a full scene of BOTH titles (primary_corpus HD + Kanon) to its NATURAL
 //! TERMINUS by EXECUTING real RealLive control flow — Jump / Subroutine
 //! FarCall FOLLOWED across the multi-scene store, NOT linear-walked — using
 //! a deterministic headless input-provider ([`HeadlessInputScheduler`]
@@ -38,7 +38,7 @@
 //! (no opt-out; these `#[ignore]`-d suites run only in the periodic
 //! ground-truth oracle, `just test real-bytes-oracle`, where corpora are staged).
 //! Run with
-//! `ITOTORI_REAL_GAME_ROOT=<sweetie> ITOTORI_REAL_GAME_ROOT_2=<kanon>
+//! `ITOTORI_REAL_GAME_ROOT=<primary_corpus> ITOTORI_REAL_GAME_ROOT_2=<kanon>
 //! cargo test -p utsushi-reallive --test headless_branch_execution_real_bytes
 //! -- --ignored`.
 
@@ -293,7 +293,7 @@ fn headless_branch_following_drives_both_titles_to_natural_terminus() {
 /// ENTRY-SCENE acceptance (`reallive-utsushi-headless-event-flag-modeling`).
 ///
 /// This is the piece the branch-execution node could not reach: driving the
-/// game's CONFIGURED ENTRY scene (`#SEEN_START` — Sweetie HD scene 1, Kanon
+/// game's CONFIGURED ENTRY scene (`#SEEN_START` — primary_corpus HD scene 1, Kanon
 /// scene 9030) all the way to a NATURAL terminus. The entry scene opens the
 /// game and busy-`goto`s on event flags a headless walk never sets (title
 /// animation / message wait loops); the deterministic event-flag model
@@ -463,7 +463,7 @@ fn headless_input_provider_is_deterministic_and_never_deadlocks_on_input() {
 /// SEEN present in the store) into the next scene, and so on, producing a
 /// continuous MULTI-SCENE play-order stream.
 ///
-/// Asserted, for BOTH titles (Sweetie HD + Kanon):
+/// Asserted, for BOTH titles (primary_corpus HD + Kanon):
 ///  - the play stream spans ≥2 DISTINCT scene ids — a regression that stops
 ///    at the entry scene (a single scene id) FAILS here;
 ///  - the scene ids are in dispatch order: `scene_ids[0]` is the entry scene

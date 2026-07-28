@@ -165,7 +165,7 @@ export const TokenUsageSchema = z
   })
   .strict();
 
-// ITOTORI-241 - ZDR is a SETTING (a capability + privacy filter), NOT a
+// policy - ZDR is a SETTING (a capability + privacy filter), NOT a
 // provider pin. A provider policy enforces exactly three things: (a) the
 // capabilities every role needs - strict structured/JSON-schema final
 // output and typed tool-calling, gated by `requireParameters: true` so
@@ -195,7 +195,7 @@ export const ProviderPolicySchema = z
  * Fail loud, with a domain message, when a raw provider-policy input tries
  * to pin a single provider. `ProviderPolicySchema` already rejects these
  * structurally; this guard is the construction seam that explains WHY, so
- * the ITOTORI-241 anti-pattern can never be reintroduced silently.
+ * the policy anti-pattern can never be reintroduced silently.
  */
 export function assertNoProviderPin(raw: unknown): void {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return;
@@ -213,7 +213,7 @@ export function assertNoProviderPin(raw: unknown): void {
   }
 }
 
-// ITOTORI-241 - OpenRouter inference-PROVIDER (routing endpoint) slugs, distinct
+// policy - OpenRouter inference-PROVIDER (routing endpoint) slugs, distinct
 // from model-family/vendor names. A profile identity keyed by model+capability
 // must never embed one of these, or a provider would be smuggled back into the
 // identity (e.g. `deepseek-v4-flash-fireworks`) even when the policy is

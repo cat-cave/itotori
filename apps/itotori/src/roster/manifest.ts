@@ -395,7 +395,7 @@ function validateSpecialistContract(roleId: RoleId, specialist: Specialist): voi
       (tool, index) => !ToolNameSchema.safeParse(tool).success || tool !== expectedTools[index],
     )
   ) {
-    throw new Error(`roster specialist ${roleId} tool allowlist does not match RB-025`);
+    throw new Error(`roster specialist ${roleId} tool allowlist does not match policy`);
   }
 
   if (!GRANULARITIES.includes(candidate.granularity as (typeof GRANULARITIES)[number])) {
@@ -437,7 +437,7 @@ function validateSpecialistContract(roleId: RoleId, specialist: Specialist): voi
     !contract.callProfiles.includes(resolved.modelProfile)
   ) {
     throw new Error(
-      `roster specialist ${roleId} does not resolve through its RB-019 model profile`,
+      `roster specialist ${roleId} does not resolve through its policy model profile`,
     );
   }
   if (

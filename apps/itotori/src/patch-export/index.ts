@@ -1,4 +1,4 @@
-// ITOTORI-025 — public surface of the patch-export module.
+// policy — public surface of the patch-export module.
 //
 // Bundles preflight, exporter, kaifuu-handoff, and CLI behind one
 // import path so callers don't have to reach across files.

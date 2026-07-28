@@ -5,7 +5,7 @@
 
 import type { DashboardPendingDecision, ProjectDashboardStatus } from "@itotori/db";
 
-// ITOTORI-027 — the indie-localization cost target the dashboard tracks
+// policy — the indie-localization cost target the dashboard tracks
 // EMPIRICALLY (real billed micros-USD vs this ceiling, never an estimate).
 export const INDIE_LOCALIZATION_COST_TARGET_MICROS_USD = 25_000_000;
 

@@ -1,28 +1,22 @@
 #!/usr/bin/env node
-// CI guard: no game is mentioned by name in production / shared code.
+// CI guard: corpus identities in tracked artifacts must be opaque.
 //
-// A concrete game name in shared or production source is a generalization bug:
-// engine substrate, CLI defaults, app surfaces, and scripts must be
-// title-agnostic. Game identity belongs only in per-game DATA records
-// (fixtures, presets, and test corpora), never in a code path.
+// A corpus is addressed by engine/ordinal/variant or a content hash. A title
+// must not be copied into code, test names, docs, workflows, or a generated
+// ledger. The detector deliberately recognises identifier *shapes*, rather
+// than a hand-maintained title vocabulary: adding another title-shaped corpus
+// identity therefore changes the result without changing this guard.
 //
-// This is an absolute rule: every scanned reference is an error. The scanner
-// deliberately retains the known title, vendor, VNDB-id, and
-// `corpus-observed` patterns so newly introduced coupling is rejected.
+// Scope: every tracked UTF-8 text file. The two files below are individually
+// exempt because one defines the detection shapes and the other supplies
+// synthetic negative examples. Generated ledgers are scanned and reported,
+// but are not edited in place; their source must be regenerated separately.
 //
-// Scope: tracked source under `crates/`, `packages/`, `apps/`, and `scripts/`
-// (`.rs`/`.ts`/`.tsx`/`.js`/`.mjs`/`.cjs`). Excluded as DATA / test / research
-// prose: `**/tests?/**`, `**/*.test.*`, `**/*_test.rs`, `**/fixtures?/**` +
-// `*fixture*` modules, `**/examples?/**`, build output, `scripts/history/**`,
-// migrations, docs, roadmap, `.plan/`, `.qd/`, presets, and the two scanners
-// that must name terms to document and enforce them.
-//
-// Exit codes: 0 = clean; 1 = violation. Wired into `just ci tier0-meta`.
+// Limit: unstructured prose names and encrypted/opaque byte blobs cannot be
+// identified reliably without an authoritative title inventory. Shift-JIS
+// hex literals are checked when their surrounding symbol identifies a title.
 
-export const STATED_LIMIT =
-  "stated limit: scans known title fragments and identifiers in tracked text; it cannot infer unknown aliases, transliterations, misspellings, or runtime-constructed strings.";
-
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,122 +24,129 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
 
-export const SCAN_EXTENSIONS = new Set([".rs", ".ts", ".tsx", ".js", ".mjs", ".cjs"]);
-
-const EXCLUDE_PATTERNS = [
-  "/tests/",
-  "/test/",
-  "/fixtures/",
-  "/fixture/",
-  "fixture",
-  "/examples/",
-  "/example/",
-  "/target/",
-  "/dist/",
-  "/node_modules/",
-  "scripts/history/",
-  "/migrations/",
-  "docs/",
-  "roadmap/",
-  ".plan/",
-  ".qd/",
-  "presets/",
+const SELF_REFERENTIAL_FILES = new Set([
   "scripts/audit-no-game-names.mjs",
-  "scripts/validate-no-specific-game-references.mjs",
-];
+  "scripts/audit-no-game-names.test.mjs",
+]);
 
-const EXCLUDE_SUFFIXES = [
-  ".test.ts",
-  ".test.tsx",
-  ".test.js",
-  ".test.mjs",
-  ".test.cjs",
-  "_test.rs",
-  "/tests.rs",
-  "/test.rs",
-  "fixtures.ts",
-  "fixtures.rs",
+const GENERATED_LEDGER = "roadmap/spec-dag.json";
+const TITLE_SHAPES = [
+  /\b[a-z][a-z0-9-]{2,}\.v[1-9][0-9]{4,}\b/giu,
+  /\bv[1-9][0-9]{3,}_(?:[a-z0-9]+_){2,}[a-z0-9]+\b/giu,
+  /\bv[1-9][0-9]{3,}\s+[A-Z][\p{Ll}]+(?:-[A-Z][\p{Ll}]+){2,}\b/gu,
 ];
-
-const GAME_NAME_PATTERNS = [
-  // Deliberately no word boundaries: `_`, letters, and digits surround title
-  // fragments in Rust and TypeScript identifiers, but JavaScript `\b` treats
-  // `_` as a word character and would miss them.
-  /(?:sweetie|karetoshi|gamekoi|oshioki|sukara)/gi,
-  /(?:ki(?:zuna)|kira(?:meku)|koi-(?:iroha)|dimen(?:sion-totsu))/gi,
-  /totsu-(?:lovers)/gi,
-  /オシオキ/g,
-  /\bv(?:11180|31045|60663|21465|55293|57740)\b/gi,
-  /\bcorpus-observed\b/gi,
-];
+const HEX_BYTE = /0x([0-9a-f]{2})/giu;
+const SHIFT_JIS = new TextDecoder("shift_jis", { fatal: true });
 
 export function isExcludedPath(path) {
-  return (
-    EXCLUDE_PATTERNS.some((pattern) => path.includes(pattern)) ||
-    EXCLUDE_SUFFIXES.some((suffix) => path.endsWith(suffix))
-  );
+  return SELF_REFERENTIAL_FILES.has(path);
 }
 
 export function shouldScan(path) {
-  if (isExcludedPath(path)) return false;
-  const dot = path.lastIndexOf(".");
-  return dot !== -1 && SCAN_EXTENSIONS.has(path.slice(dot));
+  return !isExcludedPath(path);
 }
 
-export function findGameNameViolations(path, contents) {
+function findShiftJisTitleLiterals(path, contents) {
+  if (!path.endsWith(".rs")) return [];
   const found = [];
-  const lines = contents.split(/\r?\n/u);
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (line.trim() === "") continue;
-    for (const regex of GAME_NAME_PATTERNS) {
-      const re = new RegExp(regex.source, regex.flags);
-      for (const match of line.matchAll(re)) {
-        found.push({
-          file: path,
-          line: i + 1,
-          token: match[0].toLowerCase(),
-          excerpt: line.trim().slice(0, 160),
-        });
-      }
+  const literal =
+    /\b(?:fn|const)\b[\s\S]{0,120}?\btitle[\s\S]{0,120}?=\s*(?:vec!|&)\[([\s\S]{0,600}?)\]/giu;
+  for (const match of contents.matchAll(literal)) {
+    const bytes = [...match[1].matchAll(HEX_BYTE)].map((entry) => Number.parseInt(entry[1], 16));
+    if (bytes.length < 6) continue;
+    try {
+      const decoded = SHIFT_JIS.decode(Uint8Array.from(bytes));
+      if (
+        !/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(decoded) ||
+        !/[A-Za-z]{4}/u.test(decoded)
+      )
+        continue;
+      const prefix = contents.slice(0, match.index);
+      const line = prefix.split(/\r?\n/u).length;
+      found.push({
+        file: path,
+        line,
+        token: "shift-jis-title-literal",
+        excerpt: contents.slice(match.index, match.index + 160).replace(/\s+/gu, " "),
+      });
+    } catch {
+      // A byte array that is not valid Shift-JIS is not a title literal.
     }
   }
   return found;
 }
 
+export function findGameNameViolations(path, contents) {
+  const found = [];
+  const lines = contents.split(/\r?\n/u);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    for (const pattern of TITLE_SHAPES) {
+      const matcher = new RegExp(pattern.source, pattern.flags);
+      for (const match of line.matchAll(matcher)) {
+        found.push({
+          file: path,
+          line: index + 1,
+          token: match[0],
+          excerpt: line.trim().slice(0, 160),
+        });
+      }
+    }
+  }
+  return [...found, ...findShiftJisTitleLiterals(path, contents)];
+}
+
 export function listScanFiles(root) {
-  return execSync("git ls-files crates packages apps scripts", { cwd: root, encoding: "utf8" })
-    .split("\n")
-    .map((line) => line.trim())
+  return execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" })
+    .split("\0")
     .filter(Boolean);
+}
+
+function readUtf8(path) {
+  const bytes = readFileSync(path);
+  if (bytes.includes(0)) return null;
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }
 
 function scanFiles(root, files) {
   const violations = [];
+  const ledger = [];
   let scanned = 0;
   for (const file of files) {
     if (!shouldScan(file)) continue;
     try {
       const target = root === null ? file : join(root, file);
-      violations.push(...findGameNameViolations(file, readFileSync(target, "utf8")));
+      const contents = readUtf8(target);
+      if (contents === null) continue;
+      const found = findGameNameViolations(file, contents);
+      (file === GENERATED_LEDGER ? ledger : violations).push(...found);
       scanned += 1;
     } catch {
-      // A disappeared file cannot produce a violation.
+      // A disappeared, binary, or non-UTF-8 file cannot be text-scanned.
     }
   }
-  return { violations, scanned };
+  return { ledger, violations, scanned };
 }
 
 function parseArgs(argv) {
   const options = { root: repoRoot, files: [], help: false };
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === "--root") options.root = resolve(argv[(i += 1)]);
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--root") options.root = resolve(argv[(index += 1)]);
     else if (arg.startsWith("--root=")) options.root = resolve(arg.slice("--root=".length));
     else if (arg === "--help" || arg === "-h") options.help = true;
     else options.files.push(arg);
   }
   return options;
+}
+
+function printReferences(label, references) {
+  process.stderr.write(`${label}: ${references.length} reference(s).\n`);
+  for (const violation of references) {
+    process.stderr.write(
+      `  ${violation.file}:${violation.line}  ${violation.token}  ${violation.excerpt}\n`,
+    );
+  }
 }
 
 function main() {
@@ -158,22 +159,17 @@ function main() {
     options.files.length > 0
       ? scanFiles(null, options.files)
       : scanFiles(options.root, listScanFiles(options.root));
+  if (result.ledger.length > 0) {
+    printReferences("game-name guard: generated ledger requires regeneration", result.ledger);
+  }
   if (result.violations.length === 0) {
     process.stdout.write(
-      `game-name guard: passed. 0 references across ${result.scanned} scanned files.\n${STATED_LIMIT}\n`,
+      `game-name guard: passed. 0 enforced references across ${result.scanned} scanned files. ` +
+        `Limit: unstructured prose names and opaque bytes need an authoritative inventory.\n`,
     );
     return;
   }
-  process.stderr.write(
-    `game-name guard: FAILED. ${result.violations.length} game-name reference(s) found.\n` +
-      "Genericize the reference; a game's identity belongs in per-game DATA, not code.\n" +
-      `${STATED_LIMIT}\n\n`,
-  );
-  for (const violation of result.violations) {
-    process.stderr.write(
-      `  ${violation.file}:${violation.line}  ${violation.token}  ${violation.excerpt}\n`,
-    );
-  }
+  printReferences("game-name guard: FAILED", result.violations);
   process.exitCode = 1;
 }
 

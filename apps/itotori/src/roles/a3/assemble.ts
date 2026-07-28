@@ -11,7 +11,7 @@
 //      citation: a label outside this scene resolves to nothing and is DROPPED —
 //      never admitted uncited, never a poison-pill that hard-fails the whole
 //      build. A claim left with no resolvable citation is discarded, not crashed
-//      over; the RB-031 gate still runs over the surviving, provable citations
+//      over; the policy gate still runs over the surviving, provable citations
 //      so nothing unresolved enters the Wiki. The short label is what makes
 //      correct citations resolve in the first place — the flash model copies
 //      `u1`, `u2`, … reliably where it fumbled the large GLOBAL play-order index.
@@ -59,7 +59,7 @@ function citationLabelToFactId(scene: CompleteScene): ReadonlyMap<string, string
  * mis-transcribes or invents resolves to nothing and is DROPPED, so a single
  * recoverable mis-citation cannot poison the object and hard-fail the whole
  * build. A dropped citation is never admitted and never counts as support — the
- * RB-031 gate still runs over the citations that survive. */
+ * policy gate still runs over the citations that survive. */
 function citationFor(
   index: EvidenceIndex,
   labelToFactId: ReadonlyMap<string, string>,
@@ -114,7 +114,7 @@ function provenance(model: ReadModel, context: A3Context) {
 }
 
 /** Parse the candidate through the strict WikiObject write gate, then prove every
- * claim against the snapshot (RB-031). Returns the immutable, provable object. */
+ * claim against the snapshot (policy). Returns the immutable, provable object. */
 function seal(candidate: unknown, model: ReadModel): WikiObject {
   const object = WikiObjectSchema.parse(candidate);
   validateWikiObjectClaims(object, model);

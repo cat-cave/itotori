@@ -19,7 +19,7 @@ export type ResolvedAssetPolicy = {
 
 /**
  * Resolution returned when no active decision is on file for the asset.
- * The patch-export pipeline (ITOTORI-025) MUST treat this as a hard
+ * The patch-export pipeline (policy) MUST treat this as a hard
  * stop — there is no silent default to `keep_original`.
  */
 export type UnresolvedAssetPolicy = {

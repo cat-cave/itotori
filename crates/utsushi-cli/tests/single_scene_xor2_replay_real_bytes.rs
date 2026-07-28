@@ -1,12 +1,12 @@
 //! Utsushi-cli-single-scene-xor2-staging — real-bytes acceptance for the
-//! single-scene `replay-validate` path on a `use_xor_2` title (Sweetie HD
+//! single-scene `replay-validate` path on a `use_xor_2` title (primary_corpus HD
 //! compiler `110002`).
 //!
 //! The bug this pins: the single-scene CLI replay path
 //! (`replay-validate` → `utsushi_reallive::replay_scene`) drives the
 //! pure-`utsushi-reallive` decode path, which owns the first-level AVG32
 //! inflate but NOT the second-level `use_xor_2` segment cipher over
-//! `[256, 513)`. On Sweetie HD it therefore replayed the still-ciphered
+//! `[256, 513)`. On primary_corpus HD it therefore replayed the still-ciphered
 //! segment as MOJIBAKE, and the observed-translated-text assertion
 //! (`assertReplayObservedTranslatedText`) correctly FAILED.
 //!
@@ -16,7 +16,7 @@
 //! carries REAL decoded text.
 //!
 //! This test proves the wiring end-to-end:
-//!   1. Patch a REAL Sweetie HD dialogue scene with a known en-US string via
+//!   1. Patch a REAL primary_corpus HD dialogue scene with a known en-US string via
 //!      the kaifuu patchback (which re-encrypts the xor2 segment, exactly as
 //!      the shipped pipeline does).
 //!   2. Drive the actual `utsushi-cli replay-validate` binary against the
@@ -30,8 +30,8 @@
 //!
 //! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE
 //! (no opt-out; runs only in the periodic ground-truth oracle
-//! `just test real-bytes-oracle`, where corpora are staged). Run with
-//! `ITOTORI_REAL_GAME_ROOT=<sweetie-hd> cargo test -p utsushi-cli
+//! `just real-bytes-oracle`, where corpora are staged). Run with
+//! `ITOTORI_REAL_GAME_ROOT=<primary_corpus-hd> cargo test -p utsushi-cli
 //! --test single_scene_xor2_replay_real_bytes -- --ignored`.
 
 #[path = "support/real_corpus.rs"]
@@ -47,10 +47,10 @@ use kaifuu_reallive::{
     gameexe::parse_gameexe_inventory, parse_archive, produce_bundle, recover_archive_cipher,
 };
 
-const PRIMARY_CORPUS_GAME_ID: &str = "sweetie-hd";
-const PRIMARY_CORPUS_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
+const PRIMARY_CORPUS_GAME_ID: &str = "primary_corpus-hd";
+const PRIMARY_CORPUS_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-primary_corpus-hd";
 
-/// A known dialogue-bearing scene in Sweetie HD's `Seen.txt` for which the
+/// A known dialogue-bearing scene in primary_corpus HD's `Seen.txt` for which the
 /// `use_xor_2` staging is LOAD-BEARING: the ciphered `[256, 513)` segment
 /// derails the pure (non-staged) bytecode parse so the dialogue never
 /// decodes to the patched text (0 observed matches), whereas the staged
@@ -86,7 +86,7 @@ fn bridge_opts(scene_kidoku_count: u32) -> BridgeOpts<'static> {
 
 /// `(scene_blob, decrypted_plaintext_bytecode, header)` for `scene_id`.
 /// The bytecode is returned as the real PLAINTEXT the interpreter executes:
-/// after AVG32 decompression, Sweetie HD's `use_xor_2` segment over
+/// after AVG32 decompression, primary_corpus HD's `use_xor_2` segment over
 /// `[256, 513)` is decrypted with the per-game key recovered cross-scene from
 /// the whole archive.
 fn scene_bytes(seen_bytes: &[u8], scene_id: u16) -> (Vec<u8>, Vec<u8>, SceneHeader) {
@@ -106,7 +106,7 @@ fn scene_bytes(seen_bytes: &[u8], scene_id: u16) -> (Vec<u8>, Vec<u8>, SceneHead
         .expect("AVG32 decompression must succeed");
     if compiler_version_uses_xor2(header.compiler_version) {
         recover_archive_xor2_cipher(seen_bytes)
-            .expect("Sweetie HD archive must yield a validated xor_2 cipher")
+            .expect("primary_corpus HD archive must yield a validated xor_2 cipher")
             .apply_segment(&mut decompressed);
     }
     (scene_blob, decompressed, header)
@@ -233,7 +233,7 @@ fn cli_bin() -> &'static str {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (Sweetie HD, xor_2 / 110002)"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (primary_corpus HD, xor_2 / 110002)"]
 fn single_scene_replay_validate_decodes_real_text_on_xor2_title() {
     let Some(seen_path) = real_corpus::seen_txt_path() else {
         real_corpus::require_real_bytes(

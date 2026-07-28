@@ -1,6 +1,6 @@
 //! real-bytes integration test for the bundle-driven
 //! patchback driver (`apply_translated_bundle`).
-//! Loads a Sweetie HD **dialogue scene** from `ITOTORI_REAL_GAME_ROOT`,
+//! Loads a primary_corpus HD **dialogue scene** from `ITOTORI_REAL_GAME_ROOT`,
 //! runs `kaifuu_reallive::produce_bundle` to get the canonical
 //! source-side bundle, **synthesises** a translated bundle by replacing
 //! every (dialogue) unit's `target.text` with a known en-US sentinel
@@ -38,9 +38,9 @@ use kaifuu_reallive::{
     recover_archive_cipher,
 };
 
-const PRIMARY_CORPUS_GAME_ID: &str = "sweetie-hd";
-const PRIMARY_CORPUS_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
-/// A known dialogue-bearing scene in Sweetie HD's `Seen.txt` that decodes
+const PRIMARY_CORPUS_GAME_ID: &str = "primary_corpus-hd";
+const PRIMARY_CORPUS_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-primary_corpus-hd";
+/// A known dialogue-bearing scene in primary_corpus HD's `Seen.txt` that decodes
 /// 100% clean. Scene 1 is an all-binary boundary scene and carries no
 /// translatable units (see `bridge_real_bytes`), so the patchback
 /// round-trip is exercised against a real dialogue scene instead.
@@ -82,7 +82,7 @@ fn bridge_opts(scene_kidoku_count: u32) -> BridgeOpts<'static> {
 
 /// `(scene_blob, decompressed_bytecode, header)` for a scene id.
 /// The bytecode is returned as the real PLAINTEXT the interpreter executes:
-/// after AVG32 decompression, Sweetie HD's second-level `xor_2` segment
+/// after AVG32 decompression, primary_corpus HD's second-level `xor_2` segment
 /// (`compiler_version=110002`) over `[256, 513)` is decrypted with the
 /// per-game key recovered cross-scene from the whole archive. Comparing at
 /// the plaintext layer is the only correct fidelity check for an
@@ -106,7 +106,7 @@ fn scene_bytes(seen_bytes: &[u8], scene_id: u16) -> (Vec<u8>, Vec<u8>, SceneHead
         .expect("AVG32 decompression must succeed");
     if compiler_version_uses_xor2(header.compiler_version) {
         recover_archive_xor2_cipher(seen_bytes)
-            .expect("Sweetie HD archive must yield a validated xor_2 cipher")
+            .expect("primary_corpus HD archive must yield a validated xor_2 cipher")
             .apply_segment(&mut decompressed);
     }
     (scene_blob, decompressed, header)
@@ -178,7 +178,7 @@ fn decrypt_scene(seen_bytes: &[u8], scene_id: u16, cipher: &Xor2Cipher) -> Vec<u
     }
     d
 }
-/// A goto-rich Sweetie HD dialogue scene used by the length-changing
+/// A goto-rich primary_corpus HD dialogue scene used by the length-changing
 /// jump-recalculation test. Scene 8509 decodes 100% clean (0 unknown, 0
 /// generic Command), surfaces 72 translatable dialogue units, and carries
 /// **91 goto-family jump-target pointers**, every one of whose destination
@@ -219,7 +219,7 @@ fn boundary_ordinals(bytecode: &[u8]) -> std::collections::BTreeMap<usize, (usiz
 }
 
 /// Exercise the length-changing patchback's jump-target recalculation on a
-/// real, goto-rich Sweetie HD scene, for BOTH a longer and a shorter
+/// real, goto-rich primary_corpus HD scene, for BOTH a longer and a shorter
 /// translated body. Proves:
 /// - the archive re-parses with the same 198-scene count and a correctly
 ///   rewritten scene offset table;
@@ -241,7 +241,7 @@ fn length_changing_patch_recalculates_goto_targets_on_real_scene() {
     };
     let seen_bytes = fs::read(&seen_path).expect("read Seen.txt");
     let cipher = recover_archive_xor2_cipher(&seen_bytes)
-        .expect("Sweetie HD must yield a validated xor_2 cipher");
+        .expect("primary_corpus HD must yield a validated xor_2 cipher");
 
     let source_seen_len = seen_bytes.len();
 

@@ -119,7 +119,7 @@ const CANDIDATE_PROVIDERS = [
 // actually exercises (vs the 16-token ITOTORI-238 toy call).
 const REAL_TRANSLATION_PROMPT =
   "You are an English localization assistant for a Japanese visual " +
-  "novel called Sweetie HD. Style guidance: tone-register=playful, " +
+  "novel called primary_corpus HD. Style guidance: tone-register=playful, " +
   "register=informal-feminine, preserve onomatopoeia in romaji, do not " +
   "invent character names not present in the source. The following " +
   "is a single scene of dialogue between Yumeko and Haruka in early " +
@@ -379,7 +379,7 @@ const payload = {
   notes: [
     "ITOTORI-239 broader-alternate validation: probes the ZDR-permitted candidates not covered by ITOTORI-238, plus a parasail retry (the json_schema 429 was transient quota, not a capability gap).",
     "Validation criterion: HTTP 200 on plain call + HTTP 200 on json_schema call + body conforming to the requested schema. All three required.",
-    "The presets/localize-sweetie-hd.pair-policy.json alternateProviders[] is updated ONLY for candidates that pass all three criteria, with each entry annotated with the evidenceRef pointing into this file.",
+    "The presets/localize-primary_corpus-hd.pair-policy.json alternateProviders[] is updated ONLY for candidates that pass all three criteria, with each entry annotated with the evidenceRef pointing into this file.",
   ],
 };
 

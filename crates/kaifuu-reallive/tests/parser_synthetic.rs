@@ -304,7 +304,7 @@ fn in_space_uncatalogued_module_is_generic_command_and_not_recognised() {
     // but it is NOT recognised: an un-catalogued tuple must FAIL the
     // semantic-zero gate, never masquerade as decoded. (`Unknown` is the
     // separate `module_type > 2` desync tripwire.) Every module_id present on
-    // the real Sweetie HD / Kanon corpora lands in a named family, so this
+    // the real primary_corpus HD / Kanon corpora lands in a named family, so this
     // never fires on real bytes.
     let bytes = &[0x23, 1, 99, 0, 0, 0, 0, 0];
     let opcodes = parse_scene(bytes).expect("decode");

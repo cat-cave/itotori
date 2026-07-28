@@ -1,7 +1,7 @@
 //! Kaifuu-utsushi-patch-to-render-path — real-bytes end-to-end acceptance for
 //! the composed patch / replay / render paths.
 //!
-//! Proves the whole patch→render chain on REAL Sweetie HD bytes through the
+//! Proves the whole patch→render chain on REAL primary_corpus HD bytes through the
 //! single shipped, config-parameterized command (no hard-coded game path or
 //! scene — every game input is a CLI flag):
 //!
@@ -24,8 +24,8 @@
 //!
 //! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE (no
 //! opt-out; runs only in the periodic ground-truth oracle
-//! `just test real-bytes-oracle`, where corpora are staged). Run with
-//! `ITOTORI_REAL_GAME_ROOT=<sweetie-hd> cargo test -p utsushi-cli
+//! `just real-bytes-oracle`, where corpora are staged). Run with
+//! `ITOTORI_REAL_GAME_ROOT=<primary_corpus-hd> cargo test -p utsushi-cli
 //! --test patch_render_real_bytes -- --ignored`.
 
 #[path = "support/real_corpus.rs"]
@@ -44,10 +44,10 @@ use kaifuu_reallive::{
     gameexe::parse_gameexe_inventory, parse_archive, produce_bundle, recover_archive_cipher,
 };
 
-const PRIMARY_CORPUS_GAME_ID: &str = "sweetie-hd";
-const PRIMARY_CORPUS_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
+const PRIMARY_CORPUS_GAME_ID: &str = "primary_corpus-hd";
+const PRIMARY_CORPUS_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-primary_corpus-hd";
 
-/// A known dialogue-bearing Sweetie HD scene that decodes 100% clean AND
+/// A known dialogue-bearing primary_corpus HD scene that decodes 100% clean AND
 /// renders through the RealLive message-window pipeline with its own observed
 /// g00 graphics stack (so the composed command needs no `--bg-asset`
 /// fallback). Config-supplied to the command as `--scene`; NOT hard-coded in
@@ -95,7 +95,7 @@ fn scene_bytes(seen_bytes: &[u8], scene_id: u16) -> (Vec<u8>, Vec<u8>, SceneHead
         .expect("AVG32 decompression must succeed");
     if compiler_version_uses_xor2(header.compiler_version) {
         recover_archive_xor2_cipher(seen_bytes)
-            .expect("Sweetie HD archive must yield a validated xor_2 cipher")
+            .expect("primary_corpus HD archive must yield a validated xor_2 cipher")
             .apply_segment(&mut decompressed);
     }
     (scene_blob, decompressed, header)
@@ -224,7 +224,7 @@ fn cli_bin() -> &'static str {
 }
 
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (Sweetie HD)"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (primary_corpus HD)"]
 fn patch_replay_then_render_single_real_scene_renders_patched_dialogue() {
     let Some(seen_path) = real_corpus::seen_txt_path() else {
         real_corpus::require_real_bytes(

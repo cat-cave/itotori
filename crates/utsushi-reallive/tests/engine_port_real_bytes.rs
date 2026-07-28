@@ -2,7 +2,7 @@
 //!
 //! Proves the REAL RealLive [`UtsushiReallivePort`] drives the substrate
 //! **text**, **frame**, AND **audio** sinks — all from a SINGLE real-bytes
-//! replay of a real game's entry scene — on TWO titles (Sweetie HD
+//! replay of a real game's entry scene — on TWO titles (primary_corpus HD
 //! Kanon). The port is driven through the substrate [`Runner`] exactly as a
 //! production consumer would drive it; the assertions read the runner's
 //! drained observations.
@@ -16,7 +16,7 @@
 //! (no opt-out; these `#[ignore]`-d suites run only in the periodic
 //! ground-truth oracle, `just test real-bytes-oracle`, where corpora are staged).
 //! Run with
-//! `ITOTORI_REAL_GAME_ROOT=<sweetie> ITOTORI_REAL_GAME_ROOT_2=<kanon>
+//! `ITOTORI_REAL_GAME_ROOT=<primary_corpus> ITOTORI_REAL_GAME_ROOT_2=<kanon>
 //! cargo test -p utsushi-reallive --test engine_port_real_bytes -- --ignored`.
 
 #[path = "support/port_support.rs"]
@@ -209,7 +209,7 @@ fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
     // OWN background — each message to its OWN frame (the per-frame
     // message-window contract), NOT one giant flatten-all-messages box, NOT
     // just message #0, and NOT one scene in isolation. Per-scene capping
-    // guarantees a long scene A (Sweetie scene 1's thousands of messages)
+    // guarantees a long scene A (primary_corpus scene 1's thousands of messages)
     // cannot consume the whole budget before scene B appears; the total is
     // bounded by the pinned `PLAYTHROUGH_BOUND`.
     let frame_scene_ids = port.playthrough_frame_scene_ids();

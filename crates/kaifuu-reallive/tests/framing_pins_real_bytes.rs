@@ -27,7 +27,7 @@
 //!    input bytecode byte-for-byte, through the real
 //!    decompress -> [`xor_2`] -> decode path. This proves the decoder
 //!    consumed and can reproduce every byte — framing is complete and exact.
-//!    Both proofs run over EVERY populated scene of BOTH corpora (Sweetie HD,
+//!    Both proofs run over EVERY populated scene of BOTH corpora (primary_corpus HD,
 //!    `110002`, second-level `xor_2` decrypted in-process; Kanon, `10002`, no
 //!    `xor_2`), far exceeding the ">= 1 scene per title" acceptance floor, and
 //!    are STRICT real-bytes tests (a missing corpus is an unconditional hard
@@ -84,7 +84,7 @@ fn staged_scene_bytecodes(corpus: &RealCorpus) -> Vec<Vec<u8>> {
         });
     }
 
-    // Second-level xor_2 (Sweetie HD): per-game key recovered in-process and
+    // Second-level xor_2 (primary_corpus HD): per-game key recovered in-process and
     // validated before consumption. Kanon's scenes are left untouched.
     let _report = recover_and_decrypt_archive(&mut scenes);
     scenes.into_iter().map(|scene| scene.bytecode).collect()
@@ -216,7 +216,7 @@ fn framing_is_byte_exact_and_round_trips_on_real_bytes() {
         );
     }
 
-    // Multi-game validation: BOTH titles must be staged (Sweetie HD + Kanon),
+    // Multi-game validation: BOTH titles must be staged (primary_corpus HD + Kanon),
     // so the framing pins are proven on two independently-authored corpora and
     // the xor_2 path is exercised on the eligible one.
     assert!(

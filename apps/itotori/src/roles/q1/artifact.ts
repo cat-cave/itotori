@@ -28,7 +28,7 @@ export type Q1ReviewArtifact = Extract<WikiObject, { kind: "translation" }>;
 export interface Q1ArtifactContext {
   /** The exact batch that contained the candidate under review. */
   readonly candidateBatch: DraftBatch;
-  /** Fine-grained bible/claim dependencies resolved for this unit by RB-031. */
+  /** Fine-grained bible/claim dependencies resolved for this unit by policy. */
   readonly dependencies: readonly DependencyRef[];
   /** The immutable snapshot that re-proves every cited claim before emission. */
   readonly validationModel: ReadModel;

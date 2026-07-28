@@ -1,8 +1,8 @@
-//! Real-bytes regression for `utsushi-stream-decode-desync-scene2-sweetie`.
+//! Real-bytes regression for `utsushi-stream-decode-desync-scene2-primary_corpus`.
 //!
 //! # The bug
 //!
-//! utsushi's [`decode_bytecode_stream`] hard-failed on Sweetie HD scene 2
+//! utsushi's [`decode_bytecode_stream`] hard-failed on primary_corpus HD scene 2
 //! (the button-object game-select) with
 //! `MalformedElement { position: 526 }` — its standalone `0x24`
 //! ExpressionElement decoder required the compound-**assignment** form
@@ -14,14 +14,14 @@
 //! byte after `\`) and decodes the scene cleanly.
 //!
 //! This surfaced on the game-select carve path, which walks the AVG32-
-//! decompressed scenes **without** the `use_xor_2` recovery (Sweetie HD is
+//! decompressed scenes **without** the `use_xor_2` recovery (primary_corpus HD is
 //! compiler `110002`). The `decoder_parity_real_bytes` suite could not catch
 //! it: it feeds both decoders the `use_xor_2`-decrypted bytes, on which utsushi
 //! already framed scene 2 identically to kaifuu. The divergence lived purely
 //! in the stricter expression-element grammar and only manifested on the
 //! non-decrypted (or otherwise-diverging) byte stream.
 //!
-//! # What this proves, on REAL bytes (Sweetie HD)
+//! # What this proves, on REAL bytes (primary_corpus HD)
 //!
 //! 1. **No desync.** [`decode_bytecode_stream`] on the non-decrypted scene-2
 //!    bytecode is `Ok` (previously `Err(MalformedElement@526)`), so the carve
@@ -35,7 +35,7 @@
 //!
 //! No copyrighted text is asserted — only offsets, element/opcode counts, and
 //! goto targets. `#[ignore]`-gated for the periodic oracle; run with:
-//! `ITOTORI_REAL_GAME_ROOT=<sweetie> \`
+//! `ITOTORI_REAL_GAME_ROOT=<primary_corpus> \`
 //! `cargo test -p utsushi-reallive --test scene2_desync_regression_real_bytes -- --ignored`
 
 #[path = "support/real_corpus.rs"]
@@ -52,7 +52,7 @@ use utsushi_reallive::{
     decompress_all_scenes,
 };
 
-/// Scene-directory slot id of the Sweetie HD button-object game-select.
+/// Scene-directory slot id of the primary_corpus HD button-object game-select.
 const GAME_SELECT_SCENE_ID: u16 = 2;
 
 /// Decompress every populated scene through the AVG32 first-level inflate
@@ -112,7 +112,7 @@ fn scene2_decodes_without_desync_and_matches_kaifuu() {
     let scene2 = scenes
         .iter()
         .find(|s| s.scene_id == GAME_SELECT_SCENE_ID)
-        .expect("Sweetie HD scene 2 is present");
+        .expect("primary_corpus HD scene 2 is present");
 
     // 1. No desync: utsushi decodes the non-decrypted scene-2 bytecode. This
     //    is the exact regression — the old expression-element grammar failed
@@ -156,7 +156,7 @@ fn scene2_decodes_without_desync_and_matches_kaifuu() {
 
     // 4. Store load: build_scene_store no longer skips scene 2.
     let (store, _shift_jis, _stats) =
-        build_scene_store(&seen_bytes).expect("build scene store from Sweetie HD");
+        build_scene_store(&seen_bytes).expect("build scene store from primary_corpus HD");
     assert!(
         store.scene_ids().contains(&GAME_SELECT_SCENE_ID),
         "scene 2 (the game-select) must be loaded into the replay store, not skipped",

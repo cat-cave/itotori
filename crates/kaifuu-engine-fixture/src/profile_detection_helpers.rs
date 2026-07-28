@@ -22,7 +22,7 @@ pub(crate) fn case_insensitive_find(dir: &Path, name: &str) -> Option<std::path:
 // walks the effective RealLive data dir (the resolved
 // REALLIVEDATA subdir or, when no marker was found, the game root) up
 // to two directory levels deep to count corroborating extensions and
-// the AVG32 disqualifier. The depth-2 bound captures Sweetie HD's
+// the AVG32 disqualifier. The depth-2 bound captures primary_corpus HD's
 // observed layout (`<REALLIVEDATA>/g00/*.g00`,
 // `<REALLIVEDATA>/koe/*.koe`, etc.) without descending into save /
 // debug subtrees that ship with some retail installers. See
@@ -96,7 +96,7 @@ fn walk_reallive_extension_dir(
 // Derivation: every RealLive title since AVG32 stores SEEN.TXT as a fixed
 // 10,000-slot directory of (u32_le offset, u32_le size) pairs at file
 // offset 0. Each slot is 8 bytes; an unused slot is zeroed. See
-// `docs/research/reallive-engine.md` §C and the Sweetie HD verification
+// `docs/research/reallive-engine.md` §C and the primary_corpus HD verification
 // in `docs/audits/real-bytes-validation-2026-06-24.md` §2.8.
 // We accept any file that is at least 80,000 bytes long (the fixed
 // directory), contains at least one non-zero slot, and whose every
