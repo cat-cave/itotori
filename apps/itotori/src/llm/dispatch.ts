@@ -18,7 +18,6 @@ import {
   type AnyTool,
   type ChatMiddleware,
   type ModelMessage,
-  type UsageInfo,
 } from "@tanstack/ai";
 import {
   createOpenRouterText,
@@ -57,7 +56,12 @@ import {
 } from "./reasoning-details-continuity.js";
 import type { GenerationLookup } from "./generation-metadata.js";
 import { assertCallUsesCertifiedRoleModelProfile } from "./role-model-profiles.js";
-import { providerTerminalSchema } from "./terminal-output.js";
+import { providerTerminalSchema, terminalOutputSchema } from "./terminal-output.js";
+import { gateRejectionDiagnostic } from "./dispatch-gates.js";
+import { hasRequiredUsage, terminalOutputFromReceipt } from "./dispatch-output-recovery.js";
+import { Semaphore, addUsage, finishReason, type UsageAccumulator } from "./dispatch-primitives.js";
+
+export { hasRequiredUsage, terminalOutputFromReceipt } from "./dispatch-output-recovery.js";
 
 export interface DispatchTool {
   readonly name: ToolName;
@@ -75,19 +79,10 @@ export interface DispatchRuntime {
   readonly memo: PhysicalStepMemoRuntime;
   readonly contentAccess: LlmContentReadAuthorizer;
   readonly fetcher?: Fetcher;
-  /** Resolves the concrete served route after the model response completes. */
   readonly generationLookup?: GenerationLookup;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly onReasoningDetailsContinuity?: (evidence: ReasoningDetailsContinuityEvidence) => void;
 }
-
-type UsageAccumulator = {
-  promptTokens: number;
-  completionTokens: number;
-  reasoningTokens: number;
-  cachedTokens: number;
-  sawUsage: boolean;
-};
 
 type DispatchState = {
   events: DispatchEvent[];
@@ -95,32 +90,11 @@ type DispatchState = {
   modelStepCount: number;
   toolCallCount: number;
   stepLimitReached: boolean;
-  /** A tool-loop adapter may discard the original injected fault before rethrowing. */
   durabilityFaultCaught: boolean;
   lastFinishReason: "stop" | "tool-calls" | "length" | "content-filter" | "unknown";
 };
 
 type FailureKind = Extract<CallResult, { status: "failure" }>["failureKind"];
-
-function gateRejectionDiagnostic(error: unknown): string | null {
-  if (!(error instanceof Error) || !["FinalizeError", "RepairFinalizeError"].includes(error.name)) {
-    return null;
-  }
-  const code =
-    typeof (error as { code?: unknown }).code === "string"
-      ? (error as unknown as { code: string }).code
-      : "unspecified";
-  if (
-    !/^(?:protected-span|scope-kind-mismatch|segment-batch-mismatch|double-finalize|unit-cardinality|unit-order|source-hash|encoding|choice-encoding|basis-mismatch|resolving-evidence|parent-batch-mismatch|parent-mismatch|bundle-mismatch|unaffected-mutated|failed-ids-mismatch|passing-id-patch|patch-order|not-grounded|forbidden-key|invalid-target|missing-output)$/u.test(
-      code,
-    )
-  ) {
-    return null;
-  }
-  return code === "protected-span"
-    ? "content gate rejected output: protected placeholder preservation failed"
-    : `content gate rejected output: ${error.name} (${code})`;
-}
 
 const EMPTY_USAGE = {
   promptTokens: 0,
@@ -129,29 +103,6 @@ const EMPTY_USAGE = {
   cachedTokens: 0,
   sawUsage: false,
 } as const;
-
-class Semaphore {
-  readonly #limit: number;
-  #active = 0;
-  readonly #waiters: Array<() => void> = [];
-
-  constructor(limit: number) {
-    this.#limit = limit;
-  }
-
-  async run<T>(task: () => Promise<T>): Promise<T> {
-    if (this.#active >= this.#limit) {
-      await new Promise<void>((resolve) => this.#waiters.push(resolve));
-    }
-    this.#active += 1;
-    try {
-      return await task();
-    } finally {
-      this.#active -= 1;
-      this.#waiters.shift()?.();
-    }
-  }
-}
 
 async function readPayload(
   runtime: DispatchRuntime,
@@ -220,21 +171,6 @@ async function modelMessages(
   }
 
   return { messages, systemPrompts };
-}
-
-function addUsage(target: UsageAccumulator, usage: UsageInfo): void {
-  target.sawUsage = true;
-  target.promptTokens += usage.promptTokens;
-  target.completionTokens += usage.completionTokens;
-  target.reasoningTokens += usage.completionTokensDetails?.reasoningTokens ?? 0;
-  target.cachedTokens += usage.promptTokensDetails?.cachedTokens ?? 0;
-}
-
-function finishReason(
-  value: string | null | undefined,
-): "stop" | "length" | "content-filter" | "unknown" {
-  if (value === "stop" || value === "length") return value;
-  return value === "content_filter" ? "content-filter" : "unknown";
 }
 
 function dispatchMiddleware(state: DispatchState, maxToolCalls: number): ChatMiddleware {
@@ -367,7 +303,6 @@ function failureKind(error: unknown, state: DispatchState): FailureKind {
   if (/validation|invalid input|expected|schema/iu.test(message)) return "schema-failure";
   return "transport";
 }
-/** The only production boundary that constructs an OpenRouter-backed model adapter. */
 export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): Promise<CallResult> {
   const spec = CallSpecSchema.parse(specInput);
   assertCallUsesCertifiedRoleModelProfile(spec);
@@ -435,36 +370,41 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
       observer,
     );
 
-    const value = await chat({
-      adapter,
-      messages: converted.messages,
-      systemPrompts: converted.systemPrompts,
-      tools: spec.limits.maxToolCalls === 0 ? [] : configuredTools.tools,
-      outputSchema: providerTerminalSchema(spec.output),
-      agentLoopStrategy: maxIterations(spec.limits.maxSteps),
-      modelOptions: {
-        provider: spec.providerPolicy,
-        plugins: [],
-        reasoning: { effort: spec.reasoning.effort },
-        temperature: spec.sampling.temperature,
-        topP: spec.sampling.topP,
-        ...(spec.sampling.seed === null ? {} : { seed: spec.sampling.seed }),
-        maxCompletionTokens: spec.limits.maxOutputTokens,
-        ...(spec.tools.length > 0 && spec.limits.maxParallelTools > 1
-          ? { parallelToolCalls: true }
-          : {}),
-      },
-      middleware: [dispatchMiddleware(state, spec.limits.maxToolCalls)],
-      debug: false,
-    });
+    const value = terminalOutputSchema(spec.output).parse(
+      await chat({
+        adapter,
+        messages: converted.messages,
+        systemPrompts: converted.systemPrompts,
+        tools: spec.limits.maxToolCalls === 0 ? [] : configuredTools.tools,
+        outputSchema: providerTerminalSchema(spec.output),
+        agentLoopStrategy: maxIterations(spec.limits.maxSteps),
+        modelOptions: {
+          provider: spec.providerPolicy,
+          plugins: [],
+          reasoning: { effort: spec.reasoning.effort },
+          temperature: spec.sampling.temperature,
+          topP: spec.sampling.topP,
+          ...(spec.sampling.seed === null ? {} : { seed: spec.sampling.seed }),
+          maxCompletionTokens: spec.limits.maxOutputTokens,
+          ...(spec.tools.length > 0 && spec.limits.maxParallelTools > 1
+            ? { parallelToolCalls: true }
+            : {}),
+        },
+        middleware: [dispatchMiddleware(state, spec.limits.maxToolCalls)],
+        debug: false,
+      }).catch((error: unknown) => {
+        const durableOutput = terminalOutputFromReceipt(memoState.receipts.at(-1));
+        if (durableOutput === null) throw error;
+        return durableOutput;
+      }),
+    );
 
-    if (!state.usage.sawUsage) throw new Error("provider response omitted usage");
     const finalStep = memoState.receipts.at(-1);
     if (!finalStep) throw new Error("provider response was not durably memoized");
+    if (!hasRequiredUsage(state.usage.sawUsage, finalStep.usage)) {
+      throw new Error("provider response omitted usage");
+    }
     const verification = finalStep.verification;
-    // The integrity gate applies to the terminal response selected for accepted projection.
-    // A repaired intermediate remains quarantined in its own immutable memo but
-    // cannot veto a later valid terminal response.
     if (verification.status === "quarantined") {
       return CallResultSchema.parse({
         schemaVersion: CALL_RESULT_SCHEMA_VERSION,

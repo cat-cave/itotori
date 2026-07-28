@@ -354,7 +354,7 @@ function createCapturedDraftFinalizer(
     acceptedByUnit.set(input.unitId, output);
     return {
       outputId: output.outputId,
-      semanticKey: `unit:${input.unitId}:${input.stage}`,
+      semanticKey: sha256(`${input.unitId}:${input.stage}`),
       schemaVersion: output.schemaVersion,
       outputJson: JSON.stringify(output),
       memoKeys: output.memoKeys,

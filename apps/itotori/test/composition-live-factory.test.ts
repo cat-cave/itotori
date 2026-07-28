@@ -13,6 +13,7 @@ import {
   type LiveWorkflowFactoryConfig,
 } from "../src/composition/live/index.js";
 import { bridgeUnitsByUnitKey } from "../src/composition/live/factory.js";
+import { projectDecodeStructure } from "../src/composition/live/scene-projection.js";
 import {
   buildRb024Snapshot,
   loadBridgeBundle,
@@ -168,10 +169,6 @@ describe("live workflow factory", () => {
 
 describe("bridgeUnitsByUnitKey key resolution (real bridge id shape)", () => {
   it("resolves a bridge source unit by the BARE bridge unit id, not only the factId", () => {
-    // Real fact snapshots carry factId = `unit:<id>` while the draft sequence
-    // (projectDecodeStructure scene.units) asks for the BARE unit id. Keying the
-    // bridge-unit map by factId alone made the first real unit fail with
-    // "no bridge source unit for unit <id>" before any model call.
     const bridge = loadBridgeBundle();
     const source = bridge.units[0]!;
     const ordered = [{ factId: `unit:${source.bridgeUnitId}`, bridgeUnitId: source.bridgeUnitId }];
@@ -180,6 +177,10 @@ describe("bridgeUnitsByUnitKey key resolution (real bridge id shape)", () => {
 
     expect(byKey.get(source.bridgeUnitId)).toBe(source);
     expect(byKey.get(`unit:${source.bridgeUnitId}`)).toBe(source);
+    const projected = projectDecodeStructure(parseableWholeGameStructure());
+    expect(projected.scenes.flatMap((scene) => scene.units).map((unit) => unit.unitId)).toContain(
+      `unit:${source.bridgeUnitId}`,
+    );
   });
 
   it("still refuses an ordered unit the bridge does not carry", () => {

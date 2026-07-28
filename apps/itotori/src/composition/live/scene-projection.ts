@@ -14,7 +14,9 @@
 // a speaker's first occurrence across the dispatch order. A dispatch-only scene
 // with no translatable units is skipped (it carries no work), never emitted empty.
 
+import { namespacedFactId } from "@itotori/db";
 import { createHash } from "node:crypto";
+import { stableSegment } from "../../prepass/fact-id.js";
 import {
   SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
   parseNarrativeStructure,
@@ -69,15 +71,19 @@ export function projectDecodeStructure(structureJson: unknown): DecodeSceneProje
     const sceneKey = String(sceneId);
     const sceneRoute = firstRoute(scene.routeMembership);
     const units: WorkflowUnit[] = decodeUnits.map((unit) => {
+      const unitId = namespacedFactId(
+        unit.choiceId === null ? "unit" : "choice",
+        stableSegment(unit.bridgeRef.bridgeUnitId),
+      );
       const speakerId = unit.characterId;
       const firstAppearance = speakerId !== null && !seenSpeakers.has(speakerId);
       if (speakerId !== null) seenSpeakers.add(speakerId);
       const routeId = firstRoute(unit.routeMembership) ?? sceneRoute;
       const sourceHash = sha256(unit.sourceText);
 
-      renderingIdsByUnit.set(unit.unitId, [...unit.observedLineIds]);
-      factsByUnit.set(unit.unitId, {
-        unitId: unit.unitId,
+      renderingIdsByUnit.set(unitId, [...unit.observedLineIds]);
+      factsByUnit.set(unitId, {
+        unitId,
         sceneId: sceneKey,
         sourceHash,
         sourceText: unit.sourceText,
@@ -86,7 +92,7 @@ export function projectDecodeStructure(structureJson: unknown): DecodeSceneProje
         routeId,
       });
       return {
-        unitId: unit.unitId,
+        unitId,
         sourceHash,
         surfaceKind: unit.surfaceKind,
         speakerId,

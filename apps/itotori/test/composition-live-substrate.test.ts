@@ -3,6 +3,7 @@ import {
   LlmAcceptedOutputCasError,
   LlmMemoConflictError,
   LlmRetriesExhaustedError,
+  namespacedFactId,
   type AcceptLlmOutputInput,
   type LlmAcceptedOutputHead,
   type LlmCallMemoStore,
@@ -20,6 +21,7 @@ import { dispatch } from "../src/llm/dispatch.js";
 import { captureGenerationMetadata } from "../src/llm/generation-metadata.js";
 import { resolveRoleModelProfile } from "../src/llm/role-model-profiles.js";
 import { TransientStepError, type UnitStage, type WorkflowScene } from "../src/workflow/index.js";
+import { stableSegment } from "../src/prepass/fact-id.js";
 import {
   createCertifiedDispatch,
   createDispatchRuntime,
@@ -340,19 +342,22 @@ describe("decode → WorkflowScene[] adapter", () => {
     return JSON.parse(readFileSync(path, "utf8"));
   }
 
-  it("projects a real fixture structure into dispatch-ordered scenes with decode identity", () => {
+  it("projects a real fixture structure into dispatch-ordered scenes with canonical decode identity", () => {
     const projection = projectDecodeStructure(fixtureStructure());
     const scenes: readonly WorkflowScene[] = projection.scenes;
+    const firstUnitId = namespacedFactId("unit", stableSegment("bridge:100:1"));
+    const secondUnitId = namespacedFactId("unit", stableSegment("bridge:100:2"));
+    const rinAgainUnitId = namespacedFactId("unit", stableSegment("bridge:200:1"));
 
     // The dispatch-only scene 300 (no translatable units) is skipped.
     expect(scenes.map((scene) => scene.sceneId)).toEqual(["scene:0100", "scene:0200"]);
 
     // Units are ordered by play order (the array is deliberately out of order).
-    expect(scenes[0]!.units.map((unit) => unit.unitId)).toEqual(["unit:100:1", "unit:100:2"]);
+    expect(scenes[0]!.units.map((unit) => unit.unitId)).toEqual([firstUnitId, secondUnitId]);
 
     // firstAppearance is a speaker's first occurrence across the dispatch order.
     expect(scenes[0]!.units.map((unit) => unit.firstAppearance)).toEqual([true, true]);
-    const rinAgain = scenes[1]!.units.find((unit) => unit.unitId === "unit:200:1");
+    const rinAgain = scenes[1]!.units.find((unit) => unit.unitId === rinAgainUnitId);
     expect(rinAgain?.firstAppearance).toBe(false);
     expect(rinAgain?.speakerId).toBe("char:rin");
     // routeId falls back from unit to the scene's route membership.
@@ -363,8 +368,8 @@ describe("decode → WorkflowScene[] adapter", () => {
     expect(scenes[0]!.units[0]!.sourceHash).toBe(sha256("はじめまして。"));
 
     // The per-unit fact + rendering maps back the draft assembler.
-    expect(projection.renderingIdsByUnit.get("unit:100:1")).toEqual(["line:100:1"]);
-    expect(projection.factsByUnit.get("unit:200:1")).toMatchObject({
+    expect(projection.renderingIdsByUnit.get(firstUnitId)).toEqual(["line:100:1"]);
+    expect(projection.factsByUnit.get(rinAgainUnitId)).toMatchObject({
       sceneId: "scene:0200",
       speakerId: "char:rin",
       routeId: "route:rin",

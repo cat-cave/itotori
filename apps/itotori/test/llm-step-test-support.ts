@@ -239,6 +239,20 @@ export function structuredProviderResponse(value: unknown, cost?: number): Respo
   ]);
 }
 
+/** OpenRouter may attach usage to the terminal choice chunk rather than emit it
+ * as a trailing usage-only chunk. The durable memo must preserve that usage
+ * even when TanStack skips its middleware usage callback. */
+export function terminalChunkUsageProviderResponse(value: unknown): Response {
+  return sse([
+    streamChunk({ delta: { role: "assistant", content: JSON.stringify(value) } }),
+    streamChunk({
+      delta: {},
+      finishReason: "stop",
+      usage: { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 },
+    }),
+  ]);
+}
+
 export function rawStructuredProviderResponse(content: string): Response {
   return sse([
     streamChunk({ delta: { role: "assistant", content } }),

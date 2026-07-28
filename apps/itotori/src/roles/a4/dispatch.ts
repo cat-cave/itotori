@@ -69,6 +69,13 @@ function renderPrompt(request: A4ReconcileRequest): string {
     "Emit route-arc, callback, foreshadow, and relationship-delta claims. Every " +
       "callback and foreshadow must cite BOTH endpoints by unit id; every origin " +
       "must precede its use. Never invent a missing endpoint.",
+    "Return only one strict route-arc WikiObject JSON value. Its complete root key set is " +
+      "schemaVersion, objectId, version, lang, subject, scope, claims, media, dependencies, " +
+      "provisional, kind, and body; kind must be 'route-arc'. Its body key set is routeId, " +
+      "arcSummary, callbacks, foreshadows, relationshipDeltas, revealOrder, unresolvedEdges, " +
+      "and revealHorizon. Do not return an analysis or draft wrapper, including fields named " +
+      "delta or basis, and do not add any other fields. Every required array, including " +
+      "revealOrder, must be an array (use [] when empty), never null.",
   ].join("\n");
 }
 

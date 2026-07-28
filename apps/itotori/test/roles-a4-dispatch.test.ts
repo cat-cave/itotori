@@ -218,6 +218,12 @@ describe("A4 dispatches through the sole ZDR boundary", () => {
     expect(spec.output.name).toBe("wiki-object");
     expect(spec.tools).toHaveLength(0);
     expect(spec.contextSnapshotId).toBe(model.snapshotId);
+    expect(prompts[0]!.text).toContain("Return only one strict route-arc WikiObject JSON value.");
+    expect(prompts[0]!.text).toContain("schemaVersion, objectId, version, lang, subject, scope");
+    expect(prompts[0]!.text).toContain("Do not return an analysis or draft wrapper");
+    expect(prompts[0]!.text).toContain(
+      "revealOrder, must be an array (use [] when empty), never null",
+    );
     expect(prompts[0]!.ref.contentHash).toBe(
       `sha256:${createHash("sha256").update(prompts[0]!.text).digest("hex")}`,
     );

@@ -32,6 +32,7 @@ import {
 } from "./physical-step-completion.js";
 import { captureGenerationMetadata } from "./generation-metadata.js";
 import type { GenerationLookup } from "./generation-metadata.js";
+import { asArray, asHash, isToolMessage, parseChunks } from "./physical-step-utils.js";
 
 const TANSTACK_VERSION = "0.40.0";
 const OPENROUTER_ADAPTER_VERSION = "0.15.8";
@@ -51,6 +52,7 @@ export interface PhysicalStepReceipt {
   memoKey: `sha256:${string}`;
   responseEventId: `sha256:${string}`;
   responseEncrypted: EncryptedPayloadRef;
+  outcome: PhysicalStepMemo["value"]["outcome"];
   verification: PhysicalStepMemo["value"]["verification"];
   usage: PhysicalStepMemo["value"]["usage"];
   billing: PhysicalStepMemo["value"]["billing"];
@@ -158,6 +160,7 @@ export function memoizePhysicalSteps(
           memoKey: asHash(identity.key.memoKey),
           responseEventId,
           responseEncrypted: identity.responseRef(stored.responseJson),
+          outcome: memo.value.outcome,
           verification: memo.value.verification,
           usage: memo.value.usage,
           billing: memo.value.billing,
@@ -235,6 +238,7 @@ export function memoizePhysicalSteps(
         memoKey: asHash(identity.key.memoKey),
         responseEventId,
         responseEncrypted: identity.responseRef(stored.responseJson),
+        outcome: memo.value.outcome,
         verification: memo.value.verification,
         usage: memo.value.usage,
         billing: memo.value.billing,
@@ -479,26 +483,6 @@ function withSignal<T extends TextOptions<Record<string, unknown>>>(
   } as T;
 }
 
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function isToolMessage(value: unknown): boolean {
-  return typeof value === "object" && value !== null && "role" in value && value.role === "tool";
-}
-
-function parseChunks(json: string | null): StreamChunk[] {
-  if (json === null) return [];
-  const parsed: unknown = JSON.parse(json);
-  if (
-    !Array.isArray(parsed) ||
-    parsed.some((chunk) => typeof chunk !== "object" || chunk === null)
-  ) {
-    throw new Error("memoized physical response is not a stream chunk array");
-  }
-  return parsed as StreamChunk[];
-}
-
 function parseStructuredResult(json: string): StructuredOutputResult {
   const parsed: unknown = JSON.parse(json);
   if (
@@ -512,9 +496,4 @@ function parseStructuredResult(json: string): StructuredOutputResult {
   const rawText = parsed.rawText;
   if (typeof rawText !== "string") throw new Error("memoized structured raw text is invalid");
   return { data: parsed.data, rawText };
-}
-
-function asHash(value: string): `sha256:${string}` {
-  if (!/^sha256:[0-9a-f]{64}$/u.test(value)) throw new Error("memo identity is not a SHA-256 hash");
-  return value as `sha256:${string}`;
 }
