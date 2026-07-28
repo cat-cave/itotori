@@ -40,6 +40,7 @@ export function buildHelpText(allCommands = false): string {
   lines.push(
     "                          [--context-scope <scope>] [--output-scope <scope>] [--whole-scene-max-units <N>] [--output <JSON>].",
   );
+  lines.push("                          Persists final accepted outputs; its redacted summary is not patch input.");
   lines.push(
     "  localize-portfolio      Run independent localization drivers from a JSON portfolio.",
   );
@@ -53,6 +54,7 @@ export function buildHelpText(allCommands = false): string {
   lines.push(
     "                          --input <JSON> --source <RO game> --build-root <RW dir> --scope dialogue-only|dialogue+choices --output <receipt JSON>.",
   );
+  lines.push("                          --input is NativePatchbackInput, never localize run-summary.json.");
   lines.push("  validate                Validate a patched game (replay + render).");
   lines.push("");
 
@@ -185,11 +187,20 @@ export function buildCommandHelpText(args: readonly string[]): string | undefine
       lines.push(
         "Optional: --context-scope, --output-scope, --whole-scene-max-units, --ablation, --lease-owner-id.",
       );
+      lines.push(
+        "Production requires the configured provider, Postgres, and field cipher; --output is a redacted summary, not patch input.",
+      );
       break;
     case "patch":
       if (subcommand === "produce") {
         usage(
           "itotori patch produce --input <JSON> --source <PATH> --build-root <PATH> --scope dialogue-only|dialogue+choices --output <JSON>",
+        );
+        lines.push(
+          "--input is a serialized NativePatchbackInput with final accepted unit outputs; it is not localize run-summary.json.",
+        );
+        lines.push(
+          "For a completed DB-backed production run, Studio's Produce patched build action uses /api/patchback/produce.",
         );
       } else {
         usage(

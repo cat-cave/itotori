@@ -101,6 +101,7 @@ describe("native patchback + replay (env-gated real Sweetie byte oracle)", () =>
       // (1) real bridge + (2) real structure + (3) real snapshot.
       expect(
         runKaifuuExtract({
+          engine: "reallive",
           gameRoot: corpus!.gameRoot,
           gameId: "reallive-corpus",
           gameVersion: "real",

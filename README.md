@@ -69,10 +69,10 @@ for the security posture.
 
 ### 3. Localize a game
 
-The observed native front half is a multi-command sequence:
+The production RealLive path is:
 
 ```
-extract  →  structure-export
+extract → structure-export → wiki + localize → final accepted outputs → Studio Produce patched build
 ```
 
 ```sh
@@ -89,13 +89,13 @@ itotori structure-export \
   --bridge   <run-dir>/bridge.json --output <run-dir>/structure.json
 ```
 
-`wiki build` and `localize` both refuse before doing work unless Postgres is
-migrated and `ITOTORI_FIELD_CIPHER_KEY` is present. The current public CLI has
-not been observed completing their live-provider path on this corpus. It also
-does not export the accepted outputs from `localize` as the translated bridge
-required by `patch`; `run-summary.json` is not a patch input. Consequently,
-there is no copy-paste CLI-only route from this archive to a localized patch in
-this build. Do not substitute a summary JSON for a translated bridge.
+`wiki build` and `localize` both require migrated Postgres and
+`ITOTORI_FIELD_CIPHER_KEY`. A completed production run stores final accepted
+outputs in that database. Studio's **Produce patched build** action loads those
+outputs through the production patchback seam, re-extracts the matching source,
+and returns a persistent patched build. `run-summary.json` remains a redacted
+summary, not a patch input; do not substitute it for a translated bridge or
+`NativePatchbackInput`.
 
 Use `itotori <command> --help` at the command you are about to run; it prints
 that command's required flags. A live run additionally requires the provider
@@ -107,17 +107,17 @@ flags, environment variables, and honest signposts, see the
 
 ### 4. Review the results
 
-The observed stages write an extracted bridge bundle and narrative structure to
-your run directory. Do not represent either as a localized patch. The Studio
-dashboard (the React app in `apps/itotori/`, documented in
-[docs/frontend.md](docs/frontend.md)) remains the review surface for work
-created through the owning integration.
+The extracted bridge and structure are source artifacts, not a localized patch.
+Review the completed run in Studio, then use **Produce patched build** to invoke
+the production accepted-output patchback seam. See the
+[RealLive localizer runbook](docs/localize-reallive.md) for the credential,
+disposable-database, and byte-verification procedure.
 
 ### 5. Take the patched output
 
-When an owning integration supplies a translated bridge, `patch` writes its
-target and Kaifuu can emit a `.kaifuu` delta package. That translated bridge is
-not produced by the CLI-only flow above; see
+The Studio action returns a tar archive of the persistent patched game tree.
+The lower-level `itotori patch produce` command accepts an already serialized
+`NativePatchbackInput`; it is not fed by `run-summary.json`. See
 [docs/subprojects-kaifuu.md](docs/subprojects-kaifuu.md) and the format-stability
 policy in
 [docs/format-stability-and-compatibility-policy.md](docs/format-stability-and-compatibility-policy.md).
