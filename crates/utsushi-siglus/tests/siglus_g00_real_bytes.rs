@@ -34,6 +34,24 @@ fn two_real_siglus_titles_decode_layered_g00_and_capture_redacted_pngs() {
     exercise_title(&second, "siglus-title-two");
 }
 
+#[test]
+fn second_real_siglus_title_routes_a_type3_asset_to_the_jpeg_decoder() {
+    let Some(root) = corpus_root(SECOND_TITLE_ENV) else {
+        return;
+    };
+    let logical_path = find_type3_asset(&root)
+        .expect("second real Siglus title must contain a type-3 JPEG G00 asset");
+    let bytes = fs::read(root.join(&logical_path)).expect("read selected type-3 G00 asset");
+
+    assert!(
+        matches!(
+            decode_siglus_g00(&bytes),
+            Err(utsushi_siglus::SiglusG00Error::Jpeg { .. })
+        ),
+        "the real type-3 payload is not a directly decodable JPEG after the common G00 header; do not silently treat it as an absent or blank image"
+    );
+}
+
 fn corpus_root(variable: &str) -> Option<PathBuf> {
     let Some(value) = std::env::var_os(variable) else {
         eprintln!("SKIP siglus real bytes: {variable} is unset");
@@ -137,6 +155,31 @@ fn find_supported_assets(root: &Path) -> Option<(String, String)> {
         }
         if let (Some(type0), Some(type2)) = (&type0, &type2) {
             return Some((type0.clone(), type2.clone()));
+        }
+    }
+    None
+}
+
+fn find_type3_asset(root: &Path) -> Option<String> {
+    let directory = fs::read_dir(root.join("g00")).ok()?;
+    for entry in directory.flatten() {
+        let path = entry.path();
+        if !path.is_file()
+            || path
+                .extension()
+                .is_none_or(|extension| !extension.eq_ignore_ascii_case("g00"))
+        {
+            continue;
+        }
+        let mut lead = [0u8; 1];
+        if fs::File::open(&path)
+            .and_then(|mut file| file.read_exact(&mut lead))
+            .is_ok_and(|()| lead[0] == 3)
+        {
+            return path
+                .strip_prefix(root)
+                .ok()
+                .map(|relative| relative.to_string_lossy().replace('\\', "/"));
         }
     }
     None
