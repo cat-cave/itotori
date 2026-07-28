@@ -207,7 +207,7 @@ export const costReportFixture: ProjectCostReport = {
 };
 
 export const jobsRunTableFixture: JobsRunTableReadModel = {
-  schemaVersion: "jobs.run_table.v0.2",
+  schemaVersion: "jobs.run_table.v0.3",
   generatedAt: "2026-07-07T00:00:00.000Z",
   filter: { projectId: "project-1" },
   pagination: {
@@ -222,24 +222,20 @@ export const jobsRunTableFixture: JobsRunTableReadModel = {
   rows: [
     {
       runId: "provider-run-1",
-      journalRunId: "journal-run-1",
-      attemptId: "provider-run-1",
-      providerRunId: "provider-run-1",
-      bridgeUnitId: "bridge-unit-1",
+      jobId: "job-1",
       projectId: "project-1",
       localeBranchId: "locale-branch-1",
       task: "Draft translation",
       status: "succeeded",
       servedModel: "openai/gpt-4.1-mini",
       servedProvider: "openai",
-      zdr: true,
-      cost: { unit: "usd", amount: "0.00218000" },
+      zdr: { availability: "captured", enforced: true },
+      cost: { availability: "captured", unit: "usd", amount: "0.00218" },
       tokens: { in: 22, out: 14, total: 36 },
       fallback: {
-        availability: "captured",
         used: false,
         plan: ["openai/gpt-4.1-mini"],
-        chain: [],
+        chain: null,
       },
       createdAt: "2026-07-07T00:00:00.000Z",
     },

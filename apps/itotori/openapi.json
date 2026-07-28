@@ -743,6 +743,7 @@
               "forbidden",
               "not_found",
               "method_not_allowed",
+              "database_migrations_required",
               "internal_error"
             ]
           },
@@ -806,15 +807,9 @@
         "type": "object"
       },
       "ApiLaunchPassRequest": {
-        "additionalProperties": true,
+        "additionalProperties": false,
         "properties": {
-          "cancelled": {
-            "type": "boolean"
-          },
           "localeBranchId": {
-            "type": "string"
-          },
-          "resumeRunId": {
             "type": "string"
           }
         },
@@ -1668,13 +1663,31 @@
       "ApiPatchIterationPlayRequest": {
         "additionalProperties": false,
         "properties": {
+          "adapterId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "artifactRoot": {
+            "type": "string"
+          },
           "launchDescriptor": {
             "additionalProperties": true,
             "type": "object"
+          },
+          "operation": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "output": {
+            "type": "string"
           }
         },
         "required": [
-          "launchDescriptor"
+          "adapterId",
+          "artifactRoot",
+          "launchDescriptor",
+          "operation",
+          "output"
         ],
         "type": "object"
       },
@@ -1682,34 +1695,47 @@
         "additionalProperties": false,
         "properties": {
           "receipt": {
-            "additionalProperties": false,
-            "properties": {
-              "engine": {
-                "const": "reallive"
-              },
-              "observedTextLineCount": {
-                "minimum": 0,
-                "type": "integer"
-              },
-              "replay": {
-                "const": "observed"
-              },
-              "runtime": {
-                "const": "utsushi-reallive"
-              },
-              "scene": {
-                "minimum": 0,
-                "type": "integer"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "adapterId": {
+                    "const": "reallive"
+                  },
+                  "adapterReceipt": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "observedTextLineCount": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "replay": {
+                        "const": "observed"
+                      },
+                      "scene": {
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "observedTextLineCount",
+                      "replay",
+                      "scene"
+                    ],
+                    "type": "object"
+                  },
+                  "operation": {
+                    "const": "replay-validate"
+                  }
+                },
+                "required": [
+                  "adapterId",
+                  "adapterReceipt",
+                  "operation"
+                ],
+                "type": "object"
               }
-            },
-            "required": [
-              "engine",
-              "observedTextLineCount",
-              "replay",
-              "runtime",
-              "scene"
-            ],
-            "type": "object"
+            ]
           },
           "schemaVersion": {
             "const": "itotori.patch-iteration.play.v0"
@@ -2506,6 +2532,96 @@
         ],
         "type": "object"
       },
+      "ApiPlayUnitFeedbackNote": {
+        "additionalProperties": false,
+        "properties": {
+          "bridgeUnitId": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "contextCorrectionId": {
+            "type": "string"
+          },
+          "contextStatus": {
+            "type": "string"
+          },
+          "duplicate": {
+            "type": "boolean"
+          },
+          "feedbackEvidenceId": {
+            "type": "string"
+          },
+          "feedbackReportId": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "reportedAt": {
+            "type": "string"
+          },
+          "sceneId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "severity": {
+            "type": "string"
+          },
+          "triageLabel": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bridgeUnitId",
+          "category",
+          "contextCorrectionId",
+          "contextStatus",
+          "duplicate",
+          "feedbackEvidenceId",
+          "feedbackReportId",
+          "note",
+          "reportedAt",
+          "sceneId",
+          "severity",
+          "triageLabel"
+        ],
+        "type": "object"
+      },
+      "ApiPlayUnitFeedbackResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bridgeUnitId": {
+            "type": "string"
+          },
+          "localeBranchId": {},
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/ApiPlayUnitFeedbackNote"
+            },
+            "type": "array"
+          },
+          "projectId": {},
+          "schemaVersion": {
+            "const": "itotori.play.unit-feedback.v0"
+          }
+        },
+        "required": [
+          "bridgeUnitId",
+          "localeBranchId",
+          "notes",
+          "projectId",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
       "ApiPrincipalPermissionSetGrantRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2568,63 +2684,508 @@
         "type": "object"
       },
       "ApiProjectDecodeExtractRequest": {
-        "additionalProperties": true,
-        "properties": {
-          "gameId": {
-            "type": "string"
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "engine": {
+                    "const": "reallive"
+                  },
+                  "gameId": {
+                    "type": "string"
+                  },
+                  "gameRoot": {
+                    "type": "string"
+                  },
+                  "gameVersion": {
+                    "type": "string"
+                  },
+                  "sourceLocale": {
+                    "type": "string"
+                  },
+                  "sourceProfileId": {
+                    "type": "string"
+                  },
+                  "vaultCanonicalId": {
+                    "type": "string"
+                  },
+                  "wholeSeen": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "engine",
+                  "gameId",
+                  "gameVersion",
+                  "sourceLocale",
+                  "sourceProfileId",
+                  "wholeSeen"
+                ],
+                "type": "object"
+              },
+              {
+                "oneOf": [
+                  {
+                    "required": [
+                      "vaultCanonicalId"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "gameRoot"
+                    ]
+                  }
+                ]
+              }
+            ]
           },
-          "gameRoot": {
-            "type": "string"
+          {
+            "allOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "engine": {
+                    "const": "reallive"
+                  },
+                  "gameId": {
+                    "type": "string"
+                  },
+                  "gameRoot": {
+                    "type": "string"
+                  },
+                  "gameVersion": {
+                    "type": "string"
+                  },
+                  "scene": {
+                    "type": "integer"
+                  },
+                  "sourceLocale": {
+                    "type": "string"
+                  },
+                  "sourceProfileId": {
+                    "type": "string"
+                  },
+                  "vaultCanonicalId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "engine",
+                  "gameId",
+                  "gameVersion",
+                  "scene",
+                  "sourceLocale",
+                  "sourceProfileId"
+                ],
+                "type": "object"
+              },
+              {
+                "oneOf": [
+                  {
+                    "required": [
+                      "vaultCanonicalId"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "gameRoot"
+                    ]
+                  }
+                ]
+              }
+            ]
           },
-          "gameVersion": {
-            "type": "string"
+          {
+            "allOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "engine": {
+                    "const": "reallive"
+                  },
+                  "gameId": {
+                    "type": "string"
+                  },
+                  "gameRoot": {
+                    "type": "string"
+                  },
+                  "gameVersion": {
+                    "type": "string"
+                  },
+                  "scenes": {
+                    "type": "string"
+                  },
+                  "sourceLocale": {
+                    "type": "string"
+                  },
+                  "sourceProfileId": {
+                    "type": "string"
+                  },
+                  "vaultCanonicalId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "engine",
+                  "gameId",
+                  "gameVersion",
+                  "scenes",
+                  "sourceLocale",
+                  "sourceProfileId"
+                ],
+                "type": "object"
+              },
+              {
+                "oneOf": [
+                  {
+                    "required": [
+                      "vaultCanonicalId"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "gameRoot"
+                    ]
+                  }
+                ]
+              }
+            ]
           },
-          "scene": {
-            "type": "number"
+          {
+            "allOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "engine": {
+                    "const": "reallive"
+                  },
+                  "gameId": {
+                    "type": "string"
+                  },
+                  "gameRoot": {
+                    "type": "string"
+                  },
+                  "gameVersion": {
+                    "type": "string"
+                  },
+                  "sourceLocale": {
+                    "type": "string"
+                  },
+                  "sourceProfileId": {
+                    "type": "string"
+                  },
+                  "unitRange": {
+                    "type": "string"
+                  },
+                  "vaultCanonicalId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "engine",
+                  "gameId",
+                  "gameVersion",
+                  "sourceLocale",
+                  "sourceProfileId",
+                  "unitRange"
+                ],
+                "type": "object"
+              },
+              {
+                "oneOf": [
+                  {
+                    "required": [
+                      "vaultCanonicalId"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "gameRoot"
+                    ]
+                  }
+                ]
+              }
+            ]
           },
-          "sourceLocale": {
-            "type": "string"
-          },
-          "sourceProfileId": {
-            "type": "string"
-          },
-          "vaultCanonicalId": {
-            "type": "string"
-          },
-          "wholeSeen": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "gameId",
-          "gameVersion",
-          "sourceLocale",
-          "sourceProfileId"
-        ],
-        "type": "object"
-      },
-      "ApiProjectDecodeExtractResponse": {
-        "additionalProperties": true,
-        "properties": {
-          "bridge": {
+          {
+            "additionalProperties": false,
+            "properties": {
+              "engine": {
+                "const": "softpal"
+              },
+              "gameRoot": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "engine",
+              "gameRoot"
+            ],
             "type": "object"
           },
-          "command": {
-            "type": "string"
+          {
+            "additionalProperties": false,
+            "properties": {
+              "engine": {
+                "const": "rpg-maker"
+              },
+              "gameDir": {
+                "type": "string"
+              },
+              "gameId": {
+                "type": "string"
+              },
+              "gameVersion": {
+                "type": "string"
+              },
+              "sourceLocale": {
+                "type": "string"
+              },
+              "sourceProfileId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "engine",
+              "gameDir",
+              "gameId",
+              "gameVersion",
+              "sourceLocale",
+              "sourceProfileId"
+            ],
+            "type": "object"
           },
-          "mode": {
-            "enum": [
-              "per-scene",
-              "whole-seen"
+          {
+            "allOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "cipherMethod": {
+                    "type": "string"
+                  },
+                  "engine": {
+                    "const": "siglus"
+                  },
+                  "gameId": {
+                    "type": "string"
+                  },
+                  "gameRoot": {
+                    "type": "string"
+                  },
+                  "gameVersion": {
+                    "type": "string"
+                  },
+                  "sourceLocale": {
+                    "type": "string"
+                  },
+                  "sourceProfileId": {
+                    "type": "string"
+                  },
+                  "vaultCanonicalId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "cipherMethod",
+                  "engine",
+                  "gameId",
+                  "gameVersion",
+                  "sourceLocale",
+                  "sourceProfileId"
+                ],
+                "type": "object"
+              },
+              {
+                "oneOf": [
+                  {
+                    "required": [
+                      "vaultCanonicalId"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "gameRoot"
+                    ]
+                  }
+                ]
+              }
             ]
           }
-        },
-        "required": [
-          "bridge",
-          "command",
-          "mode"
-        ],
-        "type": "object"
+        ]
+      },
+      "ApiProjectDecodeExtractResponse": {
+        "oneOf": [
+          {
+            "additionalProperties": true,
+            "properties": {
+              "bridge": {
+                "type": "object"
+              },
+              "command": {
+                "type": "string"
+              },
+              "engine": {
+                "const": "reallive"
+              },
+              "mode": {
+                "const": "whole-seen"
+              }
+            },
+            "required": [
+              "bridge",
+              "command",
+              "engine",
+              "mode"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": true,
+            "properties": {
+              "bridge": {
+                "type": "object"
+              },
+              "command": {
+                "type": "string"
+              },
+              "engine": {
+                "const": "reallive"
+              },
+              "mode": {
+                "const": "per-scene"
+              }
+            },
+            "required": [
+              "bridge",
+              "command",
+              "engine",
+              "mode"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": true,
+            "properties": {
+              "bridge": {
+                "type": "object"
+              },
+              "command": {
+                "type": "string"
+              },
+              "engine": {
+                "const": "reallive"
+              },
+              "mode": {
+                "const": "scene-set"
+              }
+            },
+            "required": [
+              "bridge",
+              "command",
+              "engine",
+              "mode"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": true,
+            "properties": {
+              "bridge": {
+                "type": "object"
+              },
+              "command": {
+                "type": "string"
+              },
+              "engine": {
+                "const": "reallive"
+              },
+              "mode": {
+                "const": "unit-range"
+              }
+            },
+            "required": [
+              "bridge",
+              "command",
+              "engine",
+              "mode"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": true,
+            "properties": {
+              "bridge": {
+                "type": "object"
+              },
+              "command": {
+                "type": "string"
+              },
+              "engine": {
+                "const": "softpal"
+              },
+              "mode": {
+                "const": "whole-game"
+              }
+            },
+            "required": [
+              "bridge",
+              "command",
+              "engine",
+              "mode"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": true,
+            "properties": {
+              "bridge": {
+                "type": "object"
+              },
+              "command": {
+                "type": "string"
+              },
+              "engine": {
+                "const": "rpg-maker"
+              },
+              "mode": {
+                "const": "whole-game"
+              }
+            },
+            "required": [
+              "bridge",
+              "command",
+              "engine",
+              "mode"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": true,
+            "properties": {
+              "bridge": {
+                "type": "object"
+              },
+              "command": {
+                "type": "string"
+              },
+              "engine": {
+                "const": "siglus"
+              },
+              "mode": {
+                "const": "whole-game"
+              }
+            },
+            "required": [
+              "bridge",
+              "command",
+              "engine",
+              "mode"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "ApiProjectImportRequest": {
         "additionalProperties": true,
@@ -2661,6 +3222,9 @@
         "additionalProperties": true,
         "properties": {
           "projects": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectPortfolioEntry"
+            },
             "type": "array"
           }
         },
@@ -3110,140 +3674,171 @@
         ],
         "type": "object"
       },
-      "ApiWikiAddRequest": {
+      "ApiWikiApplyRequest": {
         "additionalProperties": false,
         "properties": {
-          "affectedUnitIds": {
+          "assertion": {
+            "type": "object"
+          },
+          "inputIds": {
             "type": "array"
-          },
-          "body": {
-            "type": "string"
-          },
-          "kind": {
-            "enum": [
-              "note",
-              "glossary",
-              "style"
-            ]
-          },
-          "reason": {
-            "type": "string"
-          },
-          "sourceRevisionId": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
           }
         },
         "required": [
-          "affectedUnitIds",
-          "body",
-          "kind",
-          "reason",
-          "sourceRevisionId",
-          "title"
+          "assertion",
+          "inputIds"
         ],
         "type": "object"
       },
-      "ApiWikiEditRequest": {
+      "ApiWikiObjectApplyResponse": {
         "additionalProperties": false,
         "properties": {
-          "affectedUnitIds": {
-            "type": "array"
-          },
-          "body": {
-            "type": "string"
-          },
-          "reason": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "body",
-          "reason"
-        ],
-        "type": "object"
-      },
-      "ApiWikiEditResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "affectedUnitIds": {
-            "type": "array"
-          },
-          "contextArtifactId": {
-            "type": "string"
-          },
-          "contextEntryVersionId": {
-            "type": "string"
-          },
-          "correctionId": {
-            "type": "string"
-          },
-          "entry": {
+          "dependencyImpact": {
             "type": "object"
           },
           "generatedAt": {
             "type": "string"
           },
-          "invalidatedArtifactIds": {
+          "history": {
             "type": "array"
           },
-          "redraftJobId": {
-            "type": "string"
-          },
-          "rerun": {
-            "additionalProperties": false,
-            "properties": {
-              "error": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "jobStatus": {
-                "enum": [
-                  "queued",
-                  "running",
-                  "retry_waiting",
-                  "succeeded",
-                  "dead_letter",
-                  "cancelled"
-                ]
-              },
-              "state": {
-                "enum": [
-                  "succeeded",
-                  "pending",
-                  "failed"
-                ]
-              }
-            },
-            "required": [
-              "error",
-              "jobStatus",
-              "state"
-            ],
+          "receipt": {
             "type": "object"
           },
           "schemaVersion": {
-            "const": "wiki.context.edit.v0.2"
+            "const": "itotori.wiki.apply.v1"
           }
         },
         "required": [
-          "affectedUnitIds",
-          "contextArtifactId",
-          "contextEntryVersionId",
-          "correctionId",
-          "entry",
+          "dependencyImpact",
           "generatedAt",
-          "invalidatedArtifactIds",
-          "redraftJobId",
-          "rerun",
+          "history",
+          "receipt",
           "schemaVersion"
+        ],
+        "type": "object"
+      },
+      "ApiWikiObjectHistoryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "history": {
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "itotori.wiki.history.v1"
+          },
+          "view": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "generatedAt",
+          "history",
+          "schemaVersion",
+          "view"
+        ],
+        "type": "object"
+      },
+      "ApiWikiObjectListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "renderings": {
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "itotori.wiki.objects.v1"
+          },
+          "snapshotId": {
+            "type": "string"
+          },
+          "sourceObjects": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "generatedAt",
+          "renderings",
+          "schemaVersion",
+          "snapshotId",
+          "sourceObjects"
+        ],
+        "type": "object"
+      },
+      "ApiWikiObjectShowResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "dependencyImpact": {
+            "type": "object"
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "history": {
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "itotori.wiki.object.v1"
+          },
+          "view": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "dependencyImpact",
+          "generatedAt",
+          "history",
+          "schemaVersion",
+          "view"
+        ],
+        "type": "object"
+      },
+      "ApiWikiObjectWriteResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "dependencyImpact": {
+            "type": "object"
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "history": {
+            "type": "array"
+          },
+          "receipt": {
+            "type": "object"
+          },
+          "schemaVersion": {
+            "const": "itotori.wiki.write.v1"
+          }
+        },
+        "required": [
+          "dependencyImpact",
+          "generatedAt",
+          "history",
+          "receipt",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
+      "ApiWikiWriteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "assertion": {
+            "type": "object"
+          },
+          "input": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "assertion",
+          "input"
         ],
         "type": "object"
       },
@@ -3413,7 +4008,7 @@
             "type": "array"
           },
           "schemaVersion": {
-            "const": "jobs.run_table.v0.2"
+            "const": "jobs.run_table.v0.3"
           }
         },
         "required": [
@@ -3477,6 +4072,16 @@
           "cost": {
             "type": "object"
           },
+          "engineFamily": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "findingCount": {
             "type": "number"
           },
@@ -3518,6 +4123,7 @@
           "artifactCount",
           "branchCount",
           "cost",
+          "engineFamily",
           "findingCount",
           "importStatus",
           "localeBranches",
@@ -3582,6 +4188,148 @@
           "projectId",
           "schemaVersion",
           "telemetry"
+        ],
+        "type": "object"
+      },
+      "ProjectPortfolioEntry": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProjectDashboardStatus"
+          },
+          {
+            "additionalProperties": true,
+            "properties": {
+              "progress": {
+                "$ref": "#/components/schemas/ProjectPortfolioProgressSummary"
+              }
+            },
+            "required": [
+              "progress"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ProjectPortfolioProgressSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "averageCoveragePercent": {
+            "type": "number"
+          },
+          "blockers": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "blockers": {
+                  "type": "array"
+                },
+                "bridgeUnitId": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "runId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "blockers",
+                "bridgeUnitId",
+                "role",
+                "runId"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "roleCounts": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ProjectRunProgressStatusCounts"
+            },
+            "type": "object"
+          },
+          "runCount": {
+            "type": "number"
+          },
+          "runStatusCounts": {
+            "$ref": "#/components/schemas/ProjectRunStatusCounts"
+          },
+          "totalCostMicrosUsd": {
+            "type": "number"
+          },
+          "unitCounts": {
+            "$ref": "#/components/schemas/ProjectRunProgressStatusCounts"
+          }
+        },
+        "required": [
+          "averageCoveragePercent",
+          "blockers",
+          "roleCounts",
+          "runCount",
+          "runStatusCounts",
+          "totalCostMicrosUsd",
+          "unitCounts"
+        ],
+        "type": "object"
+      },
+      "ProjectRunProgressStatusCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "QA": {
+            "type": "number"
+          },
+          "accepted": {
+            "type": "number"
+          },
+          "decoded": {
+            "type": "number"
+          },
+          "drafted": {
+            "type": "number"
+          },
+          "patched": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "QA",
+          "accepted",
+          "decoded",
+          "drafted",
+          "patched"
+        ],
+        "type": "object"
+      },
+      "ProjectRunStatusCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "cancelled": {
+            "type": "number"
+          },
+          "completed": {
+            "type": "number"
+          },
+          "failed": {
+            "type": "number"
+          },
+          "paused": {
+            "type": "number"
+          },
+          "queued": {
+            "type": "number"
+          },
+          "running": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "cancelled",
+          "completed",
+          "failed",
+          "paused",
+          "queued",
+          "running"
         ],
         "type": "object"
       },
@@ -3700,85 +4448,6 @@
           "normalizedQuery",
           "query",
           "results"
-        ],
-        "type": "object"
-      },
-      "WikiContextEntriesReadModel": {
-        "additionalProperties": false,
-        "properties": {
-          "entries": {
-            "type": "array"
-          },
-          "filter": {
-            "type": "object"
-          },
-          "generatedAt": {
-            "type": "string"
-          },
-          "pagination": {
-            "type": "object"
-          },
-          "schemaVersion": {
-            "const": "wiki.context.entries.v0.1"
-          }
-        },
-        "required": [
-          "entries",
-          "filter",
-          "generatedAt",
-          "pagination",
-          "schemaVersion"
-        ],
-        "type": "object"
-      },
-      "WikiContextEntryHistoryReadModel": {
-        "additionalProperties": false,
-        "properties": {
-          "contextArtifactId": {
-            "type": "string"
-          },
-          "generatedAt": {
-            "type": "string"
-          },
-          "headVersionId": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "schemaVersion": {
-            "const": "wiki.context.entry-history.v0.1"
-          },
-          "versions": {
-            "type": "array"
-          }
-        },
-        "required": [
-          "contextArtifactId",
-          "generatedAt",
-          "headVersionId",
-          "schemaVersion",
-          "versions"
-        ],
-        "type": "object"
-      },
-      "WikiContextEntryReadModel": {
-        "additionalProperties": false,
-        "properties": {
-          "entry": {
-            "type": "object"
-          },
-          "generatedAt": {
-            "type": "string"
-          },
-          "schemaVersion": {
-            "const": "wiki.context.entry.v0.1"
-          }
-        },
-        "required": [
-          "entry",
-          "generatedAt",
-          "schemaVersion"
         ],
         "type": "object"
       }
@@ -8010,9 +8679,9 @@
         "x-itotoriRouteId": "settings.translationScope.save"
       }
     },
-    "/api/projects/{projectId}/locale-branches/{localeBranchId}/wiki": {
+    "/api/projects/{projectId}/locale-branches/{localeBranchId}/unit-feedback": {
       "get": {
-        "operationId": "wikiList",
+        "operationId": "playUnitFeedback",
         "parameters": [
           {
             "in": "path",
@@ -8036,7 +8705,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WikiContextEntriesReadModel"
+                  "$ref": "#/components/schemas/ApiPlayUnitFeedbackResponse"
                 }
               }
             },
@@ -8093,396 +8762,8 @@
             "description": "Internal error (internal_error)."
           }
         },
-        "summary": "Browse the populated canonical context wiki.",
-        "x-itotoriRouteId": "wiki.list"
-      },
-      "post": {
-        "operationId": "wikiAdd",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "projectId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "localeBranchId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ApiWikiAddRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiWikiEditResponse"
-                }
-              }
-            },
-            "description": "Success."
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Malformed request (bad_request)."
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Permission denied (forbidden)."
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Route or resource not found (not_found)."
-          },
-          "405": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Method not allowed (method_not_allowed)."
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Internal error (internal_error)."
-          }
-        },
-        "summary": "Add a note, glossary fact, or style instruction through canonical context correction.",
-        "x-itotoriRouteId": "wiki.add"
-      }
-    },
-    "/api/projects/{projectId}/locale-branches/{localeBranchId}/wiki/{contextArtifactId}": {
-      "get": {
-        "operationId": "wikiShow",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "projectId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "localeBranchId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "contextArtifactId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WikiContextEntryReadModel"
-                }
-              }
-            },
-            "description": "Success."
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Malformed request (bad_request)."
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Permission denied (forbidden)."
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Route or resource not found (not_found)."
-          },
-          "405": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Method not allowed (method_not_allowed)."
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Internal error (internal_error)."
-          }
-        },
-        "summary": "Show one canonical wiki entry with content, provenance, citations, and history.",
-        "x-itotoriRouteId": "wiki.show"
-      },
-      "post": {
-        "operationId": "wikiEdit",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "projectId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "localeBranchId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "contextArtifactId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ApiWikiEditRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiWikiEditResponse"
-                }
-              }
-            },
-            "description": "Success."
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Malformed request (bad_request)."
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Permission denied (forbidden)."
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Route or resource not found (not_found)."
-          },
-          "405": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Method not allowed (method_not_allowed)."
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Internal error (internal_error)."
-          }
-        },
-        "summary": "Apply a canonical context correction for a wiki entry and schedule redraft.",
-        "x-itotoriRouteId": "wiki.edit"
-      }
-    },
-    "/api/projects/{projectId}/locale-branches/{localeBranchId}/wiki/{contextArtifactId}/history": {
-      "get": {
-        "operationId": "wikiHistory",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "projectId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "localeBranchId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "contextArtifactId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WikiContextEntryHistoryReadModel"
-                }
-              }
-            },
-            "description": "Success."
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Malformed request (bad_request)."
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Permission denied (forbidden)."
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Route or resource not found (not_found)."
-          },
-          "405": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Method not allowed (method_not_allowed)."
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Internal error (internal_error)."
-          }
-        },
-        "summary": "Show immutable canonical version history for a wiki entry.",
-        "x-itotoriRouteId": "wiki.history"
+        "summary": "List durable unit-bound feedback notes for one bridge unit.",
+        "x-itotoriRouteId": "play.unitFeedback"
       }
     },
     "/api/projects/{projectId}/runtime-evidence": {
@@ -9004,6 +9285,540 @@
         },
         "summary": "Terminology search read model.",
         "x-itotoriRouteId": "terminology.search"
+      }
+    },
+    "/api/wiki": {
+      "get": {
+        "operationId": "wikiList",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiWikiObjectListResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "List source WikiObjects or per-target bible renderings by snapshot.",
+        "x-itotoriRouteId": "wiki.list"
+      }
+    },
+    "/api/wiki/{wikiKind}/{objectId}": {
+      "get": {
+        "operationId": "wikiShow",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wikiKind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "objectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiWikiObjectShowResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Show one WikiObject with citations, media, badges, history, and dependency impact.",
+        "x-itotoriRouteId": "wiki.show"
+      }
+    },
+    "/api/wiki/{wikiKind}/{objectId}/apply": {
+      "post": {
+        "operationId": "wikiApply",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wikiKind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "objectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiWikiApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiWikiObjectApplyResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Apply a durable edit/feedback batch through one bounded enhancement.",
+        "x-itotoriRouteId": "wiki.apply"
+      }
+    },
+    "/api/wiki/{wikiKind}/{objectId}/edit": {
+      "post": {
+        "operationId": "wikiEdit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wikiKind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "objectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiWikiWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiWikiObjectWriteResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Append a durable direct edit to a WikiObject.",
+        "x-itotoriRouteId": "wiki.edit"
+      }
+    },
+    "/api/wiki/{wikiKind}/{objectId}/feedback": {
+      "post": {
+        "operationId": "wikiFeedback",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wikiKind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "objectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiWikiWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiWikiObjectWriteResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Append durable feedback to a WikiObject without awaiting inference.",
+        "x-itotoriRouteId": "wiki.feedback"
+      }
+    },
+    "/api/wiki/{wikiKind}/{objectId}/history": {
+      "get": {
+        "operationId": "wikiHistory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wikiKind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "objectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiWikiObjectHistoryResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Show immutable WikiObject history.",
+        "x-itotoriRouteId": "wiki.history"
       }
     }
   }

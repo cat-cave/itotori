@@ -6,6 +6,7 @@ import {
   ItotoriFeedbackRepository,
   ItotoriLlmHumanInputRepository,
   ItotoriLlmCallMemoRepository,
+  ItotoriJobsRunTableRepository,
   ItotoriLlmSnapshotRepository,
   ItotoriLlmWikiRepository,
   ItotoriLocalizationPassRunConfigRepository,
@@ -155,6 +156,10 @@ export async function withDatabaseItotoriServices<T>(
           catalogRepository.catalogContextPanelForWork(actor, input),
         catalogOpportunityRanking: (filter) =>
           catalogRepository.catalogOpportunityRanking(actor, filter),
+      },
+      jobs: {
+        loadRunTable: (options) =>
+          new ItotoriJobsRunTableRepository(db).loadRunTable(actor, options),
       },
       projectWorkflow: new ItotoriProjectWorkflowService({
         actor,
@@ -329,6 +334,7 @@ export function retiredServiceSurface(
     | "projectWorkflow"
     | "authorization"
     | "catalogRepository"
+    | "jobs"
     | "wikiObjectApi"
     | "wikiApply"
     | "wikiBuild"
