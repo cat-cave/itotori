@@ -10,6 +10,7 @@ repository.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+image.workspace = true
 # utsushi-cli-single-scene-xor2-staging: the top-level binary owns the
 # dev-only `use_xor_2` segment-cipher recovery so the single-scene
 # replay-validate / render-validate surfaces decode REAL text on xor2

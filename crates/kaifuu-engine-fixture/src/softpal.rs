@@ -20,8 +20,7 @@ use crate::{bytes_contains, case_insensitive_find, read_file_prefix, read_u32_le
 
 // Softpal ADV (Amuse Craft / "Pal") engine adapter (SOFTPAL).
 // Provenance: these constants encode the publicly observable file shape of the
-// Softpal ADV System, cross-checked against two owned titles (Kizuna Kirameku
-// Koi Iroha / v21465 and Dimension Totsu Lovers / v60663). No copyrighted bytes
+// Softpal ADV System, cross-checked against two owned staged installs. No copyrighted bytes
 // are embedded — only fixed format signatures (the same magics any Softpal
 // title exposes) are encoded. Detection classifies `engine=softpal`; the real
 // extract / patch-back / verify surface (PAC container + TEXT.DAT decode/decrypt

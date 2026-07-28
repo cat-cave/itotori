@@ -103,6 +103,7 @@ bytes = "1"
 dirs = "6"
 encoding_rs = "0.8"
 flate2 = "1"
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
 jsonschema = { version = "0.46", default-features = false }
 proptest = "1"
 rusqlite = { version = "0.40", features = ["bundled"] }

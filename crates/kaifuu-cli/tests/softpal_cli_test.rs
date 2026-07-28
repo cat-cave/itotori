@@ -2,7 +2,7 @@
 //! the game root passed **positionally** (consistent with the other engines'
 //! extract surface). Env-gated on `ITOTORI_SOFTPAL_RESEARCH_ROOT`; runs the
 //! kaifuu-cli binary against the real, read-only Softpal corpus. The v60663
-//! (Dimension Totsu Lovers, plaintext TEXT.DAT) test asserts the extracted
+//! (the plaintext TEXT.DAT staged corpus) test asserts the extracted
 //! BridgeBundle carries the exact known dialogue+choice unit count (39848 =
 //! 39832 dialogue + 16 text-bearing choices), matching kaifuu-softpal's
 //! committed real-corpus expectations. The v21465 test extracts a PAC source
@@ -18,7 +18,7 @@ use std::process::Command;
 
 use serde_json::Value;
 
-/// v60663 (Dimension Totsu Lovers): 39832 dialogue + 16 text-bearing choices.
+/// The plaintext staged corpus: 39832 dialogue + 16 text-bearing choices.
 const V60663_EXPECTED_UNITS: usize = 39848;
 
 /// v21465: 30,176 dialogue + text-bearing-choice units across both sources.

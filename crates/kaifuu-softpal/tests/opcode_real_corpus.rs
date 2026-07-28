@@ -43,9 +43,8 @@ struct GameExpectation {
 }
 
 const GAMES: [GameExpectation; 2] = [
-    // v21465 — Kizuna kirameku koi iroha.
     GameExpectation {
-        subdir: "v21465",
+        subdir: "first staged corpus",
         pac_count: 417,
         text_show_count: 30165,
         select_count: 11,
@@ -54,9 +53,8 @@ const GAMES: [GameExpectation; 2] = [
         distinct_opcodes: 33,
         instruction_count: 561463,
     },
-    // v60663 — Dimension totsu lovers.
     GameExpectation {
-        subdir: "v60663",
+        subdir: "second staged corpus",
         pac_count: 160,
         text_show_count: 39832,
         select_count: 21,
@@ -81,10 +79,16 @@ fn find_data_pacs(dir: &Path, out: &mut Vec<PathBuf>) {
 
 /// Extract one named entry from the game's `data.pac` (selected by entry count).
 fn extract_entry(game: &GameExpectation, root: &Path, name: &str) -> Vec<u8> {
-    let game_dir = root.join(game.subdir);
     let mut pacs = Vec::new();
-    find_data_pacs(&game_dir, &mut pacs);
-    assert!(!pacs.is_empty(), "no data.pac under {}", game_dir.display());
+    // Select an install by its structural PAC entry-count fingerprint, so the
+    // proof accepts any staging layout beneath the configured root.
+    find_data_pacs(root, &mut pacs);
+    assert!(
+        !pacs.is_empty(),
+        "no data.pac for {} under {}",
+        game.subdir,
+        root.display()
+    );
     for pac_path in &pacs {
         let bytes = fs::read(pac_path).expect("read data.pac");
         let Ok(arc) = PacArchive::parse(&bytes) else {
@@ -99,8 +103,9 @@ fn extract_entry(game: &GameExpectation, root: &Path, name: &str) -> Vec<u8> {
         return arc.extract(&bytes, entry).expect("extract entry").to_vec();
     }
     panic!(
-        "no data.pac under {} parsed to {} entries",
-        game_dir.display(),
+        "no data.pac for {} under {} parsed to {} entries",
+        game.subdir,
+        root.display(),
         game.pac_count
     );
 }

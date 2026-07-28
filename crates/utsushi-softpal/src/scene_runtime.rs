@@ -3,11 +3,23 @@
 use std::collections::HashMap;
 
 use kaifuu_softpal::{
-    CommandFamily, OpcodeError, OpcodeScan, ScriptError, ScriptScan, TextDat, TextDatError,
+    CommandFamily, FileDat, FileDatError, OpcodeError, OpcodeScan, PacArchive, PacError,
+    ScriptError, ScriptScan, TextDat, TextDatError,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::scene_vm::{Vm, point_offsets};
+use crate::scene_vm::{ResourceAssets, Vm, point_offsets};
+
+/// Decode the one-based `POINT.DAT` entry table into script-byte offsets.
+///
+/// These are title-authored destinations, never caller-supplied raw offsets.
+///
+/// # Errors
+///
+/// Returns [`SoftpalRuntimeError::InvalidPointTable`] for a malformed table.
+pub fn point_entry_offsets(points: &[u8]) -> Result<Vec<usize>, SoftpalRuntimeError> {
+    point_offsets(points)
+}
 
 /// A visible moment in deterministic execution order.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,6 +64,39 @@ pub struct RuntimeDiagnostic {
     pub offset: usize,
 }
 
+/// One script-visible destination updated by a native call.  This retains the
+/// storage address, never the value stored there, so real-corpus traces can be
+/// compared without exposing dialogue or other licensed payloads.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeBankWrite {
+    pub destination_tag: u8,
+    pub destination_slot: u32,
+}
+
+/// A text-free execution event used to compare native-call contracts across
+/// real corpora.  Calls are recorded before dispatch; a missing return value
+/// consequently remains visible when a call is unimplemented and execution
+/// stops rather than advancing on an invented result.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum RuntimeTraceEvent {
+    Call {
+        offset: usize,
+        category: u16,
+        function: u16,
+        stack_depth: usize,
+        destination_tag: Option<u8>,
+        return_value: Option<i32>,
+        bank_writes: Vec<RuntimeBankWrite>,
+    },
+    Branch {
+        offset: usize,
+        taken: bool,
+        target_offset: Option<usize>,
+    },
+}
+
 /// Accounting for a deterministic VM run.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -78,6 +123,8 @@ pub struct SoftpalScene {
     pub sv_version: [u8; 2],
     pub steps: Vec<SceneStep>,
     pub diagnostics: Vec<RuntimeDiagnostic>,
+    /// Native-call and branch evidence, deliberately excluding decoded text.
+    pub trace: Vec<RuntimeTraceEvent>,
     pub stats: SoftpalSceneStats,
 }
 
@@ -93,6 +140,114 @@ impl SoftpalScene {
         script: &[u8],
         textdat: &[u8],
         points: Option<&[u8]>,
+    ) -> Result<Self, SoftpalRuntimeError> {
+        Self::execute_with_points_and_mem_dat(script, textdat, points, None)
+    }
+
+    /// Execute with matching labels and an optional `MEM.DAT` asset. Operand
+    /// tag `0x6` requires the asset; an absent asset is a named runtime gap.
+    pub fn execute_with_points_and_mem_dat(
+        script: &[u8],
+        textdat: &[u8],
+        points: Option<&[u8]>,
+        mem_dat: Option<&[u8]>,
+    ) -> Result<Self, SoftpalRuntimeError> {
+        Self::execute_with_assets(script, textdat, points, mem_dat, None, None)
+    }
+
+    /// Execute from a one-based `POINT.DAT` entry id. The id is resolved only
+    /// through the supplied byte table; callers cannot supply a raw script
+    /// offset. This is the entry surface for title-owned scene dispatchers.
+    pub fn execute_from_point_with_points(
+        script: &[u8],
+        textdat: &[u8],
+        points: &[u8],
+        point_id: u32,
+    ) -> Result<Self, SoftpalRuntimeError> {
+        Self::execute_with_assets(script, textdat, Some(points), None, None, Some(point_id))
+    }
+
+    /// Execute with the original `data.pac` as the native resource source.
+    /// The archive is parsed by `kaifuu-softpal`'s validated PAC reader and
+    /// `FILE.DAT` is decoded into resource-name slots for `openfile`.
+    pub fn execute_with_points_mem_dat_and_pac(
+        script: &[u8],
+        textdat: &[u8],
+        points: Option<&[u8]>,
+        mem_dat: Option<&[u8]>,
+        pac_bytes: &[u8],
+    ) -> Result<Self, SoftpalRuntimeError> {
+        Self::execute_with_points_mem_dat_and_pacs(script, textdat, points, mem_dat, &[pac_bytes])
+    }
+
+    /// Execute with every PAC archive that the current native path may open.
+    /// The caller supplies archive bytes explicitly; the VM never discovers
+    /// host paths or silently falls back to an unrelated file.
+    pub fn execute_with_points_mem_dat_and_pacs(
+        script: &[u8],
+        textdat: &[u8],
+        points: Option<&[u8]>,
+        mem_dat: Option<&[u8]>,
+        pac_bytes: &[&[u8]],
+    ) -> Result<Self, SoftpalRuntimeError> {
+        let archives = pac_bytes
+            .iter()
+            .map(|bytes| PacArchive::parse(bytes).map(|archive| (archive, *bytes)))
+            .collect::<Result<Vec<_>, _>>()?;
+        let (file_archive, file_bytes) = archives
+            .iter()
+            .find(|(archive, _)| archive.find("FILE.DAT").is_some())
+            .ok_or(SoftpalRuntimeError::FileDatMissing)?;
+        let file_entry = file_archive.find("FILE.DAT").expect("located above");
+        let file_dat = FileDat::parse(file_archive.extract(file_bytes, file_entry)?)?;
+        Self::execute_with_assets(
+            script,
+            textdat,
+            points,
+            mem_dat,
+            Some(ResourceAssets { archives, file_dat }),
+            None,
+        )
+    }
+
+    /// Execute a byte-designated `POINT.DAT` entry with every PAC archive the
+    /// current native path may open. As with [`Self::execute_from_point_with_points`],
+    /// a raw script offset is intentionally not accepted.
+    pub fn execute_from_point_with_points_mem_dat_and_pacs(
+        script: &[u8],
+        textdat: &[u8],
+        points: &[u8],
+        mem_dat: Option<&[u8]>,
+        pac_bytes: &[&[u8]],
+        point_id: u32,
+    ) -> Result<Self, SoftpalRuntimeError> {
+        let archives = pac_bytes
+            .iter()
+            .map(|bytes| PacArchive::parse(bytes).map(|archive| (archive, *bytes)))
+            .collect::<Result<Vec<_>, _>>()?;
+        let (file_archive, file_bytes) = archives
+            .iter()
+            .find(|(archive, _)| archive.find("FILE.DAT").is_some())
+            .ok_or(SoftpalRuntimeError::FileDatMissing)?;
+        let file_entry = file_archive.find("FILE.DAT").expect("located above");
+        let file_dat = FileDat::parse(file_archive.extract(file_bytes, file_entry)?)?;
+        Self::execute_with_assets(
+            script,
+            textdat,
+            Some(points),
+            mem_dat,
+            Some(ResourceAssets { archives, file_dat }),
+            Some(point_id),
+        )
+    }
+
+    fn execute_with_assets(
+        script: &[u8],
+        textdat: &[u8],
+        points: Option<&[u8]>,
+        mem_dat: Option<&[u8]>,
+        resources: Option<ResourceAssets<'_>>,
+        entry_point: Option<u32>,
     ) -> Result<Self, SoftpalRuntimeError> {
         let walk = OpcodeScan::parse(script)?;
         let scan = ScriptScan::parse(script)?;
@@ -123,7 +278,37 @@ impl SoftpalScene {
             None if needs_labels => Vec::new(),
             None => Vec::new(),
         };
-        let mut result = Vm::new(&walk, &scan.commands, &labels, &texts).run();
+        let entry_ip = match entry_point {
+            None => 0,
+            Some(0) => {
+                return Err(SoftpalRuntimeError::PointEntryOutOfRange {
+                    point_id: 0,
+                    point_count: labels.len(),
+                });
+            }
+            Some(point_id) => {
+                let offset = *labels.get((point_id - 1) as usize).ok_or(
+                    SoftpalRuntimeError::PointEntryOutOfRange {
+                        point_id,
+                        point_count: labels.len(),
+                    },
+                )?;
+                walk.instructions
+                    .iter()
+                    .position(|instruction| instruction.offset == offset)
+                    .ok_or(SoftpalRuntimeError::PointEntryNotInstruction { point_id, offset })?
+            }
+        };
+        let mut result = Vm::new(
+            &walk,
+            &scan.commands,
+            &labels,
+            &texts,
+            mem_dat,
+            resources,
+            entry_ip,
+        )
+        .run();
         if needs_labels && points.is_none() && result.diagnostics.is_empty() {
             result.diagnostics.push(RuntimeDiagnostic {
                 signature: "point_table_required".to_string(),
@@ -151,6 +336,7 @@ impl SoftpalScene {
             .count();
         Ok(Self {
             sv_version: scan.header.version,
+            trace: result.trace,
             stats: SoftpalSceneStats {
                 instructions_executed: result.instructions,
                 call_count: walk.call_count(),
@@ -215,8 +401,22 @@ pub enum SoftpalRuntimeError {
     Script(#[from] ScriptError),
     #[error("utsushi.softpal.runtime.textdat: {0}")]
     TextDat(#[from] TextDatError),
+    #[error("utsushi.softpal.runtime.pac: {0}")]
+    Pac(#[from] PacError),
+    #[error("utsushi.softpal.runtime.filedat: {0}")]
+    FileDat(#[from] FileDatError),
+    #[error("utsushi.softpal.runtime.filedat_missing: PAC has no FILE.DAT entry")]
+    FileDatMissing,
     #[error("utsushi.softpal.runtime.point_table: POINT.DAT is malformed")]
     InvalidPointTable,
+    #[error(
+        "utsushi.softpal.runtime.point_entry_out_of_range: point {point_id} is outside the {point_count}-entry POINT.DAT table"
+    )]
+    PointEntryOutOfRange { point_id: u32, point_count: usize },
+    #[error(
+        "utsushi.softpal.runtime.point_entry_not_instruction: point {point_id} resolves to non-instruction offset {offset}"
+    )]
+    PointEntryNotInstruction { point_id: u32, offset: usize },
     #[error(
         "utsushi.softpal.runtime.unresolved_disassembly: dangling={dangling} unresolved_dialogue={unresolved_dialogue} unresolved_speaker={unresolved_speaker}"
     )]
@@ -229,158 +429,7 @@ pub enum SoftpalRuntimeError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use kaifuu_softpal::{SCRIPT_MAGIC_PREFIX, TEXTDAT_FLAG_PLAINTEXT, TEXTDAT_MAGIC_TAIL};
-
-    fn op(id: u16) -> [u8; 4] {
-        let mut token = [0; 4];
-        token[..2].copy_from_slice(&id.to_le_bytes());
-        token[2..].copy_from_slice(&1_u16.to_le_bytes());
-        token
-    }
-    fn word(value: u32) -> [u8; 4] {
-        value.to_le_bytes()
-    }
-    fn program(tokens: &[[u8; 4]]) -> Vec<u8> {
-        let mut bytes = Vec::from(&SCRIPT_MAGIC_PREFIX[..]);
-        bytes.extend_from_slice(b"20");
-        bytes.extend_from_slice(&[0; 8]);
-        for token in tokens {
-            bytes.extend_from_slice(token);
-        }
-        bytes
-    }
-    fn textdat() -> (Vec<u8>, u32) {
-        let mut bytes = vec![TEXTDAT_FLAG_PLAINTEXT];
-        bytes.extend_from_slice(TEXTDAT_MAGIC_TAIL);
-        bytes.extend_from_slice(&1_u32.to_le_bytes());
-        let pointer = bytes.len() as u32;
-        bytes.extend_from_slice(&0_u32.to_le_bytes());
-        bytes.extend_from_slice(b"line\0");
-        (bytes, pointer)
-    }
-
-    #[test]
-    fn evaluates_a_condition_and_takes_only_its_target_branch() {
-        let (textdat, pointer) = textdat();
-        // Labels reverse to offsets 12, 44, and 80. `jz label 2, local 1` is
-        // not taken; `jmp label 3` bypasses the message at label 2. Returning a
-        // constant zero from the evaluator makes this test emit that message.
-        let tokens = [
-            op(1),
-            word(0x4000_0001),
-            word(1),
-            op(0x0a),
-            word(2),
-            word(0x4000_0001),
-            op(9),
-            word(3),
-            op(0x1f),
-            word(pointer),
-            op(0x1f),
-            word(0x0fff_ffff),
-            op(0x1f),
-            word(0),
-            op(0x17),
-            word(0x0002_0002),
-            word(0),
-            op(0x15),
-        ];
-        let mut points = Vec::from(&b"_POINT_LIST_****"[..]);
-        for offset in [68_u32, 32, 0] {
-            points.extend_from_slice(&offset.to_le_bytes());
-        }
-        let scene = SoftpalScene::execute_with_points(&program(&tokens), &textdat, Some(&points))
-            .expect("executes");
-        assert_eq!(scene.stats.branch_count, 2);
-        assert_eq!(scene.stats.dialogue_count, 0, "taken jump bypasses message");
-        assert!(
-            scene.diagnostics.is_empty(),
-            "fully determined synthetic path"
-        );
-    }
-
-    #[test]
-    fn executes_a_reachable_message_syscall_through_the_text_path() {
-        let (textdat, pointer) = textdat();
-        // The reference's message syscall is the same push-then-0x17 shape
-        // that ScriptScan resolves: text, absent speaker, message value, then
-        // native target 0x0002:0x0002.
-        let scene = SoftpalScene::execute(
-            &program(&[
-                op(0x1f),
-                word(pointer),
-                op(0x1f),
-                word(0x0fff_ffff),
-                op(0x1f),
-                word(0),
-                op(0x17),
-                word(0x0002_0002),
-                word(0),
-                op(0x15),
-            ]),
-            &textdat,
-        )
-        .expect("message syscall is a valid scene");
-
-        assert_eq!(scene.stats.dialogue_count, 1);
-        assert_eq!(scene.stats.call_count, 1);
-        assert!(scene.diagnostics.is_empty());
-        assert_eq!(
-            scene.steps,
-            vec![SceneStep::Dialogue {
-                command_offset: 12,
-                speaker: None,
-                text: "line".to_string(),
-            }]
-        );
-    }
-
-    #[test]
-    fn debug_window_state_returns_the_previous_value_and_controls_flow() {
-        let (textdat, pointer) = textdat();
-        // Two state swaps should return 0 then 3. `not(local2)` is zero only
-        // when the second call returned the state installed by the first; the
-        // jump then bypasses the message. A gutted state exchange emits it.
-        let tokens = [
-            op(0x1f),
-            word(3),
-            op(0x17),
-            word(0x000f_0005),
-            word(0x4000_0001),
-            op(0x1f),
-            word(9),
-            op(0x17),
-            word(0x000f_0005),
-            word(0x4000_0002),
-            op(0x14),
-            word(0x4000_0002),
-            op(0x0a),
-            word(1),
-            word(0x4000_0002),
-            op(0x1f),
-            word(pointer),
-            op(0x1f),
-            word(0x0fff_ffff),
-            op(0x1f),
-            word(0),
-            op(0x17),
-            word(0x0002_0002),
-            word(0),
-            op(0x15),
-        ];
-        let mut points = Vec::from(&b"_POINT_LIST_****"[..]);
-        points.extend_from_slice(&96_u32.to_le_bytes());
-        let scene = SoftpalScene::execute_with_points(&program(&tokens), &textdat, Some(&points))
-            .expect("stateful debug calls execute");
-        assert!(scene.diagnostics.is_empty());
-        assert_eq!(
-            scene.stats.dialogue_count, 0,
-            "state return bypasses message"
-        );
-        assert_eq!(
-            scene.stats.branch_count, 2,
-            "conditional plus its taken jump"
-        );
-    }
+    include!("scene_runtime/scene_runtime_test_support.rs");
+    include!("scene_runtime/scene_runtime_test_calls.rs");
+    include!("scene_runtime/scene_runtime_test_banks.rs");
 }

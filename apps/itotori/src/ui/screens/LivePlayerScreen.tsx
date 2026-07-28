@@ -22,6 +22,8 @@ type PlayerState = {
     | { type: "choice"; choiceCount: number; options: string[] }
     | null;
   ended: boolean;
+  terminalDiagnostic?: string | null;
+  oracleOverlap?: { executed: number; ordered: number; static: number };
   frame: { frameId: string; artifactId: string; width: number; height: number } | null;
 };
 
@@ -105,7 +107,7 @@ function LivePlayerSurface({ config }: { config: LivePlayerConfig | null }): Rea
     <main className="itotori-shell live-player" data-screen="live-player">
       <ShellHeader eyebrow="Play" title="Browser player">
         <p className="itotori-shell__lede">
-          A live RealLive VM renders this frame and waits for your next input.
+          A live game VM renders this frame and waits for your next input.
         </p>
       </ShellHeader>
       {config === null && (
@@ -157,6 +159,11 @@ function PlayerPanel({
       data-event-index={state.eventIndex}
       data-waiting-for={state.ended ? "ended" : (state.waitingFor?.type ?? "none")}
       data-busy={busy ? "true" : "false"}
+      data-oracle-overlap={
+        state.oracleOverlap === undefined
+          ? undefined
+          : `${state.oracleOverlap.ordered}/${state.oracleOverlap.executed}/${state.oracleOverlap.static}`
+      }
     >
       {state.frame === null ? (
         <p>The engine reached a boundary without a renderable text frame.</p>
@@ -175,9 +182,20 @@ function PlayerPanel({
         />
       )}
       {state.ended ? (
-        <p>The engine reached a terminal state.</p>
+        <p>
+          The engine reached a terminal state.
+          {state.terminalDiagnostic === null || state.terminalDiagnostic === undefined
+            ? ""
+            : ` ${state.terminalDiagnostic}`}
+        </p>
       ) : (
         <PlayerInput waitingFor={state.waitingFor} busy={busy} send={send} />
+      )}
+      {state.oracleOverlap !== undefined && (
+        <p>
+          Executed text matches the static oracle in order: {state.oracleOverlap.ordered}/
+          {state.oracleOverlap.executed} (of {state.oracleOverlap.static} static dialogue units).
+        </p>
       )}
     </Panel>
   );
