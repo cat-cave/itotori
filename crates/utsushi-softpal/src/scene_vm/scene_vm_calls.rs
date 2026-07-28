@@ -38,7 +38,12 @@ pub(super) fn write_call_result(vm: &mut Vm<'_>, instruction: Instruction, value
             .expect("initial frame")
             .locals
             .insert(destination.raw, value);
+        vm.record_call_result(instruction, value);
         return true;
     }
-    vm.store(destination, value, instruction.offset)
+    let stored = vm.store(destination, value, instruction.offset);
+    if stored {
+        vm.record_call_result(instruction, value);
+    }
+    stored
 }

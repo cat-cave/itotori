@@ -53,6 +53,39 @@ pub struct RuntimeDiagnostic {
     pub offset: usize,
 }
 
+/// One script-visible destination updated by a native call.  This retains the
+/// storage address, never the value stored there, so real-corpus traces can be
+/// compared without exposing dialogue or other licensed payloads.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeBankWrite {
+    pub destination_tag: u8,
+    pub destination_slot: u32,
+}
+
+/// A text-free execution event used to compare native-call contracts across
+/// real corpora.  Calls are recorded before dispatch; a missing return value
+/// consequently remains visible when a call is unimplemented and execution
+/// stops rather than advancing on an invented result.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum RuntimeTraceEvent {
+    Call {
+        offset: usize,
+        category: u16,
+        function: u16,
+        stack_depth: usize,
+        destination_tag: Option<u8>,
+        return_value: Option<i32>,
+        bank_writes: Vec<RuntimeBankWrite>,
+    },
+    Branch {
+        offset: usize,
+        taken: bool,
+        target_offset: Option<usize>,
+    },
+}
+
 /// Accounting for a deterministic VM run.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -79,6 +112,8 @@ pub struct SoftpalScene {
     pub sv_version: [u8; 2],
     pub steps: Vec<SceneStep>,
     pub diagnostics: Vec<RuntimeDiagnostic>,
+    /// Native-call and branch evidence, deliberately excluding decoded text.
+    pub trace: Vec<RuntimeTraceEvent>,
     pub stats: SoftpalSceneStats,
 }
 
@@ -215,6 +250,7 @@ impl SoftpalScene {
             .count();
         Ok(Self {
             sv_version: scan.header.version,
+            trace: result.trace,
             stats: SoftpalSceneStats {
                 instructions_executed: result.instructions,
                 call_count: walk.call_count(),

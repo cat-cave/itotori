@@ -1,5 +1,7 @@
 //! Sv20 execution: values, branches, calls, and honest stop diagnostics.
-use crate::scene_runtime::{ChoiceOption, RuntimeDiagnostic, SceneStep};
+use crate::scene_runtime::{
+    ChoiceOption, RuntimeBankWrite, RuntimeDiagnostic, RuntimeTraceEvent, SceneStep,
+};
 use kaifuu_softpal::{
     CommandFamily, FileDat, Instruction, OpcodeScan, Operand, OperandTag, PacArchive, RawCommand,
 };
@@ -68,6 +70,7 @@ pub(crate) struct Vm<'a> {
     ip: usize,
     steps: Vec<SceneStep>,
     diagnostics: Vec<RuntimeDiagnostic>,
+    trace: Vec<RuntimeTraceEvent>,
     /// Category `0x0011:0x001c` work-process attachment; no launcher data is invented.
     work_process_attached: bool,
     /// Category `0x000f:0x0005` exchanges this PAL-owned mode value.
@@ -148,6 +151,7 @@ impl<'a> Vm<'a> {
             ip: 0,
             steps: Vec::new(),
             diagnostics: Vec::new(),
+            trace: Vec::new(),
             work_process_attached: false,
             debug_window_state: 0,
             last_process_point: 0,
@@ -272,6 +276,7 @@ impl<'a> Vm<'a> {
         VmResult {
             steps: self.steps,
             diagnostics: self.diagnostics,
+            trace: self.trace,
             branches: self.branches,
             instructions: self.instruction_count,
             work_process_attached: self.work_process_attached,
@@ -333,6 +338,7 @@ impl<'a> Vm<'a> {
         if condition == 0 {
             self.jump(instruction, true)
         } else {
+            self.record_branch(instruction.offset, false, None);
             self.steps.push(SceneStep::Branch {
                 command_offset: instruction.offset,
                 taken: false,
@@ -352,6 +358,7 @@ impl<'a> Vm<'a> {
             return false;
         };
         self.branches += usize::from(taken);
+        self.record_branch(instruction.offset, taken, Some(label));
         self.steps.push(SceneStep::Branch {
             command_offset: instruction.offset,
             taken,
@@ -418,6 +425,7 @@ impl<'a> Vm<'a> {
     }
 
     fn dispatch(&mut self, instruction: Instruction) -> bool {
+        self.record_call(instruction);
         match instruction.family {
             CommandFamily::TextShow { .. } => self.emit_dialogue(instruction.offset),
             CommandFamily::Select => self.emit_choice(instruction.offset),
@@ -1174,11 +1182,57 @@ impl<'a> Vm<'a> {
             offset,
         });
     }
+
+    fn record_call(&mut self, instruction: Instruction) {
+        let Some(target) = instruction.call_target() else {
+            return;
+        };
+        self.trace.push(RuntimeTraceEvent::Call {
+            offset: instruction.offset,
+            category: target.category,
+            function: target.function,
+            stack_depth: self.stack.len(),
+            destination_tag: instruction.operands().get(1).map(|operand| operand.tag().0),
+            return_value: None,
+            bank_writes: Vec::new(),
+        });
+    }
+
+    fn record_call_result(&mut self, instruction: Instruction, value: i32) {
+        let Some(RuntimeTraceEvent::Call {
+            offset,
+            return_value,
+            bank_writes,
+            ..
+        }) = self.trace.last_mut()
+        else {
+            return;
+        };
+        if *offset != instruction.offset {
+            return;
+        }
+        *return_value = Some(value);
+        if let Some(destination) = instruction.operands().get(1) {
+            bank_writes.push(RuntimeBankWrite {
+                destination_tag: destination.tag().0,
+                destination_slot: destination.raw & 0x0fff_ffff,
+            });
+        }
+    }
+
+    fn record_branch(&mut self, offset: usize, taken: bool, target_offset: Option<usize>) {
+        self.trace.push(RuntimeTraceEvent::Branch {
+            offset,
+            taken,
+            target_offset,
+        });
+    }
 }
 
 pub(crate) struct VmResult {
     pub(crate) steps: Vec<SceneStep>,
     pub(crate) diagnostics: Vec<RuntimeDiagnostic>,
+    pub(crate) trace: Vec<RuntimeTraceEvent>,
     pub(crate) branches: usize,
     pub(crate) instructions: usize,
     pub(crate) work_process_attached: bool,
