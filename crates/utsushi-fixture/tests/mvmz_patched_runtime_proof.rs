@@ -199,7 +199,7 @@ fn resolve_real_browser() -> Option<PathBuf> {
         "google-chrome-stable",
     ]
     .into_iter()
-    .find_map(|program| which_in_path(program))
+    .find_map(which_in_path)
 }
 
 fn which_in_path(program: &str) -> Option<PathBuf> {
