@@ -43,10 +43,12 @@ import {
   type ProjectRunLease,
   type ProjectRunLeaseFence,
   type ProjectRunLiveReadModel,
+  type ProjectRunLiveReadModelOptions,
   type ProjectRunPortfolioProgressSummary,
   type ProjectRunProgressRecord,
   type ProjectRunRecord,
   type RecordProjectRunProgressInput,
+  type RecordProjectRunProgressBatchInput,
   type ReleaseProjectRunCostInput,
   type RenewProjectRunLeaseInput,
   type ReserveProjectRunCostInput,
@@ -57,6 +59,8 @@ import {
   listProjectRunPortfolioProgress,
   loadProjectRunLiveReadModel,
 } from "./project-run-repository-read-model.js";
+
+const MAX_PROGRESS_BATCH_SIZE = 500;
 
 export class ItotoriProjectRunRepository implements ItotoriProjectRunRepositoryPort {
   constructor(private readonly db: ItotoriDatabase) {}
@@ -155,6 +159,60 @@ export class ItotoriProjectRunRepository implements ItotoriProjectRunRepositoryP
         );
       }
       return progressFromRow(rows[0]);
+    });
+  }
+
+  async recordProgressBatch(
+    actor: AuthorizationActor,
+    input: RecordProjectRunProgressBatchInput,
+  ): Promise<ProjectRunProgressRecord[]> {
+    await requirePermission(this.db, actor, permissionValues.draftWrite);
+    const lease = normalizeLease(input.lease);
+    if (input.progress.length === 0 || input.progress.length > MAX_PROGRESS_BATCH_SIZE) {
+      throw new Error(`progress batch must contain 1 through ${MAX_PROGRESS_BATCH_SIZE} rows`);
+    }
+    const progress = input.progress.map((entry) => ({
+      bridgeUnitId: requiredText(entry.bridgeUnitId, "bridgeUnitId"),
+      role: requiredText(entry.role, "role"),
+      status: entry.status,
+      costMicrosUsd: entry.costMicrosUsd,
+      coveragePercent: entry.coveragePercent,
+      blockers: normalizeBlockers(entry.blockers ?? []),
+    }));
+    for (const entry of progress) {
+      assertProgressStatus(entry.status);
+      assertMicros(entry.costMicrosUsd, "costMicrosUsd");
+      assertCoverage(entry.coveragePercent);
+    }
+    return await this.db.transaction(async (tx) => {
+      const executor = tx as unknown as SqlExecutor;
+      await requireCurrentLease(executor, lease);
+      const values = progress.map(
+        (entry) => sql`(
+          ${lease.runId}, ${lease.projectId}, ${entry.bridgeUnitId}, ${entry.role}, ${entry.status},
+          ${entry.costMicrosUsd}, ${entry.coveragePercent}, ${JSON.stringify(entry.blockers)}::jsonb
+        )`,
+      );
+      const rows = await rowsOf(
+        executor,
+        sql`
+          insert into ${projectRunProgress} (
+            run_id, project_id, bridge_unit_id, role, status, cost_micros_usd, coverage_percent, blockers
+          ) values ${sql.join(values, sql`, `)}
+          on conflict (run_id, bridge_unit_id, role) do update set
+            status = excluded.status, cost_micros_usd = excluded.cost_micros_usd,
+            coverage_percent = excluded.coverage_percent, blockers = excluded.blockers, updated_at = now()
+          where ${progressRank(projectRunProgress.status)} <= ${progressRank(sql`excluded.status`)}
+          returning *
+        `,
+      );
+      if (rows.length !== progress.length) {
+        throw new ItotoriProjectRunRepositoryError(
+          "progress_regression",
+          "project run progress cannot move backwards",
+        );
+      }
+      return rows.map(progressFromRow);
     });
   }
 
@@ -359,8 +417,9 @@ export class ItotoriProjectRunRepository implements ItotoriProjectRunRepositoryP
     actor: AuthorizationActor,
     projectId: string,
     runId: string,
+    options: ProjectRunLiveReadModelOptions = {},
   ): Promise<ProjectRunLiveReadModel | null> {
-    return loadProjectRunLiveReadModel(this.db, actor, projectId, runId);
+    return loadProjectRunLiveReadModel(this.db, actor, projectId, runId, options);
   }
 
   async listDashboardRuns(

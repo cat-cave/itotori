@@ -7,10 +7,13 @@
 export {
   runLocalizationWorkflow,
   runLocalizationWorkflowForPolicy,
+  DEFAULT_PROVIDER_CONCURRENCY,
+  DEFAULT_SCENE_CONCURRENCY,
   type SceneOutcome,
   type WorkflowOptions,
   type WorkflowRunReport,
 } from "./driver.js";
+export { BoundedConcurrency } from "./bounded-concurrency.js";
 export {
   WorkflowReadinessError,
   WorkflowSequenceError,

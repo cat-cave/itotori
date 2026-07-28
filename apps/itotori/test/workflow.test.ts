@@ -6,6 +6,7 @@ import type { ReviewVerdict } from "../src/contracts/index.js";
 import { FULL_ROSTER, type RunPolicyRequest } from "../src/run-policy/index.js";
 import {
   applyCorrections,
+  BoundedConcurrency,
   classifyStratum,
   coherenceSchedule,
   FinalizeBatchError,
@@ -266,6 +267,7 @@ interface FakeOptions {
   readonly lineEdit?: CorrectionOutcome;
   readonly semanticRepair?: CorrectionOutcome;
   readonly draftTransientFailures?: number;
+  readonly draftProbe?: () => Promise<void>;
 }
 
 function buildPorts(store: FakeStore, rec: Recorder, opts: FakeOptions = {}): WorkflowPorts {
@@ -287,6 +289,7 @@ function buildPorts(store: FakeStore, rec: Recorder, opts: FakeOptions = {}): Wo
         }
         inFlight += 1;
         rec.maxDraftInFlight = Math.max(rec.maxDraftInFlight, inFlight);
+        await opts.draftProbe?.();
         await new Promise((resolve) => setTimeout(resolve, 5));
         inFlight -= 1;
         const unitIds = input.scene.units.map((unit) => unit.unitId);
@@ -367,6 +370,44 @@ const TEST_DEV_NARROWED: RunPolicyRequest = {
   outputScope: "dialogue-only",
   roster: FULL_ROSTER,
 };
+
+describe("workflow scale bounds", () => {
+  it("caps each run's scenes and all three runs' provider drafts", async () => {
+    const providerConcurrency = new BoundedConcurrency(5);
+    let providerInFlight = 0;
+    let providerPeak = 0;
+    const providerProbe = async (): Promise<void> => {
+      providerInFlight += 1;
+      providerPeak = Math.max(providerPeak, providerInFlight);
+      await new Promise((resolve) => setTimeout(resolve, 4));
+      providerInFlight -= 1;
+    };
+    const runs = Array.from({ length: 3 }, (_, runIndex) => {
+      const recorder = newRecorder();
+      const scenes = Array.from({ length: 12 }, (_, sceneIndex) =>
+        scene(`scale-${runIndex}-${sceneIndex}`, [`unit-${runIndex}-${sceneIndex}`]),
+      );
+      return {
+        recorder,
+        scenes,
+        ports: buildPorts(new FakeStore(), recorder, { draftProbe: providerProbe }),
+      };
+    });
+
+    await Promise.all(
+      runs.map(
+        async ({ scenes, ports }) =>
+          await runLocalizationWorkflow(PRODUCTION, scenes, ports, {
+            sceneConcurrency: 4,
+            providerConcurrency,
+          }),
+      ),
+    );
+
+    expect(providerPeak).toBe(5);
+    expect(runs.map((run) => run.recorder.maxDraftInFlight)).toEqual([4, 4, 4]);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Clause tests.

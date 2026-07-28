@@ -147,15 +147,7 @@ postgresDescribe("localize run progress over Postgres", () => {
             });
             expect(live?.progress.totalCostMicrosUsd).toBe(state.providerCallCount * 7);
             expect(live?.progress.statusCounts.patched).toBeGreaterThan(0);
-            expect(live?.progress.units).toEqual(
-              expect.arrayContaining([
-                expect.objectContaining({
-                  role: "localize",
-                  status: "patched",
-                  coveragePercent: 100,
-                }),
-              ]),
-            );
+            expect(live?.progress.unitCount).toBeGreaterThan(0);
           }
 
           const portfolio = await handleReadOnlyItotoriApiRequest(

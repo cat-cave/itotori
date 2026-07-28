@@ -22,6 +22,7 @@ import type { Defect, DefectBundle } from "../contracts/index.js";
 import { stableDigest } from "../gates/index.js";
 import type { ResolvedRunPolicy, RunPolicyRequest } from "../run-policy/index.js";
 import { applyCorrections, type CorrectionSummary } from "./correction.js";
+import { BoundedConcurrency, mapBounded } from "./bounded-concurrency.js";
 import { coherenceSchedule, missingStageUnits, type CoherenceSchedule } from "./durability.js";
 import { finalizeUnits } from "./finalize.js";
 import { joinFindings } from "./finding-join.js";
@@ -42,9 +43,16 @@ import {
  * units is drafted whole; a larger scene is drafted in overlapping chunks. */
 export interface WorkflowOptions {
   readonly wholeSceneMaxUnits?: number;
+  /** Independent scene workflows allowed for this run. */
+  readonly sceneConcurrency?: number;
+  /** Shared across runs to bound aggregate provider pressure. */
+  readonly providerConcurrency?: BoundedConcurrency;
 }
 
 const DEFAULT_WHOLE_SCENE_MAX_UNITS = 50;
+export const DEFAULT_SCENE_CONCURRENCY = 8;
+export const DEFAULT_PROVIDER_CONCURRENCY = 24;
+const portfolioProviderConcurrency = new BoundedConcurrency(DEFAULT_PROVIDER_CONCURRENCY);
 
 /** The two legal executions of the one workflow driver. The policy, rather than
  * a caller switch, selects the execution: only the explicit test-dev ablation
@@ -354,10 +362,16 @@ export async function runLocalizationWorkflowForPolicy(
   const execution = executionFor(policy);
   const output = projectOutputScope(scenes, policy.outputScope);
   const schedule = coherenceSchedule(output.scenes);
+  const sceneConcurrency = options.sceneConcurrency ?? DEFAULT_SCENE_CONCURRENCY;
+  const providerConcurrency = options.providerConcurrency ?? portfolioProviderConcurrency;
+  const providerBoundPorts = boundProviderPorts(ports, providerConcurrency);
 
-  // Independent scenes run in parallel; each scene serializes its own units.
-  const sceneOutcomes = await Promise.all(
-    output.scenes.map((scene) => processScene(scene, policy, ports, options)),
+  // A run gets only a bounded share of scene work. This includes its database
+  // work; provider-facing operations have the additional portfolio-wide gate.
+  const sceneOutcomes = await mapBounded(
+    output.scenes,
+    sceneConcurrency,
+    async (scene) => await processScene(scene, policy, providerBoundPorts, options),
   );
 
   const finalized = sceneOutcomes.flatMap((outcome) => outcome.finalized);
@@ -374,7 +388,7 @@ export async function runLocalizationWorkflowForPolicy(
         .map((unit) => `${unit.unitId}:${unit.ref.contentHash}:${unit.ref.version}`),
     );
     const exported = await ports.store.runMemoizedStep(patchKey, () =>
-      ports.patchback.exportPatch({ finalized }),
+      providerBoundPorts.patchback.exportPatch({ finalized }),
     );
     const currentPatchId = exported.value.patchId;
     patchId = currentPatchId;
@@ -390,12 +404,15 @@ export async function runLocalizationWorkflowForPolicy(
       if (missingBuildLqa.length > 0) {
         const q5Key = memoKeyFor(policy, "build-lqa", currentPatchId, ...missingBuildLqa);
         const reviewed = await ports.store.runMemoizedStep(q5Key, () =>
-          ports.patchback.buildLqaReview({ patchId: currentPatchId, unitIds: missingBuildLqa }),
+          providerBoundPorts.patchback.buildLqaReview({
+            patchId: currentPatchId,
+            unitIds: missingBuildLqa,
+          }),
         );
         buildLqa = reviewed.value;
         await Promise.all(
           missingBuildLqa.map((unitId) =>
-            ports.store.finalizeUnit({
+            providerBoundPorts.store.finalizeUnit({
               unitId,
               stage: "build-lqa",
               contentHash: stableSha(
@@ -423,6 +440,35 @@ export async function runLocalizationWorkflowForPolicy(
     finalized,
     patchId,
     buildLqa,
-    attemptLineage: reportAttemptLineage(policy, ports),
+    attemptLineage: reportAttemptLineage(policy, providerBoundPorts),
+  };
+}
+
+/** Gate only operations that can contact a model provider; store/readiness work
+ * remains under the per-run scene scheduler without consuming this portfolio cap. */
+function boundProviderPorts(ports: WorkflowPorts, gate: BoundedConcurrency): WorkflowPorts {
+  return {
+    ...ports,
+    draft: {
+      draftScene: async (input) => await gate.run(async () => await ports.draft.draftScene(input)),
+    },
+    review: {
+      review: async (input) => await gate.run(async () => await ports.review.review(input)),
+    },
+    repair: {
+      lineEdit: async (input) => await gate.run(async () => await ports.repair.lineEdit(input)),
+      semanticRepair: async (input) =>
+        await gate.run(async () => await ports.repair.semanticRepair(input)),
+    },
+    adjudicate: {
+      adjudicate: async (input) =>
+        await gate.run(async () => await ports.adjudicate.adjudicate(input)),
+    },
+    patchback: {
+      exportPatch: async (input) =>
+        await gate.run(async () => await ports.patchback.exportPatch(input)),
+      buildLqaReview: async (input) =>
+        await gate.run(async () => await ports.patchback.buildLqaReview(input)),
+    },
   };
 }

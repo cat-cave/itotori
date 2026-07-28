@@ -137,6 +137,9 @@ export type ItotoriProjectWorkflowPort = {
   recordProgress(
     input: Parameters<ItotoriProjectRunRepositoryPort["recordProgress"]>[1],
   ): ReturnType<ItotoriProjectRunRepositoryPort["recordProgress"]>;
+  recordProgressBatch(
+    input: Parameters<ItotoriProjectRunRepositoryPort["recordProgressBatch"]>[1],
+  ): ReturnType<ItotoriProjectRunRepositoryPort["recordProgressBatch"]>;
   reserveCost(
     input: Parameters<ItotoriProjectRunRepositoryPort["reserveCost"]>[1],
   ): ReturnType<ItotoriProjectRunRepositoryPort["reserveCost"]>;
@@ -158,5 +161,6 @@ export type ItotoriProjectWorkflowPort = {
   loadLiveReadModel(
     projectId: Parameters<ItotoriProjectRunRepositoryPort["loadLiveReadModel"]>[1],
     runId: Parameters<ItotoriProjectRunRepositoryPort["loadLiveReadModel"]>[2],
+    options?: Parameters<ItotoriProjectRunRepositoryPort["loadLiveReadModel"]>[3],
   ): ReturnType<ItotoriProjectRunRepositoryPort["loadLiveReadModel"]>;
 };

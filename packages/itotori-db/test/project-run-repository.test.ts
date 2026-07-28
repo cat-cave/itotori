@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { LocalizeRunTracker } from "../../../apps/itotori/src/cli/localize-run-tracker.js";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { type DatabaseContext } from "../src/connection.js";
 import { ItotoriLlmSnapshotRepository } from "../src/repositories/llm-snapshot-repository.js";
@@ -75,8 +76,8 @@ describe("ItotoriProjectRunRepository", () => {
       });
       expect(first?.run.leaseOwnerId).toBe("driver-one");
       expect(second?.run.leaseOwnerId).toBe("driver-two");
-      expect(first?.progress.units).toHaveLength(1);
-      expect(second?.progress.units).toHaveLength(0);
+      expect(first?.progress.unitCount).toBe(1);
+      expect(second?.progress.unitCount).toBe(0);
     } finally {
       await fixture.context.close();
     }
@@ -172,7 +173,19 @@ describe("ItotoriProjectRunRepository", () => {
         code: "progress_regression",
       } satisfies Partial<ItotoriProjectRunRepositoryError>);
 
-      const live = await fixture.runs.loadLiveReadModel(actor, fixture.projectId, "run-progress");
+      const defaultLive = await fixture.runs.loadLiveReadModel(
+        actor,
+        fixture.projectId,
+        "run-progress",
+      );
+      expect(defaultLive).not.toHaveProperty("unitPage");
+      expect(defaultLive).not.toHaveProperty("blockerPage");
+      expect(defaultLive?.progress).not.toHaveProperty("units");
+      expect(defaultLive?.progress).not.toHaveProperty("blockers");
+      const live = await fixture.runs.loadLiveReadModel(actor, fixture.projectId, "run-progress", {
+        unitPage: { limit: 2, offset: 1 },
+        blockerPage: { limit: 1, offset: 0 },
+      });
       expect(live?.schemaVersion).toBe("itotori.project-run.live.v1");
       expect(live?.progress.statusCounts).toEqual({
         decoded: 0,
@@ -183,13 +196,77 @@ describe("ItotoriProjectRunRepository", () => {
       });
       expect(live?.progress.totalCostMicrosUsd).toBe(16);
       expect(live?.progress.averageCoveragePercent).toBe(85);
-      expect(live?.progress.blockers).toEqual([
-        { bridgeUnitId: "unit-a", role: "writer", blockers: ["terminology"] },
-      ]);
+      expect(live?.progress).toMatchObject({ unitCount: 4, blockerCount: 1 });
+      expect(live?.unitPage).toMatchObject({ total: 4, limit: 2, offset: 1 });
+      expect(live?.unitPage?.items).toHaveLength(2);
+      expect(live?.blockerPage).toEqual({
+        total: 1,
+        limit: 1,
+        offset: 0,
+        items: [{ bridgeUnitId: "unit-a", role: "writer", blockers: ["terminology"] }],
+      });
     } finally {
       await fixture.context.close();
     }
   });
+
+  it("keeps three 80k-run read models aggregate until a detail page is requested", async () => {
+    const fixture = await runFixture("scale-bounds");
+    let trackers: LocalizeRunTracker[] = [];
+    try {
+      const branches = await Promise.all([
+        addRunBranch(fixture, "scale-bounds-two"),
+        addRunBranch(fixture, "scale-bounds-three"),
+      ]);
+      const runs = [fixture, ...branches].map((branch, index) => ({
+        runId: `run-scale-${index + 1}`,
+        branch,
+        owner: `scale-owner-${index + 1}`,
+      }));
+      trackers = runs.map(
+        ({ runId, branch, owner }) =>
+          new LocalizeRunTracker(runWorkflow(fixture), {
+            ...runInput(fixture, runId, 1_000_000, branch),
+            leaseOwnerId: owner,
+          }),
+      );
+      await Promise.all(
+        trackers.map(
+          async (tracker, index) =>
+            await tracker.start(
+              Array.from(
+                { length: 80_000 },
+                (_, unitIndex) => `run-${index + 1}-unit-${unitIndex}`,
+              ),
+            ),
+        ),
+      );
+
+      const models = await Promise.all(
+        runs.map(
+          async ({ runId }) =>
+            await fixture.runs.loadLiveReadModel(actor, fixture.projectId, runId),
+        ),
+      );
+      for (const model of models) {
+        expect(model?.progress).toMatchObject({
+          unitCount: 80_000,
+          blockerCount: 0,
+          statusCounts: { decoded: 80_000 },
+        });
+        expect(model).not.toHaveProperty("unitPage");
+        expect(model?.progress).not.toHaveProperty("units");
+      }
+      const page = await fixture.runs.loadLiveReadModel(actor, fixture.projectId, runs[0]!.runId, {
+        unitPage: { limit: 100, offset: 79_900 },
+      });
+      expect(page?.unitPage).toMatchObject({ total: 80_000, limit: 100, offset: 79_900 });
+      expect(page?.unitPage?.items).toHaveLength(100);
+    } finally {
+      await Promise.allSettled(trackers.map(async (tracker) => await tracker.fail()));
+      await fixture.context.close();
+    }
+  }, 120_000);
 
   it("reserves before dispatch, enforces the run cap, and settles into the isolated account", async () => {
     const fixture = await runFixture("cost");
@@ -456,6 +533,35 @@ function progressInput(
     costMicrosUsd,
     coveragePercent,
     ...(blockers === undefined ? {} : { blockers }),
+  };
+}
+
+function runWorkflow(fixture: RunFixture) {
+  return {
+    createRun: async (input: Parameters<ItotoriProjectRunRepository["createRun"]>[1]) =>
+      await fixture.runs.createRun(actor, input),
+    acquireLease: async (input: Parameters<ItotoriProjectRunRepository["acquireLease"]>[1]) =>
+      await fixture.runs.acquireLease(actor, input),
+    renewLease: async (input: Parameters<ItotoriProjectRunRepository["renewLease"]>[1]) =>
+      await fixture.runs.renewLease(actor, input),
+    releaseLease: async (input: Parameters<ItotoriProjectRunRepository["releaseLease"]>[1]) =>
+      await fixture.runs.releaseLease(actor, input),
+    advanceRun: async (input: Parameters<ItotoriProjectRunRepository["advanceRun"]>[1]) =>
+      await fixture.runs.advanceRun(actor, input),
+    recordProgress: async (input: Parameters<ItotoriProjectRunRepository["recordProgress"]>[1]) =>
+      await fixture.runs.recordProgress(actor, input),
+    recordProgressBatch: async (
+      input: Parameters<ItotoriProjectRunRepository["recordProgressBatch"]>[1],
+    ) => await fixture.runs.recordProgressBatch(actor, input),
+    reserveCost: async (input: Parameters<ItotoriProjectRunRepository["reserveCost"]>[1]) =>
+      await fixture.runs.reserveCost(actor, input),
+    settleCost: async (input: Parameters<ItotoriProjectRunRepository["settleCost"]>[1]) =>
+      await fixture.runs.settleCost(actor, input),
+    loadLiveReadModel: async (
+      projectId: string,
+      runId: string,
+      options?: Parameters<ItotoriProjectRunRepository["loadLiveReadModel"]>[3],
+    ) => await fixture.runs.loadLiveReadModel(actor, projectId, runId, options),
   };
 }
 
