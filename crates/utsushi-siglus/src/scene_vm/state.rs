@@ -211,6 +211,34 @@ impl SceneVm<'_> {
         Ok(())
     }
 
+    pub(super) fn call_string_property(&self, offset: usize, raw: i32) -> Result<String, VmError> {
+        let frame = self
+            .calls
+            .last()
+            .ok_or(self.operation(offset, "call-property-context"))?;
+        let property = frame
+            .properties
+            .get((raw & 0xffff) as usize)
+            .ok_or(self.operation(offset, "call-property-id"))?;
+        if property.form != 20 {
+            return Err(self.operation(offset, "call-property-string-form"));
+        }
+        self.string_value(offset, &property.value)
+    }
+
+    pub(super) fn string_value(&self, offset: usize, value: &Value) -> Result<String, VmError> {
+        match value {
+            Value::Str(index) => self
+                .program()
+                .strings
+                .get(index)
+                .cloned()
+                .ok_or(self.operation(offset, "string-value")),
+            Value::Text(text) => Ok(text.clone()),
+            _ => Err(self.operation(offset, "non-string value")),
+        }
+    }
+
     fn call_property(&self, offset: usize, raw: i32, index: Option<i32>) -> Result<Value, VmError> {
         let frame = self
             .calls
@@ -232,6 +260,16 @@ impl SceneVm<'_> {
         index: Option<i32>,
         value: Value,
     ) -> Result<(), VmError> {
+        let property_form = self
+            .calls
+            .last()
+            .and_then(|frame| frame.properties.get((raw & 0xffff) as usize))
+            .map(|property| property.form);
+        let value = match property_form {
+            Some(20) if index.is_none() => Value::Text(self.string_value(offset, &value)?),
+            Some(21) if index.is_some() => Value::Text(self.string_value(offset, &value)?),
+            _ => value,
+        };
         let error = self.operation(offset, "call-property-context");
         let frame = self.calls.last_mut().ok_or(error)?;
         let property_index = (raw & 0xffff) as usize;
@@ -263,7 +301,7 @@ impl SceneVm<'_> {
     }
 }
 
-fn owner(value: i32) -> i32 {
+pub(super) fn owner(value: i32) -> i32 {
     (value >> 24) & 0xff
 }
 

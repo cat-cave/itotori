@@ -2,6 +2,7 @@
 
 use super::model::{ChoicePolicy, Moment, SceneVm, Value, VmError};
 use super::stage;
+use super::state::owner;
 
 impl SceneVm<'_> {
     pub(super) fn command(
@@ -30,7 +31,7 @@ impl SceneVm<'_> {
             }
             return Ok(());
         }
-        if let Some(result) = self.string_command(offset, &values, &args)? {
+        if let Some(result) = self.string_command(offset, arg_list_id, &values, &args)? {
             if ret_form != 0 {
                 self.values.push(result);
             }
@@ -109,40 +110,163 @@ impl SceneVm<'_> {
     fn string_command(
         &self,
         offset: usize,
+        arg_list_id: i32,
         values: &[Value],
         args: &[Value],
     ) -> Result<Option<Value>, VmError> {
-        let [
-            Value::Int(34),
-            Value::Int(-1),
-            Value::Int(index),
-            Value::Int(operation),
-        ] = values
-        else {
-            return Ok(None);
-        };
-        let string = self
-            .state
-            .indexed_strings
-            .get(&(34, *index))
-            .and_then(|string| self.program().strings.get(string))
-            .ok_or(self.operation(offset, "string-list-value"))?;
-        let result = match operation {
-            0 => Value::Text(string.to_uppercase()),
-            1 => Value::Text(string.to_lowercase()),
-            10 => {
-                let needle = args.iter().find_map(|value| match value {
-                    Value::Str(index) => self.program().strings.get(index).map(String::as_str),
-                    Value::Text(text) => Some(text),
-                    _ => None,
-                });
-                Value::Int(needle.map_or(0, |needle| {
-                    string.find(needle).map_or(-1, |index| index as i32)
-                }))
+        let string = match values {
+            [
+                Value::Int(34),
+                Value::Int(-1),
+                Value::Int(index),
+                Value::Int(_),
+            ] => self
+                .state
+                .indexed_strings
+                .get(&(34, *index))
+                .and_then(|string| self.program().strings.get(string))
+                .cloned()
+                .ok_or(self.operation(offset, "string-list-value"))?,
+            [Value::Int(83), Value::Int(raw), Value::Int(_)] if owner(*raw) == 125 => {
+                self.call_string_property(offset, *raw)?
             }
             _ => return Ok(None),
         };
-        Ok(Some(result))
+        let operation = match values.last() {
+            Some(Value::Int(operation)) => *operation,
+            _ => return Ok(None),
+        };
+        Ok(Some(self.string_member(
+            offset,
+            &string,
+            operation,
+            arg_list_id,
+            args,
+        )?))
+    }
+
+    fn string_member(
+        &self,
+        offset: usize,
+        string: &str,
+        operation: i32,
+        arg_list_id: i32,
+        args: &[Value],
+    ) -> Result<Value, VmError> {
+        let integer = |index: usize| {
+            args.get(index)
+                .and_then(|value| match value {
+                    Value::Int(value) => Some(*value),
+                    _ => None,
+                })
+                .unwrap_or(0)
+                .max(0) as usize
+        };
+        let needle = || {
+            args.first()
+                .map(|value| self.string_value(offset, value))
+                .transpose()
+                .map(|value| value.unwrap_or_default())
+        };
+        let display_width = |text: &str| {
+            text.chars()
+                .map(|ch| usize::from(!ch.is_ascii()) + 1)
+                .sum::<usize>()
+        };
+        let left_width = |limit: usize| {
+            string
+                .chars()
+                .scan(0usize, |width, ch| {
+                    let next = *width + usize::from(!ch.is_ascii()) + 1;
+                    (next <= limit).then(|| {
+                        *width = next;
+                        ch
+                    })
+                })
+                .collect()
+        };
+        let right_width = |limit: usize| {
+            let mut width = 0;
+            let mut chars = Vec::new();
+            for ch in string.chars().rev() {
+                let next = width + usize::from(!ch.is_ascii()) + 1;
+                if next > limit {
+                    break;
+                }
+                width = next;
+                chars.push(ch);
+            }
+            chars.into_iter().rev().collect()
+        };
+        let result = match operation {
+            0 => Value::Text(string.chars().map(|ch| ch.to_ascii_uppercase()).collect()),
+            1 => Value::Text(string.chars().map(|ch| ch.to_ascii_lowercase()).collect()),
+            2 => Value::Text(string.chars().take(integer(0)).collect()),
+            3 => {
+                let start = integer(0);
+                let chars = string.chars().skip(start);
+                Value::Text(if arg_list_id == 0 || args.len() <= 1 {
+                    chars.collect()
+                } else {
+                    chars.take(integer(1)).collect()
+                })
+            }
+            4 => {
+                let count = string.chars().count();
+                Value::Text(
+                    string
+                        .chars()
+                        .skip(count.saturating_sub(integer(0)))
+                        .collect(),
+                )
+            }
+            5 => Value::Int(display_width(string) as i32),
+            6 => Value::Int(string.chars().count() as i32),
+            7 => Value::Text(left_width(integer(0))),
+            8 => {
+                let start = integer(0);
+                let limit = if arg_list_id == 0 || args.len() <= 1 {
+                    None
+                } else {
+                    Some(integer(1))
+                };
+                let mut width = 0;
+                let mut result = String::new();
+                for ch in string.chars() {
+                    let char_width = usize::from(!ch.is_ascii()) + 1;
+                    if width >= start
+                        && limit.is_none_or(|limit| display_width(&result) + char_width <= limit)
+                    {
+                        result.push(ch);
+                    }
+                    width += char_width;
+                }
+                Value::Text(result)
+            }
+            9 => Value::Text(right_width(integer(0))),
+            10 => {
+                let needle = needle()?;
+                Value::Int(
+                    string
+                        .to_ascii_lowercase()
+                        .find(&needle.to_ascii_lowercase())
+                        .map_or(-1, |index| index as i32),
+                )
+            }
+            11 => {
+                let needle = needle()?;
+                Value::Int(
+                    string
+                        .to_ascii_lowercase()
+                        .rfind(&needle.to_ascii_lowercase())
+                        .map_or(-1, |index| index as i32),
+                )
+            }
+            12 => Value::Int(string.parse().unwrap_or(0)),
+            13 => Value::Int(string.chars().nth(integer(0)).map_or(-1, |ch| ch as i32)),
+            _ => return Err(self.operation(offset, "string-member-operation")),
+        };
+        Ok(result)
     }
 
     fn stage_arguments(&self, offset: usize, args: Vec<Value>) -> Result<Vec<Value>, VmError> {
