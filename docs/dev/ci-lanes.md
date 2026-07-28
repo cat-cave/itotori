@@ -118,17 +118,18 @@ and it checks the font config's CONTENT, not just that its path is in the store.
   `just test browser`. Outside the dev shell, export `PLAYWRIGHT_CHROMIUM_BIN`
   to a runnable Chromium (>= 149, matching Playwright 1.60).
 - **In Tier-1 CI:** the `browser` job in `.github/workflows/_tier1.yml` installs
-  nix and runs `nix develop .#browser --command just ci tier1-browser`. The
+  nix and runs the `just` executable resolved inside `nix develop .#browser`; the
   `.#browser` dev shell is a minimal shell carrying only the renderer contract
   (Chromium + fonts), so a hosted runner does not realise the Rust toolchain to
-  take a screenshot; node/pnpm/just come from `setup-itotori`. This is what
+  take a screenshot; node/pnpm come from `setup-itotori` and `just` from the
+  flake.lock-pinned browser shell. This is what
   makes the baseline renderer and the CI renderer the same derivations. Before
   it, the job took Chromium from Playwright's download, so the pixel assertions
   green-skipped on every PR and three stale baselines sat red on `main` behind
   an all-green check.
 - **In the periodic lane:** the `browser-e2e` job runs on the self-hosted
   `itotori-corpora` runner (the same host that stages the real corpora and
-  provides nix) via `nix develop --command just test browser`. See
+  provides nix) via its flake.lock-pinned `.#browser` `just` derivation. See
   `.github/workflows/real-bytes-oracle.yml`.
 
 ### Skip-honesty / fail-loud

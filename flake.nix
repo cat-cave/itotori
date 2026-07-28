@@ -134,13 +134,15 @@
     {
       # Minimal shell for CI's browser lane: the pinned renderer contract and
       # nothing else, so a hosted runner does not realise the Rust toolchain to
-      # take a screenshot. Node, pnpm and just come from the runner's own setup;
-      # the ONLY thing taken from nix here is what the pixels depend on.
+      # take a screenshot. Node and pnpm come from the runner's own setup; just
+      # is a flake.lock-pinned derivation so the browser lane cannot resolve a
+      # runner-provided tool that changed underneath the workflow.
       devShells.${system} = {
         browser = pkgs.mkShell {
-          packages = with pkgs; [
-            chromium
-            fontconfig # fc-match, so the lane can PROVE which face it resolved
+          packages = [
+            pkgs.chromium
+            pkgs.fontconfig # fc-match, so the lane can PROVE which face it resolved
+            pkgs.just
           ];
           env = browserEnv;
         };

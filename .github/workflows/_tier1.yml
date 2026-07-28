@@ -18,7 +18,7 @@ jobs:
     # Measure on shadow runs, then tighten toward p95 < 10 min / cold < 12.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: ./.github/actions/setup-itotori
         with:
@@ -42,7 +42,7 @@ jobs:
             echo "Tier-1 native preflight: $bin runnable (exit $rc)"
           done
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: native-${{ github.sha }}-linux-x64
           path: |
@@ -67,11 +67,11 @@ jobs:
           - rust-2of3
           - rust-3of3
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: ./.github/actions/setup-itotori
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: native-${{ github.sha }}-linux-x64
           path: .ci/bin
@@ -96,7 +96,7 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a # postgres:18
         env:
           POSTGRES_USER: itotori
           POSTGRES_PASSWORD: itotori
@@ -111,7 +111,7 @@ jobs:
     env:
       DATABASE_URL: postgres://itotori:itotori@127.0.0.1:5432/itotori
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: ./.github/actions/setup-itotori
 
@@ -144,13 +144,13 @@ jobs:
     # Measure on shadow runs, then tighten.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # No `browser: "true"`: Playwright must not download a second, different
       # Chromium. The devShell below is the only renderer this lane may use.
       - uses: ./.github/actions/setup-itotori
 
-      - uses: cachix/install-nix-action@v31
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
@@ -171,16 +171,25 @@ jobs:
             "$bin" --version
             fc-match sans-serif
             fc-match monospace
-            # The devShell deliberately ships only the renderer; the JS toolchain
-            # is inherited from setup-itotori and must survive `nix develop`.
+            # The devShell deliberately ships only the renderer plus its
+            # flake.lock-pinned just derivation; the JS toolchain is inherited
+            # from setup-itotori and must survive `nix develop`.
             command -v pnpm >/dev/null
-            command -v just >/dev/null
+            just_bin="$(command -v just)"
+            case "$just_bin" in /nix/store/*) ;; *) echo "just is not nix-pinned: $just_bin" >&2; exit 1 ;; esac
+            "$just_bin" --version
             node --version
             echo "Tier-1 browser preflight ok: $bin"
           '
 
       - name: Run Tier-1 browser suite
-        run: nix develop .#browser --command just ci tier1-browser
+        run: |
+          nix develop .#browser --command bash -c '
+            set -euo pipefail
+            just_bin="$(command -v just)"
+            case "$just_bin" in /nix/store/*) ;; *) echo "just is not nix-pinned: $just_bin" >&2; exit 1 ;; esac
+            exec "$just_bin" ci tier1-browser
+          '
 
   alpha:
     name: Tier 1 / alpha proof
@@ -188,7 +197,7 @@ jobs:
     # Provisional cold-run budget; measure on shadow runs, then tighten.
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: ./.github/actions/setup-itotori
 
@@ -202,7 +211,7 @@ jobs:
     # Measure on shadow runs, then tighten.
     timeout-minutes: 50
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: ./.github/actions/setup-itotori
         with:

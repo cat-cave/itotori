@@ -167,8 +167,8 @@ has(setupAction, /node-version-file:\s*\.node-version/, "CI must use .node-versi
 has(setupAction, /pnpm install --frozen-lockfile/, "CI must use frozen pnpm installs");
 has(
   setupAction,
-  /dtolnay\/rust-toolchain@v1/,
-  "CI must install the Rust toolchain via the pinned dtolnay/rust-toolchain@v1 action ref",
+  /dtolnay\/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9\s+# v1/,
+  "CI must install the Rust toolchain via the immutable dtolnay/rust-toolchain v1 commit",
 );
 // The composite action's `toolchain:` input must match the exact
 // rust-toolchain.toml pin, so the runner never resolves a different compiler
@@ -206,8 +206,18 @@ has(
 // than skip when either half is missing.
 has(
   ".github/workflows/_tier1.yml",
-  /nix develop \.#browser --command just ci tier1-browser/,
+  /nix develop \.#browser --command bash -c/,
   "Tier 1 browser job must run the lane inside the pinned nix renderer dev shell",
+);
+has(
+  "flake.nix",
+  /pkgs\.just/,
+  "the browser dev shell must provide the flake.lock-pinned just derivation",
+);
+has(
+  ".github/workflows/_tier1.yml",
+  /case "\$just_bin" in \/nix\/store\/\*/,
+  "the browser job must refuse a just executable outside the Nix store",
 );
 has(
   "flake.nix",
