@@ -60,7 +60,7 @@ fn manifest_carries_envelope_class_field_for_each_tier() {
 //    (200 entries × ~32-char String) + 4 graphics layers with
 //    {asset_id, affine transform, blend_mode}.
 
-const REALLIVE_INSPECTABLE_ID: &str = "reallive-primary_corpus-hd";
+const REALLIVE_INSPECTABLE_ID: &str = "reallive-primary-corpus-hd";
 const REALLIVE_INT_BANK_ENTRIES: usize = 1000;
 const REALLIVE_STR_BANK_ENTRIES: usize = 200;
 const REALLIVE_STR_LEN: usize = 32;

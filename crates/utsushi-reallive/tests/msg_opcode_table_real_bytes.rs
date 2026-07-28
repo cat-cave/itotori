@@ -98,6 +98,7 @@ fn staged_engine(seen: &[u8]) -> ReplayEngine {
 }
 
 #[test]
+#[ignore = "strict real-bytes proof; requires two staged RealLive archives"]
 fn decoder_reports_the_msg_opcode_inventory_from_both_real_archives() {
     let corpora = real_corpus::corpora();
     if corpora.len() < 2 {
@@ -120,6 +121,7 @@ fn decoder_reports_the_msg_opcode_inventory_from_both_real_archives() {
 }
 
 #[test]
+#[ignore = "strict real-bytes proof; requires two staged RealLive archives"]
 fn every_decoded_msg_command_resolves_in_both_real_archives() {
     let corpora = real_corpus::corpora();
     if corpora.len() < 2 {
