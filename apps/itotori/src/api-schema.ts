@@ -1353,7 +1353,8 @@ export type ApiPlayFlagAnnotationResponse = {
   feedbackReportId: string;
   feedbackEvidenceId: string;
   severity: ApiPlayFlagSeverity;
-  category: string;
+  /** Null when the persisted feedback did not include a category. */
+  category: string | null;
   note: string;
   triageLabel: string;
   contextStatus: string;
@@ -1370,7 +1371,8 @@ export type ApiPlayUnitFeedbackNote = {
   sceneId: string | null;
   note: string;
   severity: string;
-  category: string;
+  /** Null when the persisted feedback did not include a category. */
+  category: string | null;
   triageLabel: string;
   contextStatus: string;
   contextCorrectionId: string;
@@ -6546,7 +6548,9 @@ function assertPlayFlagAnnotationResponse(
   assertString(response.feedbackReportId, "ApiPlayFlagAnnotationResponse.feedbackReportId");
   assertString(response.feedbackEvidenceId, "ApiPlayFlagAnnotationResponse.feedbackEvidenceId");
   assertEnum(response.severity, API_PLAY_FLAG_SEVERITIES, "ApiPlayFlagAnnotationResponse.severity");
-  assertString(response.category, "ApiPlayFlagAnnotationResponse.category");
+  if (response.category !== null) {
+    assertString(response.category, "ApiPlayFlagAnnotationResponse.category");
+  }
   assertString(response.note, "ApiPlayFlagAnnotationResponse.note");
   assertString(response.triageLabel, "ApiPlayFlagAnnotationResponse.triageLabel");
   assertString(response.contextStatus, "ApiPlayFlagAnnotationResponse.contextStatus");
@@ -6601,7 +6605,9 @@ function assertPlayUnitFeedbackNote(value: unknown, label: string): void {
   }
   assertString(note.note, `${label}.note`);
   assertString(note.severity, `${label}.severity`);
-  assertString(note.category, `${label}.category`);
+  if (note.category !== null) {
+    assertString(note.category, `${label}.category`);
+  }
   assertString(note.triageLabel, `${label}.triageLabel`);
   assertString(note.contextStatus, `${label}.contextStatus`);
   assertString(note.contextCorrectionId, `${label}.contextCorrectionId`);

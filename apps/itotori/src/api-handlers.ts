@@ -935,7 +935,7 @@ async function routeItotoriApiRequest(
       feedbackReportId: result.feedbackReportId,
       feedbackEvidenceId: result.feedbackEvidenceId,
       severity: body.severity,
-      category: (body.category ?? "").trim(),
+      category: body.category?.trim() || null,
       note: body.note.trim(),
       triageLabel: result.triageLabel,
       contextStatus: result.contextStatus,
@@ -1996,7 +1996,9 @@ async function routeReadOnlyItotoriApiRequest(
         sceneId: note.sceneId,
         note: note.note,
         severity: note.severity,
-        category: note.category,
+        // An empty string is the persisted representation of an omitted
+        // category. Preserve that absence as null rather than inventing one.
+        category: note.category || null,
         triageLabel: note.triageLabel,
         contextStatus: note.contextStatus,
         contextCorrectionId: note.contextCorrectionId,

@@ -48,7 +48,10 @@ export function WikiUnitFeedbackPanel({
               return result.data.notes;
             }
             if (result.state === "empty") {
-              return [] as ApiPlayUnitFeedbackNote[];
+              // A successful unit-feedback response always carries its notes
+              // array. Do not turn an absent response into an invented empty
+              // state for this wiki entry.
+              throw new Error("unit feedback response did not include the persisted notes list");
             }
             throw new Error(
               result.error.message ?? result.error.code ?? "unit feedback unavailable",
