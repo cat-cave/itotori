@@ -118,25 +118,53 @@ impl ReplayEngine {
         opts: &ReplayOpts,
         policy: HeadlessChoicePolicy,
     ) -> BranchReplayReport {
+        self.branch_following_report_with_optional_assets(scene_id, opts, policy, None)
+    }
+
+    /// Execute a branch-following replay with the live runtime's asset
+    /// package already bound. This is required for script-visible object
+    /// geometry such as object-button hit rectangles.
+    pub fn branch_following_report_with_assets(
+        &self,
+        scene_id: SceneId,
+        opts: &ReplayOpts,
+        policy: HeadlessChoicePolicy,
+        assets: Arc<dyn utsushi_core::substrate::AssetPackage>,
+    ) -> BranchReplayReport {
+        self.branch_following_report_with_optional_assets(scene_id, opts, policy, Some(assets))
+    }
+
+    fn branch_following_report_with_optional_assets(
+        &self,
+        scene_id: SceneId,
+        opts: &ReplayOpts,
+        policy: HeadlessChoicePolicy,
+        assets: Option<Arc<dyn utsushi_core::substrate::AssetPackage>>,
+    ) -> BranchReplayReport {
         let sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
         let sink_dyn: Arc<dyn TextSurfaceSink> = Arc::clone(&sink) as Arc<dyn TextSurfaceSink>;
         let runtime = Arc::new(MsgRuntime::with_sink(Arc::clone(&sink_dyn)));
         runtime.set_speaker_resolver(self.speaker_resolver.clone());
-        let registry = mount_registry(
+        let handles = mount_registry_handles(
             sink_dyn,
             Arc::clone(&runtime),
             ControlFlowMount::BranchFollowing,
         );
+        if let Some(assets) = assets {
+            handles.graphics.set_asset_package(assets);
+        }
         let mut vm = Vm::new(scene_id, 0);
         let mut scheduler = HeadlessInputScheduler::new(policy);
         let refs = DriveRefs {
             store: &self.store,
-            registry: &registry,
+            registry: &handles.registry,
             runtime: &runtime,
             sink: &sink,
             shift_jis: &self.shift_jis,
         };
-        drive_branch_following(&mut vm, &refs, &mut scheduler, opts, scene_id)
+        let mut report = drive_branch_following(&mut vm, &refs, &mut scheduler, opts, scene_id);
+        report.print_directives = handles.selection.print_directive_stats();
+        report
     }
 
     /// Drive `scene_id` branch-following under `policy`, capturing the
@@ -208,6 +236,7 @@ impl ReplayEngine {
             ControlFlowMount::BranchFollowing,
             Arc::clone(&sink) as Arc<dyn TextSurfaceSink>,
             scheduler,
+            None,
         );
         BranchFollowingObservation {
             lines: sink.take_lines(),

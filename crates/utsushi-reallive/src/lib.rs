@@ -163,6 +163,9 @@ pub mod replay;
 // input event so a live playthrough replays byte-identically.
 pub mod input_bridge;
 
+/// Explicit, hydrated-geometry pointer gestures for a live session.
+pub mod pointer_click;
+
 // utsushi-reallive-jump-resume: deterministic jump / resume to a
 // `(scene, line, frame)` target for ANY RealLive project. Owns the
 // engine-general, game-agnostic addressing model (`JumpTarget`
@@ -268,6 +271,7 @@ pub use input_bridge::{
 pub use jump::{
     JUMP_ADDRESS_PREFIX, JumpAddressError, JumpError, JumpLanding, JumpTarget, resolve_line_pc,
 };
+pub use pointer_click::{HydratedPrimaryClick, HydratedPrimaryClickError, LIVE_SESSION_SCREEN};
 pub use replay::{
     BranchFollowingObservation, BranchReplayReport, BranchTerminus, ControlTransferCounts,
     DEFAULT_REPLAY_STEP_BUDGET, DecompressedScene, LiveSession, LiveSessionChoice,
@@ -327,12 +331,13 @@ pub use rlop::{
     OPCODE_SELECT_W, OPCODE_SET_INDENT, OPCODE_SPAUSE, OPCODE_TEXT_POS, OPCODE_TEXT_POS_X,
     OPCODE_TEXT_WINDOW, ObjbtnInitOp, ObjectButtonCandidateScope, ObjectButtonHitRegion,
     ObjectButtonPromptOption, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp, PauseLongOpDecodeError,
-    RLOperation, RlopKey, RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE, SEL_OPCODE_SELECT,
-    SEL_RLOP_COUNT, SELECT_PRIVATE_STATE_MAGIC, SelRuntime, SelRuntimeWarning, SelectLongOp,
-    SelectLongOpDecodeError, SelectObjbtnCancelOp, SelectObjbtnOp, SelectOp, SelectS3Op, SelectSOp,
-    SelectVariant, SelectWOp, SelectionChoiceCountScheduler, SelectionControlSignal,
-    SelectionPrompt, SelectionPromptKind, dispatch_textout, dispatch_textout_at,
-    register_sel_rlops, register_text_rlops, selection_control_signal, text_module_msg_keys,
+    PrintDirectiveStats, RLOperation, RlopKey, RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE,
+    SEL_OPCODE_SELECT, SEL_RLOP_COUNT, SELECT_PRIVATE_STATE_MAGIC, SelRuntime, SelRuntimeWarning,
+    SelectLongOp, SelectLongOpDecodeError, SelectObjbtnCancelOp, SelectObjbtnOp, SelectOp,
+    SelectS3Op, SelectSOp, SelectVariant, SelectWOp, SelectionChoiceCountScheduler,
+    SelectionControlSignal, SelectionPrompt, SelectionPromptKind, dispatch_textout,
+    dispatch_textout_at, register_sel_rlops, register_text_rlops, selection_control_signal,
+    text_module_msg_keys,
 };
 
 pub use rlop::module_mem::{
@@ -358,9 +363,10 @@ pub use rlop::module_obj::{
 
 pub use rlop::module_render::{
     GRP_MODULE_ID, GrpOp, GrpRenderOp, OBJ_BG_CREATION_ID, OBJ_BG_MGMT_ID, OBJ_BG_RANGE_ID,
-    OBJ_BG_SETTER_ID, OBJ_FG_CREATION_ID, OBJ_FG_MGMT_ID, OBJ_FG_RANGE_ID, OBJ_FG_SETTER_ID,
-    OBJ_MGMT_ID, ObjCreateOp, ObjMgmtOp, ObjMgmtRenderOp, ObjSetOp, ObjSetProp, RENDER_GAPS,
-    RLVM_PIXEL_DIFF_TOLERANCE, SCREEN_DC_SLOT, register_render_rlops,
+    OBJ_BG_SETTER_ID, OBJ_FG_CREATION_ID, OBJ_FG_GETTER_ID, OBJ_FG_MGMT_ID, OBJ_FG_RANGE_ID,
+    OBJ_FG_SETTER_ID, OBJ_MGMT_ID, ObjCreateOp, ObjGetKind, ObjGetOp, ObjMgmtOp, ObjMgmtRenderOp,
+    ObjSetOp, ObjSetProp, RENDER_GAPS, RLVM_PIXEL_DIFF_TOLERANCE, SCREEN_DC_SLOT,
+    register_render_rlops,
 };
 
 pub use rlop::module_audio::{

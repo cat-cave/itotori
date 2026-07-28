@@ -9,7 +9,7 @@ const PRINT_DIRECTIVE: &[u8] = b"###PRINT(";
 ///
 /// `SelectLongOperation` in rlvm resolves this before it stores the option,
 /// which matters twice: the emitted [`TextLine`] and the parked
-/// [`SelectLongOp`] both become player-visible labels.  The string-bank bytes
+/// [`SelectLongOp`] both become player-visible labels. The string-bank bytes
 /// are the engine's wire values, not `VarBanks` fingerprint discriminants.
 fn evaluate_print_choice(vm: &Vm, raw: &[u8]) -> Result<Option<Vec<u8>>, String> {
     if !raw.starts_with(PRINT_DIRECTIVE) {
@@ -76,9 +76,13 @@ fn dispatch_select(
             }
         };
         let bytes = match evaluate_print_choice(vm, raw_bytes) {
-            Ok(Some(resolved)) => resolved,
+            Ok(Some(resolved)) => {
+                runtime.record_print_directive(true);
+                resolved
+            }
             Ok(None) => raw_bytes.clone(),
             Err(reason) => {
+                runtime.record_print_directive(false);
                 runtime.record_warning(SelRuntimeWarning::PrintDirectiveEvaluationFailed {
                     variant,
                     choice_index: choices.len(),

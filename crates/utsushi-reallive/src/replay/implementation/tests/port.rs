@@ -200,6 +200,7 @@ fn branch_observation_breaks_a_proven_polled_loop_before_emitting_text() {
         ControlFlowMount::BranchFollowing,
         sink_dyn,
         &mut scheduler,
+        None,
     );
 
     assert_eq!(pass.termination, PassTermination::NaturalTerminus);

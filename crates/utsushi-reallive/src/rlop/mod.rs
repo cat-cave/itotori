@@ -92,10 +92,10 @@ pub use module_sel::{
     ChoiceInputScheduler, OPCODE_OBJBTN_INIT, OPCODE_SELECT as SEL_OPCODE_SELECT,
     OPCODE_SELECT_OBJBTN, OPCODE_SELECT_OBJBTN_CANCEL, OPCODE_SELECT_S, OPCODE_SELECT_S3,
     OPCODE_SELECT_W, ObjbtnInitOp, ObjectButtonCandidateScope, ObjectButtonHitRegion,
-    ObjectButtonPromptOption, SEL_MODULE_ID, SEL_MODULE_TYPE, SEL_RLOP_COUNT, SelRuntime,
-    SelRuntimeWarning, SelectObjbtnCancelOp, SelectObjbtnOp, SelectOp, SelectS3Op, SelectSOp,
-    SelectVariant, SelectWOp, SelectionControlSignal, SelectionPromptKind, register_sel_rlops,
-    selection_control_signal,
+    ObjectButtonPromptOption, PrintDirectiveStats, SEL_MODULE_ID, SEL_MODULE_TYPE, SEL_RLOP_COUNT,
+    SelRuntime, SelRuntimeWarning, SelectObjbtnCancelOp, SelectObjbtnOp, SelectOp, SelectS3Op,
+    SelectSOp, SelectVariant, SelectWOp, SelectionControlSignal, SelectionPromptKind,
+    register_sel_rlops, selection_control_signal,
 };
 pub use selection_prompt::SelectionPrompt;
 

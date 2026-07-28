@@ -54,6 +54,7 @@ pub const BRIDGE_ADAPTER_NAME: &str = "utsushi-reallive";
 /// Adapter version recorded in a captured [`ReplayLog`]'s metadata.
 pub const BRIDGE_ADAPTER_VERSION: &str = "0.1.0-alpha";
 pub const REALLIVE_RAW_INPUT_ENGINE: &str = "reallive";
+pub const REALLIVE_RAW_PRIMARY_RELEASE: &str = "mouse.primary.release";
 pub const REALLIVE_RAW_SECONDARY_RELEASE: &str = "mouse.secondary.release";
 
 /// The engine-general shape of the input-gated yield the runtime is suspended
