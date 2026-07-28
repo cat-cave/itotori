@@ -1,3 +1,4 @@
+use super::scene_vm_execution_fixtures::*;
 use super::*;
 
 #[test]
