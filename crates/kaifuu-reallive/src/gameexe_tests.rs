@@ -1,3 +1,4 @@
+use super::classifier::classify_key;
 use super::*;
 
 fn first(report: &GameexeInventoryReport) -> &GameexeInventoryEntry {
@@ -5,7 +6,7 @@ fn first(report: &GameexeInventoryReport) -> &GameexeInventoryEntry {
 }
 
 #[test]
-fn parses_caption_as_bridge_unit() {
+fn caption_classification_survives_classifier_module_boundary() {
     let ini = b"#CAPTION=\"Test Title\"\n";
     let report = parse_gameexe_inventory(ini);
     let entry = first(&report);
@@ -14,6 +15,11 @@ fn parses_caption_as_bridge_unit() {
     assert_eq!(entry.treatment, GameexeKeyTreatment::BridgeUnit);
     assert!(matches!(entry.family, GameexeKeyFamily::Caption));
     assert!(report.warnings.is_empty());
+
+    let report = parse_gameexe_inventory(b"#CAPTION=Localized title\n");
+    let entry = first(&report);
+    assert_eq!(entry.treatment, GameexeKeyTreatment::BridgeUnit);
+    assert!(matches!(entry.family, GameexeKeyFamily::Caption));
 }
 
 #[test]

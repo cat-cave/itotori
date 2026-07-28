@@ -2,9 +2,10 @@ use kaifuu_core::RedactedContentSummary;
 
 use crate::encoding::decode_shift_jis_slot;
 
+use super::classifier::classify_key;
 use super::{
     GameexeIniDiagnostic, GameexeInventoryEntry, GameexeInventoryReport, GameexeKeyTreatment,
-    UNKNOWN_GAMEEXE_KEY_CODE, classify_key,
+    UNKNOWN_GAMEEXE_KEY_CODE,
 };
 
 /// Parse a Gameexe.ini blob into one inventory entry per recognized line.
