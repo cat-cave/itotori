@@ -1,4 +1,4 @@
-//! Explicit, geometry-derived pointer policy for a live RealLive screen.
+//! Explicit, geometry-derived pointer policies for a live RealLive screen.
 
 use utsushi_core::input::{InputEvent, PointerButton};
 
@@ -15,6 +15,16 @@ pub enum HydratedPrimaryClickError {
     RectangleMissing { values: [Option<i32>; 4] },
     #[error("utsushi.reallive.pointer_click.rectangle_not_hydrated: {rectangle:?}")]
     RectangleNotHydrated { rectangle: HitRect },
+    #[error("utsushi.reallive.pointer_click.empty_rectangle: {rectangle:?}")]
+    EmptyRectangle { rectangle: HitRect },
+}
+
+/// A refusal to manufacture a script-poll pointer target from incomplete
+/// script state.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ScriptRectanglePrimaryClickError {
+    #[error("utsushi.reallive.pointer_click.rectangle_missing: values={values:?}")]
+    RectangleMissing { values: [Option<i32>; 4] },
     #[error("utsushi.reallive.pointer_click.empty_rectangle: {rectangle:?}")]
     EmptyRectangle { rectangle: HitRect },
 }
@@ -89,6 +99,69 @@ impl HydratedPrimaryClick {
     }
 }
 
+/// A primary-button press/release pair for a script-owned cursor poll.
+///
+/// This is deliberately distinct from [`HydratedPrimaryClick`]. RLVM's
+/// `GetCursorPos` copies device coordinates and button state straight into
+/// the script (`/scratch/oracles/rlvm/src/modules/module_sys.cc:83-99`), while
+/// object-button selection independently requires a `GraphicsObject` with
+/// object data before it hit-tests `DstRect`
+/// (`/scratch/oracles/rlvm/src/long_operations/button_object_select_long_operation.cc:77-119`).
+/// Therefore a script's own rectangle predicate is sufficient here; requiring
+/// a hydrated graphics object would add a condition the engine does not have.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScriptRectanglePrimaryClick {
+    pub rectangle: HitRect,
+    pub pixel: (i32, i32),
+    pub normalized: (f32, f32),
+}
+
+impl ScriptRectanglePrimaryClick {
+    /// Derive a strict-interior point from the four values the script itself
+    /// reads. The point is not screen-clamped: RealLive receives the script's
+    /// cursor coordinates verbatim, and the script owns the containment test.
+    pub fn from_rectangle(
+        values: [Option<i32>; 4],
+    ) -> Result<Self, ScriptRectanglePrimaryClickError> {
+        let [Some(x), Some(y), Some(width), Some(height)] = values else {
+            return Err(ScriptRectanglePrimaryClickError::RectangleMissing { values });
+        };
+        let rectangle = HitRect {
+            x,
+            y,
+            width,
+            height,
+        };
+        if rectangle.width < 2 || rectangle.height < 2 {
+            return Err(ScriptRectanglePrimaryClickError::EmptyRectangle { rectangle });
+        }
+        let pixel = (
+            rectangle.x.saturating_add(rectangle.width / 2),
+            rectangle.y.saturating_add(rectangle.height / 2),
+        );
+        Ok(Self {
+            rectangle,
+            pixel,
+            normalized: (
+                pixel.0 as f32 / (LIVE_SESSION_SCREEN.0 - 1) as f32,
+                pixel.1 as f32 / (LIVE_SESSION_SCREEN.1 - 1) as f32,
+            ),
+        })
+    }
+
+    /// The native input state sequence which the script's cursor poll reads.
+    pub fn events(&self) -> [InputEvent; 2] {
+        [
+            InputEvent::Pointer {
+                x: self.normalized.0,
+                y: self.normalized.1,
+                button: PointerButton::Primary,
+            },
+            InputEvent::raw(REALLIVE_RAW_INPUT_ENGINE, REALLIVE_RAW_PRIMARY_RELEASE),
+        ]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,6 +194,23 @@ mod tests {
             }
         );
         assert_eq!(click.pixel, (70, 50));
+        assert!(matches!(
+            click.events(),
+            [InputEvent::Pointer { .. }, InputEvent::Raw { .. }]
+        ));
+    }
+
+    #[test]
+    fn script_poll_click_uses_populated_rectangle_without_graphics_state() {
+        let click = ScriptRectanglePrimaryClick::from_rectangle([
+            Some(1024),
+            Some(333),
+            Some(220),
+            Some(47),
+        ])
+        .expect("script-owned rectangle is enough for a cursor poll");
+
+        assert_eq!(click.pixel, (1134, 356));
         assert!(matches!(
             click.events(),
             [InputEvent::Pointer { .. }, InputEvent::Raw { .. }]

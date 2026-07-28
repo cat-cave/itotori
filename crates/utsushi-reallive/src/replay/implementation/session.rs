@@ -11,7 +11,10 @@ use utsushi_core::substrate::AssetPackage;
 
 use super::event_loop_gate::{PolledEventLoop, carries_a_back_edge};
 use crate::input_bridge::{BridgeScheduler, PendingYield, UserInputQueue};
-use crate::pointer_click::{HydratedPrimaryClick, HydratedPrimaryClickError, LIVE_SESSION_SCREEN};
+use crate::pointer_click::{
+    HydratedPrimaryClick, HydratedPrimaryClickError, LIVE_SESSION_SCREEN,
+    ScriptRectanglePrimaryClick, ScriptRectanglePrimaryClickError,
+};
 use crate::render_pipeline::ObjectButtonChoiceOption;
 use crate::rlop::SelectLongOp;
 use crate::rlop::module_sel::SelectionPromptKind;
@@ -211,17 +214,31 @@ impl LiveSession {
         self.graphics.state_snapshot().stack
     }
 
+    /// Read the four script-owned operands currently used by the polled
+    /// pointer gate. This is observational only: it never writes the VM bank
+    /// or manufactures a target from the values.
+    pub fn pointer_gate_values(&self) -> [Option<i32>; 4] {
+        [1000, 1001, 1002, 1003].map(|index| match self.vm.banks().get(BankId::IntA, index) {
+            Some(Value::Int(value)) => Some(value),
+            Some(Value::Str(_)) | None => None,
+        })
+    }
+
     /// Derive the only allowed automated pointer gesture from the hydrated
     /// button rectangle currently visible at this live input boundary.
     pub fn hydrated_primary_click(
         &self,
     ) -> Result<HydratedPrimaryClick, HydratedPrimaryClickError> {
-        let values =
-            [1000, 1001, 1002, 1003].map(|index| match self.vm.banks().get(BankId::IntA, index) {
-                Some(Value::Int(value)) => Some(value),
-                Some(Value::Str(_)) | None => None,
-            });
-        HydratedPrimaryClick::from_rectangle(&self.graphics_stack(), values)
+        HydratedPrimaryClick::from_rectangle(&self.graphics_stack(), self.pointer_gate_values())
+    }
+
+    /// Derive a click for a script-owned cursor polling loop. Unlike an
+    /// object-button select, this gate is satisfied by the script's own
+    /// cursor/rectangle comparison and has no graphics-object prerequisite.
+    pub fn script_rectangle_primary_click(
+        &self,
+    ) -> Result<ScriptRectanglePrimaryClick, ScriptRectanglePrimaryClickError> {
+        ScriptRectanglePrimaryClick::from_rectangle(self.pointer_gate_values())
     }
 
     /// The REAL options behind the parked choice gate, or `None` when the

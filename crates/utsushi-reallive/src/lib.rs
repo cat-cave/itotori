@@ -271,7 +271,10 @@ pub use input_bridge::{
 pub use jump::{
     JUMP_ADDRESS_PREFIX, JumpAddressError, JumpError, JumpLanding, JumpTarget, resolve_line_pc,
 };
-pub use pointer_click::{HydratedPrimaryClick, HydratedPrimaryClickError, LIVE_SESSION_SCREEN};
+pub use pointer_click::{
+    HydratedPrimaryClick, HydratedPrimaryClickError, LIVE_SESSION_SCREEN,
+    ScriptRectanglePrimaryClick, ScriptRectanglePrimaryClickError,
+};
 pub use replay::{
     BranchFollowingObservation, BranchReplayReport, BranchTerminus, ControlTransferCounts,
     DEFAULT_REPLAY_STEP_BUDGET, DecompressedScene, LiveSession, LiveSessionChoice,
