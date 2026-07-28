@@ -19,7 +19,10 @@ use utsushi_softpal::{SceneStep, SoftpalScene, encode_softpal_png, point_entry_o
 
 use crate::softpal_visual_assets::{SceneArt, art_frame};
 
-const USAGE: &str = "usage: utsushi softpal-live-player --game-root <DIR> --point <N> --artifact-root <DIR> [--run-id <ID>] [--redaction on] [--reveal]";
+mod selection;
+use selection::{PointSelection, dialogue_point_candidates, parse_point_selection};
+
+const USAGE: &str = "usage: utsushi softpal-live-player --game-root <DIR> --point <N|auto> --artifact-root <DIR> [--run-id <ID>] [--redaction on] [--reveal]";
 const FRAME_WIDTH: u32 = 800;
 const FRAME_HEIGHT: u32 = 600;
 
@@ -51,7 +54,7 @@ struct OracleOverlap {
 
 pub(crate) fn run_softpal_live_player_command(args: &[String]) -> Result<(), Box<dyn Error>> {
     let game_root = PathBuf::from(required_flag(args, "--game-root")?);
-    let point_id: u32 = required_flag(args, "--point")?.parse()?;
+    let point_selection = parse_point_selection(required_flag(args, "--point")?)?;
     let artifact_root = PathBuf::from(required_flag(args, "--artifact-root")?);
     let run_id = optional_flag(args, "--run-id").unwrap_or("softpal-browser-player");
     match optional_flag(args, "--redaction") {
@@ -68,27 +71,17 @@ pub(crate) fn run_softpal_live_player_command(args: &[String]) -> Result<(), Box
     // Decode the table before executing.  This makes a bad id a named error
     // rather than an accidental root launch or an arbitrary script offset.
     let point_count = point_entry_offsets(&inputs.points)?.len();
-    if point_id == 0 || point_id as usize > point_count {
-        return Err(format!(
-            "softpal-live-player point {point_id} is outside the {point_count}-entry POINT.DAT table"
-        )
-        .into());
-    }
-    let scene = SoftpalScene::execute_from_point_with_points_mem_dat_and_pacs(
-        &inputs.script,
-        &inputs.textdat,
-        &inputs.points,
-        Some(&inputs.mem_dat),
-        &[&inputs.data_pac, &inputs.csv_pac],
-        point_id,
-    )?;
+    let (point_id, scene) = select_scene(&inputs, point_count, point_selection)?;
     let overlap = verify_ordered_oracle_overlap(&inputs.script, &inputs.textdat, &scene)?;
     let art = SceneArt::load(&game_root)
         .map_err(|error| format!("softpal-live-player scene art: {error}"))?;
     let boundaries = render_boundaries(&scene, &artifact_root, run_id, &art)?;
     if boundaries.is_empty() {
         return Err(
-            "softpal-live-player point entry emitted no renderable decoded dialogue".into(),
+            format!(
+                "softpal-live-player point {point_id} is a valid POINT.DAT entry but emitted no renderable decoded dialogue; use --point auto or select an entry that reaches a resolved dialogue command"
+            )
+            .into(),
         );
     }
     let terminal_diagnostic = scene
@@ -150,6 +143,60 @@ pub(crate) fn run_softpal_live_player_command(args: &[String]) -> Result<(), Box
         )?;
     }
     Ok(())
+}
+
+fn select_scene(
+    inputs: &SoftpalInputs,
+    point_count: usize,
+    selection: PointSelection,
+) -> Result<(u32, SoftpalScene), Box<dyn Error>> {
+    match selection {
+        PointSelection::Exact(point_id) => {
+            if point_id == 0 || point_id as usize > point_count {
+                return Err(format!(
+                    "softpal-live-player point {point_id} is outside the {point_count}-entry POINT.DAT table"
+                )
+                .into());
+            }
+            Ok((point_id, execute_point(inputs, point_id)?))
+        }
+        PointSelection::Auto => {
+            let candidates =
+                dialogue_point_candidates(&inputs.script, &inputs.textdat, &inputs.points)?;
+            if candidates.is_empty() {
+                return Err(
+                    "softpal-live-player --point auto found no POINT.DAT entry preceding a resolved dialogue command"
+                        .into(),
+                );
+            }
+            let candidate_count = candidates.len();
+            for point_id in candidates {
+                let scene = execute_point(inputs, point_id)?;
+                if scene.steps.iter().any(|step| {
+                    matches!(step, SceneStep::Dialogue { text, .. } if !text.trim().is_empty())
+                }) {
+                    return Ok((point_id, scene));
+                }
+            }
+            Err(format!(
+                "softpal-live-player --point auto examined {candidate_count} POINT.DAT entries near resolved dialogue commands, but none emitted a non-empty decoded dialogue boundary"
+            )
+            .into())
+        }
+    }
+}
+
+fn execute_point(inputs: &SoftpalInputs, point_id: u32) -> Result<SoftpalScene, Box<dyn Error>> {
+    Ok(
+        SoftpalScene::execute_from_point_with_points_mem_dat_and_pacs(
+            &inputs.script,
+            &inputs.textdat,
+            &inputs.points,
+            Some(&inputs.mem_dat),
+            &[&inputs.data_pac, &inputs.csv_pac],
+            point_id,
+        )?,
+    )
 }
 
 struct SoftpalInputs {
