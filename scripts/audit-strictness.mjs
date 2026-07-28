@@ -241,10 +241,9 @@ export function checkRelaxedFloors(path, contents) {
 }
 
 // ---- Rule 5: real-bytes crate not covered by the lane --------------------
-// Parse the `-p <crate>` set the `ci-real-bytes` recipe passes to
-// `cargo test`, then flag any crate that owns a real-bytes/live-corpus
-// `#[ignore]` test yet is absent from that lane (and not on the transitional
-// allowlist).
+// Parse the `-p <crate>` set the `ci-real-bytes` recipe passes to `cargo test`.
+// Manifest-selected proofs live in `real-bytes-lane.mjs`, so parse those
+// declared package entries too; either source is coverage by the periodic lane.
 export function parseLaneCrates(justfileText) {
   const lines = justfileText.replaceAll("\\n", "\n").split(/\r?\n/u);
   const delegated = justfileText.includes('if (selector === "real-bytes")');
@@ -276,6 +275,12 @@ export function parseLaneCrates(justfileText) {
     }
   }
   return crates;
+}
+
+export function parseManifestProofCrates(laneText) {
+  return new Set(
+    [...laneText.matchAll(/args:\s*\[\s*"test",\s*"-p",\s*"([^"]+)"/gu)].map((match) => match[1]),
+  );
 }
 
 // A crate "owns a real-bytes test" if it contains a `*_real_bytes.rs` file OR
@@ -313,8 +318,8 @@ export function evaluateRealBytesCoverage(realBytesCrates, laneCrates) {
     found.push({
       file: `crates/${crate}`,
       line: 0,
-      rule: `real-bytes crate '${crate}' is not in the ci-real-bytes lane`,
-      excerpt: `add -p ${crate} to the ci-real-bytes recipe (or allowlist via ${RULE5_ALLOWLIST_NODE})`,
+      rule: `real-bytes crate '${crate}' is not in the periodic real-bytes lane`,
+      excerpt: `declare ${crate} in ci-real-bytes or scripts/real-bytes-lane.mjs (or allowlist via ${RULE5_ALLOWLIST_NODE})`,
     });
   }
   return found;
@@ -369,6 +374,10 @@ function runAudit() {
   const commandSurface = readRepoFile("scripts/developer-command.mjs");
   const justfile = readRepoFile("justfile");
   const laneCrates = parseLaneCrates(commandSurface ?? justfile ?? "");
+  const manifestRunner = readRepoFile("scripts/real-bytes-lane.mjs");
+  for (const crate of manifestRunner ? parseManifestProofCrates(manifestRunner) : []) {
+    laneCrates.add(crate);
+  }
   violations.push(...evaluateRealBytesCoverage(realBytesCrates, laneCrates));
 
   if (violations.length > 0) {

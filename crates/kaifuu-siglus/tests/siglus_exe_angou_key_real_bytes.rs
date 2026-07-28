@@ -107,14 +107,22 @@ fn exercise_title(exe_path: &Path, gameexe_path: &Path, label: &str) {
     );
 }
 
+#[path = "support/real_bytes.rs"]
+mod real_bytes;
+
 #[test]
+#[ignore = "real-bytes; requires two declared Siglus corpus roots"]
 fn recovered_key_decodes_two_real_siglus_gameexe_dats() {
-    let Some((first_exe, first_gameexe)) = title_paths(FIRST_TITLE_ENV) else {
-        return;
-    };
-    let Some((second_exe, second_gameexe)) = title_paths(SECOND_TITLE_ENV) else {
-        return;
-    };
+    let (first_exe, first_gameexe) = real_bytes::require_real_bytes(
+        title_paths(FIRST_TITLE_ENV),
+        "recovered_key_decodes_two_real_siglus_gameexe_dats",
+        "siglus/1/encrypted",
+    );
+    let (second_exe, second_gameexe) = real_bytes::require_real_bytes(
+        title_paths(SECOND_TITLE_ENV),
+        "recovered_key_decodes_two_real_siglus_gameexe_dats",
+        "siglus/2/encrypted",
+    );
     exercise_title(&first_exe, &first_gameexe, "siglus-title-one");
     exercise_title(&second_exe, &second_gameexe, "siglus-title-two");
 }

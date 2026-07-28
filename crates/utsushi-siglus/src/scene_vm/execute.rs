@@ -165,7 +165,10 @@ impl<'a> SceneVm<'a> {
     pub fn run(&mut self) -> Result<ExecutionReport, VmError> {
         for steps in 0..STEP_LIMIT {
             let Some(current) = self.program().instructions.get(self.pc).cloned() else {
-                return Ok(self.report());
+                return Err(VmError::UnexpectedEnd {
+                    scene_id: self.scene_id,
+                    offset: self.program().end_offset(),
+                });
             };
             self.instructions_executed = steps + 1;
             let offset = current.instruction.byte_offset;
@@ -241,7 +244,7 @@ impl<'a> SceneVm<'a> {
                 (SiglusOpcode::Return, SiglusOperand::Return(forms)) => {
                     let returns = self.pop_n(offset, count(&forms))?;
                     if !self.return_to_caller(returns) {
-                        return Ok(self.report());
+                        return Ok(self.report(true));
                     }
                 }
                 (
@@ -255,7 +258,7 @@ impl<'a> SceneVm<'a> {
                 ) => self.command(offset, arg_list_id, count(&arg_forms), ret_form)?,
                 (SiglusOpcode::Text, _) => self.text(offset)?,
                 (SiglusOpcode::Name, _) => self.name(offset)?,
-                (SiglusOpcode::Eof, _) => return Ok(self.report()),
+                (SiglusOpcode::Eof, _) => return Ok(self.report(true)),
                 (SiglusOpcode::Unknown { lead, .. }, _) => {
                     return Err(VmError::UnsupportedOpcode {
                         scene_id: self.scene_id,
@@ -276,20 +279,20 @@ impl<'a> SceneVm<'a> {
         match self.run() {
             Ok(report) => ExecutionOutcome::Complete(report),
             Err(error) => ExecutionOutcome::Terminal {
-                report: self.report(),
+                report: self.report(false),
                 error,
             },
         }
     }
 
-    fn report(&self) -> ExecutionReport {
+    fn report(&self, halted: bool) -> ExecutionReport {
         ExecutionReport {
             scene_id: self.entry_scene_id,
             scenes_entered: self.scenes_entered.clone(),
             instructions_executed: self.instructions_executed,
             moments: self.moments.clone(),
             stage_snapshots: self.stage_snapshots.clone(),
-            halted: true,
+            halted,
         }
     }
 

@@ -16,6 +16,7 @@ import {
   checkDenyBans,
   checkRelaxedFloors,
   parseLaneCrates,
+  parseManifestProofCrates,
   crateOwnsRealBytes,
   evaluateRealBytesCoverage,
 } from "./audit-strictness.mjs";
@@ -164,6 +165,12 @@ test("rule 5 parses Cargo package flag variants and continuations", () => {
     "next-recipe:",
   ].join("\n");
   assert.deepEqual([...parseLaneCrates(lane)].sort(), ["first", "fourth", "second", "third"]);
+});
+
+test("rule 5 recognizes manifest-selected proof packages", () => {
+  const runner =
+    'const proof = { args: ["test", "-p", "utsushi-siglus", "--test", "observe_real_bytes"] };';
+  assert.deepEqual([...parseManifestProofCrates(runner)], ["utsushi-siglus"]);
 });
 
 test("rule 5 flags every uncovered real-bytes crate (allowlist is now empty)", () => {

@@ -56,6 +56,9 @@ pub enum SceneProgramError {
         "utsushi.siglus.vm.invalid_label: label {label} targets non-instruction offset {offset}"
     )]
     InvalidLabel { label: usize, offset: usize },
+    /// A declared string-table entry could not be fully decoded from the payload.
+    #[error("utsushi.siglus.vm.invalid_string_table: entry {entry} {reason}")]
+    InvalidStringTable { entry: usize, reason: &'static str },
 }
 
 /// A pack-level script-function target was not an instruction boundary.
@@ -135,7 +138,7 @@ impl SceneProgram {
             labels,
             z_labels,
             functions,
-            strings: strings(payload),
+            strings: strings(payload)?,
         })
     }
 
@@ -166,6 +169,10 @@ impl SceneProgram {
     /// Resolve an interned string-table index without exposing the table.
     pub fn string(&self, index: i32) -> Option<&str> {
         self.strings.get(&index).map(String::as_str)
+    }
+
+    pub(crate) fn end_offset(&self) -> usize {
+        self.bytecode_len
     }
 
     /// Count instructions and bytecode bytes that follow an executed site.
@@ -294,27 +301,96 @@ fn i32_table(payload: &[u8], offset: i32, count: i32) -> Vec<i32> {
         .collect()
 }
 
-fn strings(payload: &[u8]) -> BTreeMap<i32, String> {
+fn strings(payload: &[u8]) -> Result<BTreeMap<i32, String>, SceneProgramError> {
     let index_offset = field(payload, 3);
     let count = field(payload, 4);
-    let list_offset = field(payload, 5).max(0) as usize;
+    let list_offset = field(payload, 5);
     if index_offset < 0 || count < 0 {
-        return BTreeMap::new();
+        return Err(SceneProgramError::InvalidStringTable {
+            entry: 0,
+            reason: "has a negative index offset or count",
+        });
     }
+    if list_offset < 0 {
+        return Err(SceneProgramError::InvalidStringTable {
+            entry: 0,
+            reason: "has a negative string-data offset",
+        });
+    }
+    let index_offset = index_offset as usize;
+    let list_offset = list_offset as usize;
     (0..count as usize)
-        .filter_map(|index| {
-            let start = index_offset as usize + index * 8;
-            let raw = payload.get(start..start + 8)?;
-            let chars = i32::from_le_bytes(raw[0..4].try_into().ok()?);
-            let len = i32::from_le_bytes(raw[4..8].try_into().ok()?);
-            let chars = usize::try_from(chars).ok()?;
-            let len = usize::try_from(len).ok()?;
-            let start = list_offset.checked_add(chars.checked_mul(2)?)?;
-            let end = start.checked_add(len.checked_mul(2)?)?;
-            let units = payload.get(start..end)?.chunks_exact(2).map(|pair| {
-                u16::from_le_bytes([pair[0], pair[1]]) ^ 28807_u16.wrapping_mul(index as u16)
-            });
-            Some((
+        .map(|index| {
+            let start =
+                index_offset
+                    .checked_add(index.checked_mul(8).ok_or(
+                        SceneProgramError::InvalidStringTable {
+                            entry: index,
+                            reason: "index entry offset overflows",
+                        },
+                    )?)
+                    .ok_or(SceneProgramError::InvalidStringTable {
+                        entry: index,
+                        reason: "index entry offset overflows",
+                    })?;
+            let end = start
+                .checked_add(8)
+                .ok_or(SceneProgramError::InvalidStringTable {
+                    entry: index,
+                    reason: "index entry offset overflows",
+                })?;
+            let raw = payload
+                .get(start..end)
+                .ok_or(SceneProgramError::InvalidStringTable {
+                    entry: index,
+                    reason: "index entry lies outside payload",
+                })?;
+            let chars = i32::from_le_bytes(raw[0..4].try_into().expect("four-byte field"));
+            let len = i32::from_le_bytes(raw[4..8].try_into().expect("four-byte field"));
+            let chars =
+                usize::try_from(chars).map_err(|_| SceneProgramError::InvalidStringTable {
+                    entry: index,
+                    reason: "has a negative character offset",
+                })?;
+            let len = usize::try_from(len).map_err(|_| SceneProgramError::InvalidStringTable {
+                entry: index,
+                reason: "has a negative length",
+            })?;
+            let start =
+                list_offset
+                    .checked_add(chars.checked_mul(2).ok_or(
+                        SceneProgramError::InvalidStringTable {
+                            entry: index,
+                            reason: "string-data offset overflows",
+                        },
+                    )?)
+                    .ok_or(SceneProgramError::InvalidStringTable {
+                        entry: index,
+                        reason: "string-data offset overflows",
+                    })?;
+            let end = start
+                .checked_add(
+                    len.checked_mul(2)
+                        .ok_or(SceneProgramError::InvalidStringTable {
+                            entry: index,
+                            reason: "string-data length overflows",
+                        })?,
+                )
+                .ok_or(SceneProgramError::InvalidStringTable {
+                    entry: index,
+                    reason: "string-data length overflows",
+                })?;
+            let units = payload
+                .get(start..end)
+                .ok_or(SceneProgramError::InvalidStringTable {
+                    entry: index,
+                    reason: "string data lies outside payload",
+                })?
+                .chunks_exact(2)
+                .map(|pair| {
+                    u16::from_le_bytes([pair[0], pair[1]]) ^ 28807_u16.wrapping_mul(index as u16)
+                });
+            Ok((
                 index as i32,
                 String::from_utf16_lossy(&units.take_while(|unit| *unit != 0).collect::<Vec<_>>()),
             ))

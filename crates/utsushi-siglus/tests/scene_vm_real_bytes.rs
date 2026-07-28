@@ -347,6 +347,9 @@ fn diagnostic(error: &VmError) -> (String, u32, usize) {
         VmError::UnresolvedJump {
             scene_id, offset, ..
         } => ("unresolved-jump".to_string(), *scene_id, *offset),
+        VmError::UnexpectedEnd { scene_id, offset } => {
+            ("unexpected-end".to_string(), *scene_id, *offset)
+        }
         VmError::StepLimit { scene_id, .. } => ("step-limit".to_string(), *scene_id, 0),
     }
 }
