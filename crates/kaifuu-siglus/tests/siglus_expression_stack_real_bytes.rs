@@ -4,7 +4,7 @@
 //! Copyrighted title bytes stay outside this repository, so the two game roots
 //! are supplied via `ITOTORI_REAL_GAME_ROOT_SIGLUS` / `_2` (each a directory —
 //! or a path inside one — holding `SiglusEngine.exe` + `Scene.pck`). When either
-//! root is absent the test reports a skip and succeeds.
+//! root is absent the test panics with a named `REAL-BYTES SKIP` receipt.
 //!
 //! When both are present it proves, for every scene of both owned titles
 //! (karetoshi = 298, gamekoi = 278):
@@ -174,14 +174,21 @@ fn exercise_title(
     (scene_count, underflow_by_lead)
 }
 
+#[path = "support/real_bytes.rs"]
+mod real_bytes;
+
 #[test]
 fn two_real_siglus_scene_packs_decode_all_expressions() {
-    let Some((first_exe, first_scene)) = title_paths(FIRST_TITLE_ENV) else {
-        return;
-    };
-    let Some((second_exe, second_scene)) = title_paths(SECOND_TITLE_ENV) else {
-        return;
-    };
+    let (first_exe, first_scene) = real_bytes::require_real_bytes(
+        title_paths(FIRST_TITLE_ENV),
+        "two_real_siglus_scene_packs_decode_all_expressions",
+        "siglus/1/encrypted",
+    );
+    let (second_exe, second_scene) = real_bytes::require_real_bytes(
+        title_paths(SECOND_TITLE_ENV),
+        "two_real_siglus_scene_packs_decode_all_expressions",
+        "siglus/2/encrypted",
+    );
     let (first_count, first_uf) = exercise_title(&first_exe, &first_scene, "siglus-title-one");
     let (second_count, second_uf) = exercise_title(&second_exe, &second_scene, "siglus-title-two");
 

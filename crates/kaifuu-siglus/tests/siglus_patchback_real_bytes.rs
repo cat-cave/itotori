@@ -1,7 +1,7 @@
 //! Env-gated, two-installation proof of bundle-driven `Scene.pck` patchback.
 //!
 //! The private corpus is optional: when either configured root is absent this
-//! test skips cleanly. With both roots present, each installation proves an
+//! test emits a named `REAL-BYTES SKIP` panic. With both roots present, each installation proves an
 //! identity bundle is byte-identical, one UTF-16 string-table edit survives a
 //! full re-decode/re-decompile, and a stale source hash is rejected.
 
@@ -194,15 +194,21 @@ fn translated_json(source: &serde_json::Value, changed: Option<(&str, &str)>) ->
     value
 }
 
+#[path = "support/real_bytes.rs"]
+mod real_bytes;
+
 #[test]
 fn two_real_siglus_installations_patch_back_byte_correctly() {
-    let Some((first_exe, first_scene, first_gameexe)) = installation_paths(FIRST_ROOT_ENV) else {
-        return;
-    };
-    let Some((second_exe, second_scene, second_gameexe)) = installation_paths(SECOND_ROOT_ENV)
-    else {
-        return;
-    };
+    let (first_exe, first_scene, first_gameexe) = real_bytes::require_real_bytes(
+        installation_paths(FIRST_ROOT_ENV),
+        "two_real_siglus_installations_patch_back_byte_correctly",
+        "siglus/1/encrypted",
+    );
+    let (second_exe, second_scene, second_gameexe) = real_bytes::require_real_bytes(
+        installation_paths(SECOND_ROOT_ENV),
+        "two_real_siglus_installations_patch_back_byte_correctly",
+        "siglus/2/encrypted",
+    );
     exercise_installation(&first_exe, &first_scene, &first_gameexe, "siglus-root-one");
     exercise_installation(
         &second_exe,

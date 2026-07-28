@@ -152,6 +152,10 @@ pub enum VmError {
         offset: usize,
         property: i32,
     },
+    #[error(
+        "utsushi.siglus.vm.unexpected_end: scene {scene_id} ended at offset {offset} without CD_RETURN or CD_EOF"
+    )]
+    UnexpectedEnd { scene_id: u32, offset: usize },
     #[error("utsushi.siglus.vm.step_limit: scene {scene_id} after {steps} instructions")]
     StepLimit { scene_id: u32, steps: usize },
 }

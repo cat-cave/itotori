@@ -10,9 +10,19 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const manifestPath = join(repoRoot, "corpora", "manifest.v1.json");
 const proofByEngine = new Map([
-  ["reallive", ["test", "-p", "kaifuu-reallive", "--", "--ignored"]],
-  ["siglus", ["test", "-p", "kaifuu-siglus", "--", "--ignored"]],
-  ["softpal", ["test", "-p", "kaifuu-softpal", "--", "--ignored"]],
+  ["reallive", [{ name: "kaifuu-reallive", args: ["test", "-p", "kaifuu-reallive", "--", "--ignored"] }]],
+  [
+    "siglus",
+    [
+      { name: "kaifuu-siglus", args: ["test", "-p", "kaifuu-siglus"] },
+      { name: "utsushi-siglus-observe", args: ["test", "-p", "utsushi-siglus", "--test", "observe_real_bytes"] },
+      { name: "utsushi-siglus-scene-vm", args: ["test", "-p", "utsushi-siglus", "--test", "scene_vm_real_bytes"] },
+      { name: "utsushi-siglus-g00", args: ["test", "-p", "utsushi-siglus", "--test", "siglus_g00_real_bytes"] },
+      { name: "utsushi-siglus-structure", args: ["test", "-p", "utsushi-siglus", "--test", "structure_export_real_bytes"] },
+      { name: "utsushi-siglus-launch", args: ["test", "-p", "utsushi-siglus", "--test", "launch_hydration"] },
+    ],
+  ],
+  ["softpal", [{ name: "kaifuu-softpal", args: ["test", "-p", "kaifuu-softpal", "--", "--ignored"] }]],
 ]);
 
 function fail(message) {
@@ -65,9 +75,16 @@ export function selectProofs(corpora) {
   return [...new Set(corpora.map((entry) => entry.engine))].map((engine) => {
     const args = proofByEngine.get(engine);
     return args
-      ? { name: engine, args, outcome: "skipped", reason: "not started" }
+      ? { name: engine, proofs: args, outcome: "skipped", reason: "not started" }
       : { name: engine, outcome: "failed", reason: `declared but unproven engine ${engine}` };
   });
+}
+
+export function executedTestCount(output) {
+  return [...output.matchAll(/test result: (?:ok|FAILED)\. (\d+) passed;/gu)].reduce(
+    (count, match) => count + Number(match[1]),
+    0,
+  );
 }
 
 function summary(statuses) {
@@ -122,18 +139,40 @@ function main() {
   for (const engine of declaredEngines) {
     const status = statusFor(engine);
     if (status.outcome === "failed") continue;
-    const args = status.args;
-    console.log(`real-bytes-lane: running ${engine}`);
-    const result = spawnSync("cargo", args, { cwd: repoRoot, env: process.env, stdio: "inherit" });
-    if (result.error) {
+    let executed = 0;
+    for (const proof of status.proofs) {
+      console.log(`real-bytes-lane: running ${engine}/${proof.name}`);
+      const result = spawnSync("cargo", proof.args, {
+        cwd: repoRoot,
+        encoding: "utf8",
+        env: process.env,
+      });
+      process.stdout.write(result.stdout ?? "");
+      process.stderr.write(result.stderr ?? "");
+      const proofExecuted = executedTestCount(`${result.stdout ?? ""}${result.stderr ?? ""}`);
+      executed += proofExecuted;
+      if (result.error) {
+        status.outcome = "failed";
+        status.reason = `proof ${proof.name} did not start: ${result.error.message}`;
+        break;
+      }
+      if (result.status !== 0) {
+        status.outcome = "failed";
+        status.reason = `proof ${proof.name} exited ${result.status} after ${proofExecuted} executed tests`;
+        break;
+      }
+      if (proofExecuted === 0) {
+        status.outcome = "failed";
+        status.reason = `NAMED FAILURE: declared ${engine} proof ${proof.name} executed zero tests`;
+        break;
+      }
+    }
+    if (status.outcome !== "failed" && executed === 0) {
       status.outcome = "failed";
-      status.reason = `did not start: ${result.error.message}`;
-    } else if (result.status !== 0) {
-      status.outcome = "failed";
-      status.reason = `exit ${result.status}`;
-    } else {
+      status.reason = `NAMED FAILURE: declared engine ${engine} executed zero proofs`;
+    } else if (status.outcome !== "failed") {
       status.outcome = "executed";
-      status.reason = `${corpora.filter((entry) => entry.engine === engine).length} declared corpus entries`;
+      status.reason = `${executed} tests across ${status.proofs.length} declared proofs; ${corpora.filter((entry) => entry.engine === engine).length} declared corpus entries`;
     }
   }
   const counts = summary(statuses);

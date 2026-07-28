@@ -217,14 +217,21 @@ fn exercise_title(exe_path: &Path, scene_path: &Path, label: &str) -> TitleTotal
     totals
 }
 
+#[path = "support/real_bytes.rs"]
+mod real_bytes;
+
 #[test]
 fn two_real_siglus_scene_packs_decode_all_system_calls() {
-    let Some((first_exe, first_scene)) = title_paths(FIRST_TITLE_ENV) else {
-        return;
-    };
-    let Some((second_exe, second_scene)) = title_paths(SECOND_TITLE_ENV) else {
-        return;
-    };
+    let (first_exe, first_scene) = real_bytes::require_real_bytes(
+        title_paths(FIRST_TITLE_ENV),
+        "two_real_siglus_scene_packs_decode_all_system_calls",
+        "siglus/1/encrypted",
+    );
+    let (second_exe, second_scene) = real_bytes::require_real_bytes(
+        title_paths(SECOND_TITLE_ENV),
+        "two_real_siglus_scene_packs_decode_all_system_calls",
+        "siglus/2/encrypted",
+    );
     let first = exercise_title(&first_exe, &first_scene, "siglus-title-one");
     let second = exercise_title(&second_exe, &second_scene, "siglus-title-two");
 

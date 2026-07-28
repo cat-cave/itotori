@@ -2,7 +2,7 @@
 //!
 //! Copyrighted title bytes stay outside this repository, so the two roots are
 //! supplied via environment variables. When either root is absent the test
-//! reports a skip and succeeds; when present it reads each real `Gameexe.dat`,
+//! panics with a named `REAL-BYTES SKIP`; when present it reads each real `Gameexe.dat`,
 //! proving the outer-header reader recovers `version` + `exe_angou_mode` from
 //! real bytes and that the body decode applies its semantic gating BEFORE any
 //! output.
@@ -83,14 +83,21 @@ fn exercise_title(path: &Path, label: &str) {
     );
 }
 
+#[path = "support/real_bytes.rs"]
+mod real_bytes;
+
 #[test]
 fn two_real_siglus_gameexe_dats_read_and_gate() {
-    let Some(first) = gameexe_path(FIRST_TITLE_ENV) else {
-        return;
-    };
-    let Some(second) = gameexe_path(SECOND_TITLE_ENV) else {
-        return;
-    };
+    let first = real_bytes::require_real_bytes(
+        gameexe_path(FIRST_TITLE_ENV),
+        "two_real_siglus_gameexe_dats_read_and_gate",
+        "siglus/1/encrypted",
+    );
+    let second = real_bytes::require_real_bytes(
+        gameexe_path(SECOND_TITLE_ENV),
+        "two_real_siglus_gameexe_dats_read_and_gate",
+        "siglus/2/encrypted",
+    );
     exercise_title(&first, "siglus-title-one");
     exercise_title(&second, "siglus-title-two");
 }

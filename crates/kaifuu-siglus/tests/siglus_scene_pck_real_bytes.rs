@@ -3,7 +3,7 @@
 //! Copyrighted title bytes stay outside this repository, so the two game roots
 //! are supplied via environment variables. Each root holds both
 //! `SiglusEngine.exe` and `Scene.pck`. When either root is absent the test
-//! reports a skip and succeeds; when both are present it proves the full
+//! panics with a named `REAL-BYTES SKIP`; when both are present it proves the full
 //! per-scene payload decode end-to-end.
 //!
 //! Both target titles set `extra_key_use`: their scene payloads are masked with
@@ -186,14 +186,21 @@ fn exercise_title(exe_path: &Path, scene_path: &Path, label: &str) -> usize {
     scene_count
 }
 
+#[path = "support/real_bytes.rs"]
+mod real_bytes;
+
 #[test]
 fn two_real_siglus_scene_packs_decode_full_payloads() {
-    let Some((first_exe, first_scene)) = title_paths(FIRST_TITLE_ENV) else {
-        return;
-    };
-    let Some((second_exe, second_scene)) = title_paths(SECOND_TITLE_ENV) else {
-        return;
-    };
+    let (first_exe, first_scene) = real_bytes::require_real_bytes(
+        title_paths(FIRST_TITLE_ENV),
+        "two_real_siglus_scene_packs_decode_full_payloads",
+        "siglus/1/encrypted",
+    );
+    let (second_exe, second_scene) = real_bytes::require_real_bytes(
+        title_paths(SECOND_TITLE_ENV),
+        "two_real_siglus_scene_packs_decode_full_payloads",
+        "siglus/2/encrypted",
+    );
     let first_count = exercise_title(&first_exe, &first_scene, "siglus-title-one");
     let second_count = exercise_title(&second_exe, &second_scene, "siglus-title-two");
 

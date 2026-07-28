@@ -4,7 +4,7 @@
 //! are supplied via environment variables (the same ones the sibling
 //! `Gameexe.dat` / exe-angou proofs use). Each root holds both
 //! `SiglusEngine.exe` and `Gameexe.dat`. When either root is absent the test
-//! reports a skip and succeeds; when present it drives the full reader
+//! panics with a named `REAL-BYTES SKIP`; when present it drives the full reader
 //! ([`read_gameexe_inventory`]): recover the per-game exe-angou key in-process
 //! from the executable, decode the real `Gameexe.dat`, and lift it into a
 //! category-indexed inventory.
@@ -120,14 +120,21 @@ fn exercise_title(exe_path: &Path, gameexe_path: &Path, label: &str, expected_en
     );
 }
 
+#[path = "support/real_bytes.rs"]
+mod real_bytes;
+
 #[test]
 fn two_real_siglus_gameexe_inventories_read_and_summarize() {
-    let Some((first_exe, first_gameexe)) = title_paths(FIRST_TITLE_ENV) else {
-        return;
-    };
-    let Some((second_exe, second_gameexe)) = title_paths(SECOND_TITLE_ENV) else {
-        return;
-    };
+    let (first_exe, first_gameexe) = real_bytes::require_real_bytes(
+        title_paths(FIRST_TITLE_ENV),
+        "two_real_siglus_gameexe_inventories_read_and_summarize",
+        "siglus/1/encrypted",
+    );
+    let (second_exe, second_gameexe) = real_bytes::require_real_bytes(
+        title_paths(SECOND_TITLE_ENV),
+        "two_real_siglus_gameexe_inventories_read_and_summarize",
+        "siglus/2/encrypted",
+    );
     exercise_title(
         &first_exe,
         &first_gameexe,

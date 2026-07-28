@@ -2,7 +2,7 @@
 
 use kaifuu_siglus::SiglusIncludedCommand;
 use utsushi_siglus::scene_vm::{
-    Moment, SceneProgram, TitleProgram, VmError, VmState, execute_scene,
+    Moment, SceneProgram, SceneProgramError, TitleProgram, VmError, VmState, execute_scene,
     execute_scene_with_stage_objects, execute_title_scene,
     execute_title_scene_with_stage_snapshots_observed,
 };
@@ -15,3 +15,5 @@ mod scene_vm_execution_fixtures;
 mod scene_vm_execution_included;
 #[path = "scene_vm_execution/stage.rs"]
 mod scene_vm_execution_stage;
+#[path = "scene_vm_execution/validation.rs"]
+mod scene_vm_execution_validation;

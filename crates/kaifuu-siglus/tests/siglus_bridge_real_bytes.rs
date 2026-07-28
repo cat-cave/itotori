@@ -173,14 +173,21 @@ fn exercise_title(exe_path: &Path, scene_path: &Path, gameexe_path: &Path, label
     );
 }
 
+#[path = "support/real_bytes.rs"]
+mod real_bytes;
+
 #[test]
 fn two_real_siglus_titles_assemble_schema_valid_deterministic_bridges() {
-    let Some((first_exe, first_scene, first_gameexe)) = title_paths(FIRST_TITLE_ENV) else {
-        return;
-    };
-    let Some((second_exe, second_scene, second_gameexe)) = title_paths(SECOND_TITLE_ENV) else {
-        return;
-    };
+    let (first_exe, first_scene, first_gameexe) = real_bytes::require_real_bytes(
+        title_paths(FIRST_TITLE_ENV),
+        "two_real_siglus_titles_assemble_schema_valid_deterministic_bridges",
+        "siglus/1/encrypted",
+    );
+    let (second_exe, second_scene, second_gameexe) = real_bytes::require_real_bytes(
+        title_paths(SECOND_TITLE_ENV),
+        "two_real_siglus_titles_assemble_schema_valid_deterministic_bridges",
+        "siglus/2/encrypted",
+    );
     exercise_title(&first_exe, &first_scene, &first_gameexe, "siglus-title-one");
     exercise_title(
         &second_exe,
