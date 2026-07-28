@@ -18,6 +18,7 @@ type PlayerState = {
   eventIndex: number;
   waitingFor:
     | { type: "advance" }
+    | { type: "pointer" }
     | { type: "choice"; choiceCount: number; options: string[] }
     | null;
   ended: boolean;
@@ -80,7 +81,9 @@ function LivePlayerSurface({ config }: { config: LivePlayerConfig | null }): Rea
     };
   }, [config, canReveal]);
 
-  const send = (input: { type: "advance" } | { type: "choice"; index: number }) => {
+  const send = (
+    input: { type: "advance" } | { type: "pointer" } | { type: "choice"; index: number },
+  ) => {
     if (state === null || busy) return;
     setBusy(true);
     void post<PlayerState>(
@@ -134,7 +137,9 @@ function PlayerPanel({
 }: {
   state: PlayerState;
   busy: boolean;
-  send: (input: { type: "advance" } | { type: "choice"; index: number }) => void;
+  send: (
+    input: { type: "advance" } | { type: "pointer" } | { type: "choice"; index: number },
+  ) => void;
 }): ReactNode {
   return (
     <Panel
@@ -185,7 +190,9 @@ function PlayerInput({
 }: {
   waitingFor: PlayerState["waitingFor"];
   busy: boolean;
-  send: (input: { type: "advance" } | { type: "choice"; index: number }) => void;
+  send: (
+    input: { type: "advance" } | { type: "pointer" } | { type: "choice"; index: number },
+  ) => void;
 }): ReactNode {
   if (waitingFor?.type === "choice")
     return (
@@ -201,6 +208,19 @@ function PlayerInput({
             {waitingFor.options[index] ?? `Choice ${index + 1}`}
           </button>
         ))}
+      </p>
+    );
+  if (waitingFor?.type === "pointer")
+    return (
+      <p>
+        <button
+          type="button"
+          disabled={busy}
+          data-player-pointer=""
+          onClick={() => send({ type: "pointer" })}
+        >
+          Continue
+        </button>
       </p>
     );
   return (

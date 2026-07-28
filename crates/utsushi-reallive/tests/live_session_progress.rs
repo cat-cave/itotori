@@ -366,7 +366,7 @@ fn a_screen_that_waits_by_spinning_is_a_boundary_the_reader_can_cross() {
         .expect("a spinning screen must park, not exhaust the step budget");
     assert_eq!(
         initial.state.waiting_for,
-        Some(LiveSessionWait::Advance),
+        Some(LiveSessionWait::Pointer),
         "the spin must be reported as a wait the reader can act on",
     );
     assert_eq!(initial.state.pc, 0, "the session parks inside the loop");

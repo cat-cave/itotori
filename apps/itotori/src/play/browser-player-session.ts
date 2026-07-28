@@ -29,7 +29,10 @@ export type BrowserPlayerLaunch = {
   scene: number;
 };
 
-export type BrowserPlayerInput = { type: "advance" } | { type: "choice"; index: number };
+export type BrowserPlayerInput =
+  | { type: "advance" }
+  | { type: "pointer" }
+  | { type: "choice"; index: number };
 
 export type BrowserPlayerFrame = {
   frameId: string;
@@ -45,6 +48,7 @@ export type BrowserPlayerState = {
   eventIndex: number;
   waitingFor:
     | { type: "advance" }
+    | { type: "pointer" }
     // `options` are the REAL option labels the engine is offering. Without
     // them the browser can only number the buttons, and every option in a
     // prompt reads identically.

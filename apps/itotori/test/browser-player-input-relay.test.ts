@@ -117,6 +117,17 @@ describe("browser player input relay", () => {
     expect(state.received).toEqual({ type: "choice", index: 3 });
   });
 
+  it("relays a geometry-derived pointer request without a caller coordinate", async () => {
+    const manager = await managerWithStubEngine();
+    const opening = await manager.start(START, false);
+    const state = (await manager.send(opening.sessionId, {
+      type: "pointer",
+    })) as unknown as Relayed;
+    manager.close(opening.sessionId);
+
+    expect(state.received).toEqual({ type: "pointer" });
+  });
+
   it("launches the engine with the redaction posture selected by the server", async () => {
     const manager = await managerWithStubEngine();
     const revealed = (await manager.start(START, true)) as unknown as Relayed;
