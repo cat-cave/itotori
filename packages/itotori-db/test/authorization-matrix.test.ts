@@ -2577,12 +2577,19 @@ function sourcePermissionGates(): Pick<
     repositoryPermissionGateMatrix.map(({ sourceFile }) => sourceFile),
   );
 
-  for (const sourceFile of readdirSync(repositorySourceDir).filter(
-    (file) => file.endsWith(".ts") && activeSourceFiles.has(file),
+  for (const relativeSourceFile of readdirSync(repositorySourceDir, { recursive: true }).filter(
+    (file) => file.endsWith(".ts"),
   )) {
-    const sourceUrl = new URL(sourceFile, repositorySourceDir);
-    const source = readFileSync(sourceUrl, "utf8");
-    gates.push(...sourcePermissionGatesFromSource(sourceFile, source, sourceUrl.pathname));
+    const sourceFile = relativeSourceFile.replace(/\/.*$/u, ".ts");
+    if (!activeSourceFiles.has(sourceFile)) continue;
+    const sourceUrl = new URL(relativeSourceFile, repositorySourceDir);
+    gates.push(
+      ...sourcePermissionGatesFromSource(
+        sourceFile,
+        readFileSync(sourceUrl, "utf8"),
+        sourceUrl.pathname,
+      ),
+    );
   }
 
   return gates;
@@ -2604,8 +2611,6 @@ function sourcePermissionGatesFromSource(
   >[] = [];
 
   walk(parsedSource, (node) => {
-    // Optional calls (`requirePermission?.(…)`) are OptionalCallExpression in
-    // Babel; TypeScript's AST treated them as ordinary CallExpression.
     if (
       isCallExpression(node) &&
       permissionHelperCallName(node.callee, requirePermissionAliases) !== undefined
@@ -2623,7 +2628,11 @@ function sourcePermissionGatesFromSource(
         );
       }
       gates.push({
-        repository: gateAnnotation?.repository ?? requiredSourceMethod(sourceMethod).repository,
+        repository:
+          gateAnnotation?.repository ??
+          (sourceFileName === "catalog-repository.ts"
+            ? "ItotoriCatalogRepository"
+            : requiredSourceMethod(sourceMethod).repository),
         sourceFile: sourceFileName,
         mutation: gateAnnotation?.mutation ?? requiredSourceMethod(sourceMethod).method,
         permissionKey,
