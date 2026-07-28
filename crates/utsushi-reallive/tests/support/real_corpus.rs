@@ -20,11 +20,14 @@ pub const SECONDARY: Need<'static> = Need {
 pub const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
 pub const REAL_GAME_ROOT_2_ENV: &str = "ITOTORI_REAL_GAME_ROOT_2";
 
-/// Prints a registry-identified, actionable real-bytes skip. Returns `()` (not
-/// `!`) so call sites retain `return` without an `unreachable_code` lint.
+/// Fails loudly when required registry-identified real bytes are unavailable.
+/// Returns `()` (not `!`) so call sites retain `return` without an
+/// `unreachable_code` lint.
 pub fn require_real_bytes(test_name: &str) {
-    eprintln!(
-        "REAL-BYTES SKIP {test_name}: reallive/1/encrypted is unavailable; set ITOTORI_CORPUS_ROOT=/path/to/corpora and configure reallive/1/encrypted in corpora/manifest.v1.json to exercise real bytes."
+    panic!(
+        "real-bytes coverage is STRICT: reallive/1/encrypted is unavailable; \
+         {test_name} did not exercise real bytes (set ITOTORI_CORPUS_ROOT=/path/to/corpora \
+         and configure reallive/1/encrypted in corpora/manifest.v1.json)."
     );
 }
 
