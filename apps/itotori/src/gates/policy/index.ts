@@ -7,10 +7,12 @@
 import { registerLocalizationTargetPolicy } from "./registry.js";
 import { realliveSjisPolicy } from "./reallive-sjis.js";
 import { siglusUtf16Policy } from "./siglus-utf16.js";
+import { softpalSjisPolicy } from "./softpal-sjis.js";
 import { utf8JsonPolicy } from "./utf8-json.js";
 
 registerLocalizationTargetPolicy(realliveSjisPolicy);
 registerLocalizationTargetPolicy(siglusUtf16Policy);
+registerLocalizationTargetPolicy(softpalSjisPolicy);
 registerLocalizationTargetPolicy(utf8JsonPolicy);
 
 export type {
@@ -45,3 +47,9 @@ export {
   SIGLUS_UTF16_POLICY_ID,
   siglusUtf16Policy,
 } from "./siglus-utf16.js";
+
+export {
+  SOFTPAL_SJIS_ADAPTER_ID,
+  SOFTPAL_SJIS_POLICY_ID,
+  softpalSjisPolicy,
+} from "./softpal-sjis.js";
