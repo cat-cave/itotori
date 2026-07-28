@@ -58,6 +58,21 @@ struct Layer {
 /// an invented approximation would look like a valid game frame.
 pub fn render_siglus_stage<F, E>(
     objects: &BTreeMap<i32, BTreeMap<i32, StageObject>>,
+    load: F,
+) -> Result<SiglusCgFrame, SiglusStageRenderError>
+where
+    F: FnMut(&str) -> Result<SiglusG00Image, E>,
+    E: std::fmt::Display,
+{
+    render_siglus_stage_on_canvas(objects, None, load)
+}
+
+/// Render an authored stage into its decoded game canvas. The reference
+/// renderer keeps the display size fixed and clips sprites that extend beyond
+/// it, including sprites with negative coordinates.
+pub fn render_siglus_stage_on_canvas<F, E>(
+    objects: &BTreeMap<i32, BTreeMap<i32, StageObject>>,
+    canvas: Option<(u32, u32)>,
     mut load: F,
 ) -> Result<SiglusCgFrame, SiglusStageRenderError>
 where
@@ -103,7 +118,7 @@ where
         )
     });
 
-    let (width, height) = canvas_bounds(&layers)?;
+    let (width, height) = canvas_bounds(&layers, canvas)?;
     let pixel_len = usize::try_from(width)
         .ok()
         .and_then(|width| {
@@ -161,17 +176,14 @@ fn validate_transform(
     Ok(())
 }
 
-fn canvas_bounds(layers: &[Layer]) -> Result<(u32, u32), SiglusStageRenderError> {
+fn canvas_bounds(
+    layers: &[Layer],
+    fixed_canvas: Option<(u32, u32)>,
+) -> Result<(u32, u32), SiglusStageRenderError> {
     let mut right = 0_i64;
     let mut bottom = 0_i64;
     for layer in layers {
         let geometry = &layer.object.geometry;
-        if geometry.x < 0 || geometry.y < 0 {
-            return Err(SiglusStageRenderError::InvalidBounds {
-                stage: layer.stage,
-                slot: layer.slot,
-            });
-        }
         let scaled_width = scaled_extent(layer.image.width, geometry.scale_x).ok_or(
             SiglusStageRenderError::InvalidBounds {
                 stage: layer.stage,
@@ -184,8 +196,23 @@ fn canvas_bounds(layers: &[Layer]) -> Result<(u32, u32), SiglusStageRenderError>
                 slot: layer.slot,
             },
         )?;
+        if fixed_canvas.is_some() {
+            continue;
+        }
+        if geometry.x < 0 || geometry.y < 0 {
+            return Err(SiglusStageRenderError::InvalidBounds {
+                stage: layer.stage,
+                slot: layer.slot,
+            });
+        }
         right = right.max(i64::from(geometry.x) + i64::from(scaled_width));
         bottom = bottom.max(i64::from(geometry.y) + i64::from(scaled_height));
+    }
+    if let Some((width, height)) = fixed_canvas {
+        if width == 0 || height == 0 || width > 8192 || height > 8192 {
+            return Err(SiglusStageRenderError::CanvasLimit { width, height });
+        }
+        return Ok((width, height));
     }
     let width = u32::try_from(right).map_err(|_| SiglusStageRenderError::CanvasLimit {
         width: u32::MAX,
@@ -229,18 +256,22 @@ fn composite_layer(
         },
     )?;
     for y in 0..scaled_height {
-        let target_y = u32::try_from(geometry.y)
-            .unwrap_or_default()
-            .saturating_add(y);
-        if target_y >= height || !within_clip(geometry.clip, target_y as i32, false) {
+        let target_y = i64::from(geometry.y) + i64::from(y);
+        if target_y < 0 || target_y >= i64::from(height) {
+            continue;
+        }
+        let target_y = target_y as u32;
+        if !within_clip(geometry.clip, target_y as i32, false) {
             continue;
         }
         let source_y = y.saturating_mul(layer.image.height) / scaled_height;
         for x in 0..scaled_width {
-            let target_x = u32::try_from(geometry.x)
-                .unwrap_or_default()
-                .saturating_add(x);
-            if target_x >= width || !within_clip(geometry.clip, target_x as i32, true) {
+            let target_x = i64::from(geometry.x) + i64::from(x);
+            if target_x < 0 || target_x >= i64::from(width) {
+                continue;
+            }
+            let target_x = target_x as u32;
+            if !within_clip(geometry.clip, target_x as i32, true) {
                 continue;
             }
             let source_x = x.saturating_mul(layer.image.width) / scaled_width;
@@ -357,6 +388,38 @@ mod tests {
         .expect("the resolved authored G00s are projected");
         assert_eq!((frame.width, frame.height), (2, 1));
         assert_eq!(frame.pixels_rgba, [255, 0, 0, 255, 0, 255, 0, 255]);
+    }
+
+    #[test]
+    fn fixed_game_canvas_clips_negative_authored_object_coordinates() {
+        let objects = BTreeMap::from([(
+            0,
+            BTreeMap::from([(
+                1,
+                StageObject {
+                    active: true,
+                    visible: true,
+                    identity: Some("edge".to_string()),
+                    geometry: StageGeometry {
+                        x: -1,
+                        ..StageGeometry::default()
+                    },
+                    ..StageObject::default()
+                },
+            )]),
+        )]);
+        let frame = render_siglus_stage_on_canvas(&objects, Some((2, 1)), |_| {
+            Ok::<_, &'static str>(SiglusG00Image {
+                kind: SiglusG00Kind::RawBgr,
+                width: 2,
+                height: 1,
+                pixels_rgba: [255, 0, 0, 255, 0, 255, 0, 255].to_vec(),
+                layers: Vec::new(),
+            })
+        })
+        .expect("a negative authored coordinate must be clipped on the decoded game canvas");
+        assert_eq!((frame.width, frame.height), (2, 1));
+        assert_eq!(frame.pixels_rgba, [0, 255, 0, 255, 0, 0, 0, 0]);
     }
 
     #[test]

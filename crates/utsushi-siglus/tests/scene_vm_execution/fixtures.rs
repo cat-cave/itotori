@@ -109,6 +109,21 @@ pub(super) fn stage_assign(out: &mut Vec<u8>, stage: i32, slot: i32, operation: 
     push_int(out, value);
     assign(out);
 }
+pub(super) fn stage_alias_child_assign(
+    out: &mut Vec<u8>,
+    stage_alias: i32,
+    slot: i32,
+    child: i32,
+    operation: i32,
+    value: i32,
+) {
+    elm(out);
+    for value in [stage_alias, 2, -1, slot, 93, -1, child, operation] {
+        push_int(out, value);
+    }
+    push_int(out, value);
+    assign(out);
+}
 pub(super) fn goto(out: &mut Vec<u8>, label: i32) {
     out.push(0x10);
     word(out, label);

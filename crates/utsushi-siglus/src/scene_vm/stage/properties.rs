@@ -10,12 +10,16 @@ pub(super) fn create_overload_at_least(
 }
 
 pub(super) fn object_mut(state: &mut VmState, target: StageObjectTarget) -> &mut StageObject {
-    state
+    let mut object = state
         .stage_objects
         .entry(target.stage)
         .or_default()
         .entry(target.slot)
-        .or_default()
+        .or_default();
+    for child in target.children {
+        object = object.children.entry(child).or_default();
+    }
+    object
 }
 
 pub(super) fn property(object: &StageObject, op: i32) -> Option<i32> {
@@ -28,6 +32,9 @@ pub(super) fn property(object: &StageObject, op: i32) -> Option<i32> {
         OBJECT_CENTER_X => object.geometry.center_x,
         OBJECT_CENTER_Y => object.geometry.center_y,
         OBJECT_CENTER_Z => object.geometry.center_z,
+        OBJECT_CENTER_REP_X => object.geometry.center_rep_x,
+        OBJECT_CENTER_REP_Y => object.geometry.center_rep_y,
+        OBJECT_CENTER_REP_Z => object.geometry.center_rep_z,
         OBJECT_SCALE_X => object.geometry.scale_x,
         OBJECT_SCALE_Y => object.geometry.scale_y,
         OBJECT_SCALE_Z => object.geometry.scale_z,
@@ -40,6 +47,7 @@ pub(super) fn property(object: &StageObject, op: i32) -> Option<i32> {
         OBJECT_CLIP_RIGHT => object.geometry.clip.map_or(0, |clip| clip.2),
         OBJECT_CLIP_BOTTOM => object.geometry.clip.map_or(0, |clip| clip.3),
         OBJECT_TR => object.transparency,
+        OBJECT_BLEND => object.blend,
         OBJECT_WIPE_COPY => object.wipe_copy,
         OBJECT_ORDER => object.order,
         OBJECT_WIPE_ERASE => object.wipe_erase,
@@ -57,6 +65,9 @@ pub(super) fn set_property(object: &mut StageObject, op: i32, value: i32) -> boo
         OBJECT_CENTER_X => object.geometry.center_x = value,
         OBJECT_CENTER_Y => object.geometry.center_y = value,
         OBJECT_CENTER_Z => object.geometry.center_z = value,
+        OBJECT_CENTER_REP_X => object.geometry.center_rep_x = value,
+        OBJECT_CENTER_REP_Y => object.geometry.center_rep_y = value,
+        OBJECT_CENTER_REP_Z => object.geometry.center_rep_z = value,
         OBJECT_SCALE_X => object.geometry.scale_x = value,
         OBJECT_SCALE_Y => object.geometry.scale_y = value,
         OBJECT_SCALE_Z => object.geometry.scale_z = value,
@@ -80,6 +91,7 @@ pub(super) fn set_property(object: &mut StageObject, op: i32, value: i32) -> boo
             object.geometry.clip = Some(clip);
         }
         OBJECT_TR => object.transparency = value,
+        OBJECT_BLEND => object.blend = value,
         OBJECT_WIPE_COPY => object.wipe_copy = value,
         OBJECT_ORDER => object.order = value,
         OBJECT_WIPE_ERASE => object.wipe_erase = value,

@@ -40,7 +40,9 @@ pub use siglus_g00::{
 pub use siglus_render::{
     SiglusCgFrame, SiglusCgRedaction, SiglusRenderError, encode_siglus_png, render_siglus_cg,
 };
-pub use stage_render::{SiglusStageRenderError, render_siglus_stage};
+pub use stage_render::{
+    SiglusStageRenderError, render_siglus_stage, render_siglus_stage_on_canvas,
+};
 pub use structure_export::build_siglus_structure;
 
 /// The clean-room research-anchor statement exposed for audit tooling.

@@ -114,6 +114,24 @@ fn stage_object_commands_and_properties_populate_slot_geometry_and_order() {
 }
 
 #[test]
+fn nested_stage_child_assignment_preserves_the_authored_blend_before_text() {
+    let mut code = Vec::new();
+    stage_alias_child_assign(&mut code, 37, 122, 2, 46, 3);
+    push_str(&mut code, 0);
+    text(&mut code);
+    code.push(0x16);
+
+    let program = SceneProgram::from_payload(3, &payload(&code, &[], &["continued"]))
+        .expect("nested stage-object payload compiles");
+    let mut state = VmState::default();
+    let report = execute_scene_with_stage_objects(&program, &mut state)
+        .expect("OBJECT.CHILD[index].BLEND assignment reaches the authored text boundary");
+
+    assert_eq!(state.stage_objects[&0][&122].children[&2].blend, 3);
+    assert_eq!(report.moments.len(), 1);
+}
+
+#[test]
 fn captures_the_stage_state_that_produced_each_real_text_boundary() {
     let mut code = Vec::new();
     stage_path(&mut code, 0, 4, 38);
