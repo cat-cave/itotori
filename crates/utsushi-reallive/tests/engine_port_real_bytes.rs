@@ -138,13 +138,13 @@ fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
     let window_config = gameexe.message_window(0);
     let screen_size = gameexe.screen_size_px();
 
-    let assets: Arc<dyn AssetPackage> = Arc::new(OnDiskG00Package::new(g00_dir));
+    let assets = Arc::new(OnDiskG00Package::new(g00_dir));
     // Pin the playthrough-sequence bound so the frame-count assertion below
     // is deterministic on real bytes regardless of the env/default: the port
     // renders EACH leading play-order message to its own frame, capped here.
     let mut port = UtsushiReallivePort::new(
         staged_engine(&seen_bytes),
-        assets,
+        Arc::clone(&assets) as Arc<dyn AssetPackage>,
         scene,
         window_config,
         screen_size,
@@ -258,8 +258,6 @@ fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
         "[{label}] the rendered playthrough must CROSS a scene boundary (≥2 distinct scene ids); \
          got frames from {frame_scene_ids:?} (a regression that stops at the entry scene fails)"
     );
-    // The scene ids are non-decreasing runs in dispatch order (scene A's
-    // frames, then scene B's), never interleaved back and forth.
     let mut boundaries = 0usize;
     for window in frame_scene_ids.windows(2) {
         if window[0] != window[1] {
@@ -270,12 +268,6 @@ fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
         boundaries >= 1,
         "[{label}] the rendered frames must show ≥1 A→B scene transition; got {frame_scene_ids:?}"
     );
-
-    // The port's play-order message stream is SINGLE PASS (branch-following
-    // play order, or the byte-order catalogue fallback) — the SAME decoded
-    // lines, in the SAME order, the substrate text sink emits, NOT the
-    // former ~2× two-pass union and NOT the retired `UTSUSHI REALLIVE SCENE
-    // N` placeholder.
     let sink_bodies: Vec<String> = outcome
         .observations
         .iter()
@@ -285,10 +277,18 @@ fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
     let overlay_chars: usize = frame_overlay.iter().map(|line| line.chars().count()).sum();
     eprintln!(
         "[{label}] frame_overlay_lines={} frame_overlay_chars={overlay_chars} \
-         sink_bodies={}",
+         sink_bodies={} missing_g00_opens={}",
         frame_overlay.len(),
         sink_bodies.len(),
+        assets.missing_open_count(),
     );
+    if label == "title1" {
+        assert_eq!(
+            assets.missing_open_count(),
+            0,
+            "[{label}] case-insensitive staged g00 lookup must not miss a background"
+        );
+    }
     assert!(
         !frame_overlay.is_empty(),
         "[{label}] the port's play-order message stream must carry the real decoded dialogue; got \
