@@ -1,14 +1,13 @@
 //! Stateful mouse polling opcodes used by hand-written RealLive menus.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use utsushi_core::input::{InputEvent, PointerButton};
 
-use crate::rlop::module_obj::DEFAULT_BUTTON_GROUP;
+use crate::input_bridge::{REALLIVE_RAW_INPUT_ENGINE, REALLIVE_RAW_PRIMARY_RELEASE};
 use crate::rlop::{DispatchOutcome, ExprValue, RLOperation, RlopKey, RlopRegistry};
 use crate::var_banks::{BankId, Value};
 use crate::vm::{Vm, VmWarning};
-use crate::{GraphicsRuntime, HitRegion};
 
 const SYS_MODULE_TYPE: u8 = 1;
 const SYS_MODULE_ID: u8 = 4;
@@ -27,34 +26,39 @@ struct CursorState {
 #[derive(Debug, Default)]
 pub(super) struct CursorInputRuntime {
     state: Mutex<CursorState>,
-    graphics: Arc<GraphicsRuntime>,
-    auto_first_button: bool,
 }
 
 impl CursorInputRuntime {
-    pub(super) fn new(graphics: Arc<GraphicsRuntime>, auto_first_button: bool) -> Self {
+    pub(super) fn new() -> Self {
         Self {
             state: Mutex::new(CursorState::default()),
-            graphics,
-            auto_first_button,
         }
     }
     pub(super) fn record(&self, event: &InputEvent, screen: (i32, i32)) {
-        let InputEvent::Pointer { x, y, button } = event else {
-            return;
-        };
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.x = (x * (screen.0 - 1).max(0) as f32).round() as i32;
-        state.y = (y * (screen.1 - 1).max(0) as f32).round() as i32;
-        match button {
-            // A substrate pointer event represents the completed gesture that
-            // the poll observes, matching EventSystem's released value.
-            PointerButton::Primary => state.primary = 2,
-            PointerButton::Secondary => state.secondary = 2,
-            PointerButton::Auxiliary => {}
+        match event {
+            InputEvent::Pointer { x, y, button } => {
+                state.x = (x * (screen.0 - 1).max(0) as f32).round() as i32;
+                state.y = (y * (screen.1 - 1).max(0) as f32).round() as i32;
+                match button {
+                    // The normalized event begins the gesture at its exact
+                    // logical coordinate. A native release below makes the
+                    // later `2` visible to the script.
+                    PointerButton::Primary => state.primary = 1,
+                    PointerButton::Secondary => state.secondary = 1,
+                    PointerButton::Auxiliary => {}
+                }
+            }
+            InputEvent::Raw { code }
+                if code.engine == REALLIVE_RAW_INPUT_ENGINE
+                    && code.code == REALLIVE_RAW_PRIMARY_RELEASE =>
+            {
+                state.primary = 2;
+            }
+            _ => {}
         }
     }
 
@@ -68,24 +72,10 @@ impl CursorInputRuntime {
     }
 
     fn state(&self) -> CursorState {
-        let mut state = self
+        *self
             .state
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if self.auto_first_button
-            && state.primary == 0
-            && let Some(HitRegion::Known(rect)) = self
-                .graphics
-                .button_candidates(DEFAULT_BUTTON_GROUP)
-                .into_iter()
-                .map(|candidate| candidate.object.hit_region(None))
-                .find(|region| matches!(region, HitRegion::Known(_)))
-        {
-            state.x = rect.x.saturating_add(rect.width / 2);
-            state.y = rect.y.saturating_add(rect.height / 2);
-            state.primary = 2;
-        }
-        *state
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -177,16 +167,26 @@ fn four_int_references(args: &[ExprValue]) -> Result<[(BankId, u16); 4], String>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
-    fn get_cursor_pos_writes_every_reference_after_a_completed_primary_click() {
-        let runtime = CursorInputRuntime::new(Arc::new(GraphicsRuntime::new()), false);
+    fn get_cursor_pos_writes_press_then_release_state_to_the_script() {
+        let runtime = CursorInputRuntime::new();
         runtime.record(
             &InputEvent::Pointer {
                 x: 0.5,
                 y: 0.25,
                 button: PointerButton::Primary,
             },
+            (800, 600),
+        );
+        assert_eq!(
+            runtime.state().primary,
+            1,
+            "press must be observable before release"
+        );
+        runtime.record(
+            &InputEvent::raw(REALLIVE_RAW_INPUT_ENGINE, REALLIVE_RAW_PRIMARY_RELEASE),
             (800, 600),
         );
         let mut vm = Vm::new(1, 0);
@@ -210,10 +210,7 @@ mod tests {
 
     #[test]
     fn flush_click_clears_button_states_without_moving_the_cursor() {
-        let runtime = Arc::new(CursorInputRuntime::new(
-            Arc::new(GraphicsRuntime::new()),
-            false,
-        ));
+        let runtime = Arc::new(CursorInputRuntime::new());
         runtime.record(
             &InputEvent::Pointer {
                 x: 0.5,

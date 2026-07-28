@@ -163,6 +163,9 @@ pub mod replay;
 // input event so a live playthrough replays byte-identically.
 pub mod input_bridge;
 
+/// Explicit, hydrated-geometry pointer gestures for a live session.
+pub mod pointer_click;
+
 // utsushi-reallive-jump-resume: deterministic jump / resume to a
 // `(scene, line, frame)` target for ANY RealLive project. Owns the
 // engine-general, game-agnostic addressing model (`JumpTarget`
@@ -268,6 +271,7 @@ pub use input_bridge::{
 pub use jump::{
     JUMP_ADDRESS_PREFIX, JumpAddressError, JumpError, JumpLanding, JumpTarget, resolve_line_pc,
 };
+pub use pointer_click::{HydratedPrimaryClick, HydratedPrimaryClickError, LIVE_SESSION_SCREEN};
 pub use replay::{
     BranchFollowingObservation, BranchReplayReport, BranchTerminus, ControlTransferCounts,
     DEFAULT_REPLAY_STEP_BUDGET, DecompressedScene, LiveSession, LiveSessionChoice,

@@ -164,6 +164,12 @@ fn entry_playthrough_emits_an_ordered_subset_of_static_text_bytes() {
         .filter(|segment| segment.observation.play_order_source == PlayOrderSource::LinearCatalogue)
         .map(|segment| segment.observation.play_order_lines.len())
         .sum();
+    let executed_lines: usize = playthrough
+        .segments
+        .iter()
+        .filter(|segment| segment.observation.play_order_source == PlayOrderSource::BranchFollowing)
+        .map(|segment| segment.observation.play_order_lines.len())
+        .sum();
     let hydrated_objects: usize = playthrough
         .segments
         .iter()
@@ -179,7 +185,7 @@ fn entry_playthrough_emits_an_ordered_subset_of_static_text_bytes() {
         .filter(|object| object.geometry.surface.is_some())
         .count();
     eprintln!(
-        "entry-path oracle: scenes={scene_ids:?} observed_steps={observed_steps} emitted={} static={} overlap={overlap} fallback_lines={fallback_lines} hydrated_objects={hydrated_objects} branch_steps={} branch_text={} object_get_rectangle={:?} containment_rectangles={:?} print_directives={:?} modeled_events={} branch_terminus={:?} transfers={:?}",
+        "entry-path oracle: scenes={scene_ids:?} observed_steps={observed_steps} emitted={} executed_lines={executed_lines} static={} overlap={overlap} fallback_lines={fallback_lines} hydrated_objects={hydrated_objects} branch_steps={} branch_text={} object_get_rectangle={:?} containment_rectangles={:?} print_directives={:?} modeled_events={} branch_terminus={:?} transfers={:?}",
         emitted.len(),
         static_lines.len(),
         branch_report.steps,
@@ -213,5 +219,104 @@ fn entry_playthrough_emits_an_ordered_subset_of_static_text_bytes() {
                     && rectangle[3].is_some_and(|height| height > 0)
             }),
         "the real containment check must observe a positive intrinsic image rectangle"
+    );
+}
+
+#[test]
+#[ignore = "requires ITOTORI_CORPUS_ROOT with the optional second real corpus"]
+fn hydrated_primary_pointer_press_then_release_resolves_the_entry_wait() {
+    let Some(corpus) = real_corpus::corpus_2() else {
+        eprintln!("SKIP pointer entry oracle: reallive/2/plain is unavailable.");
+        return;
+    };
+    let entry = corpus
+        .entry_scene()
+        .expect("real corpus Gameexe.ini must declare #SEEN_START");
+    let bytes = fs::read(&corpus.seen_txt).expect("read real Seen.txt");
+    let (engine, _) = staged_engine_and_bytes(&bytes);
+    let g00_dir = real_corpus::g00_dir_for(real_corpus::SECONDARY)
+        .expect("full second-corpus install must provide a g00 directory");
+    let assets: Arc<dyn AssetPackage> = Arc::new(real_g00_package::RealG00Package::new(g00_dir));
+    let (mut session, initial) = engine
+        .start_live_session_with_assets(entry, assets)
+        .expect("live entry session starts");
+    let click = session
+        .hydrated_primary_click()
+        .expect("the current VM rectangle must match hydrated real geometry");
+    let [press, release] = click.events();
+    let after_press = session.send(press).expect("pointer press is consumed");
+    let after_release = session.send(release).expect("pointer release is consumed");
+
+    eprintln!(
+        "pointer entry oracle: initial={:?} rectangle={:?} pixel={:?} after_press={:?} after_release={:?} emitted_after_release={}",
+        initial.state,
+        click.rectangle,
+        click.pixel,
+        after_press.state,
+        after_release.state,
+        after_release.emitted_lines.len(),
+    );
+    assert!(
+        click.pixel.0 > click.rectangle.x
+            && click.pixel.0 < click.rectangle.x + click.rectangle.width
+            && click.pixel.1 > click.rectangle.y
+            && click.pixel.1 < click.rectangle.y + click.rectangle.height,
+        "the derived click must lie in the hydrated rectangle's strict interior"
+    );
+    assert_eq!(
+        after_press.state.event_index, initial.state.event_index,
+        "the press must leave the script parked until its matching release"
+    );
+    assert!(
+        after_release.state.event_index > after_press.state.event_index,
+        "the release must execute the script's state-2 path"
+    );
+}
+
+#[test]
+#[ignore = "requires ITOTORI_CORPUS_ROOT with the optional primary real corpus"]
+fn primary_entry_path_keeps_its_executed_oracle_coverage() {
+    let Some(corpus) = real_corpus::corpus_1() else {
+        eprintln!("SKIP primary entry oracle: reallive/1/encrypted is unavailable.");
+        return;
+    };
+    let entry = corpus
+        .entry_scene()
+        .expect("real corpus Gameexe.ini must declare #SEEN_START");
+    let bytes = fs::read(&corpus.seen_txt).expect("read real Seen.txt");
+    let (engine, _) = staged_engine_and_bytes(&bytes);
+    let playthrough = engine.observe_playthrough(
+        entry,
+        &ReplayOpts {
+            step_budget: ENTRY_PATH_BUDGET,
+            stop_at_first_pause: false,
+        },
+        ENTRY_PATH_SCENES,
+    );
+    let scene_ids: Vec<u16> = playthrough
+        .segments
+        .iter()
+        .map(|segment| segment.scene_id)
+        .collect();
+    let executed: Vec<_> = playthrough
+        .segments
+        .iter()
+        .filter(|segment| segment.observation.play_order_source == PlayOrderSource::BranchFollowing)
+        .flat_map(|segment| {
+            segment
+                .observation
+                .play_order_lines
+                .iter()
+                .map(move |line| (segment.scene_id, line))
+        })
+        .collect();
+    eprintln!(
+        "primary entry oracle: scenes={scene_ids:?} executed_lines={}",
+        executed.len(),
+    );
+    assert_eq!(
+        executed.len(),
+        7_750,
+        "the primary corpus must not regress from its established executed-line count"
     );
 }

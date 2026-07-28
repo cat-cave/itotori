@@ -11,9 +11,11 @@ use utsushi_core::substrate::AssetPackage;
 
 use super::event_loop_gate::{PolledEventLoop, carries_a_back_edge};
 use crate::input_bridge::{BridgeScheduler, PendingYield, UserInputQueue};
+use crate::pointer_click::{HydratedPrimaryClick, HydratedPrimaryClickError, LIVE_SESSION_SCREEN};
 use crate::render_pipeline::ObjectButtonChoiceOption;
 use crate::rlop::SelectLongOp;
 use crate::rlop::module_sel::SelectionPromptKind;
+use crate::var_banks::{BankId, Value};
 
 /// A compact, serialisable-by-callers description of the live VM boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -204,6 +206,19 @@ impl LiveSession {
         self.graphics.state_snapshot().stack
     }
 
+    /// Derive the only allowed automated pointer gesture from the hydrated
+    /// button rectangle currently visible at this live input boundary.
+    pub fn hydrated_primary_click(
+        &self,
+    ) -> Result<HydratedPrimaryClick, HydratedPrimaryClickError> {
+        let values =
+            [1000, 1001, 1002, 1003].map(|index| match self.vm.banks().get(BankId::IntA, index) {
+                Some(Value::Int(value)) => Some(value),
+                Some(Value::Str(_)) | None => None,
+            });
+        HydratedPrimaryClick::from_rectangle(&self.graphics_stack(), values)
+    }
+
     /// The REAL options behind the parked choice gate, or `None` when the
     /// VM is not waiting on a selection.
     ///
@@ -261,8 +276,25 @@ impl LiveSession {
         // resolve: the input IS the event the loop is sampling for, and it is
         // spent modelling that. Queueing it as well would let one press cross
         // two boundaries — the loop, and then whichever real gate follows it.
+        let primary_press = matches!(
+            input,
+            InputEvent::Pointer {
+                button: utsushi_core::input::PointerButton::Primary,
+                ..
+            }
+        );
+        self.cursor.record(&input, LIVE_SESSION_SCREEN);
+        // A pointer-down changes the polled cursor state to `1`, but the VM
+        // does not advance until the matching native release changes it to
+        // `2`. This preserves the script-visible transition instead of
+        // treating pointer-down as a completed click.
+        if self.event_loop.is_parked() && primary_press {
+            return Ok(LiveSessionUpdate {
+                state: self.state(),
+                emitted_lines: Vec::new(),
+            });
+        }
         if self.event_loop.is_parked() {
-            self.cursor.record(&input, (640, 480));
         } else if let Some(choice) = self.object_button_choice_at(&input) {
             self.queue.push(InputEvent::choice(choice));
         } else {
