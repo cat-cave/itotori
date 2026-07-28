@@ -36,7 +36,7 @@ if (import.meta.url === pathToMainUrl(process.argv[1])) {
 // qd-full-ci is the per-gate CI entrypoint. Per-gate CI is single-mode SYNTHETIC
 // (fast, copyright-free): it runs the synthetic suites + the mutation-differential
 // guardrail, NOT the ~30-45min real-bytes lane (that lane is periodic-only, via
-// `just real-bytes-oracle`). Instead of always running the full `just ci`, it
+// `just test real-bytes-oracle`). Instead of always running the full `just ci`, it
 // selects only the lanes a diff can affect:
 //
 //   * shared / foundational change (workspace Cargo.toml, justfile, scripts/,
@@ -130,7 +130,21 @@ async function main() {
 }
 
 function runJust(root, env, args) {
-  const result = spawnSync("just", args, {
+  const [legacyLane] = args;
+  const selectors = {
+    "db-up": ["dev", "db-up"],
+    "db-down": ["dev", "db-down"],
+    "db-wait": ["dev", "db-wait"],
+    check: ["check", "all"],
+    ci: ["ci", "public"],
+    "ci-itotori": ["ci", "tier1-db"],
+    "ci-kaifuu": ["test", "all"],
+    "ci-utsushi": ["test", "all"],
+    "mutation-differential": ["test", "mutation-differential"],
+    "fixtures-validate": ["check", "fixtures"],
+    "alpha-proof": ["test", "alpha"],
+  };
+  const result = spawnSync("just", selectors[legacyLane] ?? args, {
     cwd: root,
     env,
     stdio: "inherit",

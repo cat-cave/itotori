@@ -12,7 +12,7 @@
 // ceiling, not a target.
 //
 // Exit codes: 0 = at or under budget; 1 = over budget.
-// Wired into `just ci-tier0-meta`.
+// Wired into `just ci tier0-meta`.
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

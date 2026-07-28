@@ -290,7 +290,7 @@ async function loadBuiltModules() {
     return { schema, synthetic, db, app, scale };
   } catch (error) {
     throw new Error(
-      `scale harness requires built TypeScript packages; run just itotori-scale-smoke or pnpm exec vp run ts:build first: ${errorMessage(error)}`,
+      `scale harness requires built TypeScript packages; run just dev scale-smoke or pnpm exec vp run ts:build first: ${errorMessage(error)}`,
     );
   }
 }

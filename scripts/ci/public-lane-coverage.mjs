@@ -19,7 +19,7 @@
 //   node scripts/ci/public-lane-coverage.mjs            # print coverage table
 //   node scripts/ci/public-lane-coverage.mjs --check     # fail (exit 1) on any gap
 //
-// Wired into `just ci-tier0-meta` (a REQUIRED tier-0 merge-queue check), so the
+// Wired into `just ci tier0-meta` (a REQUIRED tier-0 merge-queue check), so the
 // coverage assertion runs secretlessly on every PR — including fork PRs.
 
 import { existsSync, readFileSync } from "node:fs";
@@ -183,11 +183,25 @@ export const REQUIRED_CATEGORY_IDS = [
 ];
 
 // ---------------------------------------------------------------------------
-// justfile recipe-body extraction. A recipe starts at a line `name:` (optional
-// deps after the colon) at column 0 and runs until the next column-0 recipe
-// header or a blank-line-separated non-indented block.
+// Command-selector extraction. The justfile has only the six public delegates;
+// lane implementation lives in the validated command dispatcher.
 // ---------------------------------------------------------------------------
 export function extractRecipeBody(justfileText, recipeName) {
+  if (recipeName === "ci-tier0-meta") {
+    return (
+      /if \(scope === "meta"\)\s*return shell\(`(?<body>[\s\S]*?)`\);/u.exec(justfileText)?.groups
+        ?.body ?? null
+    );
+  }
+  if (recipeName.startsWith("ci-tier1-ts-public-")) {
+    const selector = recipeName.slice(3);
+    return (
+      new RegExp(
+        `if \\(lane === "${selector}"\\)\\s*return shell\\(\\s*"(?<body>[\\s\\S]*?)",\\s*\\)`,
+        "u",
+      ).exec(justfileText)?.groups?.body ?? null
+    );
+  }
   const lines = justfileText.split(/\r?\n/u);
   const headerRe = new RegExp(`^${recipeName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?:\\s|:)`);
   let start = -1;
@@ -296,7 +310,7 @@ export function evaluateCoverage({ categories, requiredIds, justfileText, readFi
 }
 
 export function runCoverage(root = repoRoot) {
-  const justfileText = readFileSync(join(root, "justfile"), "utf8");
+  const justfileText = readFileSync(join(root, "scripts", "developer-command.mjs"), "utf8");
   return evaluateCoverage({
     categories: REQUIRED_PUBLIC_CATEGORIES,
     requiredIds: REQUIRED_CATEGORY_IDS,

@@ -292,7 +292,7 @@ test("doctor fails when DATABASE_URL is set but unreachable", () => {
   });
   const pg = report.deps.find((d) => d.id === "postgres");
   assert.equal(pg.status, "fail");
-  assert.match(pg.fix, /just db-up/);
+  assert.match(pg.fix, /just dev db-up/);
 });
 
 test("core profile does not require Chromium; render does", () => {

@@ -199,5 +199,5 @@ pnpm --filter @itotori/localization-bridge-schema typecheck
 ```
 
 The cross-language (TS ↔ Rust) contract fixture suite and the
-`just contract-validate` gate live under a separate axis — see
+`just test all` gate live under a separate axis — see
 [shared-contract-compatibility.md](shared-contract-compatibility.md).

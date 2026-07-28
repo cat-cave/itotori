@@ -14,7 +14,7 @@ pub const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
 /// coverage is STRICT: an absent corpus is an UNCONDITIONAL HARD FAILURE (this
 /// panics, naming the missing [`REAL_GAME_ROOT_ENV`]). There is NO opt-out —
 /// the real-bytes suites are `#[ignore]`-d and run only in the periodic
-/// ground-truth oracle (`just real-bytes-oracle`), where the corpora are always
+/// ground-truth oracle (`just test real-bytes-oracle`), where the corpora are always
 /// staged. Returns `()` (not `!`) so the early-return call sites keep their
 /// `return` without an `unreachable_code` lint.
 pub fn require_real_bytes(test_name: &str) {

@@ -11,7 +11,7 @@
   "artifactKeys": ["patchTarget", "translatedBridge", "patchApply", "patchExport"],
   "realBytes": {
     "suite": "apps/itotori/test/patchback-produce-build.test.ts",
-    "strictLane": "just ci-real-bytes",
+    "strictLane": "just test real-bytes",
     "corpusEnvironment": ["ITOTORI_REAL_GAME_ROOT", "ITOTORI_REAL_GAME_ROOT_2"],
     "minimumDistinctGames": 2,
     "assertions": [

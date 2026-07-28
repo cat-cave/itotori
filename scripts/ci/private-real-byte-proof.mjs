@@ -6,7 +6,7 @@
 // exact approved ZDR profile, and it exercises extract → structure → patch →
 // replay on ACTUAL bytes. It is NOT a merge-required check (public runners have
 // no real bytes); it is triggered on demand / by label. See
-// .github/workflows/real-bytes-private-proof.yml + `just ci-real-bytes-private-proof`.
+// .github/workflows/real-bytes-private-proof.yml + `just ci private-real-bytes`.
 //
 // THE KEY INVERSION (fail, not skip): the periodic oracle may skip a corpus
 // family that is legitimately absent (e.g. Softpal under its own root). This

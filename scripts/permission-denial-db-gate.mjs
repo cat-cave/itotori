@@ -14,8 +14,8 @@
 //     zero-test, or skipped outcome is a hard failure, and a deterministic proof
 //     artifact records the matrix and test counts.
 //
-// Run against a disposable Postgres (see `just db-up` / `just db-migrate`):
-//   just permission-denial-db-strict
+// Run against a disposable Postgres (see `just dev db-up` / `just dev db-migrate`):
+//   just test permission-denial-db
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,7 +46,7 @@ const resultsPath = path.join(tmpDir, "permission-denial-results.json");
 const generalSkipMarkerPath = path.join(tmpDir, "no-database-skipped.json");
 
 const remediationCommand =
-  'just db-up && just db-migrate && DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" just permission-denial-db-strict';
+  'just dev db-up && just dev db-migrate && DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" just test permission-denial-db';
 
 await mkdir(tmpDir, { recursive: true });
 await rm(skipArtifactPath, { force: true });

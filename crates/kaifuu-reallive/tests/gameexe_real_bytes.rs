@@ -21,7 +21,7 @@
 //! Env-gating, STRICT: this test reads bytes only when
 //! `ITOTORI_REAL_GAME_ROOT` is set; otherwise an absent corpus is an
 //! unconditional HARD FAILURE (no opt-out). It runs only in the periodic
-//! ground-truth oracle (`just real-bytes-oracle`), where the corpus is staged.
+//! ground-truth oracle (`just test real-bytes-oracle`), where the corpus is staged.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;

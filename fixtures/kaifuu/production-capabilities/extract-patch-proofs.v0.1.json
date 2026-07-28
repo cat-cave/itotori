@@ -18,7 +18,7 @@
       },
       "realBytes": {
         "status": "passed",
-        "strictLane": "just ci-real-bytes",
+        "strictLane": "just test real-bytes",
         "minimumDistinctCorpora": 2,
         "corpusEnvironment": [
           "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ",
@@ -43,7 +43,7 @@
       },
       "realBytes": {
         "status": "passed",
-        "strictLane": "just ci-real-bytes",
+        "strictLane": "just test real-bytes",
         "minimumDistinctCorpora": 1,
         "corpusEnvironment": ["KAIFUU_XP3_PROFILE_A_ARCHIVE"],
         "outcome": "byte_exact_archive_rebuild"

@@ -490,7 +490,7 @@ function buildReallivePatchbackProduceRow(inputs) {
     v.cliCommand === "itotori patch produce" &&
     v.deliverySurface === "POST /api/patchback/produce" &&
     v.engineFamily === "reallive" &&
-    v.realBytes?.strictLane === "just ci-real-bytes" &&
+    v.realBytes?.strictLane === "just test real-bytes" &&
     v.realBytes?.minimumDistinctGames >= 2 &&
     ["ITOTORI_REAL_GAME_ROOT", "ITOTORI_REAL_GAME_ROOT_2"].every((name) =>
       (v.realBytes?.corpusEnvironment ?? []).includes(name),
@@ -596,7 +596,7 @@ function requireProductionProofClaim(inputs, claimId, expected) {
     !realBytes ||
     typeof realBytes !== "object" ||
     !["passed", "failed"].includes(realBytes.status) ||
-    realBytes.strictLane !== "just ci-real-bytes" ||
+    realBytes.strictLane !== "just test real-bytes" ||
     typeof realBytes.minimumDistinctCorpora !== "number" ||
     !Array.isArray(realBytes.corpusEnvironment) ||
     typeof claim.productionPath !== "object"

@@ -86,7 +86,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Run portable shard
-        run: just ci-tier1-${{ matrix.shard }}
+        run: just ci tier1-${{ matrix.shard }}
 
   db:
     name: Tier 1 / postgres
@@ -127,7 +127,7 @@ jobs:
           echo "Tier-1 DB preflight ok: DATABASE_URL is set"
 
       - name: Run Tier-1 DB suite
-        run: just ci-tier1-db
+        run: just ci tier1-db
 
   # The renderer comes from nix, NOT from Playwright's download. The DS visual
   # baselines are pixel-exact (maxDiffPixels=0) against the flake.lock-pinned
@@ -180,7 +180,7 @@ jobs:
           '
 
       - name: Run Tier-1 browser suite
-        run: nix develop .#browser --command just ci-tier1-browser
+        run: nix develop .#browser --command just ci tier1-browser
 
   alpha:
     name: Tier 1 / alpha proof
@@ -193,7 +193,7 @@ jobs:
       - uses: ./.github/actions/setup-itotori
 
       - name: Run alpha proof
-        run: just alpha-proof
+        run: just test alpha
 
   mutation:
     name: Tier 1 / mutation differential
@@ -209,7 +209,7 @@ jobs:
           sccache: "true"
 
       - name: Run mutation differential
-        run: just ci-tier1-mutation
+        run: just ci tier1-mutation
 
   required:
     name: Tier 1 / required

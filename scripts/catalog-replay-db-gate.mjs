@@ -14,8 +14,8 @@
 //     A zero-test / skipped outcome is a hard failure, and a deterministic proof
 //     artifact records the per-suite test counts.
 //
-// Run against a disposable Postgres (see `just db-up` / `just db-migrate`):
-//   just catalog-replay-db-strict
+// Run against a disposable Postgres (see `just dev db-up` / `just dev db-migrate`):
+//   just test catalog-replay-db
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,7 +49,7 @@ const resultsPath = path.join(tmpDir, "catalog-replay-results.json");
 const generalSkipMarkerPath = path.join(tmpDir, "no-database-skipped.json");
 
 const remediationCommand =
-  'just db-up && just db-migrate && DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" just catalog-replay-db-strict';
+  'just dev db-up && just dev db-migrate && DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" just test catalog-replay-db';
 
 await mkdir(tmpDir, { recursive: true });
 // Start from a clean slate so a stale artifact never stands in for this run.

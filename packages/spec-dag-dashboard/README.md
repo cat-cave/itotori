@@ -11,8 +11,8 @@ matches the validator exactly — there is no second, drifting rule set.
 ## Usage
 
 ```sh
-just roadmap-dashboard          # build + regenerate + open in browser
-just roadmap-dashboard-watch    # build + watch roadmap/spec-dag.json, regenerate on change
+just dev roadmap-dashboard          # build + regenerate + open in browser
+just dev roadmap-dashboard-watch    # build + watch roadmap/spec-dag.json, regenerate on change
 
 # or directly:
 pnpm --filter @itotori/spec-dag-dashboard build
@@ -29,7 +29,7 @@ The topbar shows a provenance banner derived from local git state (no network):
 
 - `✓ <sha> · generated <relative time>` when current.
 - A prominent red warning when the tree is behind `origin/main` and/or dirty,
-  always telling you to re-run the generator (`just roadmap-dashboard`).
+  always telling you to re-run the generator (`just dev roadmap-dashboard`).
 - A neutral `origin/main unknown locally — run git fetch` when `origin/main`
   is not known locally.
 

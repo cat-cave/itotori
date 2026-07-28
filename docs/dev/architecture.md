@@ -178,7 +178,7 @@ than declared.
 
 The public-fixture vertical intentionally avoids copyrighted game files. It proves the contract between the projects without claiming real-engine support or translation quality.
 
-The alpha proof gate (`just alpha-proof`, run by the `alpha` job in
+The alpha proof gate (`just test alpha`, run by the `alpha` job in
 [`.github/workflows/_tier1.yml`](../../.github/workflows/_tier1.yml)) is
 the deterministic integration guardrail on the public-fixture path. It validates
 real cross-project artifact linkage — bridge, patch, PatchResult, provider
@@ -190,5 +190,5 @@ the literal "Hello World" workflow. The first real-engine vertical is `ALPHA-006
 (the configured alpha target corpus on RealLive, sourced from the corpus vault
 per the vault-source adapter contract). There is no second,
 weaker Hello World source of truth: `just hello` survives only as a compatibility
-alias that delegates to `just alpha-proof` and cannot diverge. See
+alias that delegates to `just test alpha` and cannot diverge. See
 [alpha-proof.md](../alpha-proof.md).

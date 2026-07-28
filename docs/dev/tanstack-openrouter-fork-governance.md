@@ -17,7 +17,7 @@ committed; CI installs with `pnpm install --frozen-lockfile`).
 Machine-readable source of truth for the exact versions / integrity hashes /
 publish commits: [`scripts/lint/tanstack-openrouter-pin.json`](../../scripts/lint/tanstack-openrouter-pin.json).
 CI enforces it via `node scripts/assert-tanstack-openrouter-pin.mjs` (wired into
-`just check` and `just ci-tier0-meta`). The coordinated-pin changeset lives at
+`just check` and `just ci tier0-meta`). The coordinated-pin changeset lives at
 [`.changeset/pin-tanstack-openrouter-fork.md`](../../.changeset/pin-tanstack-openrouter-fork.md).
 
 ## §1 — What is pinned

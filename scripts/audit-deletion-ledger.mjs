@@ -10,7 +10,7 @@
 // explicit reconciliation, never a silent pass.
 //
 // Exit codes: 0 = ledger matches reality; 1 = mismatch.
-// Wired into `just ci-tier0-meta`.
+// Wired into `just ci tier0-meta`.
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

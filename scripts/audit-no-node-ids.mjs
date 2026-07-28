@@ -13,7 +13,7 @@
 // `**/migrations/**/*.sql` (checksum-locked historical SQL), `docs/**`,
 // `roadmap/**`, `.qd/**`, `.plan/**`, and `CHANGELOG*`.
 //
-// Exit codes: 0 = clean; 1 = violation. Wired into `just ci-tier0-meta`.
+// Exit codes: 0 = clean; 1 = violation. Wired into `just ci tier0-meta`.
 
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";

@@ -4,13 +4,11 @@ import test from "node:test";
 
 import { waitForPostgres } from "./itotori-db-wait.mjs";
 
-const justfile = readFileSync("justfile", "utf8");
+const commandSurface = readFileSync("scripts/developer-command.mjs", "utf8");
 
-test("db-wait uses the health inspector instead of the compose-exec relay", () => {
-  const dbWait = justfile.match(/^db-wait:\n(?<body>(?:    .+\n)+)/mu);
-  assert.notEqual(dbWait, null, "justfile must define db-wait");
-  assert.match(dbWait.groups.body, /node scripts\/itotori-db-wait\.mjs/u);
-  assert.doesNotMatch(dbWait.groups.body, /docker compose.*exec.*pg_isready/u);
+test("the db-wait development selector uses the health inspector instead of the compose-exec relay", () => {
+  assert.match(commandSurface, /node scripts\/itotori-db-wait\.mjs/u);
+  assert.doesNotMatch(commandSurface, /docker compose.*exec.*pg_isready/u);
 });
 
 test("Postgres readiness succeeds despite the compose-exec exit-4 relay bug", async () => {

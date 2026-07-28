@@ -32,7 +32,7 @@ jobs:
         run: node scripts/surface-budget.mjs
 
       - name: Run Tier-0 lane
-        run: just ci-tier0-${{ matrix.lane }}
+        run: just ci tier0-${{ matrix.lane }}
 
   required:
     name: Tier 0 / required

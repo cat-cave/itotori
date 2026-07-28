@@ -10,7 +10,7 @@
 // third is pinned by `rasterizationArgs` in the visual runner.
 //
 // WHY IT IS A HARD FAILURE. This check previously lived at the BOTTOM of
-// `just ci-tier1-browser` and green-SKIPPED when the contract was unmet — and
+// `just ci tier1-browser` and green-SKIPPED when the contract was unmet — and
 // CI provisioned Playwright's own downloaded Chromium, so it was unmet on every
 // run. The pixel assertions therefore never executed on a single PR, and three
 // stale baselines sat red on `main` behind an all-green check. A lane that
@@ -140,7 +140,7 @@ function main() {
   console.error(`renderer contract UNMET — ${result.detail}.`);
   console.error(`  ${result.why}`);
   console.error(
-    "  Run the lane inside the dev shell (`nix develop --command just ci-tier1-browser`, or",
+    "  Run the lane inside the dev shell (`nix develop --command just ci tier1-browser`, or",
   );
   console.error("  `nix develop .#browser --command …` in CI), or set ITOTORI_DS_VISUAL_STRICT=1");
   console.error("  if you intentionally rebased the baselines for this renderer.");

@@ -77,7 +77,7 @@ direnv exec . just worktree-setup    # or, inside `nix develop`: just worktree-s
   `pnpm-lock.yaml`.
 
 After it runs, `direnv exec . pnpm exec vp check` and `direnv exec . node
-fixtures/validate-public-manifests.mjs` (a.k.a. `just fixtures-validate`) work.
+fixtures/validate-public-manifests.mjs` (a.k.a. `just check fixtures`) work.
 
 **Why not symlink `node_modules` from the main checkout?** pnpm's `node_modules`
 is a symlink farm whose workspace entries (`apps/*`, `packages/*`) point back at

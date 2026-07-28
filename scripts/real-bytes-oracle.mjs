@@ -15,7 +15,7 @@
 //
 // It runs TWO stages, either of which fails the whole run (nonzero exit):
 //
-//   (A) GROUND TRUTH — re-run the FULL real-bytes suite (`just ci-real-bytes`)
+//   (A) GROUND TRUTH — re-run the FULL real-bytes suite (`just test real-bytes`)
 //       against the real corpora under /scratch/itotori-research + the live
 //       read-only vault (the alpha + Kanon RealLive reference corpora,
 //       LustMemory + Countryside Life RPG Maker MV/MZ, the vault-materialized
@@ -46,7 +46,7 @@
 // CADENCE + WHAT A FAILURE MEANS
 // ------------------------------
 //   * Nightly cron + manual workflow_dispatch (.github/workflows/real-bytes-oracle.yml),
-//     and on-demand locally via `just real-bytes-oracle`.
+//     and on-demand locally via `just test real-bytes-oracle`.
 //   * It is NOT wired into affected.mjs / qd-full-ci — a per-gate green never
 //     pays for (or waits on) this. That separation is the whole point.
 //   * A RED oracle means the synthetic fixtures / coverage manifest DRIFTED
@@ -97,17 +97,17 @@ function banner(text) {
   console.log(`\n=== real-bytes-oracle: ${text} ===`);
 }
 
-// Stage A: full real-bytes ground-truth suite. `just ci-real-bytes` sets its
+// Stage A: full real-bytes ground-truth suite. `just test real-bytes` sets its
 // own corpus-root env defaults, PRE-CHECKS every root up front, builds the
 // kaifuu binary used by the app-level MV/MZ proof, and runs both real titles.
 // A missing corpus fails cleanly (nonzero) rather than passing with zero real
 // bytes.
 function runGroundTruth() {
   banner("stage A — real-bytes GROUND TRUTH (full suite, ~30-45 min)");
-  const result = spawnSync("just", ["ci-real-bytes"], { cwd: repoRoot, stdio: "inherit" });
+  const result = spawnSync("just", ["test", "real-bytes"], { cwd: repoRoot, stdio: "inherit" });
   if (result.error) {
     throw new OracleGroundTruthError(
-      `failed to launch \`just ci-real-bytes\`: ${result.error.message}`,
+      `failed to launch \`just test real-bytes\`: ${result.error.message}`,
     );
   }
   if (result.status !== 0) {

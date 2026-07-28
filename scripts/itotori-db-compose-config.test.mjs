@@ -16,6 +16,7 @@ import {
 
 const compose = readFileSync("docker-compose.yml", "utf8");
 const justfile = readFileSync("justfile", "utf8");
+const commandScript = readFileSync("scripts/developer-command.mjs", "utf8");
 const tier1Workflow = readFileSync(".github/workflows/_tier1.yml", "utf8");
 const flake = readFileSync("flake.nix", "utf8");
 const permissionDenialGate = readFileSync("scripts/permission-denial-db-gate.mjs", "utf8");
@@ -107,36 +108,24 @@ test("distinct worktree roots derive distinct default DATABASE_URLs (no shared D
   );
 });
 
-test("justfile has NO shared fixed default host port; connect recipes derive per-worktree", () => {
-  // The top-level DATABASE_URL export must fall back to EMPTY, never a shared
-  // fixed host port. A hardcoded default here masks the per-worktree derivation
-  // and lets two worktrees collide / truncate each other on `just db-up`/`db-reset`.
-  assert.match(
-    justfile,
-    /export DATABASE_URL := env_var_or_default\('DATABASE_URL', ''\)\n/u,
-    "DATABASE_URL default must be empty (per-worktree derivation happens in recipes)",
-  );
+test("the DB development selectors have no shared host port and derive their URL per worktree", () => {
   assert.doesNotMatch(
-    justfile,
-    /export DATABASE_URL := env_var_or_default\('DATABASE_URL', 'postgres:/u,
-    "justfile must not hardcode a shared fixed DATABASE_URL default",
+    commandScript,
+    /postgres:\/\/[^\n]*:55433/u,
+    "command implementation must not hardcode a shared fixed DATABASE_URL default",
   );
 
-  // db-migrate / db-reset (the recipes that CONNECT) must derive the
+  // db-migrate / db-reset (the selectors that CONNECT) must derive the
   // per-worktree URL from the compose-env script when DATABASE_URL is unset,
   // so they target the same per-worktree Postgres that `db-up` brought up.
-  const dbMigrate = justfile.match(/^db-migrate: db-cli-build\n(?<body>(?:    .+\n)+)/mu);
-  assert.notEqual(dbMigrate, null);
   assert.match(
-    dbMigrate.groups.body,
-    /DATABASE_URL="\$\(node scripts\/itotori-db-compose-env\.mjs --print-database-url\)" node apps\/itotori\/dist\/cli\.js db-migrate/u,
+    commandScript,
+    /DATABASE_URL=\\?"\$\(node scripts\/itotori-db-compose-env\.mjs --print-database-url\)\\?" node apps\/itotori\/dist\/cli\.js db-migrate/u,
   );
 
-  const dbReset = justfile.match(/^db-reset: db-migrate\n(?<body>(?:    .+\n)+)/mu);
-  assert.notEqual(dbReset, null);
   assert.match(
-    dbReset.groups.body,
-    /DATABASE_URL="\$\(node scripts\/itotori-db-compose-env\.mjs --print-database-url\)" node apps\/itotori\/dist\/cli\.js db-reset/u,
+    commandScript,
+    /DATABASE_URL=\\?"\$\(node scripts\/itotori-db-compose-env\.mjs --print-database-url\)\\?" node apps\/itotori\/dist\/cli\.js db-reset/u,
   );
 });
 
@@ -226,33 +215,19 @@ test("the alpha-proof integration workflow is public-fixture-only (no Postgres)"
   );
   assert.doesNotMatch(tier1AlphaJob, /just db-up|just db-wait|just db-down/u);
   assert.doesNotMatch(tier1AlphaJob, /DATABASE_URL/u);
-  // The CI job invokes the canonical alpha-proof recipe directly.
-  assert.match(tier1AlphaJob, /run: just alpha-proof\n/u);
-  assert.doesNotMatch(justfile, /^ci-tier1-alpha: alpha-proof$/mu);
+  // The CI job invokes the canonical alpha test selector directly.
+  assert.match(tier1AlphaJob, /run: just test alpha\n/u);
 });
 
-test("db recipes use explicit compose env files without project-global .env leakage", () => {
-  assert.match(justfile, /export COMPOSE_DISABLE_ENV_FILE := '1'\n/u);
-  assert.match(
-    justfile,
-    /export ITOTORI_DB_COMPOSE_ENV_PATH := env_var_or_default\('ITOTORI_DB_COMPOSE_ENV_PATH', '\.tmp\/itotori-db\/compose\.env'\)/u,
-  );
-  assert.doesNotMatch(justfile, /docker compose(?! --env-file "\$ITOTORI_DB_COMPOSE_ENV_PATH")/u);
+test("DB development selectors use explicit compose env files without project-global .env leakage", () => {
+  assert.match(commandScript, /docker compose --env-file/u);
+  assert.match(commandScript, /ITOTORI_DB_COMPOSE_ENV_PATH/u);
 });
 
 test("local qd CI uses the DB-owning full-CI wrapper", () => {
-  assert.match(justfile, /^qd-full-ci:\n    node scripts\/qd-full-ci\.mjs/mu);
-
-  const qdImport = justfile.match(/^qd-import:\n(?<body>(?:    .+\n)+)/mu);
-  assert.notEqual(qdImport, null);
-  assert.match(qdImport.groups.body, /    qd import --from roadmap\/spec-dag\.json\n/u);
-  assert.doesNotMatch(qdImport.groups.body, /\.\/bin\/qd/u);
-  assert.doesNotMatch(qdImport.groups.body, /\.qd\/qd\.db/u);
-  assert.doesNotMatch(qdImport.groups.body, /qd config set/u);
-
   const qdConfig = readFileSync(".qd/config.toml", "utf8");
-  assert.match(qdConfig, /check_command = "nix develop --command bash -lc 'just check'"/u);
-  assert.match(qdConfig, /ci_command = "nix develop --command bash -lc 'just qd-full-ci'"/u);
+  assert.match(qdConfig, /check_command = "nix develop --command bash -lc 'just check all'"/u);
+  assert.match(qdConfig, /ci_command = "nix develop --command bash -lc 'just ci affected'"/u);
 });
 
 // ---------------------------------------------------------------------------

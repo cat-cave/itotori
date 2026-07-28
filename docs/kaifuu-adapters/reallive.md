@@ -55,7 +55,7 @@ or gap that a later slice closed, it is marked inline.
 - Public fixture source class: synthetic.
 - Fixture generation or source URL: shipped under `fixtures/public/reallive-detector/`. Synthetic bytes generated from public format archaeology only; the in-test `reallive_fixture_dir(...)` helper mirrors the public-fixture content for hermetic per-test coverage.
 - Fixture license and attribution: synthetic, CC0-1.0. No retail bytes, no corpus-vault access in KAIFUU-172 (vault-source adapter is read-only and is exercised at ALPHA-006, not at the detector node).
-- Raw fixture file hashes: recorded in `fixtures/public/reallive-detector.manifest.json` and verified by `just fixtures-validate`.
+- Raw fixture file hashes: recorded in `fixtures/public/reallive-detector.manifest.json` and verified by `just check fixtures`.
 - Positive fixture coverage: SEEN.TXT envelope detection (synthetic magic), SEEN.TXT envelope detection (generic real-shape), SEEN.GAN presence corroboration, Gameexe.ini RealLive-key detection, `.g00` corroboration, `.ovk`/`.koe`/`.nwk` corroboration, capability report shape, profile generation shape, deterministic profile id across runs.
 - Negative fixture coverage: Siglus overlap (ambiguous), AVG32 lineage (unsupported), unknown shape (unknown-engine-variant), not-RealLive (silent non-detection), corrupt SEEN.TXT envelope (envelope-invalid → unknown), XP3-only cross-check (silent non-detection), Siglus-only cross-check (silent non-detection).
 - Required round-trip artifacts: not applicable at KAIFUU-172 (detector only). Round-trip is KAIFUU-174's responsibility.
@@ -92,8 +92,8 @@ or gap that a later slice closed, it is marked inline.
   - `cargo run -p kaifuu-cli -- detect fixtures/public/reallive-detector/negative-avg32-lineage --output .tmp/reallive/detect-avg32.json`
   - `cargo run -p kaifuu-cli -- detect fixtures/public/reallive-detector/negative-unknown-shape --output .tmp/reallive/detect-unknown.json`
   - `cargo run -p kaifuu-cli -- capabilities --output .tmp/reallive/capabilities.json`
-  - `just fixtures-validate`
-- CI validation commands: same as local, gated by `just check` / `just ci-kaifuu` / `just test`.
+  - `just check fixtures`
+- CI validation commands: same as local, gated by `just check` / `just test all` / `just test`.
 - Known gaps and proposed P2/P3 follow-ups:
   - KAIFUU-173 — Scene/SEEN parser-boundary smoke.
   - KAIFUU-174 — text inventory adapter (Scene/SEEN/Gameexe text slots, protected markup, asset references, patch-back).

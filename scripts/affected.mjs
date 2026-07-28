@@ -152,7 +152,7 @@ export function affectedTasks(changedPaths) {
 //     that another family depends on also runs the dependents' gate (utsushi
 //     depends on kaifuu, so a kaifuu change runs ci-utsushi too). The ~30-45min
 //     real-bytes lane is NOT selected per-gate — it is periodic-only
-//     (`just real-bytes-oracle`). coverage-parity runs in the base `check` gate.
+//     (`just test real-bytes-oracle`). coverage-parity runs in the base `check` gate.
 //
 // The dependency direction is derived from the workspace Cargo.toml manifests
 // (buildCrateFamilyDependents), never hard-coded, so it stays correct as deps

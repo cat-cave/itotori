@@ -178,7 +178,7 @@
             export CARGO_TARGET_DIR="/scratch/cache/itotori/target-$worktree_name-$worktree_hash"
             # Per-worktree Postgres host port (same canonical-root scheme as
             # CARGO_TARGET_DIR) so concurrent worktrees never collide on
-            # `just db-up` / db-backed tests. An explicit DATABASE_URL (CI,
+            # `just dev db-up` / db-backed tests. An explicit DATABASE_URL (CI,
             # operator) is left untouched.
             if [ -z "''${DATABASE_URL:-}" ]; then
               worktree_db_url="$(ITOTORI_DB_WORKTREE_ROOT="$worktree_root" ${pkgs.nodejs_24}/bin/node "$worktree_root/scripts/itotori-db-compose-env.mjs" --print-database-url 2>/dev/null || true)"

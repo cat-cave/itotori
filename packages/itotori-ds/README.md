@@ -120,7 +120,7 @@ store path is not by itself a pinned font universe. It also pins **CJK**
 explicitly — `BiText` renders a `ja-JP` line, which previously resolved only via
 this workstation's own system font list, so any other host drew tofu.
 
-`just ci-tier1-browser` asserts the contract before it runs anything and FAILS
+`just ci tier1-browser` asserts the contract before it runs anything and FAILS
 when it is unmet; it does not skip. (It skipped for the whole of the lane's
 prior life, because CI provisioned Playwright's own Chromium and therefore never
 satisfied it.) `ITOTORI_DS_VISUAL_STRICT=1` is the one opt-out, for an operator

@@ -36,7 +36,7 @@
 //!
 //! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE
 //! (no opt-out; these `#[ignore]`-d suites run only in the periodic
-//! ground-truth oracle, `just real-bytes-oracle`, where corpora are staged).
+//! ground-truth oracle, `just test real-bytes-oracle`, where corpora are staged).
 //! Run with
 //! `ITOTORI_REAL_GAME_ROOT=<sweetie> ITOTORI_REAL_GAME_ROOT_2=<kanon>
 //! cargo test -p utsushi-reallive --test headless_branch_execution_real_bytes

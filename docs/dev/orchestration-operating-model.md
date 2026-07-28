@@ -3,7 +3,7 @@
 We use **qdcli** (`https://github.com/cat-cave/qdcli`, executable `qd`) for all
 orchestration. qd is the live orchestration ledger and quality gate; the
 committed source of truth is `roadmap/spec-dag.json` (qd export shape, must pass
-`just roadmap-validate`).
+`just check roadmap`).
 
 **For how to run the orchestrator + qd loop, read the in-repo playbook — do
 not duplicate those mechanics here:**

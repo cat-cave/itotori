@@ -49,7 +49,7 @@ provisioned separately — see
 | Dep                        | Provisioned via                                                                             |
 | -------------------------- | ------------------------------------------------------------------------------------------- |
 | kaifuu / utsushi Rust bins | `ITOTORI_LIBEXEC_DIR` (shipped prebuilt) or a `cargo build --release`                       |
-| Postgres                   | `DATABASE_URL` (system / container `just db-up` / portable `ITOTORI_POSTGRES_BIN_DIR`)      |
+| Postgres                   | `DATABASE_URL` (system / container `just dev db-up` / portable `ITOTORI_POSTGRES_BIN_DIR`)  |
 | Chromium (render/e2e)      | `UTSUSHI_BROWSER_BIN` / `PLAYWRIGHT_CHROMIUM_BIN` / `pnpm exec playwright install chromium` |
 
 Run `just doctor` (from a clone) to preflight every native dep; an installed

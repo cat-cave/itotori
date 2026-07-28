@@ -88,7 +88,7 @@ test("qd full CI tears down the compose stack when CI fails", () => {
   const calls = readJustCalls(fixture);
   assert.deepEqual(
     calls.map((call) => call.args.join(" ")),
-    ["db-up", "db-wait", "ci", "db-down"],
+    ["dev db-up", "dev db-wait", "ci public", "dev db-down"],
   );
   for (const call of calls) {
     assert.match(
@@ -118,7 +118,7 @@ test("qd full CI deletes generated compose env files after successful CI", () =>
   const calls = readJustCalls(fixture);
   assert.deepEqual(
     calls.map((call) => call.args.join(" ")),
-    ["db-up", "db-wait", "ci", "db-down"],
+    ["dev db-up", "dev db-wait", "ci public", "dev db-down"],
   );
 
   const composeEnvPath = path.join(fixture.repoRoot, calls[0].env.ITOTORI_DB_COMPOSE_ENV_PATH);
@@ -141,7 +141,7 @@ test("qd full CI honors an explicit compose env path override in wrapper subproc
   const calls = readJustCalls(fixture);
   assert.deepEqual(
     calls.map((call) => call.args.join(" ")),
-    ["db-up", "db-wait", "ci", "db-down"],
+    ["dev db-up", "dev db-wait", "ci public", "dev db-down"],
   );
   for (const call of calls) {
     assert.equal(call.env.ITOTORI_DB_COMPOSE_ENV_PATH, composeEnvPath);
@@ -321,7 +321,7 @@ appendFileSync(process.env.JUST_FAKE_LOG, \`\${JSON.stringify({
     ITOTORI_DB_COMPOSE_ENV_PATH: process.env.ITOTORI_DB_COMPOSE_ENV_PATH,
   },
 })}\\n\`);
-if (args[0] === "db-up") {
+if (args[0] === "dev" && args[1] === "db-up") {
   mkdirSync(path.dirname(process.env.ITOTORI_DB_COMPOSE_ENV_PATH), { recursive: true });
   const content = \`DATABASE_URL=\${process.env.DATABASE_URL}\\n\`;
   writeFileSync(process.env.ITOTORI_DB_COMPOSE_ENV_PATH, content);

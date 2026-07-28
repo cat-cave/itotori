@@ -57,7 +57,7 @@ jobs:
 
       # extract -> structure -> patch -> replay on staged private bytes, behind
       # the fail-not-skip preflight gate; emits the content-free manifest.
-      - run: just ci-real-bytes-private-proof
+      - run: just ci private-real-bytes
 
       - uses: actions/upload-artifact@v7
         if: ${{ always() }}

@@ -297,7 +297,7 @@ export function chromiumCandidates(env = {}, home = homedir()) {
 // runtimes exist. Returns { mode, detail } where mode is one of:
 //   explicit  — DATABASE_URL points at an operator/system Postgres
 //   portable  — ITOTORI_POSTGRES_BIN_DIR holds a pinned portable Postgres
-//   container — docker/podman present -> `just db-up` (docker-compose.yml)
+//   container — docker/podman present -> `just dev db-up` (docker-compose.yml)
 //   none      — nothing available; provisioning must obtain one
 export function postgresPlan(env = {}, has = {}) {
   if (env.DATABASE_URL) {
@@ -468,7 +468,7 @@ function checkPostgres(env, probe) {
       "postgres",
       "fail",
       `DATABASE_URL set (${plan.detail.url}) but ${host}:${port} is not accepting connections`,
-      "Start it (`just db-up && just db-wait`, or your system Postgres) then re-run the doctor.",
+      "Start it (`just dev db-up && just dev db-wait`, or your system Postgres) then re-run the doctor.",
     );
   }
   if (plan.mode === "portable") {
@@ -493,7 +493,7 @@ function checkPostgres(env, probe) {
       "postgres",
       "fail",
       `no DATABASE_URL; a ${plan.detail.runtime} container runtime is available`,
-      "Provision it: `just db-up && just db-wait` (uses docker-compose.yml, postgres:18), " +
+      "Provision it: `just dev db-up && just dev db-wait` (uses docker-compose.yml, postgres:18), " +
         "then export the derived DATABASE_URL (`node scripts/itotori-db-compose-env.mjs --print-database-url`).",
     );
   }
@@ -502,7 +502,7 @@ function checkPostgres(env, probe) {
     "fail",
     "no Postgres available (no DATABASE_URL, no portable bin dir, no container runtime)",
     "Provide ONE of: a system Postgres 18 via DATABASE_URL; a container runtime (docker/podman) " +
-      "for `just db-up`; or a pinned portable Postgres via ITOTORI_POSTGRES_BIN_DIR. See " +
+      "for `just dev db-up`; or a pinned portable Postgres via ITOTORI_POSTGRES_BIN_DIR. See " +
       "docs/native-deps-provisioning.md.",
   );
 }
@@ -729,7 +729,7 @@ export function provisionPlan({
       cmd: cmds.pnpm ? ["pnpm", "exec", "playwright", "install", "chromium"] : null,
       note: cmds.pnpm
         ? "downloads the Playwright-pinned Chromium (deterministic; do NOT use on NixOS — use the nix devShell Chromium there)"
-        : "pnpm not found — install deps first (`just install`) or set UTSUSHI_BROWSER_BIN to a system Chromium",
+        : "pnpm not found — install deps first (`just dev install`) or set UTSUSHI_BROWSER_BIN to a system Chromium",
       cwd: path.join(REPO_ROOT, "apps", "runtime-web-review"),
     });
   }
@@ -740,7 +740,7 @@ export function provisionPlan({
         id: "postgres",
         why: "Postgres not reachable; container runtime available",
         cmd: ["just", "db-up"],
-        note: "starts postgres:18 via docker-compose.yml; then `just db-wait`",
+        note: "starts postgres:18 via docker-compose.yml; then `just dev db-wait`",
         cwd: REPO_ROOT,
       });
     } else {

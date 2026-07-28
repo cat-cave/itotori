@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `just audit-findings-seed` entrypoint.
+ * `just dev audit-findings-seed` entrypoint.
  *
  * Connects to DATABASE_URL, scans docs/audits/*.md for structured
  * audit-finding blocks (see ./parser.ts for the block grammar), and

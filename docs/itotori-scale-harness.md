@@ -10,7 +10,7 @@ data.
 Run the CI-sized smoke profile:
 
 ```sh
-just itotori-scale-smoke
+just dev scale-smoke
 ```
 
 The smoke profile is the alpha-required local and CI-friendly scale gate. It writes
@@ -19,7 +19,7 @@ The smoke profile is the alpha-required local and CI-friendly scale gate. It wri
 Run the explicit 1M+ Japanese-character profile:
 
 ```sh
-just itotori-scale-large
+just dev scale-large
 ```
 
 Both commands build the TypeScript packages, start/wait for the local Postgres service, create an
@@ -27,8 +27,8 @@ isolated schema, run migrations, execute the harness, and drop the schema when t
 Override the database or schema if needed:
 
 ```sh
-DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori just itotori-scale-large
-ITOTORI_SCALE_SCHEMA=itotori_scale_review just itotori-scale-smoke
+DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori just dev scale-large
+ITOTORI_SCALE_SCHEMA=itotori_scale_review just dev scale-smoke
 ```
 
 The direct script supports local tuning:
@@ -67,7 +67,7 @@ DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori
 COMPOSE_PROJECT_NAME=itotori
 ```
 
-These are no-secret public CI defaults. `just db-up` writes
+These are no-secret public CI defaults. `just dev db-up` writes
 `.tmp/itotori-db/compose.env` from `DATABASE_URL`, then starts the `postgres` service with the
 matching host port, database name, user, and password. Set
 `ITOTORI_DB_COMPOSE_ENV_PATH` to write and use a different compose env file. The
@@ -75,10 +75,10 @@ recipes set `COMPOSE_DISABLE_ENV_FILE=1` so Compose does not implicitly load
 `.env`; the generated compose env file is the only env file used for this
 disposable database.
 
-For qd local CI, `just qd-full-ci` owns the database lifecycle around `just ci`.
+For qd local CI, `just ci affected` owns the database lifecycle around `just ci`.
 It derives a worktree-specific `DATABASE_URL` host port and `COMPOSE_PROJECT_NAME`,
 reserves the port before startup, writes a per-run compose env file, and always
-runs `just db-down` before exiting. If the local range is occupied, it fails with
+runs `just dev db-down` before exiting. If the local range is occupied, it fails with
 a diagnostic listing the blocked ports. Set `ITOTORI_QD_DB_PORT` for a specific
 port, or `ITOTORI_QD_DB_PORT_BASE` plus `ITOTORI_QD_DB_PORT_SPAN` for a custom
 range.
@@ -123,11 +123,11 @@ retains the tuning without depending on persisted database initialization state.
 The database recipes are:
 
 ```sh
-just db-up
-just db-wait
-just db-migrate
-just db-reset
-just qd-full-ci
+just dev db-up
+just dev db-wait
+just dev db-migrate
+just dev db-reset
+just ci affected
 ```
 
 When `DATABASE_URL` is intentionally unavailable, DB-only verification is deterministic:
@@ -145,8 +145,8 @@ The alpha readiness DB and scale commands are:
 
 ```sh
 node scripts/spec-dag.mjs validate
-just ci-itotori
-just itotori-scale-smoke
+just ci public
+just dev scale-smoke
 env -u DATABASE_URL pnpm --filter @itotori/db test
 ```
 

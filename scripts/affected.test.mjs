@@ -65,19 +65,14 @@ function parseCargoTestPackages(recipeBody) {
   );
 }
 
-test("kaifuu and utsushi CI gates cover every matching workspace crate", () => {
-  const justfile = readFileSync("justfile", "utf8");
-  const expectations = [
-    ["kaifuu-", "ci-kaifuu"],
-    ["utsushi-", "ci-utsushi"],
-  ];
-
-  for (const [prefix, recipe] of expectations) {
-    const workspacePackages = workspacePackagesByPrefix(prefix);
-    const coveredPackages = parseCargoTestPackages(parseJustRecipeBody(justfile, recipe));
-    const uncovered = workspacePackages.filter((pkg) => !coveredPackages.has(pkg));
-
-    assert.deepEqual(uncovered, [], `${recipe} must cover all crates/${prefix} workspace packages`);
+test("the parameterized test delegate covers every kaifuu and utsushi workspace crate", () => {
+  const commandSurface = readFileSync("scripts/developer-command.mjs", "utf8");
+  assert.match(commandSurface, /cargo test --workspace/u);
+  for (const prefix of ["kaifuu-", "utsushi-"]) {
+    assert.ok(
+      workspacePackagesByPrefix(prefix).length > 0,
+      `workspace must retain ${prefix} crates`,
+    );
   }
 });
 

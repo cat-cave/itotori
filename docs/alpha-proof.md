@@ -14,11 +14,11 @@ hash-addressed linkage of cross-project artifacts rather than a fixture-specific
 success string.
 
 ```sh
-just install
-just alpha-proof
+just dev install
+just test alpha
 ```
 
-`just alpha-proof` runs two stages, both of which fail the build on any broken
+`just test alpha` runs two stages, both of which fail the build on any broken
 linkage:
 
 1. `pnpm exec vp run alpha:public-fixture` — composes the public-fixture
@@ -54,7 +54,7 @@ Any disagreement is emitted as a structured finding and a blocking finding sets
 
 ## Canonical integration command
 
-Use `just alpha-proof` plus its artifact-linkage validator. CI runs the same
+Use `just test alpha` plus its artifact-linkage validator. CI runs the same
 proof as its `alpha` job in
 [`.github/workflows/_tier1.yml`](../.github/workflows/_tier1.yml)
-(`just alpha-proof`).
+(`just test alpha`).

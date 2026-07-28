@@ -55,7 +55,7 @@
 //     styling hook, so the guard can never become a cry-wolf blocker.
 //
 // Exit codes: 0 = clean / update applied; 1 = violation or refused update.
-// Wired into `just audit` and `just ci-tier0-meta` (test then run), mirroring
+// Wired into `just audit` and `just ci tier0-meta` (test then run), mirroring
 // the `audit-no-hardcoded-cost` / `file-line-cap-guard` house style.
 
 import { execSync } from "node:child_process";

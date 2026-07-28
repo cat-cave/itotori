@@ -36,7 +36,7 @@
 //
 // The native runtime deps (kaifuu/utsushi Rust bins, Postgres, Chromium) are
 // provisioned by the sibling `itotori-native-deps-provisioning` node
-// (`just doctor` / `just provision-native-deps`); this artifact is the bin +
+// (`just doctor` / `just doctor provision`); this artifact is the bin +
 // the compiled CLI surface that consumes them.
 
 import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";

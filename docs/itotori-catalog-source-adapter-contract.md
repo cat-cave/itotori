@@ -146,7 +146,7 @@ green test log.
   **no run-varying timestamp**. Because `stableImportKey` is derived from content (not per-job ids),
   two runs of the same replay serialize byte-identically.
 
-**How adapter acceptance cites it**: `just catalog-replay-db-strict` runs the
+**How adapter acceptance cites it**: `just test catalog-replay-db` runs the
 `catalog-replay-validation-artifact.test.ts` suite against the database, which performs a real replay
 run and writes `.tmp/itotori-db/catalog-replay-validation.json`. Acceptance cites that artifact path
 plus its `digest` (and the covered `sourceId` / `fixtureId` / `stableImportKey` / `factIdentities`) as
@@ -163,13 +163,13 @@ proves nothing about the CATALOG-065 replay path.
 To prove the replay path actually ran against a database, use the CATALOG-072 DB-backed local gate:
 
 ```sh
-just db-up          # bring up a disposable Postgres (docker/podman compose)
-just db-migrate     # apply migrations
-just catalog-replay-db-strict   # run + PROVE the catalog replay/idempotency suites
-just db-down        # tear the disposable database down
+just dev db-up          # bring up a disposable Postgres (docker/podman compose)
+just dev db-migrate     # apply migrations
+just test catalog-replay-db   # run + PROVE the catalog replay/idempotency suites
+just dev db-down        # tear the disposable database down
 ```
 
-`just catalog-replay-db-strict` (`scripts/catalog-replay-db-gate.mjs`) runs only the catalog
+`just test catalog-replay-db` (`scripts/catalog-replay-db-gate.mjs`) runs only the catalog
 source-adapter replay + idempotency repository suites against the database:
 
 - `catalog-crawler-repository.test.ts` — crash-before-`commitStepImport` replay windows.
@@ -187,6 +187,6 @@ The gate is **fail-loud, never green-on-skip**:
   (`.tmp/itotori-db/catalog-replay-proof.json`) recording per-suite counts. A zero-test or skipped
   outcome is a hard failure.
 
-`just ci-itotori` runs this gate after bringing up the database, so CATALOG-065 replay coverage is
+`just ci public` runs this gate after bringing up the database, so CATALOG-065 replay coverage is
 proven explicitly in CI (not merely implied by an all-suites `test:db` run). The gate uses only
 public recorded fixtures — no private data or network credentials.
