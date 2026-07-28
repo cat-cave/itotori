@@ -1,9 +1,9 @@
 //! Live Softpal detector proof against two owned, read-only titles.
 //! The Softpal ADV (Amuse Craft / "Pal") detector is validated on the real
-//! bytes of two titles confirmed to be the same engine:
-//! * v21465 — Kizuna Kirameku Koi Iroha (ships `dll/Pal.dll`, `data.pac`,
+//! bytes of two staged installs confirmed to be the same engine:
+//! * first install — ships `dll/Pal.dll`, `data.pac`,
 //!   `csv.pac`, `system.pac`; TEXT.DAT enc flag `$` = encrypted).
-//! * v60663 — Dimension Totsu Lovers (ships only `data.pac`; TEXT.DAT enc
+//! * second install — ships only `data.pac`; TEXT.DAT enc
 //!   flag `_` = plaintext).
 //!   Together they exercise both TEXT.DAT encryption-flag states and both the
 //!   Pal.dll and PAC-only detection paths.
@@ -26,8 +26,8 @@ use std::path::{Path, PathBuf};
 use kaifuu_core::{DetectRequest, EngineAdapter};
 use kaifuu_engine_fixture::SoftpalProfileDetectorAdapter;
 
-/// Root that holds the two extracted titles (`v21465/`, `v60663/`). Gated on an
-/// explicit env var so nothing runs against the corpus unless a human opts in.
+/// Root that holds two extracted installs. Gated on an explicit env var so
+/// nothing runs against the corpus unless a human opts in.
 fn require_corpus_root() -> Option<PathBuf> {
     let root = std::env::var("ITOTORI_SOFTPAL_RESEARCH_ROOT").ok()?;
     let path = PathBuf::from(root);
@@ -37,7 +37,7 @@ fn require_corpus_root() -> Option<PathBuf> {
 /// Recursively find the directory under `root` that best represents the real
 /// Softpal game install. A dir carrying `data.pac` or `dll/Pal.dll` (the real
 /// install) is preferred over one that merely holds extracted loose
-/// `SCRIPT.SRC`/`TEXT.DAT` artifacts, so v21465 exercises the definitive
+/// `SCRIPT.SRC`/`TEXT.DAT` artifacts, so the first staged install exercises the definitive
 /// Pal.dll path rather than the research `scripts/` extraction.
 fn find_softpal_game_dir(root: &Path) -> Option<PathBuf> {
     let mut stack = vec![root.to_path_buf()];
@@ -158,20 +158,47 @@ fn confirm_softpal(label: &str, title_root: &Path) {
 
 #[test]
 #[ignore = "requires ITOTORI_SOFTPAL_RESEARCH_ROOT=/scratch/softpal-research (read-only owned Softpal corpus)"]
-fn v21465_kizuna_kirameku_koi_iroha_detects_softpal() {
+fn first_staged_install_detects_softpal() {
     let Some(root) = require_corpus_root() else {
         eprintln!("skipping: set ITOTORI_SOFTPAL_RESEARCH_ROOT to run this proof");
         return;
     };
-    confirm_softpal("v21465", &root.join("v21465"));
+    confirm_staged_install(&root, 0);
 }
 
 #[test]
 #[ignore = "requires ITOTORI_SOFTPAL_RESEARCH_ROOT=/scratch/softpal-research (read-only owned Softpal corpus)"]
-fn v60663_dimension_totsu_lovers_detects_softpal() {
+fn second_staged_install_detects_softpal() {
     let Some(root) = require_corpus_root() else {
         eprintln!("skipping: set ITOTORI_SOFTPAL_RESEARCH_ROOT to run this proof");
         return;
     };
-    confirm_softpal("v60663", &root.join("v60663"));
+    confirm_staged_install(&root, 1);
+}
+
+fn confirm_staged_install(root: &Path, index: usize) {
+    let mut installs = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        if dir.join("data.pac").is_file() {
+            installs.push(dir);
+            continue;
+        }
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                }
+            }
+        }
+    }
+    installs.sort();
+    assert!(
+        installs.len() >= 2,
+        "expected at least two staged Softpal installs under {}",
+        root.display()
+    );
+    let label = ["first staged install", "second staged install"][index];
+    confirm_softpal(label, &installs[index]);
 }

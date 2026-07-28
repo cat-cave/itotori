@@ -53,6 +53,7 @@ fn dialogue_offsets(scene: &SoftpalScene) -> Vec<usize> {
 }
 
 #[test]
+#[ignore = "real-bytes; requires both staged Softpal corpora"]
 fn reaches_the_named_work_process_boundary_without_fabricating_static_text() {
     for (index, root) in CORPORA.iter().enumerate() {
         let root = PathBuf::from(root);

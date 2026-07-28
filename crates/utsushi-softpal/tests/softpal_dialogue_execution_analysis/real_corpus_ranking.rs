@@ -1,4 +1,5 @@
 #[test]
+#[ignore = "real-bytes; requires both staged Softpal corpora"]
 fn ranks_every_byte_designated_entry_without_emitting_private_text() {
     for (index, root) in CORPORA.iter().enumerate() {
         let root = PathBuf::from(root);

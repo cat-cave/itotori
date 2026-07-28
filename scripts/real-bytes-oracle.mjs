@@ -20,7 +20,7 @@
 //       read-only vault (the alpha + Kanon RealLive reference corpora,
 //       LustMemory + Countryside Life RPG Maker MV/MZ, the vault-materialized
 //       Siglus installs) + the
-//       standalone Softpal research tree (Kizuna + Dimension under
+//       standalone Softpal research tree (two staged installs under
 //       /scratch/softpal-research, skipped cleanly when that root is absent).
 //       Read-only; never copies copyrighted bytes. The ci-real-bytes recipe
 //       also runs the app-level MV/MZ patch/apply byte-round-trip against

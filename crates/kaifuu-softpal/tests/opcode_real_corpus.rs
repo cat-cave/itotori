@@ -26,9 +26,6 @@ const RESEARCH_ROOT_ENV: &str = "ITOTORI_SOFTPAL_RESEARCH_ROOT";
 /// One game's opcode-catalog expectations. Counts are the measured ground truth.
 struct GameExpectation {
     subdir: &'static str,
-    /// Canonical vault directory name. Vault intake does not use a bare VNDB
-    /// version directory.
-    vault_dir: &'static str,
     /// `PAC ` entry count, used to select the right `data.pac`.
     pac_count: usize,
     /// TEXT-SHOW (dialogue) command count — must match [`ScriptScan`].
@@ -46,10 +43,8 @@ struct GameExpectation {
 }
 
 const GAMES: [GameExpectation; 2] = [
-    // v21465 — Kizuna kirameku koi iroha.
     GameExpectation {
-        subdir: "v21465",
-        vault_dir: "kizuna-kirameku-koi-iroha.v21465",
+        subdir: "first staged corpus",
         pac_count: 417,
         text_show_count: 30165,
         select_count: 11,
@@ -58,10 +53,8 @@ const GAMES: [GameExpectation; 2] = [
         distinct_opcodes: 33,
         instruction_count: 561463,
     },
-    // v60663 — Dimension totsu lovers.
     GameExpectation {
-        subdir: "v60663",
-        vault_dir: "dimension-totsu-lovers.v60663",
+        subdir: "second staged corpus",
         pac_count: 160,
         text_show_count: 39832,
         select_count: 21,
@@ -87,23 +80,12 @@ fn find_data_pacs(dir: &Path, out: &mut Vec<PathBuf>) {
 /// Extract one named entry from the game's `data.pac` (selected by entry count).
 fn extract_entry(game: &GameExpectation, root: &Path, name: &str) -> Vec<u8> {
     let mut pacs = Vec::new();
-    // Support legacy `vNNNNN` research trees, title-dot-version vault intake,
-    // and staged game roots that are selected by their pinned PAC entry count.
-    for dir in [
-        root.join(game.subdir),
-        root.join(game.vault_dir),
-        root.join("artifacts").join("by-id").join(game.vault_dir),
-    ] {
-        if dir.is_dir() {
-            find_data_pacs(&dir, &mut pacs);
-        }
-    }
-    if pacs.is_empty() {
-        find_data_pacs(root, &mut pacs);
-    }
+    // Select an install by its structural PAC entry-count fingerprint, so the
+    // proof accepts any staging layout beneath the configured root.
+    find_data_pacs(root, &mut pacs);
     assert!(
         !pacs.is_empty(),
-        "no data.pac for {} under {}; checked v-version, vault title-version, and root fallback",
+        "no data.pac for {} under {}",
         game.subdir,
         root.display()
     );

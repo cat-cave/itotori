@@ -58,7 +58,7 @@ jobs:
   # corpora. Requires a runner that has the real corpora staged (self-hosted,
   # label `itotori-corpora`), since Sweetie HD / Kanon / LustMemory / the vault
   # live under /scratch + /archive/vault and are never committed. The Softpal
-  # ADV titles (Kizuna + Dimension) live under their own root at
+  # ADV's two staged installs live under their own root at
   # /scratch/softpal-research; when that root is absent the Softpal sub-lane is
   # skipped CLEANLY (skip-when-absent is legitimate for the periodic lane), so
   # a runner without the Softpal tree still runs the strict ground-truth suite

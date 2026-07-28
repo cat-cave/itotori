@@ -1,4 +1,5 @@
 #[test]
+#[ignore = "real-bytes; requires both staged Softpal corpora"]
 fn classifies_script_only_message_feasibility_and_the_pre_halt_call_contract() {
     let mut all_calls = Vec::new();
     for (index, root) in CORPORA.iter().enumerate() {

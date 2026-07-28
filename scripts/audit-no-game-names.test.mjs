@@ -14,6 +14,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const scriptPath = join(here, "audit-no-game-names.mjs");
 const CRATE = "crates/utsushi-reallive/src/lib.rs";
 const SLUG = "sweetie";
+const FIRST_PREVIOUSLY_MISSED_TITLE = ["kizu", "na-kira", "meku-koi-iro", "ha.v21465"].join("");
+const SECOND_PREVIOUSLY_MISSED_TITLE = ["dimen", "sion-totsu-lo", "vers.v60663"].join("");
 
 test("extracts one token per game reference, including multiple per line", () => {
   const found = findGameNameViolations(
@@ -55,6 +57,25 @@ test("catches title fragments embedded in snake_case, camelCase, and digit ident
   );
 });
 
+test("catches the previously missed Softpal title slugs", () => {
+  const found = findGameNameViolations(
+    CRATE,
+    `// ${FIRST_PREVIOUSLY_MISSED_TITLE} and ${SECOND_PREVIOUSLY_MISSED_TITLE} must not be hardcoded.\n`,
+  );
+  assert.deepEqual(
+    found.map((entry) => entry.token),
+    [
+      FIRST_PREVIOUSLY_MISSED_TITLE.slice(0, 6),
+      FIRST_PREVIOUSLY_MISSED_TITLE.slice(7, 15),
+      FIRST_PREVIOUSLY_MISSED_TITLE.split(".")[0].split("-").slice(2).join("-"),
+      SECOND_PREVIOUSLY_MISSED_TITLE.split("-").slice(0, 2).join("-"),
+      SECOND_PREVIOUSLY_MISSED_TITLE.split("-").slice(1).join("-").split(".")[0],
+      FIRST_PREVIOUSLY_MISSED_TITLE.split(".")[1],
+      SECOND_PREVIOUSLY_MISSED_TITLE.split(".")[1],
+    ],
+  );
+});
+
 test("does not treat synthetic VNDB ids as game names", () => {
   assert.deepEqual(findGameNameViolations(CRATE, "// v1001, v1234, v9999, v12345\n"), []);
 });
@@ -89,6 +110,7 @@ test("CLI rejects a planted game name and accepts clean source", () => {
   const clean = runCli(probe);
   assert.equal(clean.code, 0);
   assert.match(clean.stdout, /0 references/u);
+  assert.match(clean.stdout, /stated limit:/u);
 });
 
 function runCli(...args) {

@@ -19,6 +19,9 @@
 //
 // Exit codes: 0 = clean; 1 = violation. Wired into `just ci tier0-meta`.
 
+export const STATED_LIMIT =
+  "stated limit: scans known title fragments and identifiers in tracked text; it cannot infer unknown aliases, transliterations, misspellings, or runtime-constructed strings.";
+
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -69,6 +72,8 @@ const GAME_NAME_PATTERNS = [
   // fragments in Rust and TypeScript identifiers, but JavaScript `\b` treats
   // `_` as a word character and would miss them.
   /(?:sweetie|karetoshi|gamekoi|oshioki|sukara)/gi,
+  /(?:ki(?:zuna)|kira(?:meku)|koi-(?:iroha)|dimen(?:sion-totsu))/gi,
+  /totsu-(?:lovers)/gi,
   /オシオキ/g,
   /\bv(?:11180|31045|60663|21465|55293|57740)\b/gi,
   /\bcorpus-observed\b/gi,
@@ -155,13 +160,14 @@ function main() {
       : scanFiles(options.root, listScanFiles(options.root));
   if (result.violations.length === 0) {
     process.stdout.write(
-      `game-name guard: passed. 0 references across ${result.scanned} scanned files.\n`,
+      `game-name guard: passed. 0 references across ${result.scanned} scanned files.\n${STATED_LIMIT}\n`,
     );
     return;
   }
   process.stderr.write(
     `game-name guard: FAILED. ${result.violations.length} game-name reference(s) found.\n` +
-      "Genericize the reference; a game's identity belongs in per-game DATA, not code.\n\n",
+      "Genericize the reference; a game's identity belongs in per-game DATA, not code.\n" +
+      `${STATED_LIMIT}\n\n`,
   );
   for (const violation of result.violations) {
     process.stderr.write(
