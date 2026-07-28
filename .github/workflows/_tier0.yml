@@ -22,8 +22,14 @@ jobs:
         lane: [meta, ts, rust, manifest]
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: ./.github/actions/setup-itotori
+
+      - name: Ratchet control-plane surface
+        if: ${{ matrix.lane == 'meta' }}
+        run: node scripts/surface-budget.mjs
 
       - name: Run Tier-0 lane
         run: just ci-tier0-${{ matrix.lane }}
