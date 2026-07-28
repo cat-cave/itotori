@@ -124,3 +124,18 @@ fn emits_unknown_control_warning_for_unlisted_byte() {
         other => panic!("expected unknown control, got {other:?}"),
     }
 }
+
+#[test]
+fn preserves_mixed_directive_spans_in_source_byte_order() {
+    let bytes = &[b'x', 0x1f, 0x03, b'y', 0x02, 0x07, b'z'][..];
+    let report = detect_for(bytes);
+
+    assert_eq!(report.warnings.len(), 0);
+    assert_eq!(report.spans.len(), 2);
+    assert_eq!(report.spans[0].kind.label(), "color_code");
+    assert_eq!(report.spans[0].byte_range_start, 1);
+    assert_eq!(report.spans[0].byte_range_end, 3);
+    assert_eq!(report.spans[1].kind.label(), "choice_token");
+    assert_eq!(report.spans[1].byte_range_start, 4);
+    assert_eq!(report.spans[1].byte_range_end, 6);
+}
