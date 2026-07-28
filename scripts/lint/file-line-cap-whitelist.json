@@ -1,10 +1,10 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/file-line-cap-guard.mjs --update\". Each entry maps an over-cap\nfile to its grandfathered line count; counts and entries may only shrink. When\nempty/deleted the cap is absolute (no file may exceed the threshold).",
   "threshold": 500,
-  "generatedAt": "2026-07-28T20:15:23.133Z",
-  "total": 23,
+  "generatedAt": "2026-07-28T21:15:09.567Z",
+  "total": 21,
   "files": {
-    "crates/kaifuu-cli/src/main.rs": 831,
+    "crates/kaifuu-cli/src/main.rs": 830,
     "crates/kaifuu-core/src/lib.rs": 1166,
     "crates/kaifuu-core/src/mv_mz_encrypted_asset_replacement.rs": 712,
     "crates/kaifuu-core/src/mv_mz_encrypted_audio.rs": 1044,
@@ -20,10 +20,8 @@
     "crates/kaifuu-reallive/src/patchback/bundle_driven.rs": 1586,
     "crates/utsushi-reallive/src/expression.rs": 952,
     "crates/utsushi-reallive/src/gameexe.rs": 1030,
-    "crates/utsushi-reallive/src/rlop/module_ctrl.rs": 1118,
     "crates/utsushi-reallive/src/rlop/module_obj.rs": 785,
     "crates/utsushi-reallive/src/rlop/module_sys.rs": 705,
-    "crates/utsushi-reallive/src/save.rs": 1075,
     "crates/utsushi-reallive/src/var_banks.rs": 877,
     "crates/utsushi-reallive/tests/g00_real_bytes.rs": 682,
     "crates/utsushi-reallive/tests/render_g00_real_bytes.rs": 745
