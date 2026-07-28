@@ -3,11 +3,12 @@
 use std::collections::HashMap;
 
 use kaifuu_softpal::{
-    CommandFamily, OpcodeError, OpcodeScan, ScriptError, ScriptScan, TextDat, TextDatError,
+    CommandFamily, FileDat, FileDatError, OpcodeError, OpcodeScan, PacArchive, PacError,
+    ScriptError, ScriptScan, TextDat, TextDatError,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::scene_vm::{Vm, point_offsets};
+use crate::scene_vm::{ResourceAssets, Vm, point_offsets};
 
 /// A visible moment in deterministic execution order.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -105,6 +106,58 @@ impl SoftpalScene {
         points: Option<&[u8]>,
         mem_dat: Option<&[u8]>,
     ) -> Result<Self, SoftpalRuntimeError> {
+        Self::execute_with_assets(script, textdat, points, mem_dat, None)
+    }
+
+    /// Execute with the original `data.pac` as the native resource source.
+    /// The archive is parsed by `kaifuu-softpal`'s validated PAC reader and
+    /// `FILE.DAT` is decoded into resource-name slots for `openfile`.
+    pub fn execute_with_points_mem_dat_and_pac(
+        script: &[u8],
+        textdat: &[u8],
+        points: Option<&[u8]>,
+        mem_dat: Option<&[u8]>,
+        pac_bytes: &[u8],
+    ) -> Result<Self, SoftpalRuntimeError> {
+        Self::execute_with_points_mem_dat_and_pacs(script, textdat, points, mem_dat, &[pac_bytes])
+    }
+
+    /// Execute with every PAC archive that the current native path may open.
+    /// The caller supplies archive bytes explicitly; the VM never discovers
+    /// host paths or silently falls back to an unrelated file.
+    pub fn execute_with_points_mem_dat_and_pacs(
+        script: &[u8],
+        textdat: &[u8],
+        points: Option<&[u8]>,
+        mem_dat: Option<&[u8]>,
+        pac_bytes: &[&[u8]],
+    ) -> Result<Self, SoftpalRuntimeError> {
+        let archives = pac_bytes
+            .iter()
+            .map(|bytes| PacArchive::parse(bytes).map(|archive| (archive, *bytes)))
+            .collect::<Result<Vec<_>, _>>()?;
+        let (file_archive, file_bytes) = archives
+            .iter()
+            .find(|(archive, _)| archive.find("FILE.DAT").is_some())
+            .ok_or(SoftpalRuntimeError::FileDatMissing)?;
+        let file_entry = file_archive.find("FILE.DAT").expect("located above");
+        let file_dat = FileDat::parse(file_archive.extract(file_bytes, file_entry)?)?;
+        Self::execute_with_assets(
+            script,
+            textdat,
+            points,
+            mem_dat,
+            Some(ResourceAssets { archives, file_dat }),
+        )
+    }
+
+    fn execute_with_assets(
+        script: &[u8],
+        textdat: &[u8],
+        points: Option<&[u8]>,
+        mem_dat: Option<&[u8]>,
+        resources: Option<ResourceAssets<'_>>,
+    ) -> Result<Self, SoftpalRuntimeError> {
         let walk = OpcodeScan::parse(script)?;
         let scan = ScriptScan::parse(script)?;
         let textdat = TextDat::parse(textdat)?;
@@ -134,7 +187,7 @@ impl SoftpalScene {
             None if needs_labels => Vec::new(),
             None => Vec::new(),
         };
-        let mut result = Vm::new(&walk, &scan.commands, &labels, &texts, mem_dat).run();
+        let mut result = Vm::new(&walk, &scan.commands, &labels, &texts, mem_dat, resources).run();
         if needs_labels && points.is_none() && result.diagnostics.is_empty() {
             result.diagnostics.push(RuntimeDiagnostic {
                 signature: "point_table_required".to_string(),
@@ -226,6 +279,12 @@ pub enum SoftpalRuntimeError {
     Script(#[from] ScriptError),
     #[error("utsushi.softpal.runtime.textdat: {0}")]
     TextDat(#[from] TextDatError),
+    #[error("utsushi.softpal.runtime.pac: {0}")]
+    Pac(#[from] PacError),
+    #[error("utsushi.softpal.runtime.filedat: {0}")]
+    FileDat(#[from] FileDatError),
+    #[error("utsushi.softpal.runtime.filedat_missing: PAC has no FILE.DAT entry")]
+    FileDatMissing,
     #[error("utsushi.softpal.runtime.point_table: POINT.DAT is malformed")]
     InvalidPointTable,
     #[error(
@@ -241,7 +300,10 @@ pub enum SoftpalRuntimeError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaifuu_softpal::{SCRIPT_MAGIC_PREFIX, TEXTDAT_FLAG_PLAINTEXT, TEXTDAT_MAGIC_TAIL};
+    use kaifuu_softpal::{
+        FILEDAT_MAGIC_TAIL, FILEDAT_SLOT_BYTE_LEN, PAC_HEADER_BYTE_LEN, PAC_INDEX_ENTRY_BYTE_LEN,
+        SCRIPT_MAGIC_PREFIX, TEXTDAT_FLAG_PLAINTEXT, TEXTDAT_MAGIC_TAIL,
+    };
 
     fn op(id: u16) -> [u8; 4] {
         let mut token = [0; 4];
@@ -269,6 +331,37 @@ mod tests {
         bytes.extend_from_slice(&0_u32.to_le_bytes());
         bytes.extend_from_slice(b"line\0");
         (bytes, pointer)
+    }
+    fn filedat(slots: &[&str]) -> Vec<u8> {
+        let mut bytes = Vec::from(*b"_");
+        bytes.extend_from_slice(FILEDAT_MAGIC_TAIL);
+        bytes.extend_from_slice(&(slots.len() as u32).to_le_bytes());
+        for value in slots {
+            let mut slot = [0_u8; FILEDAT_SLOT_BYTE_LEN];
+            slot[..value.len()].copy_from_slice(value.as_bytes());
+            bytes.extend_from_slice(&slot);
+        }
+        bytes
+    }
+    fn pac(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let index_end = PAC_HEADER_BYTE_LEN + entries.len() * PAC_INDEX_ENTRY_BYTE_LEN;
+        let mut bytes = vec![0_u8; index_end];
+        bytes[..4].copy_from_slice(b"PAC ");
+        bytes[8..12].copy_from_slice(&(entries.len() as u32).to_le_bytes());
+        let mut payload_offset = index_end;
+        for (index, (name, payload)) in entries.iter().enumerate() {
+            let entry_offset = PAC_HEADER_BYTE_LEN + index * PAC_INDEX_ENTRY_BYTE_LEN;
+            bytes[entry_offset..entry_offset + name.len()].copy_from_slice(name.as_bytes());
+            bytes[entry_offset + 32..entry_offset + 36]
+                .copy_from_slice(&(payload.len() as u32).to_le_bytes());
+            bytes[entry_offset + 36..entry_offset + 40]
+                .copy_from_slice(&(payload_offset as u32).to_le_bytes());
+            payload_offset += payload.len();
+        }
+        for (_, payload) in entries {
+            bytes.extend_from_slice(payload);
+        }
+        bytes
     }
 
     #[test]
@@ -652,5 +745,100 @@ mod tests {
             "handle bypasses failure message"
         );
         assert_eq!(scene.stats.branch_count, 2);
+    }
+
+    #[test]
+    fn openfile_reads_the_pac_payload_named_by_its_filedat_slot() {
+        let (textdat, pointer) = textdat();
+        let filedat = filedat(&["FONT.DAT"]);
+        let archive = pac(&[("FILE.DAT", filedat.as_slice()), ("FONT.DAT", &[7, 8, 9])]);
+        // The open result becomes the read handle. The first byte read through
+        // that handle must equal the PAC payload's 7; otherwise the branch
+        // reaches the message. Deleting open/read or replacing the table with
+        // a fixed success return therefore fails this behavior test.
+        let tokens = [
+            op(0x1f),
+            word(0),
+            op(0x17),
+            word(0x0012_001e),
+            word(0x4000_0001),
+            op(0x1f),
+            word(3),
+            op(0x1f),
+            word(12),
+            op(0x1f),
+            word(0x4000_0001),
+            op(0x17),
+            word(0x0012_001f),
+            word(0x4000_0002),
+            op(1),
+            word(0x4000_0003),
+            word(12),
+            op(1),
+            word(0x4000_0004),
+            word(0x5000_0003),
+            op(0x0c),
+            word(0x4000_0004),
+            word(7),
+            op(0x14),
+            word(0x4000_0004),
+            op(0x0a),
+            word(1),
+            word(0x4000_0004),
+            op(0x1f),
+            word(pointer),
+            op(0x1f),
+            word(0x0fff_ffff),
+            op(0x1f),
+            word(0),
+            op(0x17),
+            word(0x0002_0002),
+            word(0),
+            op(0x15),
+        ];
+        let mut points = Vec::from(&b"_POINT_LIST_****"[..]);
+        points.extend_from_slice(&148_u32.to_le_bytes());
+        let scene = SoftpalScene::execute_with_points_mem_dat_and_pac(
+            &program(&tokens),
+            &textdat,
+            Some(&points),
+            None,
+            &archive,
+        )
+        .expect("PAC-backed file path executes");
+
+        assert!(scene.diagnostics.is_empty());
+        assert_eq!(scene.stats.dialogue_count, 0, "PAC byte bypasses message");
+        assert_eq!(scene.stats.branch_count, 2);
+    }
+
+    #[test]
+    fn openfile_stops_visibly_when_the_resolved_pac_entry_is_absent() {
+        let (textdat, _) = textdat();
+        let filedat = filedat(&["MISSING.DAT"]);
+        let archive = pac(&[("FILE.DAT", filedat.as_slice())]);
+        let scene = SoftpalScene::execute_with_points_mem_dat_and_pac(
+            &program(&[
+                op(0x1f),
+                word(0),
+                op(0x17),
+                word(0x0012_001e),
+                word(0),
+                op(0x15),
+            ]),
+            &textdat,
+            None,
+            None,
+            &archive,
+        )
+        .expect("well-formed input retains a named runtime failure");
+
+        assert_eq!(
+            scene.diagnostics,
+            vec![RuntimeDiagnostic {
+                signature: "openfile_pac_entry_missing".to_string(),
+                offset: 20,
+            }]
+        );
     }
 }

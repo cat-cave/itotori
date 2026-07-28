@@ -49,6 +49,7 @@
 //! a typed [`PacError`].
 
 mod archive;
+mod filedat;
 mod opcode;
 mod patchback;
 mod script;
@@ -57,6 +58,9 @@ mod textdat;
 pub use archive::{
     PAC_COUNT_OFFSET, PAC_ENTRY_NAME_BYTE_LEN, PAC_HEADER_BYTE_LEN, PAC_INDEX_ENTRY_BYTE_LEN,
     PAC_MAGIC, PAC_MAX_ENTRIES, PacArchive, PacEntry, PacError,
+};
+pub use filedat::{
+    FILEDAT_HEADER_BYTE_LEN, FILEDAT_MAGIC_TAIL, FILEDAT_SLOT_BYTE_LEN, FileDat, FileDatError,
 };
 pub use opcode::{
     CALL_CATEGORY_SELECT, CALL_CATEGORY_TEXT, CallTarget, CommandFamily, Instruction, OpcodeError,

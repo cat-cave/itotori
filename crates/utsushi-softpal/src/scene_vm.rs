@@ -1,6 +1,8 @@
 //! Sv20 execution: values, branches, calls, and honest stop diagnostics.
 use crate::scene_runtime::{ChoiceOption, RuntimeDiagnostic, SceneStep};
-use kaifuu_softpal::{CommandFamily, Instruction, OpcodeScan, Operand, OperandTag, RawCommand};
+use kaifuu_softpal::{
+    CommandFamily, FileDat, Instruction, OpcodeScan, Operand, OperandTag, PacArchive, RawCommand,
+};
 use std::collections::{BTreeMap, HashMap};
 mod scene_vm_calls;
 mod scene_vm_support;
@@ -17,6 +19,22 @@ struct Frame {
     locals: BTreeMap<u32, i32>,
     arguments: Vec<i32>,
 }
+
+/// Read-only PAC resources available to native file calls for one VM run.
+#[derive(Debug)]
+pub(crate) struct ResourceAssets<'a> {
+    pub(crate) archives: Vec<(PacArchive, &'a [u8])>,
+    pub(crate) file_dat: FileDat,
+}
+
+#[derive(Debug)]
+struct RuntimeFile {
+    bytes: Vec<u8>,
+    cursor: usize,
+    table: Option<scene_vm_support::FileTable>,
+    table_cursor: usize,
+}
+
 pub(crate) struct Vm<'a> {
     instructions: &'a [Instruction],
     by_offset: HashMap<usize, usize>,
@@ -40,6 +58,11 @@ pub(crate) struct Vm<'a> {
     /// Category-18 dynamic strings use a rotating 16-slot native buffer.
     dynamic_strings: Vec<String>,
     dynamic_string_cursor: usize,
+    /// Validated PAC + FILE.DAT assets used by category-18 file calls.
+    resources: Option<ResourceAssets<'a>>,
+    /// One-based, reusable native file handles. A missing/closed slot is never
+    /// converted into a zero result: callers stop at a named diagnostic.
+    file_handles: Vec<Option<RuntimeFile>>,
     returns: Vec<usize>,
     stack: Vec<i32>,
     ip: usize,
@@ -49,6 +72,8 @@ pub(crate) struct Vm<'a> {
     work_process_attached: bool,
     /// Category `0x000f:0x0005` exchanges this PAL-owned mode value.
     debug_window_state: i32,
+    /// Category `0x000f:0x0004`'s three native overlay arguments.
+    system_window_overlay: Option<(i32, i32, i32)>,
     /// Category `0x0009:0x0034` cancels this native scene-skip latch.
     ///
     /// The compact VM has no scene-skip producer yet, but retaining the latch
@@ -76,6 +101,7 @@ impl<'a> Vm<'a> {
         labels: &'a [usize],
         texts: &'a HashMap<u32, String>,
         mem_dat: Option<&[u8]>,
+        resources: Option<ResourceAssets<'a>>,
     ) -> Self {
         let by_offset = scan
             .instructions
@@ -107,6 +133,8 @@ impl<'a> Vm<'a> {
             argument_base: 0,
             dynamic_strings: vec![String::new(); 16],
             dynamic_string_cursor: 0,
+            resources,
+            file_handles: Vec::new(),
             returns: Vec::new(),
             stack: Vec::new(),
             ip: 0,
@@ -114,6 +142,7 @@ impl<'a> Vm<'a> {
             diagnostics: Vec::new(),
             work_process_attached: false,
             debug_window_state: 0,
+            system_window_overlay: None,
             scene_skip_active: false,
             text_auto_enabled: false,
             text_skip_enabled: false,
@@ -379,6 +408,21 @@ impl<'a> Vm<'a> {
                 self.debug_window_state = new_state;
                 scene_vm_calls::write_call_result(self, instruction, old_state)
             }
+            // Category 15:4 has a proven three-value stack contract. The
+            // backing window object is outside this compact VM, but retaining
+            // every supplied value preserves the state transition rather than
+            // silently discarding its effect.
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x000f, 0x0004) =>
+            {
+                let (Some(text_id), Some(value), Some(mode)) =
+                    (self.stack.pop(), self.stack.pop(), self.stack.pop())
+                else {
+                    return self.bad("system_window_overlay_stack_underflow", instruction.offset);
+                };
+                self.system_window_overlay = Some((text_id, value, mode));
+                scene_vm_calls::write_call_result(self, instruction, 1)
+            }
             // `system_task_value` consumes no VM argument. The native value is
             // launcher-owned; the reference runtime's active-latch result is
             // one, so that is the only value modeled here.
@@ -404,6 +448,36 @@ impl<'a> Vm<'a> {
                     instruction,
                     (0x1000_0000_u32 | slot as u32) as i32,
                 )
+            }
+            // `openfile` consumes a resource-string id, resolves it through
+            // FILE.DAT/dynamic text state, and retains the exact PAC payload
+            // behind a nonzero, one-based handle. Missing inputs are explicit
+            // stops: returning a fake zero would let setup code advance on an
+            // unproven file-open result.
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x0012, 0x001e) =>
+            {
+                self.open_file(instruction)
+            }
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x0012, 0x001f) =>
+            {
+                self.read_file(instruction)
+            }
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x0012, 0x0022) =>
+            {
+                self.file_string(instruction)
+            }
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x0012, 0x0021) =>
+            {
+                self.set_file_pointer(instruction)
+            }
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x0012, 0x0005) =>
+            {
+                self.string_character_or_int(instruction)
             }
             // Sena's category-9 handler 52 consumes no VM arguments, cancels
             // its native scene-skip latch, and reports success to the extcall
@@ -536,6 +610,236 @@ impl<'a> Vm<'a> {
             text,
         });
         true
+    }
+
+    fn open_file(&mut self, instruction: Instruction) -> bool {
+        let Some(resource_id) = self.stack.pop() else {
+            return self.bad("openfile_stack_underflow", instruction.offset);
+        };
+        let Some(name) = self.resolve_resource_name(resource_id) else {
+            return self.bad("openfile_resource_name_unresolved", instruction.offset);
+        };
+        let Some(resources) = self.resources.as_ref() else {
+            return self.bad("openfile_resource_archive_required", instruction.offset);
+        };
+        let Some((archive, pac_bytes, entry)) =
+            resources.archives.iter().find_map(|(archive, bytes)| {
+                archive
+                    .entries()
+                    .iter()
+                    .find(|entry| entry.name.eq_ignore_ascii_case(&name))
+                    .map(|entry| (archive, *bytes, entry))
+            })
+        else {
+            return self.bad("openfile_pac_entry_missing", instruction.offset);
+        };
+        let bytes = match archive.extract(pac_bytes, entry) {
+            Ok(bytes) => bytes.to_vec(),
+            Err(_) => return self.bad("openfile_pac_extract_failed", instruction.offset),
+        };
+        let table = scene_vm_support::parse_file_table(&bytes);
+        let handle = self.insert_file_handle(RuntimeFile {
+            bytes,
+            cursor: 0,
+            table,
+            table_cursor: 0,
+        });
+        scene_vm_calls::write_call_result(self, instruction, handle)
+    }
+
+    fn resolve_resource_name(&self, value: i32) -> Option<String> {
+        if value == 0x0fff_ffff {
+            return None;
+        }
+        let raw = value as u32;
+        if raw & 0xf000_0000 == 0x1000_0000 {
+            let index = (raw & 0x0fff_ffff) as usize;
+            return self
+                .dynamic_strings
+                .get(index)
+                .filter(|name| scene_vm_support::is_plausible_resource_name(name))
+                .cloned();
+        }
+        let index = usize::try_from(value).ok()?;
+        self.resources
+            .as_ref()
+            .and_then(|resources| resources.file_dat.slot(index))
+            .filter(|name| scene_vm_support::is_plausible_resource_name(name))
+            .map(ToOwned::to_owned)
+            .or_else(|| {
+                self.texts
+                    .get(&(value as u32))
+                    .filter(|name| scene_vm_support::is_plausible_resource_name(name))
+                    .cloned()
+            })
+    }
+
+    fn insert_file_handle(&mut self, file: RuntimeFile) -> i32 {
+        for (index, slot) in self.file_handles.iter_mut().enumerate() {
+            if slot.is_none() {
+                *slot = Some(file);
+                return (index + 1) as i32;
+            }
+        }
+        self.file_handles.push(Some(file));
+        self.file_handles.len() as i32
+    }
+
+    fn file_handle_mut(&mut self, handle: i32) -> Option<&mut RuntimeFile> {
+        usize::try_from(handle)
+            .ok()
+            .and_then(|handle| handle.checked_sub(1))
+            .and_then(|slot| self.file_handles.get_mut(slot))
+            .and_then(Option::as_mut)
+    }
+
+    fn read_file(&mut self, instruction: Instruction) -> bool {
+        let (Some(handle), Some(temp_offset), Some(count)) =
+            (self.stack.pop(), self.stack.pop(), self.stack.pop())
+        else {
+            return self.bad("readfile_stack_underflow", instruction.offset);
+        };
+        let Ok(count) = usize::try_from(count) else {
+            return self.bad("readfile_negative_count", instruction.offset);
+        };
+        let Ok(temp_offset) = usize::try_from(temp_offset) else {
+            return self.bad("readfile_temp_offset_out_of_range", instruction.offset);
+        };
+        let Some(file) = self.file_handle_mut(handle) else {
+            return self.bad("readfile_invalid_handle", instruction.offset);
+        };
+        let (values, read_len) = if let Some(table) = file.table.as_ref() {
+            let start = file.table_cursor / 4;
+            let read_len = table.entries.len().saturating_sub(start).min(count);
+            let values = table.entries[start..start + read_len].to_vec();
+            file.table_cursor += read_len * 4;
+            (values, read_len)
+        } else {
+            let available = file.bytes.len().saturating_sub(file.cursor);
+            let read_len = available.min(count);
+            let values = file.bytes[file.cursor..file.cursor + read_len]
+                .iter()
+                .map(|byte| i32::from(*byte))
+                .collect();
+            file.cursor += read_len;
+            (values, read_len)
+        };
+        let Some(end) = temp_offset.checked_add(read_len) else {
+            return self.bad("readfile_temp_offset_out_of_range", instruction.offset);
+        };
+        if end > self.temp_mem.len() {
+            self.temp_mem.resize(end, 0);
+        }
+        for (index, value) in values.into_iter().enumerate() {
+            self.temp_mem[temp_offset + index] = value;
+        }
+        scene_vm_calls::write_call_result(self, instruction, i32::from(read_len == count))
+    }
+
+    fn file_string(&mut self, instruction: Instruction) -> bool {
+        let (Some(handle), Some(entry), Some(destination)) =
+            (self.stack.pop(), self.stack.pop(), self.stack.pop())
+        else {
+            return self.bad("filestring_stack_underflow", instruction.offset);
+        };
+        let Some(file) = self.file_handle_mut(handle) else {
+            return self.bad("filestring_invalid_handle", instruction.offset);
+        };
+        let Some(table) = file.table.as_ref() else {
+            return self.bad("filestring_table_unparsed", instruction.offset);
+        };
+        let offset = entry & 0x7fff_ffff;
+        let Some(value) = table.strings.get(&offset).cloned() else {
+            return self.bad("filestring_entry_missing", instruction.offset);
+        };
+        let result = self.store_dynamic_string(destination, value);
+        scene_vm_calls::write_call_result(self, instruction, result)
+    }
+
+    fn set_file_pointer(&mut self, instruction: Instruction) -> bool {
+        let (Some(handle), Some(offset), Some(origin)) =
+            (self.stack.pop(), self.stack.pop(), self.stack.pop())
+        else {
+            return self.bad("setfilepointer_stack_underflow", instruction.offset);
+        };
+        let Some(file) = self.file_handle_mut(handle) else {
+            return self.bad("setfilepointer_invalid_handle", instruction.offset);
+        };
+        let table_len = file
+            .table
+            .as_ref()
+            .map_or(file.bytes.len(), |table| table.entries.len() * 4);
+        let current = file.table_cursor as i64;
+        let base = match origin {
+            0 => 0,
+            2 => table_len as i64,
+            _ => current,
+        };
+        let next = base
+            .saturating_add(i64::from(offset).saturating_mul(4))
+            .max(0) as usize;
+        file.table_cursor = next.min(table_len);
+        file.cursor = file.table_cursor.min(file.bytes.len());
+        scene_vm_calls::write_call_result(self, instruction, 1)
+    }
+
+    fn string_character_or_int(&mut self, instruction: Instruction) -> bool {
+        let (Some(string_id), Some(offset), Some(length)) =
+            (self.stack.pop(), self.stack.pop(), self.stack.pop())
+        else {
+            return self.bad("strgetcf_stack_underflow", instruction.offset);
+        };
+        let Some(text) = self.resolve_script_string(string_id) else {
+            return self.bad("strgetcf_string_unresolved", instruction.offset);
+        };
+        let offset = offset.max(0) as usize;
+        let length = length.max(0) as usize;
+        let bytes = text.as_bytes();
+        let value = if offset >= bytes.len() {
+            0
+        } else if length == 0 {
+            i32::from(bytes[offset])
+        } else {
+            let end = offset.saturating_add(length).min(bytes.len());
+            std::str::from_utf8(&bytes[offset..end])
+                .ok()
+                .filter(|value| value.bytes().all(|byte| byte.is_ascii_digit()))
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(0)
+        };
+        scene_vm_calls::write_call_result(self, instruction, value)
+    }
+
+    fn resolve_script_string(&self, value: i32) -> Option<String> {
+        if value == 0x0fff_ffff {
+            return Some(String::new());
+        }
+        let raw = value as u32;
+        if raw & 0xf000_0000 == 0x1000_0000 {
+            return self
+                .dynamic_strings
+                .get((raw & 0x0fff_ffff) as usize)
+                .cloned();
+        }
+        self.texts
+            .get(&raw)
+            .cloned()
+            .or_else(|| self.resolve_resource_name(value))
+    }
+
+    fn store_dynamic_string(&mut self, requested: i32, value: String) -> i32 {
+        let raw = requested as u32;
+        if raw & 0xf000_0000 == 0x1000_0000 {
+            let index = (raw & 0x0fff_ffff) as usize;
+            if index < self.dynamic_strings.len() {
+                self.dynamic_strings[index] = value;
+                return requested;
+            }
+        }
+        let index = self.dynamic_string_cursor;
+        self.dynamic_strings[index] = value;
+        self.dynamic_string_cursor = (index + 1) % self.dynamic_strings.len();
+        (0x1000_0000_u32 | index as u32) as i32
     }
 
     fn emit_choice(&mut self, offset: usize) -> bool {
