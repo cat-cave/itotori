@@ -144,11 +144,13 @@ platform config file. Do not edit committed
 paths, public manifests, tests, or package metadata to point at private inputs.
 CI must pass with the private path absent.
 
-Suite workflows that need a real corpus use the platform-standard private
+The operator mounts the corpus tree once and sets `ITOTORI_VAULT_ROOT` to that
+deployment-owned location. Suite workflows use the platform-standard private
 inventory at `~/.config/itotori/inventory.toml` (or its platform equivalent).
-Copy the matching committed `catalog/inventory-templates/` file there and
-replace only the example roots. Its entries are identity-keyed records, and
-their roots are absolute private paths. Its shape is:
+Copy the matching committed `catalog/inventory-templates/` file there and add
+or select identity-keyed libraries beneath that mount. Each path is relative to
+the mount; adding another game changes this inventory only, never the
+environment. Its shape is:
 
 ```toml
 schema = "inventory/v1"
@@ -157,13 +159,14 @@ schema = "inventory/v1"
 id = "corpus-reallive-1-encrypted"
 engine = "engine-reallive"
 variant = "variant-encrypted"
-root = "/private/corpora/reallive-primary"
+relative_path = "corpora/reallive-primary"
 content_address = "sha256:replace-with-local-content-address"
 tags = ["reallive", "strict"]
 access = "read-only"
 ```
 
-Registry-backed tests resolve the selected identity from that inventory. The
+Registry-backed tests resolve the selected identity from that inventory beneath
+the configured mount. The
 extract stage instead selects its source with `--game-root` and produces the
 bridge bundle. Structure export consumes that bridge. The current public CLI
 does not provide an observed bridge-to-patch handoff; its selected game root

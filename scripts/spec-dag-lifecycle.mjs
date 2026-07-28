@@ -726,7 +726,6 @@ function writeJsonAtomic(path, value) {
 }
 
 function maybeCanonicalizeSpecDag(path) {
-  if (process.env.ITOTORI_SKIP_DAG_CANONICALIZE === "1") return;
   if (!/(^|\/)roadmap\/spec-dag\.json$/.test(path)) return;
   const result = spawnSync("pnpm", ["exec", "vp", "check", "--fix", "--no-lint", path], {
     stdio: ["ignore", "ignore", "ignore"],

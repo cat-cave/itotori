@@ -4,9 +4,11 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
-type InventoryRow = Readonly<{ id: string; engine: string; variant: string; root: string }>;
+import { readRegisteredProjectEnv } from "./env/registry.js";
+
+type InventoryRow = Readonly<{ id: string; engine: string; variant: string; relativePath: string }>;
 
 function inventoryPath(): string {
   return join(
@@ -26,12 +28,12 @@ function rows(text: string): InventoryRow[] {
       const id = field("id");
       const engine = field("engine");
       const variant = field("variant");
-      const root = field("root");
-      return id && engine && variant && root ? [{ id, engine, variant, root }] : [];
+      const relativePath = field("relative_path");
+      return id && engine && variant && relativePath ? [{ id, engine, variant, relativePath }] : [];
     });
 }
 
-/** Resolve one engine/title row from the private inventory without an env alias. */
+/** Resolve one user-selected library beneath the one operator-owned media mount. */
 export function resolvePrivateCorpus(
   engine: string,
   ordinal: number,
@@ -40,7 +42,17 @@ export function resolvePrivateCorpus(
   const path = inventoryPath();
   if (!existsSync(path)) return undefined;
   const id = `corpus-${engine}-${ordinal}-${variant}`;
-  return rows(readFileSync(path, "utf8")).find(
-    (row) => row.id === id && row.engine === `engine-${engine}`,
-  )?.root;
+  const row = rows(readFileSync(path, "utf8")).find(
+    (candidate) => candidate.id === id && candidate.engine === `engine-${engine}`,
+  );
+  if (
+    row === undefined ||
+    isAbsolute(row.relativePath) ||
+    row.relativePath.split("/").includes("..")
+  ) {
+    return undefined;
+  }
+  const mediaRoot = readRegisteredProjectEnv(process.env, "ITOTORI_VAULT_ROOT");
+  if (mediaRoot === undefined) return undefined;
+  return resolve(mediaRoot, row.relativePath);
 }

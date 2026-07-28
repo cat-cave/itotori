@@ -87,7 +87,8 @@ pub struct Corpus {
     pub id: String,
     pub engine: String,
     pub variant: String,
-    pub root: String,
+    /// User-selected library location relative to the operator-owned media mount.
+    pub relative_path: String,
     pub content_address: String,
     pub tags: Vec<String>,
     pub access: String,

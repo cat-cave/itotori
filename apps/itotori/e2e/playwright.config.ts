@@ -7,13 +7,12 @@ import { defineConfig, devices } from "@playwright/test";
 // needs so this dev-only lane stays deterministic and DB-free.
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
-const chromiumBin =
-  process.env.PLAYWRIGHT_CHROMIUM_BIN ?? process.env.UTSUSHI_BROWSER_BIN ?? undefined;
+const chromiumBin = process.env.PLAYWRIGHT_CHROMIUM_BIN;
 
 if (chromiumBin === undefined) {
   throw new Error(
     "itotori shell e2e: no Chromium binary provided. Enter the nix devShell " +
-      "(direnv/`nix develop`) so PLAYWRIGHT_CHROMIUM_BIN / UTSUSHI_BROWSER_BIN " +
+      "(direnv/`nix develop`) so PLAYWRIGHT_CHROMIUM_BIN " +
       "point at the nix-provided Chromium, or set PLAYWRIGHT_CHROMIUM_BIN.",
   );
 }
@@ -23,7 +22,7 @@ if (chromiumBin === undefined) {
 // is another branch's build and another branch's native binaries, and the run
 // reports on code it never loaded. The override lets a caller pin a private
 // port; the default is unchanged.
-const PORT = Number(process.env.ITOTORI_APP_E2E_PORT ?? 4322);
+const PORT = 4322;
 
 export default defineConfig({
   testDir: fileURLToPath(new URL(".", import.meta.url)),

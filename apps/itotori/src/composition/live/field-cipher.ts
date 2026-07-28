@@ -36,6 +36,7 @@
 
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { LlmMemoCipher } from "@itotori/db";
+import { readRegisteredProjectEnv } from "../../env/registry.js";
 
 /** The env var carrying the base64-encoded 256-bit envelope master key. A
  * load-bearing durability secret: fail loud when absent, never defaulted. */
@@ -74,8 +75,15 @@ export class FieldCipherRefError extends Error {
  * wrong-length material — a 128-bit or a truncated key would silently weaken the
  * envelope, so only an exact 256-bit key is admitted. */
 function resolveMasterKey(env: Readonly<Record<string, string | undefined>>): Buffer {
-  const raw = env[FIELD_CIPHER_KEY_ENV_VAR];
-  if (raw === undefined || raw.length === 0) {
+  let raw: string | undefined;
+  try {
+    raw = readRegisteredProjectEnv(env, FIELD_CIPHER_KEY_ENV_VAR);
+  } catch (error) {
+    throw new FieldCipherKeyError(
+      error instanceof Error ? error.message : "the env var is not set",
+    );
+  }
+  if (raw === undefined) {
     throw new FieldCipherKeyError("the env var is not set");
   }
   let decoded: Buffer;

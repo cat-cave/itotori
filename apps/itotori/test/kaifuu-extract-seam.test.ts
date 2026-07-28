@@ -559,7 +559,6 @@ describe("extract-adapter registry", () => {
 // softpal <root>` through the production seam (no faked runProcess) and asserts
 // the real bridge it wrote. Runs only on an operator machine with the built
 // binary + private inventory row exported to a real Softpal root.
-// Optionally asserts an exact unit count via ITOTORI_SOFTPAL_EXPECTED_UNITS.
 describe("runKaifuuExtract (env-gated real Softpal byte oracle)", () => {
   const softpalRoot = resolvePrivateCorpus("softpal", 1, "plain");
   const gated = softpalRoot === undefined || softpalRoot.length === 0 || !existsSync(softpalRoot);
@@ -578,10 +577,6 @@ describe("runKaifuuExtract (env-gated real Softpal byte oracle)", () => {
       const bridge = JSON.parse(readFileSync(bridgePath, "utf8")) as { units?: unknown[] };
       expect(Array.isArray(bridge.units)).toBe(true);
       expect(bridge.units!.length).toBeGreaterThan(0);
-      const expected = process.env.ITOTORI_SOFTPAL_EXPECTED_UNITS;
-      if (expected !== undefined && expected.length > 0) {
-        expect(bridge.units!.length).toBe(Number.parseInt(expected, 10));
-      }
     } finally {
       rmSync(workDir, { recursive: true, force: true });
     }

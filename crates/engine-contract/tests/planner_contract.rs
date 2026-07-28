@@ -35,7 +35,7 @@ impl EnginePlugin for FixturePlugin {
             request
                 .corpora
                 .iter()
-                .all(|corpus| corpus.root.starts_with("/private/"))
+                .all(|corpus| corpus.root.starts_with("corpora/"))
         );
         Ok(self.response.clone())
     }

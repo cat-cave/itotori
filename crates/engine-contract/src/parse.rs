@@ -48,9 +48,11 @@ pub enum ContractParseError {
     /// A plugin path could escape the installed plugin directory.
     #[error("plugin path must be installed-relative: `{0}")]
     PluginPath(String),
-    /// A corpus root was not an absolute local path.
-    #[error("corpus root must be absolute: `{0}")]
-    CorpusRoot(String),
+    /// A corpus path escaped the operator-owned media mount.
+    #[error(
+        "corpus relative_path must be a non-empty mount-relative path without parent traversal: `{0}"
+    )]
+    CorpusRelativePath(String),
     /// A content address omitted the required digest namespace.
     #[error("content address must start with `sha256:`: `{0}")]
     ContentAddress(String),
@@ -192,8 +194,16 @@ fn validate_corpus(corpus: &Corpus) -> Result<(), ContractParseError> {
     require_id("corpus", &corpus.id)?;
     require_id("engine", &corpus.engine)?;
     require_id("variant", &corpus.variant)?;
-    if !Path::new(&corpus.root).is_absolute() {
-        return Err(ContractParseError::CorpusRoot(corpus.root.clone()));
+    let relative = Path::new(&corpus.relative_path);
+    if corpus.relative_path.is_empty()
+        || relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err(ContractParseError::CorpusRelativePath(
+            corpus.relative_path.clone(),
+        ));
     }
     if corpus.content_address.starts_with("sha256:") {
         Ok(())

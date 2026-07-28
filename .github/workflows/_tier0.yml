@@ -29,7 +29,9 @@ jobs:
 
       - name: Ratchet control-plane surface
         if: ${{ matrix.lane == 'meta' }}
-        run: node scripts/surface-budget.mjs
+        run: |
+          node scripts/surface-budget.mjs
+          node scripts/env-registry-guard.mjs
 
       - name: Run Tier-0 lane
         run: just ci tier0-${{ matrix.lane }}

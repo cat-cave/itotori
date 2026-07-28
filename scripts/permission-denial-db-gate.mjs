@@ -34,12 +34,10 @@ const authorizationMatrixPath = path.join(
   "packages/itotori-db/test/authorization-matrix.test.ts",
 );
 
-// Artifact dir is overridable (ITOTORI_DB_TMP_DIR) so concurrent gate
-// invocations - e.g. sibling tests under `node --test` - each read/write their
-// OWN isolated skip/proof artifacts instead of racing on a shared path.
-const tmpDir = process.env.ITOTORI_DB_TMP_DIR
-  ? path.resolve(process.env.ITOTORI_DB_TMP_DIR)
-  : path.join(repoRoot, ".tmp/itotori-db");
+// The gate's artifact root is repository-local by default. Test harnesses pass
+// an explicit argument when they need an isolated proof directory; this is
+// execution wiring, not ambient configuration.
+const tmpDir = parseArtifactDir(process.argv.slice(2)) ?? path.join(repoRoot, ".tmp/itotori-db");
 const skipArtifactPath = path.join(tmpDir, "permission-denial-skipped.json");
 const proofArtifactPath = path.join(tmpDir, "permission-denial-proof.json");
 const resultsPath = path.join(tmpDir, "permission-denial-results.json");
@@ -47,6 +45,16 @@ const generalSkipMarkerPath = path.join(tmpDir, "no-database-skipped.json");
 
 const remediationCommand =
   'just dev db-up && just dev db-migrate && DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" just test permission-denial-db';
+
+function parseArtifactDir(args) {
+  const index = args.indexOf("--artifact-dir");
+  if (index === -1) return undefined;
+  const value = args[index + 1];
+  if (value === undefined || value.startsWith("--")) {
+    throw new Error("--artifact-dir requires a directory path");
+  }
+  return path.resolve(value);
+}
 
 await mkdir(tmpDir, { recursive: true });
 await rm(skipArtifactPath, { force: true });

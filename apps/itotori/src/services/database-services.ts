@@ -171,7 +171,7 @@ export async function withDatabaseItotoriServices<T>(
         passRunConfig: new ItotoriLocalizationPassRunConfigRepository(db),
         passRunner,
         conformance: new ItotoriConformanceRepository(db),
-        defaultTargetLocale: process.env.ITOTORI_TARGET_LOCALE ?? "en-US",
+        defaultTargetLocale: "en-US",
       }),
       manualFeedback: unitBoundFeedback,
       unitFeedback: unitBoundFeedback,
