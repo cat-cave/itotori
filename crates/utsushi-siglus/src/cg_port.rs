@@ -106,7 +106,7 @@ impl UtsushiSiglusPort {
         limitations: &[
             "Observe is a deterministic static walk of decoded CD_TEXT/CD_NAME surfaces and linked GLOBAL.SELBTN choices, not a live Siglus VM: substitutions and state-dependent rendering are not evaluated.",
             "Each E1 text or choice option carries the stable source-unit key used by the Siglus bridge; static branch targets are structural links, not executed paths.",
-            "The production slice decodes type-0 compressed and type-2 layered Siglus G00 containers; type-3 is rejected as unsupported rather than guessed.",
+            "The production slice decodes type-0 compressed, type-2 layered, and fixed-key XOR-wrapped JPEG type-3 Siglus G00 containers.",
             "A configured G00 capture is edge-redacted by default; otherwise capture writes a text trace. Full-fidelity decoded pixels are not persisted by this port.",
             "Frame and audio sinks are Unsupported. Snapshot and replay remain deferred.",
         ],

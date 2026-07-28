@@ -16,6 +16,30 @@ const TYPE2_BLOCK_HEADER_LEN: usize = 0x74;
 const TYPE2_TILE_HEADER_LEN: usize = 0x5c;
 const MAX_DECODED_BYTES: usize = 256 * 1024 * 1024;
 const MAX_LAYER_COUNT: usize = 65_536;
+/// The fixed, cyclic byte key used by the observed Siglus type-3 JPEGs.
+///
+/// This is not a per-title or per-file secret: XORing bytes after the common
+/// five-byte G00 header with this table restores the JPEG SOI (`ff d8 ff`).
+/// The table is deliberately kept at this container boundary, where its
+/// position-zero semantics are unambiguous.
+const TYPE3_XOR_KEY: [u8; 256] = [
+    0x45, 0x0c, 0x85, 0xc0, 0x75, 0x14, 0xe5, 0x5d, 0x8b, 0x55, 0xec, 0xc0, 0x5b, 0x8b, 0xc3, 0x8b,
+    0x81, 0xff, 0x00, 0x00, 0x04, 0x00, 0x85, 0xff, 0x6a, 0x00, 0x76, 0xb0, 0x43, 0x00, 0x76, 0x49,
+    0x00, 0x8b, 0x7d, 0xe8, 0x8b, 0x75, 0xa1, 0xe0, 0x0c, 0x85, 0xc0, 0xc0, 0x75, 0x78, 0x30, 0x44,
+    0x00, 0x85, 0xff, 0x76, 0x37, 0x81, 0x1d, 0xd0, 0xff, 0x00, 0x00, 0x75, 0x44, 0x8b, 0xb0, 0x43,
+    0x45, 0xf8, 0x8d, 0x55, 0xfc, 0x52, 0x00, 0x76, 0x68, 0x00, 0x00, 0x04, 0x00, 0x6a, 0x43, 0x8b,
+    0xb1, 0x43, 0x00, 0x6a, 0x05, 0xff, 0x50, 0xff, 0xd3, 0xa1, 0xe0, 0x04, 0x00, 0x56, 0x15, 0x2c,
+    0x44, 0x00, 0x85, 0xc0, 0x74, 0x09, 0xc3, 0xa1, 0x5f, 0x5e, 0x33, 0x8b, 0xe5, 0x5d, 0xe0, 0x30,
+    0x04, 0x00, 0x81, 0xc6, 0x00, 0x00, 0x81, 0xef, 0x04, 0x00, 0x85, 0x30, 0x44, 0x00, 0x00, 0x00,
+    0x5d, 0xc3, 0x8b, 0x55, 0xf8, 0x8d, 0x5e, 0x5b, 0x4d, 0xfc, 0x51, 0xc4, 0x04, 0x5f, 0x8b, 0xe5,
+    0x43, 0x00, 0xeb, 0xd8, 0x8b, 0x45, 0xff, 0x15, 0xe8, 0x83, 0xc0, 0x57, 0x56, 0x52, 0x2c, 0xb1,
+    0x01, 0x00, 0x8b, 0x7d, 0xe8, 0x89, 0x00, 0xe8, 0x45, 0xf4, 0x8b, 0x20, 0x50, 0x6a, 0x47, 0x28,
+    0x00, 0x50, 0x53, 0xff, 0x15, 0x34, 0xe4, 0x6a, 0xb1, 0x43, 0x00, 0x0c, 0x8b, 0x45, 0x00, 0x6a,
+    0x8b, 0x4d, 0xec, 0x89, 0x08, 0x8a, 0x85, 0xc0, 0x45, 0xf0, 0x84, 0x8b, 0x45, 0x10, 0x74, 0x05,
+    0xf5, 0x28, 0x01, 0x00, 0x83, 0xc4, 0x52, 0x6a, 0x08, 0x89, 0x45, 0x83, 0xc2, 0x20, 0x00, 0xe8,
+    0xe8, 0xf4, 0xfb, 0xff, 0xff, 0x8b, 0x8b, 0x5d, 0x45, 0x0c, 0x83, 0xc0, 0x74, 0xc5, 0xf8, 0x53,
+    0xc4, 0x08, 0x85, 0xc0, 0x75, 0x56, 0x30, 0x44, 0x8b, 0x1d, 0xd0, 0xf0, 0xa1, 0xe0, 0x00, 0x83,
+];
 
 /// A decoded Siglus G00 image format variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,7 +48,7 @@ pub enum SiglusG00Kind {
     RawBgr,
     /// Type 2: LZSS-compressed table of layered BGRA tiles.
     LayeredBgra,
-    /// Type 3: a JPEG bitstream following the common G00 header.
+    /// Type 3: a fixed-key XOR-wrapped JPEG following the common G00 header.
     Jpeg,
 }
 
@@ -100,10 +124,9 @@ pub enum SiglusG00Error {
 /// Decode a supported Siglus `.g00` container into an RGBA canvas.
 ///
 /// This is the production decoder called by [`crate::UtsushiSiglusPort`].
-/// Type 3 is a JPEG payload beginning immediately after the common header,
-/// following `siglus_scene_vm/src/assets/g00.rs:211-235` in the supplied
-/// reference implementation. Types 0 and 2 retain their existing real-byte
-/// decoder paths.
+/// Type 3 is a fixed-key XOR-wrapped JPEG payload beginning immediately after
+/// the common G00 header. Types 0 and 2 retain their existing real-byte decoder
+/// paths.
 pub fn decode_siglus_g00(input: &[u8]) -> Result<SiglusG00Image, SiglusG00Error> {
     if input.len() < HEADER_LEN {
         return Err(SiglusG00Error::TruncatedHeader {
@@ -123,13 +146,14 @@ pub fn decode_siglus_g00(input: &[u8]) -> Result<SiglusG00Image, SiglusG00Error>
 
 fn decode_type3(input: &[u8], width: u32, height: u32) -> Result<SiglusG00Image, SiglusG00Error> {
     let expected_rgba = checked_canvas_len(width, height, 4)?;
-    let decoded =
-        image::load_from_memory_with_format(&input[HEADER_LEN..], image::ImageFormat::Jpeg)
-            .or_else(|_| image::load_from_memory(&input[HEADER_LEN..]))
-            .map_err(|error| SiglusG00Error::Jpeg {
-                detail: error.to_string(),
-            })?
-            .to_rgba8();
+    let mut jpeg = input[HEADER_LEN..].to_vec();
+    xor_type3_jpeg_in_place(&mut jpeg);
+    let decoded = image::load_from_memory_with_format(&jpeg, image::ImageFormat::Jpeg)
+        .or_else(|_| image::load_from_memory(&jpeg))
+        .map_err(|error| SiglusG00Error::Jpeg {
+            detail: error.to_string(),
+        })?
+        .to_rgba8();
     if decoded.dimensions() != (width, height) {
         return Err(SiglusG00Error::InvalidSection {
             detail: "type-3 JPEG dimensions do not match the G00 header",
@@ -148,6 +172,12 @@ fn decode_type3(input: &[u8], width: u32, height: u32) -> Result<SiglusG00Image,
         pixels_rgba,
         layers: Vec::new(),
     })
+}
+
+fn xor_type3_jpeg_in_place(bytes: &mut [u8]) {
+    for (index, byte) in bytes.iter_mut().enumerate() {
+        *byte ^= TYPE3_XOR_KEY[index % TYPE3_XOR_KEY.len()];
+    }
 }
 
 fn decode_type0(input: &[u8], width: u32, height: u32) -> Result<SiglusG00Image, SiglusG00Error> {
@@ -520,7 +550,7 @@ mod tests {
     }
 
     #[test]
-    fn type3_jpeg_payload_decodes_to_an_opaque_rgba_canvas() {
+    fn type3_xor_wrapped_jpeg_decodes_to_an_opaque_rgba_canvas() {
         let mut jpeg = Vec::new();
         let source = image::RgbImage::from_raw(2, 1, vec![250, 20, 10, 20, 200, 30])
             .expect("test RGB dimensions");
@@ -528,6 +558,7 @@ mod tests {
             .encode_image(&source)
             .expect("encode test JPEG");
         let mut bytes = vec![3, 2, 0, 1, 0];
+        xor_type3_jpeg_in_place(&mut jpeg);
         bytes.extend_from_slice(&jpeg);
 
         let image = decode_siglus_g00(&bytes).expect("decode type-3 JPEG G00");
@@ -558,6 +589,7 @@ mod tests {
             .encode_image(&source)
             .expect("encode test JPEG");
         let mut bytes = vec![3, 1, 0, 1, 0];
+        xor_type3_jpeg_in_place(&mut jpeg);
         bytes.extend_from_slice(&jpeg);
 
         assert!(matches!(
