@@ -46,7 +46,7 @@ impl SceneVm<'_> {
                     offset,
                     function_id: index,
                 })?;
-            self.call(args, ret_form);
+            self.call(offset, args, ret_form)?;
             self.enter_scene(target.scene_id, target.pc);
             return Ok(());
         }
@@ -124,7 +124,6 @@ impl SceneVm<'_> {
                 .state
                 .indexed_strings
                 .get(&(34, *index))
-                .and_then(|string| self.program().strings.get(string))
                 .cloned()
                 .ok_or(self.operation(offset, "string-list-value"))?,
             [Value::Int(83), Value::Int(raw), Value::Int(_)] if owner(*raw) == 125 => {

@@ -228,13 +228,14 @@ impl<'a> SceneVm<'a> {
                 ) => {
                     let arguments = self.pop_n(offset, count(&forms))?;
                     self.call(
+                        offset,
                         arguments,
                         if opcode == SiglusOpcode::GosubStr {
                             20
                         } else {
                             10
                         },
-                    );
+                    )?;
                     self.jump(offset, label)?;
                 }
                 (SiglusOpcode::Return, SiglusOperand::Return(forms)) => {

@@ -30,7 +30,9 @@ pub enum Moment {
 pub struct VmState {
     pub globals: BTreeMap<i32, i32>,
     pub indexed_globals: BTreeMap<(i32, i32), i32>,
-    pub indexed_strings: BTreeMap<(i32, i32), i32>,
+    /// String-list values are bytes, rather than indexes into whichever scene
+    /// happens to be executing when the list is read.
+    pub indexed_strings: BTreeMap<(i32, i32), String>,
     pub system_properties: BTreeMap<(i32, i32), i32>,
     /// Root-stage object arrays keyed by stage index and object slot.
     pub stage_objects: BTreeMap<i32, BTreeMap<i32, StageObject>>,

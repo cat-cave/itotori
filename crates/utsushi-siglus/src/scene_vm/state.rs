@@ -38,9 +38,13 @@ impl SceneVm<'_> {
                         .unwrap_or(&0),
                 ))
             }
-            [Value::Int(34), Value::Int(-1), Value::Int(index)] => Ok(Value::Str(
-                *self.state.indexed_strings.get(&(34, *index)).unwrap_or(&-1),
-            )),
+            [Value::Int(34), Value::Int(-1), Value::Int(index)] => self
+                .state
+                .indexed_strings
+                .get(&(34, *index))
+                .cloned()
+                .map(Value::Text)
+                .ok_or(self.operation(offset, "string-list-value")),
             [
                 Value::Int(34),
                 Value::Int(-1),
@@ -50,7 +54,6 @@ impl SceneVm<'_> {
                 .state
                 .indexed_strings
                 .get(&(34, *index))
-                .and_then(|string| self.program().strings.get(string))
                 .map(|string| Value::Text(string.to_uppercase()))
                 .ok_or(self.operation(offset, "string-list-value")),
             [Value::Int(42), Value::Int(property)] => Ok(Value::Int(
@@ -130,9 +133,7 @@ impl SceneVm<'_> {
                 self.state.indexed_globals.insert((*form, *index), value);
             }
             [Value::Int(34), Value::Int(-1), Value::Int(index)] => {
-                let Value::Str(value) = value else {
-                    return Err(self.operation(offset, "non-string assignment"));
-                };
+                let value = self.string_value(offset, &value)?;
                 self.state.indexed_strings.insert((34, *index), value);
             }
             [Value::Int(42), Value::Int(property)] => {
@@ -164,7 +165,25 @@ impl SceneVm<'_> {
         Ok(())
     }
 
-    pub(super) fn call(&mut self, arguments: Vec<Value>, return_form: i32) {
+    pub(super) fn call(
+        &mut self,
+        offset: usize,
+        arguments: Vec<Value>,
+        return_form: i32,
+    ) -> Result<(), VmError> {
+        let arguments = arguments
+            .into_iter()
+            .map(|argument| match argument {
+                Value::Str(index) => self
+                    .program()
+                    .strings
+                    .get(&index)
+                    .cloned()
+                    .map(Value::Text)
+                    .ok_or(self.operation(offset, "call-argument-string")),
+                argument => Ok(argument),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         self.calls.push(CallFrame {
             scene_id: self.scene_id,
             pc: self.pc,
@@ -173,6 +192,7 @@ impl SceneVm<'_> {
             properties: Vec::new(),
             scene_entry: false,
         });
+        Ok(())
     }
 
     pub(super) fn declare_property(
