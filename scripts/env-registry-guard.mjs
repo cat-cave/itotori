@@ -10,7 +10,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const budgetPath = path.join(root, "scripts", "env-registry-guard-budget.json");
 const example = readFileSync(path.join(root, ".env.example"), "utf8");
 const declared = new Set([...example.matchAll(/^([A-Z][A-Z0-9_]*)=$/gmu)].map((match) => match[1]));
-const readForms = /(?:process\.env\.|env::var(?:_os)?\(|env!\(|option_env!\(|\.env\()\s*["']?((?:ITOTORI|KAIFUU|UTSUSHI)_[A-Z0-9_]+)/g;
+const readForms =
+  /(?:process\.env\.|env::var(?:_os)?\(|env!\(|option_env!\(|\.env\()\s*["']?((?:ITOTORI|KAIFUU|UTSUSHI)_[A-Z0-9_]+)/g;
 const exemptPaths = new Map([
   [
     "scripts/fixtures/surface-budget-forms.fixture",
@@ -61,7 +62,9 @@ function loadBudget() {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
       return undefined;
     }
-    throw new Error(`environment registry guard: invalid budget: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `environment registry guard: invalid budget: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 
@@ -84,11 +87,15 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   }
   const budgetError = checkBudget(failures.length, loadBudget());
   if (budgetError !== undefined) {
-    process.stderr.write(`environment registry guard: FAILED (${failures.length} undeclared literal reads)\n`);
+    process.stderr.write(
+      `environment registry guard: FAILED (${failures.length} undeclared literal reads)\n`,
+    );
     if (failures.length > 0) process.stderr.write(`${failures.join("\n")}\n`);
     if (budgetError !== undefined) process.stderr.write(`${budgetError}\n`);
     if (exemptions.length > 0) process.stderr.write(`exemptions:\n${exemptions.join("\n")}\n`);
-    process.stderr.write("limits: scans tracked literal read forms only; dynamic names and untracked files are invisible.\n");
+    process.stderr.write(
+      "limits: scans tracked literal read forms only; dynamic names and untracked files are invisible.\n",
+    );
     process.exitCode = 1;
   } else {
     process.stdout.write(

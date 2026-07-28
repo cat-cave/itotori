@@ -11,7 +11,15 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "engine", "variant", "relative_path", "content_address", "tags", "access"],
+        "required": [
+          "id",
+          "engine",
+          "variant",
+          "relative_path",
+          "content_address",
+          "tags",
+          "access"
+        ],
         "properties": {
           "id": { "type": "string", "pattern": "^corpus-[a-z0-9-]+$" },
           "engine": { "type": "string", "pattern": "^engine-[a-z0-9-]+$" },

@@ -29,9 +29,7 @@ function rows(text: string): InventoryRow[] {
       const engine = field("engine");
       const variant = field("variant");
       const relativePath = field("relative_path");
-      return id && engine && variant && relativePath
-        ? [{ id, engine, variant, relativePath }]
-        : [];
+      return id && engine && variant && relativePath ? [{ id, engine, variant, relativePath }] : [];
     });
 }
 
@@ -47,7 +45,11 @@ export function resolvePrivateCorpus(
   const row = rows(readFileSync(path, "utf8")).find(
     (candidate) => candidate.id === id && candidate.engine === `engine-${engine}`,
   );
-  if (row === undefined || isAbsolute(row.relativePath) || row.relativePath.split("/").includes("..")) {
+  if (
+    row === undefined ||
+    isAbsolute(row.relativePath) ||
+    row.relativePath.split("/").includes("..")
+  ) {
     return undefined;
   }
   const mediaRoot = readRegisteredProjectEnv(process.env, "ITOTORI_VAULT_ROOT");

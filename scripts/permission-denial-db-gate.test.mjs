@@ -101,11 +101,15 @@ function runGateVerifyOnly(reportPath, tmpDir) {
     ...process.env,
     DATABASE_URL: "postgres://dummy:dummy@127.0.0.1:5432/dummy",
   };
-  return spawnSync(process.execPath, [gatePath, "--results", reportPath, "--artifact-dir", tmpDir], {
-    cwd: repoRoot,
-    env,
-    encoding: "utf8",
-  });
+  return spawnSync(
+    process.execPath,
+    [gatePath, "--results", reportPath, "--artifact-dir", tmpDir],
+    {
+      cwd: repoRoot,
+      env,
+      encoding: "utf8",
+    },
+  );
 }
 
 function gateOutput(r) {

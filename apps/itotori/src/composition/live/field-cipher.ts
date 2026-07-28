@@ -79,7 +79,9 @@ function resolveMasterKey(env: Readonly<Record<string, string | undefined>>): Bu
   try {
     raw = readRegisteredProjectEnv(env, FIELD_CIPHER_KEY_ENV_VAR);
   } catch (error) {
-    throw new FieldCipherKeyError(error instanceof Error ? error.message : "the env var is not set");
+    throw new FieldCipherKeyError(
+      error instanceof Error ? error.message : "the env var is not set",
+    );
   }
   if (raw === undefined) {
     throw new FieldCipherKeyError("the env var is not set");

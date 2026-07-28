@@ -19,9 +19,9 @@ describe("project environment registry", () => {
   });
 
   it("accepts the one operator-owned corpus mount but not a title path", () => {
-    expect(readRegisteredProjectEnv({ ITOTORI_VAULT_ROOT: "/srv/itotori-media" }, "ITOTORI_VAULT_ROOT")).toBe(
-      "/srv/itotori-media",
-    );
+    expect(
+      readRegisteredProjectEnv({ ITOTORI_VAULT_ROOT: "/srv/itotori-media" }, "ITOTORI_VAULT_ROOT"),
+    ).toBe("/srv/itotori-media");
     expect(() => readRegisteredProjectEnv({}, "ITOTORI_REALLIVE_GAME_PATH")).toThrow(
       /undeclared project environment variable ITOTORI_REALLIVE_GAME_PATH/u,
     );
