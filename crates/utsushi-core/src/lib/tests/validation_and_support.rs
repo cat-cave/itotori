@@ -119,8 +119,7 @@ pub(super) fn harness_child_sleeps() {
 }
 
 pub(super) fn harness_child_spawns_grandchild() {
-    let heartbeat_path = PathBuf::from(std::env::var("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT").unwrap());
-    let pid_path = PathBuf::from(std::env::var("UTSUSHI_TEST_GRANDCHILD_PID").unwrap());
+    let (_heartbeat_path, pid_path) = harness_grandchild_paths();
     let mut child = StdCommand::new(std::env::current_exe().unwrap())
         .args([
             "--exact",
@@ -128,8 +127,7 @@ pub(super) fn harness_child_spawns_grandchild() {
             "--ignored",
             "--nocapture",
         ])
-        .env("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT", &heartbeat_path)
-        .env("UTSUSHI_TEST_GRANDCHILD_PID", &pid_path)
+        .current_dir(std::env::current_dir().unwrap())
         .spawn()
         .unwrap();
     assert!(wait_for_path(&pid_path, Duration::from_secs(1)));
@@ -142,8 +140,7 @@ pub(super) fn harness_child_spawns_grandchild() {
 }
 
 pub(super) fn harness_child_spawns_grandchild_then_fails() {
-    let heartbeat_path = PathBuf::from(std::env::var("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT").unwrap());
-    let pid_path = PathBuf::from(std::env::var("UTSUSHI_TEST_GRANDCHILD_PID").unwrap());
+    let (heartbeat_path, pid_path) = harness_grandchild_paths();
     let _child = StdCommand::new(std::env::current_exe().unwrap())
         .args([
             "--exact",
@@ -151,8 +148,7 @@ pub(super) fn harness_child_spawns_grandchild_then_fails() {
             "--ignored",
             "--nocapture",
         ])
-        .env("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT", &heartbeat_path)
-        .env("UTSUSHI_TEST_GRANDCHILD_PID", &pid_path)
+        .current_dir(std::env::current_dir().unwrap())
         .spawn()
         .unwrap();
     assert!(wait_for_path(&pid_path, Duration::from_secs(1)));
@@ -161,8 +157,7 @@ pub(super) fn harness_child_spawns_grandchild_then_fails() {
 }
 
 pub(super) fn harness_grandchild_heartbeats() {
-    let heartbeat_path = PathBuf::from(std::env::var("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT").unwrap());
-    let pid_path = PathBuf::from(std::env::var("UTSUSHI_TEST_GRANDCHILD_PID").unwrap());
+    let (heartbeat_path, pid_path) = harness_grandchild_paths();
     fs::write(&pid_path, std::process::id().to_string()).unwrap();
     let mut heartbeat = 0_u64;
     loop {
@@ -170,6 +165,14 @@ pub(super) fn harness_grandchild_heartbeats() {
         heartbeat += 1;
         std::thread::sleep(Duration::from_millis(20));
     }
+}
+
+fn harness_grandchild_paths() -> (PathBuf, PathBuf) {
+    let root = std::env::current_dir().expect("harness child current directory");
+    (
+        root.join("grandchild-heartbeat"),
+        root.join("grandchild.pid"),
+    )
 }
 
 pub(super) struct WritingCaptureHook {

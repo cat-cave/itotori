@@ -74,14 +74,6 @@ fn harness_child_command(test_name: &str) -> RuntimeLaunchCommand {
     ])
 }
 
-fn harness_child_command_with_env(test_name: &str, env: &[(&str, &Path)]) -> RuntimeLaunchCommand {
-    let mut command = harness_child_command(test_name);
-    for (key, value) in env {
-        command = command.env(*key, value.display().to_string());
-    }
-    command
-}
-
 fn wait_for_path(path: &Path, timeout: Duration) -> bool {
     let started_at = Instant::now();
     while started_at.elapsed() < timeout {

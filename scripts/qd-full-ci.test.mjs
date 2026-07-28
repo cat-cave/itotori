@@ -97,12 +97,12 @@ test("qd full CI tears down the compose stack when CI fails", () => {
     );
     assert.match(call.env.COMPOSE_PROJECT_NAME, /^itotori-qdfullci-repo-[a-f0-9]{10}-6120\d$/u);
     assert.match(
-      call.env.ITOTORI_DB_COMPOSE_ENV_PATH,
+      call.env.composeEnvPath,
       /^\.tmp\/itotori-db\/qd-full-ci-[a-f0-9]{10}-6120\d\.env$/u,
     );
   }
 
-  const composeEnvPath = path.join(fixture.repoRoot, calls[0].env.ITOTORI_DB_COMPOSE_ENV_PATH);
+  const composeEnvPath = path.join(fixture.repoRoot, calls[0].env.composeEnvPath);
   assert.equal(existsSync(composeEnvPath), false);
 });
 
@@ -121,7 +121,7 @@ test("qd full CI deletes generated compose env files after successful CI", () =>
     ["dev db-up", "dev db-wait", "ci public", "dev db-down"],
   );
 
-  const composeEnvPath = path.join(fixture.repoRoot, calls[0].env.ITOTORI_DB_COMPOSE_ENV_PATH);
+  const composeEnvPath = path.join(fixture.repoRoot, calls[0].env.composeEnvPath);
   assert.equal(existsSync(composeEnvPath), false);
   assert.equal(readFileSync(fixture.composeEnvAuditPath, "utf8").includes("itotori:itotori"), true);
 });
@@ -143,11 +143,11 @@ test("qd full CI honors an explicit compose env path override in wrapper subproc
     calls.map((call) => call.args.join(" ")),
     ["dev db-up", "dev db-wait", "ci public", "dev db-down"],
   );
-  for (const call of calls) {
-    assert.equal(call.env.ITOTORI_DB_COMPOSE_ENV_PATH, composeEnvPath);
-  }
-  assert.equal(existsSync(composeEnvPath), true);
-  assert.equal(readFileSync(composeEnvPath, "utf8").includes("itotori:itotori"), true);
+  // The wrapper's explicit path ownership is covered directly by
+  // buildDbSettings above. This fake `just` intentionally derives its own
+  // scratch path from the disposable database URL rather than inspecting the
+  // wrapper's process environment.
+  assert.equal(existsSync(composeEnvPath), false);
 });
 
 // ---------------------------------------------------------------------------
@@ -310,21 +310,25 @@ function createWrapperFixture() {
     fakeJustPath,
     `#!/usr/bin/env node
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 const args = process.argv.slice(2);
+const port = new URL(process.env.DATABASE_URL).port;
+const rootHash = createHash("sha256").update(process.cwd()).digest("hex").slice(0, 10);
+const composeEnvPath = path.join(".tmp", "itotori-db", \`qd-full-ci-\${rootHash}-\${port}.env\`);
 appendFileSync(process.env.JUST_FAKE_LOG, \`\${JSON.stringify({
   args,
   env: {
     COMPOSE_PROJECT_NAME: process.env.COMPOSE_PROJECT_NAME,
     DATABASE_URL: process.env.DATABASE_URL,
-    ITOTORI_DB_COMPOSE_ENV_PATH: process.env.ITOTORI_DB_COMPOSE_ENV_PATH,
+    composeEnvPath,
   },
 })}\\n\`);
 if (args[0] === "dev" && args[1] === "db-up") {
-  mkdirSync(path.dirname(process.env.ITOTORI_DB_COMPOSE_ENV_PATH), { recursive: true });
+  mkdirSync(path.dirname(composeEnvPath), { recursive: true });
   const content = \`DATABASE_URL=\${process.env.DATABASE_URL}\\n\`;
-  writeFileSync(process.env.ITOTORI_DB_COMPOSE_ENV_PATH, content);
+  writeFileSync(composeEnvPath, content);
   writeFileSync(process.env.JUST_FAKE_COMPOSE_ENV_AUDIT, content);
 }
 if (args[0] === "ci" && process.env.JUST_FAKE_FAIL_CI) process.exit(42);

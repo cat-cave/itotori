@@ -41,10 +41,10 @@ function sha256(buffer) {
   return createHash("sha256").update(buffer).digest("hex");
 }
 
-function runGenerator(args = [], environment = {}) {
+function runGenerator(args = []) {
   return execFileSync(process.execPath, [generatorPath, ...args], {
     cwd: repoRoot,
-    env: { ...process.env, ...environment },
+    env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
   });
 }
@@ -215,7 +215,7 @@ test("first Siglus command failure preserves the live fixture tree and manifest"
   let failed = false;
   let stderr = "";
   try {
-    runGenerator([], { KAIFUU_FIXTURE_GENERATOR_TEST_FAIL_FIRST_SIGLUS_COMMAND: "1" });
+    runGenerator(["--fail-first-siglus-command"]);
   } catch (error) {
     failed = true;
     stderr = String(error.stderr ?? "");

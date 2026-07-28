@@ -35,46 +35,13 @@ fn browser_run_returns_chromium_unavailable_kind_when_binary_missing() {
 // std::env::{set_var,remove_var} (edition 2024) through a scoped EnvGuard.
 // Test-only; src stays unsafe-free.
 #[allow(unsafe_code)]
-fn browser_run_returns_chromium_unavailable_when_env_browser_bin_broken() {
-    // Scoped env guard: this test sets UTSUSHI_BROWSER_BIN to a bogus
-    // path, asserts the typed semantic outcome, and restores the
-    // previous env value on drop. Tests that read browser probe env take
-    // BROWSER_PROBE_ENV_LOCK so this scoped mutation cannot leak across
-    // parallel test execution.
-    struct EnvGuard {
-        previous: Option<std::ffi::OsString>,
-    }
-    impl EnvGuard {
-        fn set(value: &str) -> Self {
-            let previous = env::var_os("UTSUSHI_BROWSER_BIN");
-            // SAFETY: This is a deliberate, scoped mutation for a test
-            // that does not run concurrently with other UTSUSHI_BROWSER_BIN
-            // consumers.
-            unsafe {
-                env::set_var("UTSUSHI_BROWSER_BIN", value);
-            }
-            Self { previous }
-        }
-    }
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            // SAFETY: see EnvGuard::set.
-            unsafe {
-                match &self.previous {
-                    Some(value) => env::set_var("UTSUSHI_BROWSER_BIN", value),
-                    None => env::remove_var("UTSUSHI_BROWSER_BIN"),
-                }
-            }
-        }
-    }
-
+fn browser_run_returns_chromium_unavailable_when_configured_binary_is_broken() {
     let _browser_env = lock_browser_probe_env();
     let root = temp_dir("browser-env-broken");
     write_browser_smoke_fixture(&root);
     let artifact_root = root.join("runtime-artifacts");
-    let bogus = root.join("env-pointed-missing-browser");
-    let _guard = EnvGuard::set(bogus.to_string_lossy().as_ref());
-    let adapter = BrowserLaunchAdapter::new();
+    let bogus = root.join("configured-missing-browser");
+    let adapter = BrowserLaunchAdapter::with_browser_program(bogus);
 
     let error = adapter
         .smoke_validate(&RuntimeRequest::new(&root).with_artifact_root(&artifact_root))
@@ -96,7 +63,7 @@ fn browser_run_returns_chromium_unavailable_when_env_browser_bin_broken() {
         .iter()
         .find(|(key, _)| key == "browserSource")
         .map(|(_, value)| value.as_str());
-    assert_eq!(source, Some("environment_unavailable"));
+    assert_eq!(source, Some("configured_unavailable"));
     let _ = fs::remove_dir_all(root);
 }
 

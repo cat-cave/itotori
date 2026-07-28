@@ -100,13 +100,7 @@ pub(super) fn timeout_cleanup_terminates_runtime_process_tree() {
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Capture,
-        harness_child_command_with_env(
-            "tests::harness_child_spawns_grandchild",
-            &[
-                ("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT", &heartbeat_path),
-                ("UTSUSHI_TEST_GRANDCHILD_PID", &pid_path),
-            ],
-        ),
+        harness_child_command("tests::harness_child_spawns_grandchild").current_dir(&temp),
     )
     .with_timeout(Duration::from_millis(250))
     .with_shutdown_grace(Duration::from_secs(1))
@@ -144,13 +138,8 @@ pub(super) fn nonzero_exit_cleanup_terminates_runtime_process_tree() {
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Capture,
-        harness_child_command_with_env(
-            "tests::harness_child_spawns_grandchild_then_fails",
-            &[
-                ("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT", &heartbeat_path),
-                ("UTSUSHI_TEST_GRANDCHILD_PID", &pid_path),
-            ],
-        ),
+        harness_child_command("tests::harness_child_spawns_grandchild_then_fails")
+            .current_dir(&temp),
     )
     .with_timeout(Duration::from_secs(5))
     .with_shutdown_grace(Duration::from_secs(1))
@@ -195,13 +184,8 @@ pub(super) fn nonzero_exit_after_exit_hook_failure_cleans_process_tree_before_re
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Capture,
-        harness_child_command_with_env(
-            "tests::harness_child_spawns_grandchild_then_fails",
-            &[
-                ("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT", &heartbeat_path),
-                ("UTSUSHI_TEST_GRANDCHILD_PID", &pid_path),
-            ],
-        ),
+        harness_child_command("tests::harness_child_spawns_grandchild_then_fails")
+            .current_dir(&temp),
     )
     .with_timeout(Duration::from_secs(5))
     .with_shutdown_grace(Duration::from_secs(1))

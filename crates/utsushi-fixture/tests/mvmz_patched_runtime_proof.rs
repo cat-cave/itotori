@@ -188,19 +188,25 @@ fn committed_patched_trace_reproduces_the_e1_proof() {
     );
 }
 
-/// Resolve a launchable real browser: ONLY an explicitly provisioned
-/// `UTSUSHI_BROWSER_BIN` (the pinned dev-shell / browser-lane Chromium). Returns
-/// None otherwise, so the gate skips. A generic Chromium that merely happens to
-/// be on PATH (e.g. the hosted PR runner's preinstalled google-chrome) is NOT
-/// used: it is unpinned and not the browser-lane binary, and auto-launching it
-/// in the portable per-PR `just ci` lane false-reds CI (the launch/evidence
-/// match is not reproducible against an arbitrary Chrome build). Real-browser
-/// proofs belong to the browser-e2e / oracle lane, which sets
-/// `UTSUSHI_BROWSER_BIN` via the nix dev-shell.
+/// Resolve a launchable real browser from the PATH supplied by the pinned
+/// browser/oracle devshell.
 fn resolve_real_browser() -> Option<PathBuf> {
-    let configured = std::env::var_os("UTSUSHI_BROWSER_BIN")?;
-    let path = PathBuf::from(&configured);
-    path.is_file().then_some(path)
+    [
+        "chromium",
+        "chromium-browser",
+        "google-chrome",
+        "google-chrome-stable",
+    ]
+    .into_iter()
+    .find_map(|program| which_in_path(program))
+}
+
+fn which_in_path(program: &str) -> Option<PathBuf> {
+    std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths)
+            .map(|directory| directory.join(program))
+            .find(|path| path.is_file())
+    })
 }
 
 /// REAL-BROWSER GATE: drive the whole pipeline through genuine headless
@@ -212,8 +218,7 @@ fn real_chromium_launch_proves_patched_e1_and_matches_committed_evidence() {
     let Some(browser) = resolve_real_browser() else {
         eprintln!(
             "SKIP real_chromium_launch_proves_patched_e1: no browser-lane Chromium provisioned \
-             (set UTSUSHI_BROWSER_BIN). This browser proof runs in the browser-e2e/oracle lane; \
-             the portable per-PR `just ci` lane skips it — an arbitrary PATH Chrome is not used."
+             (enter the browser/oracle devshell). This browser proof runs in the browser-e2e/oracle lane."
         );
         return;
     };

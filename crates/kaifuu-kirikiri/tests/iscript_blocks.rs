@@ -164,11 +164,12 @@ fn iscript_body_lines(text: &str) -> std::collections::BTreeSet<usize> {
 
 #[test]
 fn real_ks_never_emits_iscript_tjs_as_dialogue() {
-    let Some(dir) = std::env::var_os("KAIFUU_KIRIKIRI_REAL_KS_DIR") else {
-        eprintln!("KAIFUU_KIRIKIRI_REAL_KS_DIR unset — skipping real-bytes gate");
+    let Ok(dir) = corpus_registry::resolve_identity("kirikiri/1/plain") else {
+        eprintln!(
+            "kirikiri/1/plain unavailable in the private inventory — skipping real-bytes gate"
+        );
         return;
     };
-    let dir = PathBuf::from(dir);
     let mut files = 0usize;
     let mut files_with_iscript = 0usize;
     let mut total_blocks = 0usize;

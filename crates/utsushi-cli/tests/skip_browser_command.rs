@@ -292,8 +292,7 @@ fn trace_command_rejects_skip_browser_flag_as_unknown() {
 #[test]
 fn capabilities_skip_browser_does_not_leak_private_browser_bin_path() {
     // The recipe-level skip acknowledgement is path-free by construction;
-    // a configured browser binary path (e.g. an operator's private
-    // UTSUSHI_BROWSER_BIN) must never leak into the top-level skip
+    // a configured browser binary path must never leak into the top-level skip
     // diagnostic even when the per-adapter diagnostic still carries the
     // honest host probe.
     let root = temp_dir("skip-browser-redaction");
@@ -305,12 +304,12 @@ fn capabilities_skip_browser_does_not_leak_private_browser_bin_path() {
         .arg("--skip-browser")
         .arg("--output")
         .arg(&output)
-        .env("UTSUSHI_BROWSER_BIN", &private_path)
+        .env("PATH", &private_path)
         .output()
         .expect("failed to run utsushi-cli");
     assert!(
         result.status.success(),
-        "capabilities --skip-browser must succeed even with a broken UTSUSHI_BROWSER_BIN: {}",
+        "capabilities --skip-browser must succeed even with no browser on PATH: {}",
         String::from_utf8_lossy(&result.stderr),
     );
 
