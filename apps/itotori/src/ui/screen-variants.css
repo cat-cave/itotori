@@ -1,0 +1,102 @@
+/* Layout and visual identity for SPA screen roots and dashboard instruments. */
+
+.itotori-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-16);
+  inline-size: 100%;
+  max-inline-size: calc(var(--app-shell-measure) + 2 * var(--ito-space-18));
+  box-sizing: border-box;
+  margin-inline: auto;
+  padding: var(--ito-space-24) var(--ito-space-18);
+}
+
+.itotori-settings-privacy {
+  display: grid;
+  gap: var(--ito-space-16);
+}
+
+.itotori-settings-privacy__evidence {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.55fr) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--ito-space-16);
+  padding: var(--ito-space-12);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius-tight);
+  background: var(--ito-color-code-well);
+}
+
+.itotori-settings-privacy__evidence p {
+  margin: 0;
+  color: var(--ito-color-text-muted);
+}
+
+.live-player,
+.members-screen,
+.model-routing-settings,
+.onboarding-screen,
+.wiki-entry {
+  gap: var(--ito-space-24);
+}
+
+.live-player {
+  border-inline-start: 2px solid var(--ito-color-cyan);
+}
+
+.members-screen {
+  border-inline-start: 2px solid var(--ito-color-mint);
+}
+
+.model-routing-settings {
+  border-inline-start: 2px solid var(--ito-color-amber);
+}
+
+.onboarding-screen {
+  border-inline-start: 2px solid var(--ito-color-coral);
+}
+
+.wiki-entry {
+  border-inline-start: 2px solid var(--ito-color-sakura);
+}
+
+.itotori-decisions-band {
+  display: grid;
+  min-inline-size: 0;
+}
+
+.itotori-panel--catalog-opportunities {
+  border-color: var(--ito-color-cyan);
+}
+
+.itotori-panel--decisions {
+  border-color: var(--ito-color-mint);
+}
+
+.itotori-panel--first-run {
+  border-color: var(--ito-color-coral);
+}
+
+.itotori-panel--portfolio {
+  border-color: var(--ito-color-mint);
+}
+
+.itotori-panel--progress {
+  border-color: var(--ito-color-amber);
+}
+
+.itotori-panel--projects {
+  border-color: var(--ito-color-sakura);
+}
+
+.itotori-progress-instrument {
+  display: grid;
+  gap: var(--ito-space-16);
+  min-inline-size: 0;
+}
+
+@media (max-width: 42rem) {
+  .itotori-settings-privacy__evidence {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -11,7 +11,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, execSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -158,6 +158,13 @@ test("a class styled by ANY stylesheet (including the DS) is clean", () => {
     ),
     [],
   );
+});
+
+test("the checked-in app has no unstyled static classes without a whitelist", () => {
+  const root = join(here, "..");
+  const scanned = scanTree(root);
+  assert.equal(existsSync(join(here, "lint", "app-css-unstyled-class-whitelist.json")), false);
+  assert.deepEqual(findUnstyledClasses(scanned.appSource, scanned.allCss), []);
 });
 
 // The measured false-positive source: a server-rendered route that ships its
