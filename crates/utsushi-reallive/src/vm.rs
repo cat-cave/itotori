@@ -297,6 +297,11 @@ pub struct Vm {
     longop_queue: VecDeque<LongOp>,
     halted: bool,
     warnings: Vec<VmWarning>,
+    /// Normal-layer `module_sys` frame counters.  The headless VM advances
+    /// their deterministic millisecond clock once after each `ReadFrames`
+    /// pass, preserving the oracle's initial read while allowing a polled
+    /// frame loop to evolve instead of being misclassified as a spin.
+    frame_counters: BTreeMap<i32, FrameCounterState>,
     /// Byte offset immediately past the command currently being
     /// dispatched. Set transiently by [`Vm::dispatch_element`] before an
     /// op's `dispatch`, so a control-flow op (`gosub` / `farcall`) can
@@ -322,6 +327,15 @@ pub struct Vm {
     last_transfer_suppressed: bool,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct FrameCounterState {
+    pub(crate) min: i32,
+    pub(crate) max: i32,
+    pub(crate) duration_ms: u32,
+    pub(crate) elapsed_ms: u32,
+    pub(crate) active: bool,
+}
+
 // Object-button bindings belong to the graphics runtime, not VM state.
 // Historical note: `objButtonOpts` (`obj (1,{81,82},1064)`) recovers each
 // selectable on-screen button (0-based `number` + button-group `group`)
@@ -341,6 +355,7 @@ impl Vm {
             longop_queue: VecDeque::new(),
             halted: false,
             warnings: Vec::new(),
+            frame_counters: BTreeMap::new(),
             post_pc: 0,
             suppress_next_transfer: false,
             last_transfer_suppressed: false,
@@ -381,6 +396,14 @@ impl Vm {
         fold(&[u8::from(self.halted)]);
         // Combine with the memory fingerprint (already an FNV fold).
         fold(&self.banks.fingerprint().to_le_bytes());
+        for (counter, frame) in &self.frame_counters {
+            fold(&counter.to_le_bytes());
+            fold(&frame.min.to_le_bytes());
+            fold(&frame.max.to_le_bytes());
+            fold(&frame.duration_ms.to_le_bytes());
+            fold(&frame.elapsed_ms.to_le_bytes());
+            fold(&[u8::from(frame.active)]);
+        }
         // Fold the suspended-longop queue. `step()` polls the queue head
         // BEFORE fetching the next element, so the next step is a pure
         // function of the folded state ONLY when the queue's contents are
@@ -762,7 +785,11 @@ impl Vm {
                     // — the layout `GotoOp` / `GotoIfOp` / `GotoOnOp`
                     // expect. Non-goto commands carry no targets, so this
                     // is a no-op for them.
-                    let mut args = if module_type == crate::rlop::SEL_MODULE_TYPE
+                    let mut args = if module_id == crate::rlop::module_sys::SYS_MODULE_ID
+                        && matches!(opcode, 600 | 610)
+                    {
+                        self.decode_frame_command_args(&raw_bytes)
+                    } else if module_type == crate::rlop::SEL_MODULE_TYPE
                         && module_id == crate::rlop::SEL_MODULE_ID
                     {
                         // Text `select` / `select_s` / `select_w` carry option
@@ -921,6 +948,114 @@ impl Vm {
             }
         }
         values
+    }
+
+    /// Decode the grouped tuple arguments of `sys.InitFrames` and
+    /// `sys.ReadFrames`.  Other complex command arguments retain their
+    /// established opaque treatment; only these two byte-proven opcodes need
+    /// recursive tuple structure and writable references.
+    fn decode_frame_command_args(&mut self, raw_bytes: &[u8]) -> Vec<ExprValue> {
+        let arg_slices = match decode_command_arg_values(raw_bytes) {
+            Ok(slices) => slices,
+            Err(err) => {
+                self.push_warning(VmWarning::ExpressionFailure {
+                    scene: self.scene,
+                    pc: self.pc,
+                    reason: err.to_string(),
+                });
+                return Vec::new();
+            }
+        };
+        arg_slices
+            .into_iter()
+            .map(|arg| self.decode_frame_argument(arg))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap_or_else(|err| {
+                self.push_warning(VmWarning::ExpressionFailure {
+                    scene: self.scene,
+                    pc: self.pc,
+                    reason: err,
+                });
+                Vec::new()
+            })
+    }
+
+    fn decode_frame_argument(
+        &mut self,
+        arg: crate::bytecode_element::CommandArg,
+    ) -> Result<ExprValue, String> {
+        match arg.shape {
+            CommandArgShape::Expression => {
+                let parsed =
+                    parse_expression_with_warnings(&arg.bytes).map_err(|err| err.to_string())?;
+                self.record_expression_warnings(&parsed.warnings);
+                self.decode_command_expr_value(&parsed.node)
+                    .map_err(|err| err.to_string())
+            }
+            CommandArgShape::Complex if arg.bytes.first() == Some(&b'(') => {
+                let values =
+                    crate::bytecode_element::decode_parenthesized_command_arg_values(&arg.bytes)
+                        .map_err(|err| err.to_string())?
+                        .into_iter()
+                        .map(|nested| self.decode_frame_argument(nested))
+                        .collect::<Result<Vec<_>, _>>()?;
+                Ok(ExprValue::List(values))
+            }
+            CommandArgShape::String | CommandArgShape::Complex => Ok(ExprValue::Bytes(arg.bytes)),
+        }
+    }
+
+    pub(crate) fn init_frame_counter(
+        &mut self,
+        counter: i32,
+        min: i32,
+        max: i32,
+        duration_ms: i32,
+    ) {
+        // `FrameCounter` starts at `frame_min`; only a zero duration is
+        // complete at construction.  A same-endpoint nonzero counter is
+        // retired by its first read, matching rlvm's `CheckIfFinished`.
+        let completed = duration_ms == 0;
+        self.frame_counters.insert(
+            counter,
+            FrameCounterState {
+                min,
+                max,
+                duration_ms: duration_ms.max(0) as u32,
+                elapsed_ms: 0,
+                active: !completed,
+            },
+        );
+    }
+
+    /// Read a frame value at the current deterministic logical instant.
+    /// The value uses rlvm's linear `SimpleFrameCounter` interpolation and
+    /// its truncating integer result.
+    pub(crate) fn read_frame_counter(&mut self, counter: i32) -> Option<(i32, bool)> {
+        let frame = self.frame_counters.get_mut(&counter)?;
+        if !frame.active {
+            return Some((frame.max, false));
+        }
+        if frame.min == frame.max || frame.elapsed_ms >= frame.duration_ms {
+            frame.active = false;
+            return Some((frame.max, false));
+        }
+        let distance = i64::from(frame.max) - i64::from(frame.min);
+        let value = i64::from(frame.min)
+            + distance * i64::from(frame.elapsed_ms) / i64::from(frame.duration_ms);
+        Some((value as i32, true))
+    }
+
+    /// Advance the deterministic event-clock after one complete
+    /// `ReadFrames` multi-dispatch.  Advancing afterwards is significant:
+    /// `InitFrames; ReadFrames` sees the same initial value rlvm sees at its
+    /// construction tick.
+    pub(crate) fn advance_frame_clock(&mut self) {
+        for frame in self.frame_counters.values_mut() {
+            if frame.active {
+                frame.elapsed_ms = frame.elapsed_ms.saturating_add(1);
+            }
+        }
     }
 
     /// Select the matched `goto_case` / `gosub_case` jump target by

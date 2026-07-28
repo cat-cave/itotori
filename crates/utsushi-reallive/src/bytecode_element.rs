@@ -1131,14 +1131,29 @@ pub(crate) fn decode_command_arg_values(
     if peek(raw_bytes, list_start) != Some(b'(') {
         return Ok(Vec::new());
     }
+    decode_parenthesized_command_arg_values(&raw_bytes[list_start..])
+}
+
+/// Decode the values nested inside one parenthesized complex command
+/// argument.  Multi-dispatch commands carry tuples this way; preserving their
+/// contents prevents a real writable reference from degrading to opaque bytes.
+pub(crate) fn decode_parenthesized_command_arg_values(
+    bytes: &[u8],
+) -> Result<Vec<CommandArg>, BytecodeDecodeError> {
+    if bytes.first() != Some(&b'(') {
+        return Err(BytecodeDecodeError::MalformedElement {
+            position: 0,
+            message: "compound command argument must begin with '('".to_string(),
+        });
+    }
     let mut args = Vec::new();
-    let mut p = list_start + 1;
+    let mut p = 1;
     loop {
-        p = skip_data_separators(raw_bytes, p)?;
-        match peek(raw_bytes, p) {
+        p = skip_data_separators(bytes, p)?;
+        match peek(bytes, p) {
             None => {
                 return Err(BytecodeDecodeError::Truncated {
-                    observed_len: raw_bytes.len(),
+                    observed_len: bytes.len(),
                     position: p,
                     needed: 1,
                     message: "command argument list truncated before closing ')'".to_string(),
@@ -1147,20 +1162,20 @@ pub(crate) fn decode_command_arg_values(
             Some(b')') => return Ok(args),
             Some(_) => {}
         }
-        let value_len = next_data_value(raw_bytes, p, 0)?;
+        let value_len = next_data_value(bytes, p, 0)?;
         if value_len == 0 {
             return Err(BytecodeDecodeError::MalformedElement {
                 position: p,
                 message: format!(
                     "command argument value walker returned 0 bytes for lead 0x{:02x}",
-                    raw_bytes[p],
+                    bytes[p],
                 ),
             });
         }
-        let shape = command_arg_shape(raw_bytes, p);
+        let shape = command_arg_shape(bytes, p);
         args.push(CommandArg {
             shape,
-            bytes: raw_bytes[p..p + value_len].to_vec(),
+            bytes: bytes[p..p + value_len].to_vec(),
         });
         p += value_len;
     }

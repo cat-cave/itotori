@@ -224,7 +224,7 @@ fn entry_playthrough_emits_an_ordered_subset_of_static_text_bytes() {
 
 #[test]
 #[ignore = "requires ITOTORI_CORPUS_ROOT with the optional second real corpus"]
-fn real_entry_gate_chain_uses_the_script_rectangle_without_hydrated_art() {
+fn real_entry_gate_chain_advances_the_frame_loop_before_its_next_pointer_boundary() {
     let Some(corpus) = real_corpus::corpus_2() else {
         eprintln!("SKIP pointer entry oracle: reallive/2/plain is unavailable.");
         return;
@@ -382,7 +382,7 @@ fn real_entry_gate_chain_uses_the_script_rectangle_without_hydrated_art() {
     );
     assert!(
         reached_second_gate_exit,
-        "the second populated cursor rectangle must advance without a hydrated object"
+        "the frame loop must reach its next pointer boundary without a hydrated object"
     );
 }
 

@@ -222,7 +222,7 @@ fn read_int_bank(vm: &Vm, bank: BankId, idx: u16) -> i32 {
 fn read_str_operand(vm: &Vm, args: &[ExprValue], start: usize) -> Result<(usize, Vec<u8>), String> {
     match args.get(start) {
         Some(ExprValue::Bytes(bytes)) => Ok((1, bytes.clone())),
-        Some(ExprValue::Int(_) | ExprValue::IntReference { .. }) => {
+        Some(ExprValue::Int(_) | ExprValue::IntReference { .. } | ExprValue::List(_)) => {
             let (bank, idx) = arg_bank_ref(args, start)?;
             if !bank.is_str() {
                 return Err(format!(
