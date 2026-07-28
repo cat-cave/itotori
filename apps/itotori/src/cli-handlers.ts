@@ -897,6 +897,8 @@ function removeSensitiveFile(path: string): void {
   rmSync(dirname(path), { recursive: true, force: true });
 }
 
+const LOCAL_POSTGRES_READY_TIMEOUT_MS = 30_000;
+
 function waitForLocalPostgresReady(
   runtime: string,
   containerName: string,
@@ -904,8 +906,7 @@ function waitForLocalPostgresReady(
   database: string,
   messages: { readyMessage: string; timeoutMessage: string },
 ): { ok: boolean; message: string } {
-  const timeoutMs = parseReadyTimeoutMs(process.env.ITOTORI_DB_READY_TIMEOUT_MS);
-  const deadline = Date.now() + timeoutMs;
+  const deadline = Date.now() + LOCAL_POSTGRES_READY_TIMEOUT_MS;
   let lastDetail = "readiness query did not succeed";
   do {
     const ready = spawnSync(
@@ -936,17 +937,6 @@ function waitForLocalPostgresReady(
     ok: false,
     message: `${messages.timeoutMessage} Last readiness check: ${lastDetail}`,
   };
-}
-
-function parseReadyTimeoutMs(value: string | undefined): number {
-  if (value === undefined || value.length === 0) {
-    return 30_000;
-  }
-  const timeoutMs = Number(value);
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1) {
-    return 30_000;
-  }
-  return timeoutMs;
 }
 
 function sleepSync(ms: number): void {

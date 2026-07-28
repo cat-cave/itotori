@@ -61,6 +61,8 @@ function check(scope, forwarded) {
   if (scope === "meta")
     return shell(`
 node --test scripts/itotori-db-compose-config.test.mjs
+node --test scripts/env-registry-guard.test.mjs
+node scripts/env-registry-guard.mjs
 node --test scripts/developer-command-db.test.mjs
 node --test scripts/justfile-surface.test.mjs
 node --test scripts/itotori-db-wait.test.mjs
@@ -359,15 +361,15 @@ switch (delegate) {
       shell("qd export --out roadmap/spec-dag.json\nnode scripts/spec-dag.mjs validate");
     else if (selector === "db-up")
       shell(
-        'compose_env_path="$(node scripts/itotori-db-compose-env.mjs --print-compose-env-path)"\nITOTORI_DB_COMPOSE_ENV_PATH="$compose_env_path" node scripts/itotori-db-compose-env.mjs\ndocker compose --env-file "$compose_env_path" up -d postgres',
+        'compose_env_path="$(node scripts/itotori-db-compose-env.mjs --print-compose-env-path)"\nnode scripts/itotori-db-compose-env.mjs\ndocker compose --env-file "$compose_env_path" up -d postgres',
       );
     else if (selector === "db-down")
       shell(
-        'compose_env_path="$(node scripts/itotori-db-compose-env.mjs --print-compose-env-path)"\nITOTORI_DB_COMPOSE_ENV_PATH="$compose_env_path" node scripts/itotori-db-compose-env.mjs\ndocker compose --env-file "$compose_env_path" down',
+        'compose_env_path="$(node scripts/itotori-db-compose-env.mjs --print-compose-env-path)"\nnode scripts/itotori-db-compose-env.mjs\ndocker compose --env-file "$compose_env_path" down',
       );
     else if (selector === "db-wait")
       shell(
-        'compose_env_path="$(node scripts/itotori-db-compose-env.mjs --print-compose-env-path)"\nITOTORI_DB_COMPOSE_ENV_PATH="$compose_env_path" node scripts/itotori-db-compose-env.mjs\nITOTORI_DB_COMPOSE_ENV_PATH="$compose_env_path" node scripts/itotori-db-wait.mjs',
+        'compose_env_path="$(node scripts/itotori-db-compose-env.mjs --print-compose-env-path)"\nnode scripts/itotori-db-compose-env.mjs\nnode scripts/itotori-db-wait.mjs --compose-env-path "$compose_env_path"',
       );
     else if (selector === "db-migrate")
       shell(

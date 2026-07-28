@@ -89,7 +89,7 @@ async function sha256(filePath) {
 // Visible SKIP (exit 0) when the genuine resource — a pinned Chromium — is not
 // provisioned. DS visual regression is a BROWSER oracle: it belongs in the
 // browser lane, not the portable PR lane. The Nix dev-shell exports
-// PLAYWRIGHT_CHROMIUM_BIN/UTSUSHI_BROWSER_BIN, so it RUNS locally; a generic
+// PLAYWRIGHT_CHROMIUM_BIN, so it RUNS locally; a generic
 // hosted runner sets neither, so it self-skips rather than false-red `just ci`.
 // A binary that IS configured but unreachable stays a hard blocker (an operator
 // opted in with a bad path — a real misconfiguration, not an absent resource).
@@ -100,7 +100,7 @@ function skipNoBrowser() {
         ok: true,
         skipped: true,
         reason:
-          "DS visual regression skipped: no Chromium provisioned (set PLAYWRIGHT_CHROMIUM_BIN or UTSUSHI_BROWSER_BIN to run it).",
+          "DS visual regression skipped: no Chromium provisioned (set PLAYWRIGHT_CHROMIUM_BIN to run it).",
         lane: "browser-oracle (not the portable PR lane)",
         evidence: "docs/native-deps-provisioning.md documents the browser env contract.",
       },
@@ -112,7 +112,7 @@ function skipNoBrowser() {
 }
 
 function browserExecutable() {
-  const candidate = process.env.PLAYWRIGHT_CHROMIUM_BIN ?? process.env.UTSUSHI_BROWSER_BIN;
+  const candidate = process.env.PLAYWRIGHT_CHROMIUM_BIN;
   if (!candidate) {
     skipNoBrowser();
   }
@@ -127,7 +127,7 @@ async function assertRunnableBrowser(executablePath) {
     typedBlocker({
       type: "environment",
       reason: `Configured Chromium binary is not reachable: ${executablePath}`,
-      needed: "Point PLAYWRIGHT_CHROMIUM_BIN or UTSUSHI_BROWSER_BIN at a runnable Chromium binary.",
+      needed: "Point PLAYWRIGHT_CHROMIUM_BIN at a runnable Chromium binary.",
       evidence: String(error),
     });
   }

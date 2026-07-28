@@ -114,7 +114,7 @@ pub fn execute_plan<P: EnginePlugin>(
                 })?;
                 Ok(PluginCorpus {
                     id: corpus.id.clone(),
-                    root: corpus.root.clone(),
+                    root: corpus.relative_path.clone(),
                     content_address: corpus.content_address.clone(),
                 })
             })

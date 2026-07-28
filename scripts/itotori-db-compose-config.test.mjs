@@ -221,7 +221,7 @@ test("the alpha-proof integration workflow is public-fixture-only (no Postgres)"
 
 test("DB development selectors use explicit compose env files without project-global .env leakage", () => {
   assert.match(commandScript, /docker compose --env-file/u);
-  assert.match(commandScript, /ITOTORI_DB_COMPOSE_ENV_PATH/u);
+  assert.doesNotMatch(commandScript, /ITOTORI_DB_COMPOSE_ENV_PATH/u);
 });
 
 test("local qd CI uses the DB-owning full-CI wrapper", () => {

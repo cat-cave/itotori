@@ -9,18 +9,17 @@ import { defineConfig, devices } from "@playwright/test";
 // BROWSER BINARY: Playwright's own downloaded Chromium is dynamically linked
 // against libraries absent on NixOS, so it cannot run here. Instead the nix
 // devShell (flake.nix) provides a real, runnable Chromium and exports its path
-// as `PLAYWRIGHT_CHROMIUM_BIN` (and `UTSUSHI_BROWSER_BIN`, shared with the Rust
-// MV/MZ browser gates). The config launches THAT binary via `executablePath`.
+// as `PLAYWRIGHT_CHROMIUM_BIN`. The config launches THAT binary via
+// `executablePath`.
 const appRoot = fileURLToPath(new URL("..", import.meta.url));
 const e2eDir = fileURLToPath(new URL(".", import.meta.url));
 
-const chromiumBin =
-  process.env.PLAYWRIGHT_CHROMIUM_BIN ?? process.env.UTSUSHI_BROWSER_BIN ?? undefined;
+const chromiumBin = process.env.PLAYWRIGHT_CHROMIUM_BIN;
 
 if (chromiumBin === undefined) {
   throw new Error(
     "runtime-web e2e: no Chromium binary provided. Enter the nix devShell " +
-      "(direnv/`nix develop`) so PLAYWRIGHT_CHROMIUM_BIN / UTSUSHI_BROWSER_BIN " +
+      "(direnv/`nix develop`) so PLAYWRIGHT_CHROMIUM_BIN " +
       "point at the nix-provided Chromium, or set PLAYWRIGHT_CHROMIUM_BIN.",
   );
 }

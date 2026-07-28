@@ -64,8 +64,7 @@ async function main(argv = process.argv.slice(2)) {
   const databaseUrl = args.databaseUrl ?? process.env.DATABASE_URL ?? defaultDatabaseUrl;
 
   const modules = await loadBuiltModules();
-  const schemaName =
-    args.schemaName ?? process.env.ITOTORI_SCALE_SCHEMA ?? isolatedSchemaName(args.profile);
+  const schemaName = args.schemaName ?? isolatedSchemaName(args.profile);
   const measurements = [];
   let context;
   let schemaKept = false;

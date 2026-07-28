@@ -44,18 +44,9 @@ export function verifyPermissionConstraintDrift(options = {}) {
 
 function permissionVerifierPaths({ authorizationPath, migrationsDir, migrationsSourcePath }) {
   return {
-    authorizationPath:
-      authorizationPath ??
-      process.env.ITOTORI_DB_PERMISSION_AUTHORIZATION_PATH ??
-      path.join(packageRoot, "src/authorization.ts"),
-    migrationsDir:
-      migrationsDir ??
-      process.env.ITOTORI_DB_PERMISSION_MIGRATIONS_DIR ??
-      path.join(packageRoot, "migrations"),
-    migrationsSourcePath:
-      migrationsSourcePath ??
-      process.env.ITOTORI_DB_PERMISSION_MIGRATIONS_SOURCE_PATH ??
-      path.join(packageRoot, "src/migrations.ts"),
+    authorizationPath: authorizationPath ?? path.join(packageRoot, "src/authorization.ts"),
+    migrationsDir: migrationsDir ?? path.join(packageRoot, "migrations"),
+    migrationsSourcePath: migrationsSourcePath ?? path.join(packageRoot, "src/migrations.ts"),
   };
 }
 

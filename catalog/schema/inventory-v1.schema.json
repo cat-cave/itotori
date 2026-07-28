@@ -11,12 +11,12 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "engine", "variant", "root", "content_address", "tags", "access"],
+        "required": ["id", "engine", "variant", "relative_path", "content_address", "tags", "access"],
         "properties": {
           "id": { "type": "string", "pattern": "^corpus-[a-z0-9-]+$" },
           "engine": { "type": "string", "pattern": "^engine-[a-z0-9-]+$" },
           "variant": { "type": "string", "pattern": "^variant-[a-z0-9-]+$" },
-          "root": { "type": "string", "pattern": "^/" },
+          "relative_path": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+" },
           "content_address": { "type": "string", "pattern": "^sha256:.+" },
           "tags": { "type": "array", "items": { "type": "string" } },
           "access": { "const": "read-only" }

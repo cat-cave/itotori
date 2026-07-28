@@ -20,9 +20,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const gatePath = path.join(repoRoot, "scripts/permission-denial-db-gate.mjs");
 const SUITE = "authorization-matrix.test.ts";
 
-// Each test runs the gate in its OWN isolated artifact dir (passed to the gate
-// via ITOTORI_DB_TMP_DIR) so concurrent invocations can't race on a shared
-// skip/proof artifact path.
+// Each test passes an OWN isolated artifact dir, so concurrent invocations
+// cannot race on a shared skip/proof artifact path.
 async function makeIsolatedTmpDir() {
   return mkdtemp(path.join(tmpdir(), "itotori-db-gate-"));
 }
@@ -30,8 +29,7 @@ async function makeIsolatedTmpDir() {
 function runGateWithoutDb(tmpDir) {
   const env = { ...process.env };
   delete env.DATABASE_URL;
-  env.ITOTORI_DB_TMP_DIR = tmpDir;
-  return spawnSync(process.execPath, [gatePath], {
+  return spawnSync(process.execPath, [gatePath, "--artifact-dir", tmpDir], {
     cwd: repoRoot,
     env,
     encoding: "utf8",
@@ -102,9 +100,8 @@ function runGateVerifyOnly(reportPath, tmpDir) {
   const env = {
     ...process.env,
     DATABASE_URL: "postgres://dummy:dummy@127.0.0.1:5432/dummy",
-    ITOTORI_DB_TMP_DIR: tmpDir,
   };
-  return spawnSync(process.execPath, [gatePath, "--results", reportPath], {
+  return spawnSync(process.execPath, [gatePath, "--results", reportPath, "--artifact-dir", tmpDir], {
     cwd: repoRoot,
     env,
     encoding: "utf8",

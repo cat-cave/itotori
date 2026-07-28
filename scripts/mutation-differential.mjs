@@ -49,8 +49,7 @@
 //   node scripts/mutation-differential.mjs --with-real # + real-bytes corroboration
 //   node scripts/mutation-differential.mjs --only header_wrong_offset,choice_drop_option
 //
-// The cargo driver is `cargo` by default; override with ITOTORI_MUTATION_CARGO
-// (e.g. `direnv exec . cargo`) for a devshell that wraps the toolchain.
+// The nix devshell exposes the supported cargo toolchain on PATH.
 
 import {
   cpSync,
@@ -260,7 +259,7 @@ export function classifyOutcome({ status, output }) {
 // cargo driver.
 // ---------------------------------------------------------------------------
 function cargoBin() {
-  return process.env.ITOTORI_MUTATION_CARGO || "cargo";
+  return "cargo";
 }
 
 function runCargoTest({ crates, ignored, cwd, env }) {
@@ -299,7 +298,6 @@ const SANDBOX_SKIP_DIRS = new Set([
 ]);
 
 function sandboxBaseDir() {
-  if (process.env.ITOTORI_MUTATION_SANDBOX_DIR) return process.env.ITOTORI_MUTATION_SANDBOX_DIR;
   // Prefer the fast scratch RAID0 the devshell already uses for build artifacts.
   if (existsSync("/scratch/cache/itotori")) return "/scratch/cache/itotori/mutdiff";
   return join(tmpdir(), "itotori-mutdiff");

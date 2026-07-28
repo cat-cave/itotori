@@ -5,7 +5,16 @@ const healthFormat =
   "{{if .State.Health}}{{.State.Health.Status}}{{else}}missing-healthcheck{{end}}";
 
 if (import.meta.main) {
-  await waitForPostgres();
+  await waitForPostgres({ composeEnvPath: requiredComposeEnvPath(process.argv.slice(2)) });
+}
+
+function requiredComposeEnvPath(args) {
+  const index = args.indexOf("--compose-env-path");
+  const value = index === -1 ? undefined : args[index + 1];
+  if (value === undefined || value.startsWith("--")) {
+    throw new Error("usage: node scripts/itotori-db-wait.mjs --compose-env-path <path>");
+  }
+  return value;
 }
 
 /**
@@ -16,7 +25,7 @@ if (import.meta.main) {
  * readiness signal and is directly inspectable through the container runtime.
  */
 export async function waitForPostgres({
-  composeEnvPath = process.env.ITOTORI_DB_COMPOSE_ENV_PATH,
+  composeEnvPath,
   maxAttempts = 60,
   retryDelayMs = 1000,
   run = runDocker,

@@ -1,0 +1,10 @@
+[
+  { "name": "ITOTORI_FIELD_CIPHER_KEY", "description": "Envelope master key for durable field data.", "required": true, "default": null, "whyEnvironmental": "Secret held by the operator." },
+  { "name": "ITOTORI_VAULT_ROOT", "description": "Single mounted root containing the corpus tree and read-only vault.", "required": true, "default": null, "whyEnvironmental": "Deployment mount point owned by the operator." },
+  { "name": "ITOTORI_SCRATCH_ROOT", "description": "Writable root for transient extraction artifacts.", "required": false, "default": "platform-specific cache directory", "whyEnvironmental": "Deployment storage location owned by the operator." },
+  { "name": "KAIFUU_BGI_CONTAINER_KEY", "description": "Key for BGI encrypted containers.", "required": false, "default": null, "whyEnvironmental": "Secret held by the operator." },
+  { "name": "KAIFUU_SIGLUS_KEY", "description": "Key for encrypted Siglus archives.", "required": false, "default": null, "whyEnvironmental": "Secret held by the operator." },
+  { "name": "KAIFUU_SIGLUS_SECONDARY_KEY", "description": "Secondary key for encrypted Siglus archives.", "required": false, "default": null, "whyEnvironmental": "Secret held by the operator." },
+  { "name": "KAIFUU_RPG_MAKER_ASSET_KEY", "description": "Key for encrypted RPG Maker assets.", "required": false, "default": null, "whyEnvironmental": "Secret held by the operator." },
+  { "name": "UTSUSHI_SECRET", "description": "Secret for protected Utsushi runtime inputs.", "required": false, "default": null, "whyEnvironmental": "Secret held by the operator." }
+]
