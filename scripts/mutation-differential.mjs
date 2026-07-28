@@ -149,7 +149,7 @@ export const MUTATIONS = [
   {
     id: "assignop_plain_eq_to_shr",
     category: "swapped assignment operator (AssignOp table: plain `=` mis-decoded)",
-    file: "crates/utsushi-reallive/src/expression.rs",
+    file: "crates/utsushi-reallive/src/expression/model.rs",
     // The exact historical bug: pin op 0x1E (plain `=`) back to `>>=`, so
     // every `intX[Y] = <expr>` silently executes as `intX[Y] >>= <expr>`.
     // The synthetic `synth_42_plain_assign_into_intb` fixture (intB[0] = 7)

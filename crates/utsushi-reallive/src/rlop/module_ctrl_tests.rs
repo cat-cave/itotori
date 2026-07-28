@@ -1,5 +1,5 @@
 use super::*;
-use crate::rlop::RlopRegistry;
+use crate::rlop::{RLOperation, RlopRegistry};
 
 #[test]
 fn register_helper_populates_expected_count() {

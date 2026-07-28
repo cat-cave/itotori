@@ -216,6 +216,13 @@ function runCheck(counts, whitelist) {
   const { ok, violations } = evaluateCheck(counts, whitelist);
   if (ok) {
     const over = summarizeOverCap(counts, whitelist.threshold);
+    if (Object.keys(whitelist.files ?? {}).length === 0) {
+      process.stdout.write(
+        `file-line-cap guard: passed. The ${whitelist.threshold}-line cap is absolute; ` +
+          `all tracked Rust files are at or below the threshold.\n`,
+      );
+      return 0;
+    }
     process.stdout.write(
       `file-line-cap guard: passed. ${over.files} grandfathered file(s) over ` +
         `${whitelist.threshold} lines (total ${over.lines}); nothing new, nothing grew.\n`,
