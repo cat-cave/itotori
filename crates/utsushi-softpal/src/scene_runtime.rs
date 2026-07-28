@@ -141,7 +141,19 @@ impl SoftpalScene {
         points: Option<&[u8]>,
         mem_dat: Option<&[u8]>,
     ) -> Result<Self, SoftpalRuntimeError> {
-        Self::execute_with_assets(script, textdat, points, mem_dat, None)
+        Self::execute_with_assets(script, textdat, points, mem_dat, None, None)
+    }
+
+    /// Execute from a one-based `POINT.DAT` entry id. The id is resolved only
+    /// through the supplied byte table; callers cannot supply a raw script
+    /// offset. This is the entry surface for title-owned scene dispatchers.
+    pub fn execute_from_point_with_points(
+        script: &[u8],
+        textdat: &[u8],
+        points: &[u8],
+        point_id: u32,
+    ) -> Result<Self, SoftpalRuntimeError> {
+        Self::execute_with_assets(script, textdat, Some(points), None, None, Some(point_id))
     }
 
     /// Execute with the original `data.pac` as the native resource source.
@@ -183,6 +195,38 @@ impl SoftpalScene {
             points,
             mem_dat,
             Some(ResourceAssets { archives, file_dat }),
+            None,
+        )
+    }
+
+    /// Execute a byte-designated `POINT.DAT` entry with every PAC archive the
+    /// current native path may open. As with [`Self::execute_from_point_with_points`],
+    /// a raw script offset is intentionally not accepted.
+    pub fn execute_from_point_with_points_mem_dat_and_pacs(
+        script: &[u8],
+        textdat: &[u8],
+        points: &[u8],
+        mem_dat: Option<&[u8]>,
+        pac_bytes: &[&[u8]],
+        point_id: u32,
+    ) -> Result<Self, SoftpalRuntimeError> {
+        let archives = pac_bytes
+            .iter()
+            .map(|bytes| PacArchive::parse(bytes).map(|archive| (archive, *bytes)))
+            .collect::<Result<Vec<_>, _>>()?;
+        let (file_archive, file_bytes) = archives
+            .iter()
+            .find(|(archive, _)| archive.find("FILE.DAT").is_some())
+            .ok_or(SoftpalRuntimeError::FileDatMissing)?;
+        let file_entry = file_archive.find("FILE.DAT").expect("located above");
+        let file_dat = FileDat::parse(file_archive.extract(file_bytes, file_entry)?)?;
+        Self::execute_with_assets(
+            script,
+            textdat,
+            Some(points),
+            mem_dat,
+            Some(ResourceAssets { archives, file_dat }),
+            Some(point_id),
         )
     }
 
@@ -192,6 +236,7 @@ impl SoftpalScene {
         points: Option<&[u8]>,
         mem_dat: Option<&[u8]>,
         resources: Option<ResourceAssets<'_>>,
+        entry_point: Option<u32>,
     ) -> Result<Self, SoftpalRuntimeError> {
         let walk = OpcodeScan::parse(script)?;
         let scan = ScriptScan::parse(script)?;
@@ -222,7 +267,37 @@ impl SoftpalScene {
             None if needs_labels => Vec::new(),
             None => Vec::new(),
         };
-        let mut result = Vm::new(&walk, &scan.commands, &labels, &texts, mem_dat, resources).run();
+        let entry_ip = match entry_point {
+            None => 0,
+            Some(0) => {
+                return Err(SoftpalRuntimeError::PointEntryOutOfRange {
+                    point_id: 0,
+                    point_count: labels.len(),
+                });
+            }
+            Some(point_id) => {
+                let offset = *labels.get((point_id - 1) as usize).ok_or(
+                    SoftpalRuntimeError::PointEntryOutOfRange {
+                        point_id,
+                        point_count: labels.len(),
+                    },
+                )?;
+                walk.instructions
+                    .iter()
+                    .position(|instruction| instruction.offset == offset)
+                    .ok_or(SoftpalRuntimeError::PointEntryNotInstruction { point_id, offset })?
+            }
+        };
+        let mut result = Vm::new(
+            &walk,
+            &scan.commands,
+            &labels,
+            &texts,
+            mem_dat,
+            resources,
+            entry_ip,
+        )
+        .run();
         if needs_labels && points.is_none() && result.diagnostics.is_empty() {
             result.diagnostics.push(RuntimeDiagnostic {
                 signature: "point_table_required".to_string(),
@@ -323,6 +398,14 @@ pub enum SoftpalRuntimeError {
     FileDatMissing,
     #[error("utsushi.softpal.runtime.point_table: POINT.DAT is malformed")]
     InvalidPointTable,
+    #[error(
+        "utsushi.softpal.runtime.point_entry_out_of_range: point {point_id} is outside the {point_count}-entry POINT.DAT table"
+    )]
+    PointEntryOutOfRange { point_id: u32, point_count: usize },
+    #[error(
+        "utsushi.softpal.runtime.point_entry_not_instruction: point {point_id} resolves to non-instruction offset {offset}"
+    )]
+    PointEntryNotInstruction { point_id: u32, offset: usize },
     #[error(
         "utsushi.softpal.runtime.unresolved_disassembly: dangling={dangling} unresolved_dialogue={unresolved_dialogue} unresolved_speaker={unresolved_speaker}"
     )]
@@ -474,6 +557,50 @@ mod tests {
                 text: "line".to_string(),
             }]
         );
+    }
+
+    #[test]
+    fn executes_only_a_point_table_designated_message_entry() {
+        // The root ends before the message. Point id 1 is the sole permitted
+        // alternative entry, encoded in POINT.DAT as a header-relative offset;
+        // replacing the entry resolver with a raw/default IP makes this fail.
+        let (textdat, pointer) = textdat();
+        let script = program(&[
+            op(0x15),
+            op(0x1f),
+            word(pointer),
+            op(0x1f),
+            word(0x0fff_ffff),
+            op(0x1f),
+            word(0),
+            op(0x17),
+            word(0x0002_0002),
+            word(0),
+            op(0x15),
+        ]);
+        let mut points = Vec::from(&b"_POINT_LIST_****"[..]);
+        points.extend_from_slice(&4_u32.to_le_bytes());
+
+        let scene = SoftpalScene::execute_from_point_with_points(&script, &textdat, &points, 1)
+            .expect("point-table entry executes");
+        assert_eq!(scene.stats.instructions_executed, 5);
+        assert_eq!(scene.stats.dialogue_count, 1);
+        assert!(scene.diagnostics.is_empty());
+        assert_eq!(
+            scene.steps,
+            vec![SceneStep::Dialogue {
+                command_offset: 16,
+                speaker: None,
+                text: "line".to_string(),
+            }]
+        );
+        assert!(matches!(
+            SoftpalScene::execute_from_point_with_points(&script, &textdat, &points, 2),
+            Err(SoftpalRuntimeError::PointEntryOutOfRange {
+                point_id: 2,
+                point_count: 1,
+            })
+        ));
     }
 
     #[test]

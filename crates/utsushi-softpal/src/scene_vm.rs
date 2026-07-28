@@ -113,6 +113,7 @@ impl<'a> Vm<'a> {
         texts: &'a HashMap<u32, String>,
         mem_dat: Option<&[u8]>,
         resources: Option<ResourceAssets<'a>>,
+        entry_ip: usize,
     ) -> Self {
         let by_offset = scan
             .instructions
@@ -148,7 +149,7 @@ impl<'a> Vm<'a> {
             file_handles: Vec::new(),
             returns: Vec::new(),
             stack: Vec::new(),
-            ip: 0,
+            ip: entry_ip,
             steps: Vec::new(),
             diagnostics: Vec::new(),
             trace: Vec::new(),
