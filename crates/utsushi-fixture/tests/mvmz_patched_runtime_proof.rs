@@ -188,8 +188,9 @@ fn committed_patched_trace_reproduces_the_e1_proof() {
     );
 }
 
-/// Resolve a launchable real browser from the PATH supplied by the pinned
-/// browser/oracle devshell.
+/// Resolve the real browser only from the pinned Nix derivation supplied by
+/// the browser/oracle devshell. The portable lane can have a host Chromium,
+/// but that unpinned binary is not evidence for this strict proof.
 fn resolve_real_browser() -> Option<PathBuf> {
     [
         "chromium",
@@ -205,7 +206,7 @@ fn which_in_path(program: &str) -> Option<PathBuf> {
     std::env::var_os("PATH").and_then(|paths| {
         std::env::split_paths(&paths)
             .map(|directory| directory.join(program))
-            .find(|path| path.is_file())
+            .find(|path| path.starts_with("/nix/store/") && path.is_file())
     })
 }
 
