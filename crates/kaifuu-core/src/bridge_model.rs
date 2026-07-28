@@ -33,7 +33,25 @@ pub struct BridgeUnit {
     pub speaker: String,
     pub text_surface: String,
     pub protected_spans: Vec<ProtectedSpan>,
+    /// Optional producer-declared player address. Legacy v0.1 bridges use this
+    /// only when their decoded source exposes an unambiguous scene coordinate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<BridgeUnitContext>,
     pub patch_ref: PatchRef,
+}
+
+/// The small addressable subset carried by legacy bridge producers. It mirrors
+/// the v0.2 route context without forcing old producers to invent coordinates.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BridgeUnitContext {
+    pub route: BridgeUnitRoute,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BridgeUnitRoute {
+    pub scene_id: String,
 }
 
 impl fmt::Debug for BridgeUnit {
@@ -52,6 +70,7 @@ impl fmt::Debug for BridgeUnit {
             .field("speaker", &RedactedContentSummary::from_text(&self.speaker))
             .field("text_surface", &self.text_surface)
             .field("protected_spans", &self.protected_spans)
+            .field("context", &self.context)
             .field("patch_ref", &self.patch_ref)
             .finish()
     }

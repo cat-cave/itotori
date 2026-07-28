@@ -213,6 +213,7 @@ impl EngineAdapter for RecordingAdapter {
                     speaker: "Registry".to_string(),
                     text_surface: "dialogue".to_string(),
                     protected_spans: vec![],
+                    context: None,
                     patch_ref: PatchRef {
                         asset_id: "registry.txt".to_string(),
                         write_mode: "replace".to_string(),

@@ -43,6 +43,10 @@ pub(crate) const DIALOGUE_KEY_PREFIX: &str = "softpal:dialogue:";
 pub(crate) const CHOICE_KEY_PREFIX: &str = "softpal:choice:";
 /// The stable bridge asset id every Softpal text unit patches back through.
 pub(crate) const SCRIPT_ASSET_ID: &str = "softpal:SCRIPT.SRC";
+/// The sole structure scene for the complete decoded `SCRIPT.SRC` program.
+/// This is the exact coordinate the Softpal structure exporter publishes; it
+/// names the script asset, never an arbitrary unit index.
+pub(crate) const SCRIPT_SCENE_ID: &str = "scene:script-src";
 
 impl SoftpalProfileDetectorAdapter {
     /// Resolve the title's `SCRIPT.SRC` + `TEXT.DAT` raw bytes from `game_dir`:

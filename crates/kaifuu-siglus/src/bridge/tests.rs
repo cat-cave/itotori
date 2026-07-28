@@ -282,6 +282,10 @@ fn assembly_is_schema_valid_deterministic_and_links_selection_labels() {
         dialogue["sourceUnitKey"],
         format!("siglus:scene-0007#{text_offset}")
     );
+    assert_eq!(
+        dialogue["context"]["route"]["sceneId"], "siglus:scene-0007",
+        "the producer must use the Scene.pck directory id that the structure exporter addresses"
+    );
     assert_eq!(dialogue["speaker"]["knowledgeState"], "known");
     assert_eq!(dialogue["speaker"]["canonicalNameRef"], "NAMAE.001");
     let mut source_hash = Sha256::new();
@@ -336,5 +340,13 @@ fn whole_pack_preserves_packed_scene_names_in_unit_keys() {
             .units
             .iter()
             .all(|unit| unit.source_unit_key.starts_with("siglus:scene-opening#"))
+    );
+    assert!(
+        bundle
+            .bundle
+            .units
+            .iter()
+            .all(|unit| unit.context["route"]["sceneId"] == "siglus:scene-0007"),
+        "packed scene names are provenance keys; the dashboard coordinate remains the declared SceneList id"
     );
 }

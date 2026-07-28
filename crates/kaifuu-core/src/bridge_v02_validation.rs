@@ -188,7 +188,14 @@ pub(crate) fn assert_route_context_v02(value: &Value, label: &str) -> BridgeCont
     let route = as_record(value, label)?;
     assert_optional_value_uuid7(route.get("routeId"), &format!("{label}.routeId"))?;
     assert_optional_value_string(route.get("routeKey"), &format!("{label}.routeKey"))?;
-    assert_optional_value_uuid7(route.get("sceneId"), &format!("{label}.sceneId"))?;
+    if let Some(scene_id) = route.get("sceneId") {
+        let scene_id = assert_required_value_string(Some(scene_id), &format!("{label}.sceneId"))?;
+        if scene_id.trim().is_empty() {
+            return Err(BridgeContractValidationError::new(format!(
+                "{label}.sceneId must be a non-empty producer-declared coordinate"
+            )));
+        }
+    }
     assert_optional_value_string(route.get("sceneKey"), &format!("{label}.sceneKey"))?;
     assert_optional_value_uuid7(route.get("branchId"), &format!("{label}.branchId"))?;
     assert_optional_value_string(route.get("branchKey"), &format!("{label}.branchKey"))?;
