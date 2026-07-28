@@ -7,8 +7,7 @@ import type { ApiPlayUnitFeedbackNote } from "../../../api-schema.js";
 import { apiClient } from "../../client.js";
 import type { WikiSourceObjectView } from "../../../wiki/dashboard/read-model.js";
 import type { WikiBibleScope } from "./client.js";
-import { entryDeepLinkSourceFromView, resolveEntryPlayerTargets } from "./entry-deeplink.js";
-import { citationScopeFor } from "./player-link.js";
+import { citedBridgeUnitIds } from "./entry-deeplink.js";
 
 type LoadState =
   | { readonly state: "idle" }
@@ -23,7 +22,7 @@ export function WikiUnitFeedbackPanel({
   object: WikiSourceObjectView;
   scope: WikiBibleScope;
 }): ReactNode {
-  const unitIds = unitIdsForObject(object, scope);
+  const unitIds = unitIdsForObject(object);
   const [load, setLoad] = useState<LoadState>({ state: "idle" });
 
   useEffect(() => {
@@ -127,17 +126,10 @@ export function WikiUnitFeedbackPanel({
   );
 }
 
-function unitIdsForObject(object: WikiSourceObjectView, scope: WikiBibleScope): readonly string[] {
-  const targets = resolveEntryPlayerTargets(
-    entryDeepLinkSourceFromView(object),
-    citationScopeFor(scope, object.objectId),
-    null,
-  );
-  const ids = new Set<string>();
-  for (const target of targets) {
-    if (target.kind === "unit") {
-      ids.add(target.id);
-    }
-  }
-  return [...ids].sort((a, b) => a.localeCompare(b));
+function unitIdsForObject(object: WikiSourceObjectView): readonly string[] {
+  return citedBridgeUnitIds({
+    subject: object.subject,
+    citations: object.citations,
+    claims: object.claims,
+  });
 }

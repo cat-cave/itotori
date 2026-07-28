@@ -13,6 +13,7 @@ import {
   ItotoriModelLedgerRepository,
   ItotoriProjectRepository,
   ItotoriProjectRunRepository,
+  ItotoriSourceUnitRepository,
   localUserId,
   migrate,
   permissionBasedLlmContentRead,
@@ -174,6 +175,10 @@ export async function withDatabaseItotoriServices<T>(
       }),
       manualFeedback: unitBoundFeedback,
       unitFeedback: unitBoundFeedback,
+      sceneTargets: {
+        loadImportedSceneTargets: ({ actor: requestedActor, ...input }) =>
+          new ItotoriSourceUnitRepository(db).loadImportedSceneTargets(requestedActor, input),
+      },
       wikiObjectApi,
       wikiApply: {
         runner: createLiveWikiEnhancementRunner({
@@ -342,6 +347,7 @@ export function retiredServiceSurface(
     | "patchbackProduce"
     | "manualFeedback"
     | "unitFeedback"
+    | "sceneTargets"
   >,
 ): ItotoriApplicationServices {
   return new Proxy(installed, {

@@ -46,6 +46,7 @@ import type {
   ApiLaunchPassRequest,
   ApiLaunchPassResponse,
   ApiPlayRouteMapResponse,
+  ApiPlaySceneTargetsResponse,
   ApiPlayFlagAnnotationRequest,
   ApiPlayFlagAnnotationResponse,
   ApiPlayUnitFeedbackResponse,
@@ -353,6 +354,12 @@ interface ItotoriApiRouteTypeMap {
     pathParams: { projectId: string; localeBranchId: string };
     collectionKey: "nodes";
   };
+  "play.sceneTargets": {
+    response: ApiPlaySceneTargetsResponse;
+    pathParams: { projectId: string; localeBranchId: string };
+    query: { bridgeUnitId: readonly string[] };
+    collectionKey: "targets";
+  };
   // play-flag-composer — AnnotationComposer note → context correction.
   "play.flagAnnotation": {
     response: ApiPlayFlagAnnotationResponse;
@@ -433,9 +440,11 @@ export type ApiRoutePathParams<R extends ItotoriApiRouteId> = ItotoriApiRouteTyp
 // param. `exactOptionalPropertyTypes`-clean (no explicit `undefined`).
 // ---------------------------------------------------------------------------
 
+type ApiQueryValue = string | number | boolean | null | readonly (string | number | boolean)[];
+
 type ApiRequestOptionsBase<R extends ItotoriApiRouteId> = {
   /** Query-string params (added after the path template is interpolated). */
-  query?: Readonly<Record<string, string | number | boolean | null>>;
+  query?: Readonly<Record<string, ApiQueryValue>>;
   /**
    * Override the default `empty` detection. By default a route with a
    * `collectionKey` is `empty` when that collection array is length 0; a
@@ -522,6 +531,8 @@ const ITOTORI_API_COLLECTION_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, st
   "auth.permissionSets.list": "permissionSets",
   "auth.sessions.list": "sessions",
   "play.routeMap": "nodes",
+  "play.sceneTargets": "targets",
+  "play.unitFeedback": "notes",
   "play.delivery": "units",
   "patchIteration.versions": "versions",
 };
@@ -677,9 +688,7 @@ export class ItotoriApiClient {
   ): string {
     const pathParams = (options as { pathParams?: Readonly<Record<string, string>> }).pathParams;
     const path = interpolateRoutePath(routeId, pathParams);
-    const query = (
-      options as { query?: Readonly<Record<string, string | number | boolean | null>> }
-    ).query;
+    const query = (options as { query?: Readonly<Record<string, ApiQueryValue>> }).query;
     const search = buildQueryString(query);
     const pathWithSearch = search === "" ? path : `${path}?${search}`;
     if (this.baseUrl === "") {
@@ -823,9 +832,7 @@ async function readApiClientError(
   return { routeId, status: response.status, code, message };
 }
 
-function buildQueryString(
-  query: Readonly<Record<string, string | number | boolean | null>> | undefined,
-): string {
+function buildQueryString(query: Readonly<Record<string, ApiQueryValue>> | undefined): string {
   if (query === undefined) {
     return "";
   }
@@ -834,7 +841,11 @@ function buildQueryString(
     if (value === null) {
       continue;
     }
-    params.set(key, String(value));
+    if (Array.isArray(value)) {
+      for (const item of value) params.append(key, String(item));
+    } else {
+      params.set(key, String(value));
+    }
   }
   return params.toString();
 }

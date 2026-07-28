@@ -494,7 +494,9 @@ export type {
 export { ItotoriSourceUnitRepository } from "./repositories/source-unit-repository.js";
 export type {
   ItotoriSourceUnitRepositoryPort,
+  ImportedSceneTarget,
   LoadCurrentSourceHashesInput as LoadSourceUnitCurrentHashesInput,
+  LoadImportedSceneTargetsInput,
   LoadSourceUnitsForScopeInput,
   LoadSourceUnitsInput,
   SourceUnitTextRecord,

@@ -15,6 +15,7 @@ const PROJECT_ID = "project-1";
 const LOCALE_BRANCH_ID = "019ed065-0000-7000-8000-000000000110";
 const SNAPSHOT_ID = `sha256:${"a".repeat(64)}`;
 const HASH = `sha256:${"b".repeat(64)}`;
+const BRIDGE_UNIT_ID = "019ed001-0000-7000-8000-000000000042";
 
 function sceneObject(): WikiSourceObjectView {
   const unitCitation = {
@@ -22,7 +23,7 @@ function sceneObject(): WikiSourceObjectView {
     evidenceId: "ev-unit-42",
     evidenceHash: HASH,
     snapshotId: SNAPSHOT_ID,
-    subject: { kind: "unit" as const, id: "unit-42" },
+    subject: { kind: "unit" as const, id: `unit:${BRIDGE_UNIT_ID}` },
     role: "establishes" as const,
     playOrderIndex: 3,
     quotedSpan: null,
@@ -83,6 +84,7 @@ describe("wiki entry deep-link panel → player landing", () => {
           localeBranchId: LOCALE_BRANCH_ID,
           snapshotId: SNAPSHOT_ID,
         }}
+        verifiedTargets={[{ bridgeUnitId: BRIDGE_UNIT_ID, sceneId: "scene-2031" }]}
       />,
     );
 
@@ -95,6 +97,7 @@ describe("wiki entry deep-link panel → player landing", () => {
     expect(href).not.toBeNull();
     const url = new URL(href!, "http://itotori.test");
     expect(url.pathname).toBe("/play/scenes/scene-2031");
+    expect(url.searchParams.get("unit")).toBe(BRIDGE_UNIT_ID);
 
     const previousScrollIntoView = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
@@ -110,10 +113,10 @@ describe("wiki entry deep-link panel → player landing", () => {
       expect(location).not.toBeNull();
       render(<AddressableFocusScreen location={location!} />);
       const target = screen.getByRole("region", {
-        name: "Focused player scene scene-2031",
+        name: `Focused player unit ${BRIDGE_UNIT_ID}`,
       });
       const scenePlayer = within(target).getByRole("region", { name: "Scene player" });
-      expect(within(scenePlayer).getByText("scene-2031")).toBeInTheDocument();
+      expect(within(scenePlayer).getByText(BRIDGE_UNIT_ID)).toBeInTheDocument();
       expect(scenePlayer).toHaveClass("itotori-scene-player--highlighted");
       expect(target).toHaveFocus();
       expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" });
@@ -149,6 +152,7 @@ describe("wiki entry deep-link panel → player landing", () => {
           localeBranchId: LOCALE_BRANCH_ID,
           snapshotId: SNAPSHOT_ID,
         }}
+        verifiedTargets={[]}
       />,
     );
     expect(container).toBeEmptyDOMElement();

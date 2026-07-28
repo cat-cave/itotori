@@ -25,6 +25,13 @@ export type EntryPlayerTarget = {
   readonly focus: string;
 };
 
+/** A project-scoped destination returned only after the imported bridge proves
+ * that a cited bridge unit belongs to a declared scene. */
+export type VerifiedSceneTarget = {
+  readonly bridgeUnitId: string;
+  readonly sceneId: string;
+};
+
 /** Structure-artifact join: turns unit/character identity into scene ids. */
 export type StructureAddressIndex = {
   /** unit id (fact id and/or bridge unit id) → scene id. */
@@ -120,6 +127,60 @@ export function resolveEntryPlayerTargets(
   });
 }
 
+/**
+ * Extract the bridge units named by the entry's citation coordinates.  A Wiki
+ * citation stores the unit *fact* id (`unit:<bridge-unit-id>`); `projectUnitFact`
+ * creates that fact id from the bridge id, so this is a reversal of the same
+ * established coordinate, not a title- or engine-specific guess.
+ */
+export function citedBridgeUnitIds(entry: EntryDeepLinkSource): readonly string[] {
+  const ids = new Set<string>();
+  const add = (kind: string, id: string): void => {
+    if (kind !== "unit") return;
+    const bridgeUnitId = bridgeUnitIdFromFactId(id);
+    if (bridgeUnitId !== null) ids.add(bridgeUnitId);
+  };
+  add(entry.subject.kind, entry.subject.id);
+  for (const citation of entry.citations) add(citation.subject.kind, citation.subject.id);
+  for (const claim of entry.claims ?? []) {
+    for (const citation of claim.citations) add(citation.subject.kind, citation.subject.id);
+  }
+  return [...ids].sort();
+}
+
+/** Resolve links only from targets a selected project/branch has proved live.
+ * Entries that carry scene subjects but no cited imported unit deliberately
+ * receive no link: a scene label alone is not enough to address a live game. */
+export function resolveVerifiedEntrySceneTargets(
+  entry: EntryDeepLinkSource,
+  scope: CitationDeepLinkScope,
+  verified: readonly VerifiedSceneTarget[],
+): readonly EntryPlayerTarget[] {
+  const cited = new Set(citedBridgeUnitIds(entry));
+  const returnHref = bibleObjectHref(scope);
+  const targets = new Map<string, EntryPlayerTarget>();
+  for (const target of verified) {
+    if (!cited.has(target.bridgeUnitId) || target.sceneId.trim().length === 0) continue;
+    const id = target.sceneId.trim();
+    if (targets.has(`${id}:${target.bridgeUnitId}`)) continue;
+    const baseHref = hrefForAddressable({
+      kind: "scene",
+      id,
+      projectId: scope.projectId,
+      localeBranchId: scope.localeBranchId,
+      unitId: target.bridgeUnitId,
+    });
+    targets.set(`${id}:${target.bridgeUnitId}`, {
+      kind: "scene",
+      id,
+      source: "citation",
+      href: appendReturnToHref(baseHref, returnHref),
+      focus: addressableFocusToken({ kind: "unit", id: target.bridgeUnitId }),
+    });
+  }
+  return [...targets.values()].sort((left, right) => left.id.localeCompare(right.id));
+}
+
 /** Primary deep-link: first scene if any, else first unit, else null. */
 export function primaryEntryPlayerTarget(
   targets: readonly EntryPlayerTarget[],
@@ -208,6 +269,11 @@ function nonEmpty(value: string | null): string | null {
     return null;
   }
   return value.trim();
+}
+
+function bridgeUnitIdFromFactId(id: string): string | null {
+  const match = /^(?:unit|choice):([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})$/iu.exec(id.trim());
+  return match?.[1]?.toLowerCase() ?? null;
 }
 
 // Re-export AddressableKind for callers that stamp focus tokens.

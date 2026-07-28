@@ -8,8 +8,10 @@ import { describe, expect, it } from "vitest";
 import {
   entryResolvesToPlayerTarget,
   entryResolvesToScene,
+  citedBridgeUnitIds,
   primaryEntryPlayerTarget,
   resolveEntryPlayerTargets,
+  resolveVerifiedEntrySceneTargets,
   structureAddressIndexFromFacts,
   type EntryDeepLinkSource,
 } from "../src/ui/screens/wiki-bible/entry-deeplink.js";
@@ -22,6 +24,7 @@ const SCOPE = {
   snapshotId: `sha256:${"a".repeat(64)}`,
   objectId: "obj-1",
 };
+const BRIDGE_UNIT_ID = "019ed001-0000-7000-8000-000000000042";
 
 function entry(
   partial: Partial<EntryDeepLinkSource> & Pick<EntryDeepLinkSource, "subject">,
@@ -35,6 +38,28 @@ function entry(
 }
 
 describe("resolveEntryPlayerTargets — provenance-only", () => {
+  it("renders a scene jump only when this project resolves a cited bridge unit", () => {
+    const source = entry({
+      subject: { kind: "scene", id: "scene:untrusted-label" },
+      citations: [{ subject: { kind: "unit", id: `unit:${BRIDGE_UNIT_ID}` } }],
+    });
+
+    expect(citedBridgeUnitIds(source)).toEqual([BRIDGE_UNIT_ID]);
+    expect(resolveVerifiedEntrySceneTargets(source, SCOPE, [])).toEqual([]);
+
+    const [target] = resolveVerifiedEntrySceneTargets(source, SCOPE, [
+      { bridgeUnitId: BRIDGE_UNIT_ID, sceneId: "scene-0001" },
+    ]);
+    expect(target).toMatchObject({
+      kind: "scene",
+      id: "scene-0001",
+      source: "citation",
+    });
+    const url = new URL(target!.href, "http://itotori.test");
+    expect(url.pathname).toBe("/play/scenes/scene-0001");
+    expect(url.searchParams.get("unit")).toBe(BRIDGE_UNIT_ID);
+  });
+
   it("deep-links a scene subject into the addressable player", () => {
     const targets = resolveEntryPlayerTargets(
       entry({ subject: { kind: "scene", id: "scene:0001" } }),

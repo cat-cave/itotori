@@ -48,6 +48,7 @@ import {
   type MemberRecord,
   type PermissionSetRecord,
   type RuntimeDashboardStatus,
+  type ImportedSceneTarget,
   type SaveModelRoutingSettingsInput,
   type TerminologySearchInput,
   type TerminologySearchReadModel,
@@ -90,6 +91,7 @@ import {
   type ApiLocalizationRunConfigResponse,
   type ApiSaveLocalizationRunConfigRequest,
   type ApiPlayRouteMapResponse,
+  type ApiPlaySceneTargetsResponse,
   type ApiPlayFlagAnnotationResponse,
   type ApiPlayUnitFeedbackResponse,
   type ApiPlayTargetEditResponse,
@@ -393,6 +395,15 @@ export type ItotoriReadOnlyApiServices = {
    * from routeMaps / routeChoices (coverage from map status).
    */
   playRouteMap: RouteMapReadModelPort;
+  /** Resolve a citation's bridge unit to an imported, declared scene. */
+  sceneTargets: {
+    loadImportedSceneTargets(input: {
+      actor: { userId: string };
+      projectId: string;
+      localeBranchId: string;
+      bridgeUnitIds: readonly string[];
+    }): Promise<ImportedSceneTarget[]>;
+  };
   /** Unit-bound feedback list — notes written by the play flag path. */
   unitFeedback: Pick<ManualFeedbackImportPort, "listUnitFeedback">;
   /** p0-result-revision — read only the selected production delivery export. */
@@ -631,6 +642,9 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     },
     playRouteMap: {
       loadRouteMap: (input) => services.playRouteMap.loadRouteMap(input),
+    },
+    sceneTargets: {
+      loadImportedSceneTargets: (input) => services.sceneTargets.loadImportedSceneTargets(input),
     },
     unitFeedback: {
       listUnitFeedback: (query) => services.unitFeedback.listUnitFeedback(query),
@@ -1969,6 +1983,28 @@ async function routeReadOnlyItotoriApiRequest(
     return ok("play.routeMap", model);
   }
 
+  const sceneTargetsRoute = parsePlaySceneTargetsApiRoute(request.pathname);
+  if (request.method === "GET" && sceneTargetsRoute !== null) {
+    const scope = await requireOwnedBranchScope(services.projectWorkflow, sceneTargetsRoute);
+    const bridgeUnitIds = requiredDistinctSearchValues(request.search ?? "", "bridgeUnitId");
+    const targets = await services.sceneTargets.loadImportedSceneTargets({
+      actor: { userId: "local-user" },
+      projectId: scope.projectId,
+      localeBranchId: scope.localeBranchId,
+      bridgeUnitIds,
+    });
+    const response: ApiPlaySceneTargetsResponse = {
+      schemaVersion: "itotori.play.scene-targets.v1",
+      projectId: scope.projectId,
+      localeBranchId: scope.localeBranchId,
+      targets: targets.map((target) => ({
+        bridgeUnitId: target.bridgeUnitId,
+        sceneId: target.sceneId,
+      })),
+    };
+    return ok("play.sceneTargets", response);
+  }
+
   const unitFeedbackRoute = parsePlayUnitFeedbackApiRoute(request.pathname);
   if (request.method === "GET" && unitFeedbackRoute !== null) {
     const scope = await requireOwnedBranchScope(services.projectWorkflow, {
@@ -2744,6 +2780,20 @@ function parsePlayRouteMapApiRoute(
   };
 }
 
+function parsePlaySceneTargetsApiRoute(pathname: string): {
+  projectId: string;
+  localeBranchId: string;
+} | null {
+  const match = /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/scene-targets\/?$/u.exec(
+    pathname,
+  );
+  if (match === null || match[1] === undefined || match[2] === undefined) return null;
+  return {
+    projectId: decodeApiPathSegment(match[1], "projectId"),
+    localeBranchId: decodeApiPathSegment(match[2], "localeBranchId"),
+  };
+}
+
 function parsePlayFlagApiRoute(pathname: string): {
   projectId: string;
   localeBranchId: string;
@@ -2781,6 +2831,21 @@ function nonEmptySearchParam(search: string, key: string): string | null {
     return null;
   }
   return value.trim();
+}
+
+function requiredDistinctSearchValues(search: string, key: string): readonly string[] {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const values = params
+    .getAll(key)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (values.length === 0) {
+    throw new ApiValidationError(`play.sceneTargets requires at least one ${key} query parameter`);
+  }
+  if (new Set(values).size !== values.length) {
+    throw new ApiValidationError(`play.sceneTargets ${key} query parameters must be distinct`);
+  }
+  return values;
 }
 
 function parsePlayTargetEditApiRoute(pathname: string): {
@@ -3355,6 +3420,7 @@ function ok(routeId: "auth.identity", body: ApiAuthIdentityResponse): ApiJsonRes
 function ok(routeId: "auth.capabilities", body: ApiAuthCapabilitiesResponse): ApiJsonResponse;
 function ok(routeId: "projects.launchPass", body: ApiLaunchPassResponse): ApiJsonResponse;
 function ok(routeId: "play.routeMap", body: ApiPlayRouteMapResponse): ApiJsonResponse;
+function ok(routeId: "play.sceneTargets", body: ApiPlaySceneTargetsResponse): ApiJsonResponse;
 function ok(routeId: "play.flagAnnotation", body: ApiPlayFlagAnnotationResponse): ApiJsonResponse;
 function ok(routeId: "play.unitFeedback", body: ApiPlayUnitFeedbackResponse): ApiJsonResponse;
 function ok(routeId: "play.targetEdit", body: ApiPlayTargetEditResponse): ApiJsonResponse;

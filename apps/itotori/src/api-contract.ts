@@ -1196,6 +1196,19 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       additionalProperties: false,
       schemaVersion: "itotori.play.route-map.v0",
     }),
+  ApiPlaySceneTarget: () =>
+    object({
+      required: ["bridgeUnitId", "sceneId"],
+      properties: { bridgeUnitId: str, sceneId: str },
+      additionalProperties: false,
+    }),
+  ApiPlaySceneTargetsResponse: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlaySceneTargetsResponse,
+      properties: { targets: { type: "array", items: ref("ApiPlaySceneTarget") } },
+      additionalProperties: false,
+      schemaVersion: "itotori.play.scene-targets.v1",
+    }),
 
   // play-flag-composer — AnnotationComposer submit envelopes
   ApiPlayFlagAnnotationRequest: () =>

@@ -23,8 +23,7 @@ import {
 import { isLimitedContext, isTestMode } from "../../../wiki/dashboard/read-model.js";
 import { RedactedFrame } from "../../redaction-governor.js";
 import { citationDeepLink, citationScopeFor } from "./player-link.js";
-import { WikiEntryDeepLinkPanel } from "./entry-deeplink-panel.js";
-import type { StructureAddressIndex } from "./entry-deeplink.js";
+import { VerifiedWikiEntryDeepLinkPanel } from "./entry-deeplink-panel.js";
 import { WikiUnitFeedbackPanel } from "./unit-feedback-panel.js";
 import type { AsyncState } from "./hooks.js";
 import type { WikiBibleScope } from "./client.js";
@@ -38,7 +37,6 @@ export function WikiBibleObjectPanel({
   activeRouteId,
   viewMode,
   scope,
-  structure = null,
 }: {
   object: WikiObjectView;
   rendering: WikiRenderingView | null;
@@ -46,8 +44,6 @@ export function WikiBibleObjectPanel({
   activeRouteId: string | null;
   viewMode: WikiBibleViewMode;
   scope: WikiBibleScope;
-  /** Optional structure-artifact join for unit/character → scene resolution. */
-  structure?: StructureAddressIndex | null;
 }): ReactNode {
   if (object.kind !== "source") {
     return (
@@ -66,7 +62,7 @@ export function WikiBibleObjectPanel({
       data-active-route={activeRouteId ?? "canonical"}
     >
       <ObjectHeader object={object} />
-      <WikiEntryDeepLinkPanel object={object} scope={scope} structure={structure} />
+      <VerifiedWikiEntryDeepLinkPanel object={object} scope={scope} />
       <ClaimsPanel
         object={object}
         rendering={rendering}

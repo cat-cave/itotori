@@ -497,6 +497,14 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: ["projectId", "localeBranchId"],
     responseSchema: "ApiPlayRouteMapResponse",
   },
+  "play.sceneTargets": {
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/locale-branches/{localeBranchId}/scene-targets",
+    operationId: "playSceneTargets",
+    summary: "Resolve cited bridge units to imported scene coordinates.",
+    pathParams: ["projectId", "localeBranchId"],
+    responseSchema: "ApiPlaySceneTargetsResponse",
+  },
   // play-flag-composer — in-the-moment AnnotationComposer note → canonical
   // context correction via ManualFeedbackImport (feedback.import / canFlag).
   "play.flagAnnotation": {

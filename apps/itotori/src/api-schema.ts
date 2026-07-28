@@ -171,6 +171,7 @@ export type ItotoriApiRouteId =
   // `canSteer`-gated (the `draft.write` steer permission).
   | "projects.launchPass"
   | "play.routeMap"
+  | "play.sceneTargets"
   // play-flag-composer — in-the-moment AnnotationComposer flag → canonical
   // context correction via ManualFeedbackImport (feedback.import / canFlag).
   | "play.flagAnnotation"
@@ -554,6 +555,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "edges",
     "counts",
   ],
+  ApiPlaySceneTargetsResponse: ["schemaVersion", "projectId", "localeBranchId", "targets"],
   // play-flag-composer — AnnotationComposer submit result (severity-scaled flag).
   ApiPlayUnitFeedbackResponse: [
     "schemaVersion",
@@ -1313,6 +1315,20 @@ export type ApiPlayRouteMapResponse = {
   counts: ApiPlayRouteMapCounts;
 };
 
+/** Imported, project-scoped scene destinations proved from cited bridge units.
+ * No source paths, source text, query details, or bridge context are exposed. */
+export type ApiPlaySceneTarget = {
+  bridgeUnitId: string;
+  sceneId: string;
+};
+
+export type ApiPlaySceneTargetsResponse = {
+  schemaVersion: "itotori.play.scene-targets.v1";
+  projectId: string;
+  localeBranchId: string;
+  targets: ApiPlaySceneTarget[];
+};
+
 /** Closed ordinal severity scale for play-flag-composer (annotation-severity tokens). */
 export type ApiPlayFlagSeverity = "blocker" | "critical" | "warning" | "note";
 
@@ -1730,6 +1746,7 @@ export type ItotoriApiResponseBody =
   | ApiAuthCapabilitiesResponse
   | ApiLaunchPassResponse
   | ApiPlayRouteMapResponse
+  | ApiPlaySceneTargetsResponse
   | ApiPlayFlagAnnotationResponse
   | ApiPlayUnitFeedbackResponse
   | ApiPlayTargetEditResponse
@@ -2328,6 +2345,9 @@ export function assertItotoriApiResponse(
       return;
     case "play.routeMap":
       assertPlayRouteMapResponse(value);
+      return;
+    case "play.sceneTargets":
+      assertPlaySceneTargetsResponse(value);
       return;
     case "play.flagAnnotation":
       assertPlayFlagAnnotationResponse(value);
@@ -6418,6 +6438,34 @@ function assertPlayRouteMapResponse(value: unknown): asserts value is ApiPlayRou
     assertPlayRouteMapEdge(response.edges[i], `ApiPlayRouteMapResponse.edges[${i}]`);
   }
   assertPlayRouteMapCounts(response.counts, "ApiPlayRouteMapResponse.counts");
+}
+
+function assertPlaySceneTargetsResponse(
+  value: unknown,
+): asserts value is ApiPlaySceneTargetsResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPlaySceneTargetsResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPlaySceneTargetsResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.play.scene-targets.v1",
+    "ApiPlaySceneTargetsResponse.schemaVersion",
+  );
+  assertString(response.projectId, "ApiPlaySceneTargetsResponse.projectId");
+  assertString(response.localeBranchId, "ApiPlaySceneTargetsResponse.localeBranchId");
+  asArray(response.targets, "ApiPlaySceneTargetsResponse.targets").forEach((target, index) => {
+    const targetRecord = asStrictRecord(target, `ApiPlaySceneTargetsResponse.targets[${index}]`, [
+      "bridgeUnitId",
+      "sceneId",
+    ]);
+    assertString(
+      targetRecord.bridgeUnitId,
+      `ApiPlaySceneTargetsResponse.targets[${index}].bridgeUnitId`,
+    );
+    assertString(targetRecord.sceneId, `ApiPlaySceneTargetsResponse.targets[${index}].sceneId`);
+  });
 }
 
 function assertPlayRouteMapNode(

@@ -19,6 +19,17 @@ export type SourceUnitTextRecord = {
   occurrenceId: string;
 };
 
+/** A safe, addressable scene coordinate declared by an imported bridge unit.
+ *
+ * `sceneId` is copied from `context.route.sceneId` or `sceneKey`; it is never
+ * parsed from a source-unit key or otherwise inferred.  A unit without either
+ * coordinate is deliberately absent from this projection.
+ */
+export type ImportedSceneTarget = {
+  bridgeUnitId: string;
+  sceneId: string;
+};
+
 export type LoadSourceUnitsInput = {
   bridgeUnitIds: string[];
 };
@@ -30,6 +41,10 @@ export type LoadCurrentSourceHashesInput = {
 export type LoadSourceUnitsForScopeInput = {
   projectId: string;
   localeBranchId: string;
+};
+
+export type LoadImportedSceneTargetsInput = LoadSourceUnitsForScopeInput & {
+  bridgeUnitIds: readonly string[];
 };
 
 export interface ItotoriSourceUnitRepositoryPort {
@@ -45,6 +60,12 @@ export interface ItotoriSourceUnitRepositoryPort {
     actor: AuthorizationActor,
     input: LoadSourceUnitsForScopeInput,
   ): Promise<SourceUnitTextRecord[]>;
+  /** Resolve only imported units in this project/branch to their declared
+   * scene coordinates. Missing / non-scene-addressable units return no row. */
+  loadImportedSceneTargets(
+    actor: AuthorizationActor,
+    input: LoadImportedSceneTargetsInput,
+  ): Promise<ImportedSceneTarget[]>;
 }
 
 export class ItotoriSourceUnitRepository implements ItotoriSourceUnitRepositoryPort {
@@ -139,4 +160,43 @@ export class ItotoriSourceUnitRepository implements ItotoriSourceUnitRepositoryP
       occurrenceId: row.occurrenceId,
     }));
   }
+
+  async loadImportedSceneTargets(
+    actor: AuthorizationActor,
+    input: LoadImportedSceneTargetsInput,
+  ): Promise<ImportedSceneTarget[]> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    if (input.bridgeUnitIds.length === 0) return [];
+    const rows = await this.db
+      .select({
+        bridgeUnitId: sourceUnits.bridgeUnitId,
+        context: sourceUnits.context,
+      })
+      .from(sourceUnits)
+      .innerJoin(localeBranches, eq(localeBranches.sourceBundleId, sourceUnits.sourceBundleId))
+      .where(
+        and(
+          eq(sourceUnits.projectId, input.projectId),
+          eq(localeBranches.localeBranchId, input.localeBranchId),
+          inArray(sourceUnits.bridgeUnitId, [...input.bridgeUnitIds]),
+          isNull(sourceUnits.removedAt),
+        ),
+      );
+    return rows.flatMap((row) => {
+      const sceneId = declaredSceneId(row.context);
+      return sceneId === null ? [] : [{ bridgeUnitId: row.bridgeUnitId, sceneId }];
+    });
+  }
+}
+
+/** Read the producer-declared route coordinate without exposing the full bridge
+ * context (which can contain source text-adjacent metadata) to the dashboard. */
+function declaredSceneId(context: unknown): string | null {
+  if (typeof context !== "object" || context === null) return null;
+  const route = (context as { route?: unknown }).route;
+  if (typeof route !== "object" || route === null) return null;
+  const candidate =
+    (route as { sceneId?: unknown; sceneKey?: unknown }).sceneId ??
+    (route as { sceneKey?: unknown }).sceneKey;
+  return typeof candidate === "string" && candidate.trim().length > 0 ? candidate.trim() : null;
 }
