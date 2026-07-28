@@ -38,9 +38,13 @@ impl SceneVm<'_> {
                         .unwrap_or(&0),
                 ))
             }
-            [Value::Int(34), Value::Int(-1), Value::Int(index)] => Ok(Value::Str(
-                *self.state.indexed_strings.get(&(34, *index)).unwrap_or(&-1),
-            )),
+            [Value::Int(34), Value::Int(-1), Value::Int(index)] => self
+                .state
+                .indexed_strings
+                .get(&(34, *index))
+                .cloned()
+                .map(Value::Text)
+                .ok_or(self.operation(offset, "string-list-value")),
             [
                 Value::Int(34),
                 Value::Int(-1),
@@ -50,7 +54,6 @@ impl SceneVm<'_> {
                 .state
                 .indexed_strings
                 .get(&(34, *index))
-                .and_then(|string| self.program().strings.get(string))
                 .map(|string| Value::Text(string.to_uppercase()))
                 .ok_or(self.operation(offset, "string-list-value")),
             [Value::Int(42), Value::Int(property)] => Ok(Value::Int(
@@ -85,7 +88,18 @@ impl SceneVm<'_> {
                     .cloned()
                     .unwrap_or(Value::Int(0)))
             }
-            _ => Err(self.operation(offset, "element-path")),
+            _ => Err(VmError::UnsupportedElementPath {
+                scene_id: self.scene_id,
+                offset,
+                path: values
+                    .iter()
+                    .map(|value| match value {
+                        Value::Int(value) => *value,
+                        Value::Str(index) => *index,
+                        Value::Text(_) | Value::System(_) | Value::Function(_) => i32::MIN,
+                    })
+                    .collect(),
+            }),
         }
     }
 
@@ -119,9 +133,7 @@ impl SceneVm<'_> {
                 self.state.indexed_globals.insert((*form, *index), value);
             }
             [Value::Int(34), Value::Int(-1), Value::Int(index)] => {
-                let Value::Str(value) = value else {
-                    return Err(self.operation(offset, "non-string assignment"));
-                };
+                let value = self.string_value(offset, &value)?;
                 self.state.indexed_strings.insert((34, *index), value);
             }
             [Value::Int(42), Value::Int(property)] => {
@@ -153,7 +165,25 @@ impl SceneVm<'_> {
         Ok(())
     }
 
-    pub(super) fn call(&mut self, arguments: Vec<Value>, return_form: i32) {
+    pub(super) fn call(
+        &mut self,
+        offset: usize,
+        arguments: Vec<Value>,
+        return_form: i32,
+    ) -> Result<(), VmError> {
+        let arguments = arguments
+            .into_iter()
+            .map(|argument| match argument {
+                Value::Str(index) => self
+                    .program()
+                    .strings
+                    .get(&index)
+                    .cloned()
+                    .map(Value::Text)
+                    .ok_or(self.operation(offset, "call-argument-string")),
+                argument => Ok(argument),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         self.calls.push(CallFrame {
             scene_id: self.scene_id,
             pc: self.pc,
@@ -162,6 +192,7 @@ impl SceneVm<'_> {
             properties: Vec::new(),
             scene_entry: false,
         });
+        Ok(())
     }
 
     pub(super) fn declare_property(
@@ -200,6 +231,34 @@ impl SceneVm<'_> {
         Ok(())
     }
 
+    pub(super) fn call_string_property(&self, offset: usize, raw: i32) -> Result<String, VmError> {
+        let frame = self
+            .calls
+            .last()
+            .ok_or(self.operation(offset, "call-property-context"))?;
+        let property = frame
+            .properties
+            .get((raw & 0xffff) as usize)
+            .ok_or(self.operation(offset, "call-property-id"))?;
+        if property.form != 20 {
+            return Err(self.operation(offset, "call-property-string-form"));
+        }
+        self.string_value(offset, &property.value)
+    }
+
+    pub(super) fn string_value(&self, offset: usize, value: &Value) -> Result<String, VmError> {
+        match value {
+            Value::Str(index) => self
+                .program()
+                .strings
+                .get(index)
+                .cloned()
+                .ok_or(self.operation(offset, "string-value")),
+            Value::Text(text) => Ok(text.clone()),
+            _ => Err(self.operation(offset, "non-string value")),
+        }
+    }
+
     fn call_property(&self, offset: usize, raw: i32, index: Option<i32>) -> Result<Value, VmError> {
         let frame = self
             .calls
@@ -221,6 +280,16 @@ impl SceneVm<'_> {
         index: Option<i32>,
         value: Value,
     ) -> Result<(), VmError> {
+        let property_form = self
+            .calls
+            .last()
+            .and_then(|frame| frame.properties.get((raw & 0xffff) as usize))
+            .map(|property| property.form);
+        let value = match property_form {
+            Some(20) if index.is_none() => Value::Text(self.string_value(offset, &value)?),
+            Some(21) if index.is_some() => Value::Text(self.string_value(offset, &value)?),
+            _ => value,
+        };
         let error = self.operation(offset, "call-property-context");
         let frame = self.calls.last_mut().ok_or(error)?;
         let property_index = (raw & 0xffff) as usize;
@@ -252,7 +321,7 @@ impl SceneVm<'_> {
     }
 }
 
-fn owner(value: i32) -> i32 {
+pub(super) fn owner(value: i32) -> i32 {
     (value >> 24) & 0xff
 }
 

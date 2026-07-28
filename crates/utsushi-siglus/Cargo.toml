@@ -17,6 +17,10 @@ utsushi-core = { path = "../utsushi-core" }
 # decoded launch inventory through its public, clean-room APIs; it does not
 # duplicate container parsing or reach around the substrate VFS.
 kaifuu-siglus = { path = "../kaifuu-siglus" }
+# Type-3 G00 stores a fixed-key XOR-wrapped JPEG after the shared five-byte
+# G00 header. Keep the decoder narrow: no image formats besides JPEG are
+# enabled for this container boundary.
+image = { version = "0.25.10", default-features = false, features = ["jpeg"] }
 # runtime-profile boundary fixtures serialize typed admission
 # claims / boundary diagnostics as redacted JSON (secret-refs + one-way
 # proof hashes only — never raw key bytes). No `sha2` dep: the one-way

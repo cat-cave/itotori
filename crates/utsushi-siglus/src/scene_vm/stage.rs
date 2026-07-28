@@ -26,7 +26,9 @@ const OBJECT_CLIP_TOP: i32 = 20;
 const OBJECT_CLIP_RIGHT: i32 = 21;
 const OBJECT_CLIP_BOTTOM: i32 = 22;
 const OBJECT_TR: i32 = 27;
+const OBJECT_WIPE_COPY: i32 = 56;
 const OBJECT_ORDER: i32 = 55;
+const OBJECT_WIPE_ERASE: i32 = 92;
 
 const OBJECT_INIT: i32 = 35;
 const OBJECT_FREE: i32 = 36;
@@ -36,6 +38,8 @@ const OBJECT_SET_SCALE: i32 = 49;
 const OBJECT_SET_ROTATE: i32 = 50;
 const OBJECT_SET_CENTER: i32 = 158;
 const OBJECT_SET_CLIP: i32 = 160;
+const OBJECT_LIST_GET_SIZE: i32 = 3;
+const OBJECT_LIST_RESIZE: i32 = 4;
 
 /// Player-visible geometry for one root-stage object.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,6 +86,10 @@ pub struct StageObject {
     pub identity: Option<String>,
     pub visible: bool,
     pub transparency: i32,
+    /// Retained lifetime flag read by a later stage wipe operation.
+    pub wipe_copy: i32,
+    /// Retained lifetime flag read by a later stage wipe operation.
+    pub wipe_erase: i32,
     pub order: i32,
     pub layer: i32,
     pub geometry: StageGeometry,
@@ -94,6 +102,8 @@ impl Default for StageObject {
             identity: None,
             visible: false,
             transparency: 255,
+            wipe_copy: 0,
+            wipe_erase: 0,
             order: 0,
             layer: 0,
             geometry: StageGeometry::default(),
@@ -108,7 +118,13 @@ pub(super) struct StageObjectTarget {
     op: Option<i32>,
 }
 
-pub(super) fn target(values: &[Value]) -> Option<StageObjectTarget> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum StageTarget {
+    Object(StageObjectTarget),
+    ObjectList { stage: i32, op: i32 },
+}
+
+pub(super) fn target(values: &[Value]) -> Option<StageTarget> {
     let values = values
         .iter()
         .map(|value| match value {
@@ -116,6 +132,22 @@ pub(super) fn target(values: &[Value]) -> Option<StageObjectTarget> {
             _ => None,
         })
         .collect::<Option<Vec<_>>>()?;
+    if let [FORM_STAGE, STAGE_OBJECT, ELM_ARRAY, stage, op] = values.as_slice() {
+        // The installed corpus uses the compact root-stage list form. The
+        // reference parses this as ChildListOp for 3/4, not as a slot property:
+        // siglus_scene_vm/src/runtime/forms/stage.rs:262-281.
+        if matches!(*op, OBJECT_LIST_GET_SIZE | OBJECT_LIST_RESIZE) {
+            return Some(StageTarget::ObjectList {
+                stage: *stage,
+                op: *op,
+            });
+        }
+        return Some(StageTarget::Object(StageObjectTarget {
+            stage: *stage,
+            slot: 0,
+            op: Some(*op),
+        }));
+    }
     let (stage, slot, tail) = match values.as_slice() {
         [
             FORM_STAGE,
@@ -145,26 +177,48 @@ pub(super) fn target(values: &[Value]) -> Option<StageObjectTarget> {
         _ => return None,
     };
     match tail {
-        [] => Some(StageObjectTarget {
+        [] => Some(StageTarget::Object(StageObjectTarget {
             stage,
             slot,
             op: None,
-        }),
-        [op] => Some(StageObjectTarget {
+        })),
+        [op] => Some(StageTarget::Object(StageObjectTarget {
             stage,
             slot,
             op: Some(*op),
-        }),
+        })),
         _ => None,
     }
 }
 
 pub(super) fn read(
     state: &VmState,
-    target: StageObjectTarget,
+    target: StageTarget,
     offset: usize,
     scene_id: u32,
 ) -> Result<Value, VmError> {
+    let StageTarget::Object(target) = target else {
+        let StageTarget::ObjectList { stage, op } = target else {
+            unreachable!();
+        };
+        return (op == OBJECT_LIST_GET_SIZE)
+            .then(|| {
+                Value::Int(
+                    state
+                        .stage_object_list_sizes
+                        .get(&stage)
+                        .copied()
+                        .or_else(|| {
+                            state
+                                .stage_objects
+                                .get(&stage)
+                                .map(std::collections::BTreeMap::len)
+                        })
+                        .unwrap_or(0) as i32,
+                )
+            })
+            .ok_or_else(|| unsupported(scene_id, offset, "stage-object-list-read"));
+    };
     let op = target
         .op
         .ok_or_else(|| unsupported(scene_id, offset, "stage-object-reference"))?;
@@ -174,34 +228,67 @@ pub(super) fn read(
         .and_then(|slots| slots.get(&target.slot))
         .cloned()
         .unwrap_or_default();
-    let value = property(&object, op)
-        .ok_or_else(|| unsupported(scene_id, offset, "stage-object-property"))?;
+    let value = property(&object, op).ok_or(VmError::UnsupportedStageObjectProperty {
+        scene_id,
+        offset,
+        property: op,
+    })?;
     Ok(Value::Int(value))
 }
 
 pub(super) fn assign(
     state: &mut VmState,
-    target: StageObjectTarget,
+    target: StageTarget,
     value: i32,
     offset: usize,
     scene_id: u32,
 ) -> Result<(), VmError> {
+    let StageTarget::Object(target) = target else {
+        return Err(unsupported(
+            scene_id,
+            offset,
+            "stage-object-list-assignment",
+        ));
+    };
     let op = target
         .op
         .ok_or_else(|| unsupported(scene_id, offset, "stage-object-reference"))?;
     let object = object_mut(state, target);
     set_property(object, op, value)
         .then_some(())
-        .ok_or_else(|| unsupported(scene_id, offset, "stage-object-property"))
+        .ok_or(VmError::UnsupportedStageObjectProperty {
+            scene_id,
+            offset,
+            property: op,
+        })
 }
 
 pub(super) fn command(
     state: &mut VmState,
-    target: StageObjectTarget,
+    target: StageTarget,
     args: &[Value],
+    arg_list_id: i32,
     offset: usize,
     scene_id: u32,
 ) -> Result<Value, VmError> {
+    if let StageTarget::ObjectList { stage, op } = target {
+        if op != OBJECT_LIST_RESIZE {
+            return Err(unsupported(scene_id, offset, "stage-object-list-command"));
+        }
+        let size = int(args, 0, scene_id, offset)?;
+        let size = usize::try_from(size)
+            .map_err(|_| unsupported(scene_id, offset, "stage-object-list-size"))?;
+        state.stage_object_list_sizes.insert(stage, size);
+        state
+            .stage_objects
+            .entry(stage)
+            .or_default()
+            .retain(|slot, _| *slot >= 0 && (*slot as usize) < size);
+        return Ok(Value::Int(0));
+    }
+    let StageTarget::Object(target) = target else {
+        unreachable!();
+    };
     let op = target
         .op
         .ok_or_else(|| unsupported(scene_id, offset, "stage-object-reference"))?;
@@ -214,8 +301,19 @@ pub(super) fn command(
                 .and_then(text)
                 .ok_or_else(|| unsupported(scene_id, offset, "stage-object-create-identity"))?;
             object.active = true;
-            object.visible = true;
             object.identity = Some(identity.to_string());
+            // OBJECT.CREATE's overloads are `(file)`, `(file, disp)`, and
+            // `(file, disp, x, y[, patno])`. Preserve x/y only when the
+            // executed bytecode supplied that overload. The reference writes
+            // these values during create, before any later SET_POS call; see
+            // siglus_scene_vm/src/runtime/forms/stage.rs:8900-8923.
+            if create_overload_at_least(arg_list_id, args.len(), 1, 2) {
+                object.visible = int(args, 1, scene_id, offset)? != 0;
+            }
+            if create_overload_at_least(arg_list_id, args.len(), 2, 4) {
+                object.geometry.x = int(args, 2, scene_id, offset)?;
+                object.geometry.y = int(args, 3, scene_id, offset)?;
+            }
         }
         OBJECT_SET_POS => set_vec3(
             &mut object.geometry.x,
@@ -258,123 +356,53 @@ pub(super) fn command(
     Ok(Value::Int(0))
 }
 
-fn object_mut(state: &mut VmState, target: StageObjectTarget) -> &mut StageObject {
-    state
-        .stage_objects
-        .entry(target.stage)
-        .or_default()
-        .entry(target.slot)
-        .or_default()
-}
+mod properties;
 
-fn property(object: &StageObject, op: i32) -> Option<i32> {
-    Some(match op {
-        OBJECT_DISP => i32::from(object.visible),
-        OBJECT_LAYER => object.layer,
-        OBJECT_X => object.geometry.x,
-        OBJECT_Y => object.geometry.y,
-        OBJECT_Z => object.geometry.z,
-        OBJECT_CENTER_X => object.geometry.center_x,
-        OBJECT_CENTER_Y => object.geometry.center_y,
-        OBJECT_CENTER_Z => object.geometry.center_z,
-        OBJECT_SCALE_X => object.geometry.scale_x,
-        OBJECT_SCALE_Y => object.geometry.scale_y,
-        OBJECT_SCALE_Z => object.geometry.scale_z,
-        OBJECT_ROTATE_X => object.geometry.rotate_x,
-        OBJECT_ROTATE_Y => object.geometry.rotate_y,
-        OBJECT_ROTATE_Z => object.geometry.rotate_z,
-        OBJECT_CLIP_USE => i32::from(object.geometry.clip.is_some()),
-        OBJECT_CLIP_LEFT => object.geometry.clip.map_or(0, |clip| clip.0),
-        OBJECT_CLIP_TOP => object.geometry.clip.map_or(0, |clip| clip.1),
-        OBJECT_CLIP_RIGHT => object.geometry.clip.map_or(0, |clip| clip.2),
-        OBJECT_CLIP_BOTTOM => object.geometry.clip.map_or(0, |clip| clip.3),
-        OBJECT_TR => object.transparency,
-        OBJECT_ORDER => object.order,
-        _ => return None,
-    })
-}
+use self::properties::{
+    create_overload_at_least, int, ints, object_mut, property, set_property, set_vec3, text,
+    unsupported,
+};
 
-fn set_property(object: &mut StageObject, op: i32, value: i32) -> bool {
-    match op {
-        OBJECT_DISP => object.visible = value != 0,
-        OBJECT_LAYER => object.layer = value,
-        OBJECT_X => object.geometry.x = value,
-        OBJECT_Y => object.geometry.y = value,
-        OBJECT_Z => object.geometry.z = value,
-        OBJECT_CENTER_X => object.geometry.center_x = value,
-        OBJECT_CENTER_Y => object.geometry.center_y = value,
-        OBJECT_CENTER_Z => object.geometry.center_z = value,
-        OBJECT_SCALE_X => object.geometry.scale_x = value,
-        OBJECT_SCALE_Y => object.geometry.scale_y = value,
-        OBJECT_SCALE_Z => object.geometry.scale_z = value,
-        OBJECT_ROTATE_X => object.geometry.rotate_x = value,
-        OBJECT_ROTATE_Y => object.geometry.rotate_y = value,
-        OBJECT_ROTATE_Z => object.geometry.rotate_z = value,
-        OBJECT_CLIP_USE => {
-            if value == 0 {
-                object.geometry.clip = None;
-            }
-        }
-        OBJECT_CLIP_LEFT | OBJECT_CLIP_TOP | OBJECT_CLIP_RIGHT | OBJECT_CLIP_BOTTOM => {
-            let mut clip = object.geometry.clip.unwrap_or((0, 0, 0, 0));
-            match op {
-                OBJECT_CLIP_LEFT => clip.0 = value,
-                OBJECT_CLIP_TOP => clip.1 = value,
-                OBJECT_CLIP_RIGHT => clip.2 = value,
-                OBJECT_CLIP_BOTTOM => clip.3 = value,
-                _ => unreachable!(),
-            }
-            object.geometry.clip = Some(clip);
-        }
-        OBJECT_TR => object.transparency = value,
-        OBJECT_ORDER => object.order = value,
-        _ => return false,
-    }
-    true
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn set_vec3(
-    x: &mut i32,
-    y: &mut i32,
-    z: &mut i32,
-    args: &[Value],
-    scene_id: u32,
-    offset: usize,
-) -> Result<(), VmError> {
-    let values = ints(args, 2, scene_id, offset)?;
-    *x = values[0];
-    *y = values[1];
-    if let Some(value) = values.get(2) {
-        *z = *value;
-    }
-    Ok(())
-}
+    #[test]
+    fn compact_stage_object_list_resize_keeps_its_stage_for_picture_creation() {
+        let resize = target(&[
+            Value::Int(FORM_STAGE),
+            Value::Int(STAGE_OBJECT),
+            Value::Int(ELM_ARRAY),
+            Value::Int(1),
+            Value::Int(OBJECT_LIST_RESIZE),
+        ])
+        .expect("reference compact stage-list path is recognised");
+        let mut state = VmState::default();
+        command(&mut state, resize, &[Value::Int(2)], 0, 18, 7)
+            .expect("the authored list resize must execute");
+        let create = target(&[
+            Value::Int(FORM_STAGE),
+            Value::Int(STAGE_OBJECT),
+            Value::Int(ELM_ARRAY),
+            Value::Int(1),
+            Value::Int(OBJECT_CREATE_PCT),
+        ])
+        .expect("the compact path's implicit slot zero is recognised");
+        command(
+            &mut state,
+            create,
+            &[Value::Text("BG01A01".to_string()), Value::Int(1)],
+            1,
+            19,
+            7,
+        )
+        .expect("the following authored picture creation must execute");
 
-fn ints(args: &[Value], minimum: usize, scene_id: u32, offset: usize) -> Result<Vec<i32>, VmError> {
-    let values = args
-        .iter()
-        .map(|value| match value {
-            Value::Int(value) => Some(*value),
-            _ => None,
-        })
-        .collect::<Option<Vec<_>>>()
-        .ok_or_else(|| unsupported(scene_id, offset, "stage-object-arguments"))?;
-    (values.len() >= minimum)
-        .then_some(values)
-        .ok_or_else(|| unsupported(scene_id, offset, "stage-object-arguments"))
-}
-
-fn text(value: &Value) -> Option<&str> {
-    match value {
-        Value::Text(value) => Some(value),
-        _ => None,
-    }
-}
-
-fn unsupported(scene_id: u32, offset: usize, operation: &'static str) -> VmError {
-    VmError::UnsupportedOperation {
-        scene_id,
-        offset,
-        operation,
+        assert_eq!(state.stage_object_list_sizes.get(&1), Some(&2));
+        assert_eq!(
+            state.stage_objects[&1][&0].identity.as_deref(),
+            Some("BG01A01"),
+            "removing compact list-path dispatch prevents the real background identity from reaching the compositor"
+        );
     }
 }

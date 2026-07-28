@@ -19,6 +19,7 @@ pub mod runtime_profile;
 pub mod scene_vm;
 pub mod siglus_g00;
 pub mod siglus_render;
+pub mod stage_render;
 pub mod structure_export;
 pub mod substrate_conformance_checklist;
 pub mod vm;
@@ -39,6 +40,7 @@ pub use siglus_g00::{
 pub use siglus_render::{
     SiglusCgFrame, SiglusCgRedaction, SiglusRenderError, encode_siglus_png, render_siglus_cg,
 };
+pub use stage_render::{SiglusStageRenderError, render_siglus_stage};
 pub use structure_export::build_siglus_structure;
 
 /// The clean-room research-anchor statement exposed for audit tooling.
