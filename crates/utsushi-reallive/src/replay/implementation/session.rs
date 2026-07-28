@@ -11,7 +11,10 @@ use utsushi_core::substrate::AssetPackage;
 
 use super::event_loop_gate::{PolledEventLoop, carries_a_back_edge};
 use crate::input_bridge::{BridgeScheduler, PendingYield, UserInputQueue};
-use crate::pointer_click::{HydratedPrimaryClick, HydratedPrimaryClickError, LIVE_SESSION_SCREEN};
+use crate::pointer_click::{
+    HydratedPrimaryClick, HydratedPrimaryClickError, LIVE_SESSION_SCREEN,
+    ScriptRectanglePrimaryClick, ScriptRectanglePrimaryClickError,
+};
 use crate::render_pipeline::ObjectButtonChoiceOption;
 use crate::rlop::SelectLongOp;
 use crate::rlop::module_sel::SelectionPromptKind;
@@ -227,6 +230,15 @@ impl LiveSession {
         &self,
     ) -> Result<HydratedPrimaryClick, HydratedPrimaryClickError> {
         HydratedPrimaryClick::from_rectangle(&self.graphics_stack(), self.pointer_gate_values())
+    }
+
+    /// Derive a click for a script-owned cursor polling loop. Unlike an
+    /// object-button select, this gate is satisfied by the script's own
+    /// cursor/rectangle comparison and has no graphics-object prerequisite.
+    pub fn script_rectangle_primary_click(
+        &self,
+    ) -> Result<ScriptRectanglePrimaryClick, ScriptRectanglePrimaryClickError> {
+        ScriptRectanglePrimaryClick::from_rectangle(self.pointer_gate_values())
     }
 
     /// The REAL options behind the parked choice gate, or `None` when the

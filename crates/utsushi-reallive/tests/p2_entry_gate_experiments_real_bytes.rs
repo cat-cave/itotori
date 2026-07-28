@@ -104,13 +104,6 @@ fn move_to_second_pointer_gate(
     panic!("did not reach a second pointer gate within the bounded entry path");
 }
 
-fn strict_interior_point(rectangle: utsushi_reallive::HitRect) -> (i32, i32) {
-    (
-        rectangle.x.saturating_add(rectangle.width / 2),
-        rectangle.y.saturating_add(rectangle.height / 2),
-    )
-}
-
 fn normalized_primary(point: (i32, i32), screen: (i32, i32)) -> InputEvent {
     InputEvent::Pointer {
         x: point.0 as f32 / (screen.0 - 1) as f32,
@@ -121,7 +114,7 @@ fn normalized_primary(point: (i32, i32), screen: (i32, i32)) -> InputEvent {
 
 #[test]
 #[ignore = "requires the existing ITOTORI_REAL_GAME_ROOT_2 Kanon asset root"]
-fn p2_raw_pointer_without_hydration_records_only_the_gesture_boundary() {
+fn p2_script_rectangle_click_advances_without_hydrated_object() {
     let Some((seen, _gameexe, g00)) = root_paths(SECONDARY_ROOT_ENV) else {
         eprintln!("SKIP P2 raw-pointer experiment: {SECONDARY_ROOT_ENV} is unavailable.");
         return;
@@ -148,20 +141,23 @@ fn p2_raw_pointer_without_hydration_records_only_the_gesture_boundary() {
         ]
     );
 
-    let point = strict_interior_point(rectangle);
-    let press = normalized_primary(point, LIVE_SESSION_SCREEN);
+    let click = session
+        .script_rectangle_primary_click()
+        .expect("a populated script rectangle must be enough for its cursor poll");
+    assert_eq!(click.rectangle, rectangle);
+    let [press, release] = click.events();
     let before = session.state();
     let before_values = session.pointer_gate_values();
     let after_press = session.send(press).expect("raw pointer press is delivered");
     let after_press_values = session.pointer_gate_values();
     let after_release = session
-        .send(InputEvent::raw("reallive", "primary_release"))
+        .send(release)
         .expect("raw primary release is delivered");
     let after_release_values = session.pointer_gate_values();
 
     eprintln!(
-        "P2 raw-pointer: rectangle={rectangle:?} point={point:?} event_kinds=[pointer,raw:primary_release] before={before:?} before_values={before_values:?} after_press={:?} after_press_values={after_press_values:?} after_release={:?} after_release_values={after_release_values:?}",
-        after_press.state, after_release.state,
+        "P2 script-rectangle pointer: rectangle={rectangle:?} pixel={:?} event_kinds=[pointer,raw:primary_release] before={before:?} before_values={before_values:?} after_press={:?} after_press_values={after_press_values:?} after_release={:?} after_release_values={after_release_values:?}",
+        click.pixel, after_press.state, after_release.state,
     );
     assert_eq!(
         after_press.state, before,
@@ -320,13 +316,13 @@ fn p2_backward_slice_classifies_the_rectangle_operand_provenance() {
 #[test]
 #[ignore = "requires the existing ITOTORI_REAL_GAME_ROOT primary asset root"]
 fn p2_primary_executed_line_oracle_remains_7750() {
-    let Some((seen, _gameexe, _g00)) = root_paths(PRIMARY_ROOT_ENV) else {
+    let Some((seen, gameexe, _g00)) = root_paths(PRIMARY_ROOT_ENV) else {
         eprintln!("SKIP primary regression oracle: {PRIMARY_ROOT_ENV} is unavailable.");
         return;
     };
     let (engine, _) = staged_engine_and_bytes(&fs::read(seen).expect("read primary Seen.txt"));
     let entry =
-        utsushi_reallive::Gameexe::parse(&fs::read(_gameexe).expect("read primary Gameexe.ini"))
+        utsushi_reallive::Gameexe::parse(&fs::read(gameexe).expect("read primary Gameexe.ini"))
             .expect("parse primary Gameexe.ini")
             .get_int("SEEN_START")
             .and_then(|scene| u16::try_from(scene).ok())

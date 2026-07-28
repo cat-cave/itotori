@@ -305,12 +305,14 @@ impl ReplayEngine {
         let mut steps: u32 = 0;
         let mut first_cross_scene: Option<SceneId> = None;
         // A script can poll the input device in an ordinary backward-goto
-        // loop instead of yielding a long operation. The interactive session
-        // parks at that proven loop; this unattended observation instead
-        // models the next event by suppressing its following pc-moving
-        // transfer. The fingerprint is full VM control state, so a repeated
-        // value proves the loop has no other deterministic exit.
+        // loop instead of yielding a long operation. The fingerprint is full
+        // VM control state, so a repeated value proves the loop has no other
+        // deterministic exit. A cursor-poll loop receives an actual
+        // geometry-derived press then release; only non-cursor loops retain
+        // the older generic event-flag model below.
         let mut loop_states = std::collections::HashSet::new();
+        let mut saw_cursor_poll = false;
+        let mut cursor_press_pending_release = false;
         // Once a repeated state proves a polling loop, suppress every
         // subsequent pc-moving transfer until its stack frame unwinds. A
         // one-shot suppression is insufficient for a poll made of several
@@ -330,6 +332,11 @@ impl ReplayEngine {
                 StepOutcome::Advanced { event } => {
                     let suppressed = vm.last_transfer_suppressed();
                     let loop_closing = suppressed || closes_a_loop(&event, scene_before, pc_before);
+                    saw_cursor_poll |= matches!(
+                        event,
+                        VmEvent::CommandDispatched { ref key, .. }
+                            if key.module_type == 1 && key.module_id == 4 && key.opcode == 133
+                    );
                     // The VM emits `Textout` events; the driver dispatches
                     // the Shift-JIS run through the text family + a
                     // line-break flush so the decoded line surfaces through
@@ -357,8 +364,44 @@ impl ReplayEngine {
                             vm.request_suppress_next_transfer();
                         }
                     } else if loop_closing && !loop_states.insert(vm.control_fingerprint()) {
-                        break_mode = Some(vm.stack().len());
-                        vm.request_suppress_next_transfer();
+                        if saw_cursor_poll {
+                            // RLVM's GetCursorPos copies physical cursor state
+                            // into the script; the script itself owns the
+                            // rectangle containment branch. Do not require a
+                            // graphics object here: that requirement belongs
+                            // only to RLVM's select_objbtn runtime.
+                            if let Ok(click) = crate::ScriptRectanglePrimaryClick::from_rectangle(
+                                [1000, 1001, 1002, 1003].map(|index| {
+                                    match vm.banks().get(crate::BankId::IntA, index) {
+                                        Some(crate::Value::Int(value)) => Some(value),
+                                        Some(crate::Value::Str(_)) | None => None,
+                                    }
+                                }),
+                            ) {
+                                let [press, release] = click.events();
+                                if cursor_press_pending_release {
+                                    handles.cursor.record(&release, crate::LIVE_SESSION_SCREEN);
+                                    cursor_press_pending_release = false;
+                                } else {
+                                    handles.cursor.record(&press, crate::LIVE_SESSION_SCREEN);
+                                    cursor_press_pending_release = true;
+                                }
+                                // The event changed script-visible state, so
+                                // re-prove a loop before sending its partner.
+                                loop_states.clear();
+                            } else {
+                                // This loop has no usable script rectangle,
+                                // so it is not a pointer target covered by
+                                // this policy. Keep the pre-existing generic
+                                // event-flag handling rather than inventing a
+                                // coordinate for it.
+                                break_mode = Some(vm.stack().len());
+                                vm.request_suppress_next_transfer();
+                            }
+                        } else {
+                            break_mode = Some(vm.stack().len());
+                            vm.request_suppress_next_transfer();
+                        }
                     }
                     steps = steps.saturating_add(1);
                 }

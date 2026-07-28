@@ -224,7 +224,7 @@ fn entry_playthrough_emits_an_ordered_subset_of_static_text_bytes() {
 
 #[test]
 #[ignore = "requires ITOTORI_CORPUS_ROOT with the optional second real corpus"]
-fn real_entry_gate_chain_stops_at_unhydrated_pointer_geometry() {
+fn real_entry_gate_chain_uses_the_script_rectangle_without_hydrated_art() {
     let Some(corpus) = real_corpus::corpus_2() else {
         eprintln!("SKIP pointer entry oracle: reallive/2/plain is unavailable.");
         return;
@@ -241,8 +241,8 @@ fn real_entry_gate_chain_stops_at_unhydrated_pointer_geometry() {
         .start_live_session_with_assets(entry, assets)
         .expect("live entry session starts");
     let click = session
-        .hydrated_primary_click()
-        .expect("the current VM rectangle must match hydrated real geometry");
+        .script_rectangle_primary_click()
+        .expect("the script-owned cursor rectangle supplies the first target");
     let [press, release] = click.events();
     let after_press = session.send(press).expect("pointer press is consumed");
     let after_release = session.send(release).expect("pointer release is consumed");
@@ -270,7 +270,7 @@ fn real_entry_gate_chain_stops_at_unhydrated_pointer_geometry() {
     let mut pointer_gates = 1usize;
     let mut choices = 0usize;
     let mut dialogue = Vec::new();
-    let mut blocker = None;
+    let mut reached_second_gate_exit = false;
     for _ in 0..2_000 {
         update = match update.state.waiting_for {
             Some(utsushi_reallive::LiveSessionWait::Advance) => {
@@ -279,13 +279,9 @@ fn real_entry_gate_chain_stops_at_unhydrated_pointer_geometry() {
             }
             Some(utsushi_reallive::LiveSessionWait::Pointer) => {
                 pointer_gates += 1;
-                let click = match session.hydrated_primary_click() {
-                    Ok(click) => click,
-                    Err(error) => {
-                        blocker = Some((update.state.clone(), error));
-                        break;
-                    }
-                };
+                let click = session
+                    .script_rectangle_primary_click()
+                    .expect("a populated script rectangle must satisfy its cursor poll");
                 let [press, release] = click.events();
                 session.send(press).expect("pointer press is observed");
                 session.send(release)
@@ -297,6 +293,10 @@ fn real_entry_gate_chain_stops_at_unhydrated_pointer_geometry() {
             state => panic!("unexpected entry-path gate: {state:?}"),
         }
         .expect("the actual requested event resumes the retained VM");
+        if (update.state.scene, update.state.pc) == (8502, 1672) {
+            reached_second_gate_exit = true;
+            break;
+        }
         dialogue.extend(
             update
                 .emitted_lines
@@ -341,7 +341,7 @@ fn real_entry_gate_chain_stops_at_unhydrated_pointer_geometry() {
         .count();
 
     eprintln!(
-        "pointer entry oracle: initial={:?} rectangle={:?} pixel={:?} after_press={:?} after_release={:?} final={:?} advance_gates={advance_gates} pointer_gates={pointer_gates} choices={choices} executed_dialogue={} overlap={overlap}/{} blocker={blocker:?}",
+        "pointer entry oracle: initial={:?} rectangle={:?} pixel={:?} after_press={:?} after_release={:?} final={:?} advance_gates={advance_gates} pointer_gates={pointer_gates} choices={choices} executed_dialogue={} overlap={overlap}/{} second_gate_exit={reached_second_gate_exit}",
         initial.state,
         click.rectangle,
         click.pixel,
@@ -373,7 +373,7 @@ fn real_entry_gate_chain_stops_at_unhydrated_pointer_geometry() {
     );
     assert!(
         dialogue.is_empty(),
-        "this entry chain must not claim dialogue before its blocker"
+        "this bounded gate probe does not claim dialogue"
     );
     assert_eq!(advance_gates, 73, "the verified pause chain changed shape");
     assert_eq!(
@@ -381,26 +381,8 @@ fn real_entry_gate_chain_stops_at_unhydrated_pointer_geometry() {
         "the second polled pointer gate was not reached"
     );
     assert!(
-        matches!(
-            blocker,
-            Some((
-                utsushi_reallive::LiveSessionState {
-                    scene: 8502,
-                    pc: 1236,
-                    waiting_for: Some(utsushi_reallive::LiveSessionWait::Pointer),
-                    ..
-                },
-                utsushi_reallive::HydratedPrimaryClickError::RectangleNotHydrated {
-                    rectangle: utsushi_reallive::HitRect {
-                        x: 1024,
-                        y: 333,
-                        width: 220,
-                        height: 47,
-                    },
-                }
-            ))
-        ),
-        "the policy must stop rather than invent a pointer target"
+        reached_second_gate_exit,
+        "the second populated cursor rectangle must advance without a hydrated object"
     );
 }
 
@@ -415,7 +397,7 @@ fn primary_entry_path_keeps_its_executed_oracle_coverage() {
         .entry_scene()
         .expect("real corpus Gameexe.ini must declare #SEEN_START");
     let bytes = fs::read(&corpus.seen_txt).expect("read real Seen.txt");
-    let (engine, _) = staged_engine_and_bytes(&bytes);
+    let (engine, decompressed) = staged_engine_and_bytes(&bytes);
     let playthrough = engine.observe_playthrough(
         entry,
         &ReplayOpts {
@@ -441,9 +423,31 @@ fn primary_entry_path_keeps_its_executed_oracle_coverage() {
                 .map(move |line| (segment.scene_id, line))
         })
         .collect();
+    let static_lines = static_textout_sequence(&decompressed, &scene_ids);
+    let emitted: Vec<(u16, usize, Vec<u8>)> = executed
+        .iter()
+        .filter_map(|(scene_id, line)| {
+            line.byte_offset_in_scene
+                .zip(line.body_shift_jis.clone())
+                .map(|(offset, bytes)| (*scene_id, offset as usize, bytes))
+        })
+        .collect();
+    let mut static_cursor = 0usize;
+    let mut overlap = 0usize;
+    for line in &emitted {
+        while static_cursor < static_lines.len() && static_lines[static_cursor] != *line {
+            static_cursor += 1;
+        }
+        if static_cursor < static_lines.len() {
+            overlap += 1;
+            static_cursor += 1;
+        }
+    }
     eprintln!(
-        "primary entry oracle: scenes={scene_ids:?} executed_lines={}",
+        "primary entry oracle: scenes={scene_ids:?} executed_lines={} source_backed={} overlap={overlap}/{}",
         executed.len(),
+        emitted.len(),
+        emitted.len(),
     );
     assert_eq!(
         executed.len(),
