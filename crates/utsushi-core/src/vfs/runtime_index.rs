@@ -9,7 +9,11 @@ use super::*;
 /// of leaking the host path through the underlying `io::Error`.
 pub(super) fn build_dir_index(package_id: &str, root: &Path) -> Result<CaseFoldedIndex, VfsError> {
     let mut index = CaseFoldedIndex::new();
-    let root_metadata = match fs::symlink_metadata(root) {
+    // A configured package root may itself be a symlink (for example, a
+    // stable corpus alias pointing at a staged title directory). The VFS's
+    // ordinary open/stat operations already follow that root, so index the
+    // same directory rather than treating the symlink as an empty package.
+    let root_metadata = match fs::metadata(root) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             // No root → empty index. Composite resolves miss; no error.
