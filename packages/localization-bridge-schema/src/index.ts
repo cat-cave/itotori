@@ -12,7 +12,6 @@ export * from "./translation-draft.js";
 export * from "./draft-artifact-bundle.js";
 export * from "./patch-export-bundle.js";
 export * from "./asset-localization-draft.js";
-export * from "./pair-policy.v0.3.js";
 export * from "./bridge-surface-normalization.js";
 
 export type Uuid7 = string;

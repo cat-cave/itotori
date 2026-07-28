@@ -147,24 +147,6 @@ export const KAIFUU_DELTA_FORMAT_STABILITY: FormatStabilityDeclaration = {
 };
 
 /**
- * The pair-policy wire format (the canonical no-legacy-compat precedent). The
- * v0.3 parser was the first loader in the monorepo to enumerate its known
- * legacy literals and reject each with a typed error; it is included in the
- * registry so the cross-format tier map is complete.
- */
-export const PAIR_POLICY_FORMAT_STABILITY: FormatStabilityDeclaration = {
-  formatId: "pair-policy",
-  schemaVersion: "itotori.pair-policy.v0.3",
-  stabilityTier: "beta",
-  since: ITOTORI_PRODUCT_VERSION,
-  authority: "packages/localization-bridge-schema/src/pair-policy.v0.3.ts",
-  knownLegacyVersions: ["0.1", "itotori.pair-policy.v0.1", "0.2", "itotori.pair-policy.v0.2"],
-  migrationPath:
-    "Rewrite the pair-policy file to the v0.3 shape (single primary pair + OpenRouter-side " +
-    "resilience). See docs/format-stability-and-compatibility-policy.md#pair-policy.",
-};
-
-/**
  * The public HTTP API contract (the dashboard / SPA REST surface). There is no
  * single umbrella literal — each read model carries its own `*.v0.1`
  * `schemaVersion`, asserted verbatim by `assertItotoriApiResponse` on BOTH the
@@ -214,7 +196,6 @@ export const DB_SCHEMA_FORMAT_STABILITY: FormatStabilityDeclaration = {
 export const PUBLIC_FORMAT_STABILITY: Readonly<Record<string, FormatStabilityDeclaration>> = {
   [BRIDGE_FORMAT_STABILITY.formatId]: BRIDGE_FORMAT_STABILITY,
   [KAIFUU_DELTA_FORMAT_STABILITY.formatId]: KAIFUU_DELTA_FORMAT_STABILITY,
-  [PAIR_POLICY_FORMAT_STABILITY.formatId]: PAIR_POLICY_FORMAT_STABILITY,
   [API_CONTRACT_FORMAT_STABILITY.formatId]: API_CONTRACT_FORMAT_STABILITY,
   [DB_SCHEMA_FORMAT_STABILITY.formatId]: DB_SCHEMA_FORMAT_STABILITY,
 };
@@ -237,8 +218,7 @@ export const PUBLIC_FORMAT_STABILITY: Readonly<Record<string, FormatStabilityDec
  *   user "this file is from an older tool" vs "this file is from a newer tool".
  * - `migrationPath` — the short-form remedy; the policy doc has the long form.
  *
- * This mirrors {@link import("./pair-policy.v0.3.js").PairPolicyVersionMismatchError},
- * generalized across every public format.
+ * This is the shared typed mismatch diagnostic for every public format.
  */
 export class FormatVersionMismatchError extends Error {
   constructor(

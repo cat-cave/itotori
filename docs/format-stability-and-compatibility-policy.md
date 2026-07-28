@@ -68,10 +68,8 @@ Mechanism:
 
 - **No-legacy-compat on read.** Each reader pins exactly one `schemaVersion`
   literal and rejects every other literal at the top of the guard, before any
-  structural work. The pair-policy `v0.3` parser
-  ([`packages/localization-bridge-schema/src/pair-policy.v0.3.ts`](../packages/localization-bridge-schema/src/pair-policy.v0.3.ts))
-  was the canonical precedent; the bridge and delta readers now route through
-  the shared `assertFormatVersion` for the same shape.
+  structural work. The bridge and delta readers route through the shared
+  `assertFormatVersion` for that shape.
 - **Typed migration-path error.** A mismatch raises
   `FormatVersionMismatchError` (not a bare `Error`) carrying `formatId`,
   `observed`, `supported`, `stabilityTier`, `knownLegacyVersions`, and
@@ -94,13 +92,12 @@ The registry `PUBLIC_FORMAT_STABILITY` is the source of truth; this table is
 its human rendering. `since` is the product version under which the current
 `schemaVersion` + `stabilityTier` combination became authoritative.
 
-| Format                                                          | `schemaVersion`               | Tier   | Known legacy                                                         | since   |
-| --------------------------------------------------------------- | ----------------------------- | ------ | -------------------------------------------------------------------- | ------- |
-| **localization-bridge-schema** (bridge bundle + delta metadata) | `0.2.0`                       | `beta` | `0.1.0`                                                              | `0.1.0` |
-| **kaifuu-delta-package** (`.kaifuu` engine delta)               | `0.3.0`                       | `beta` | `0.2.0`                                                              | `0.1.0` |
-| **pair-policy** (agentic-loop pair selection)                   | `itotori.pair-policy.v0.3`    | `beta` | `0.1`, `itotori.pair-policy.v0.1`, `0.2`, `itotori.pair-policy.v0.2` | `0.1.0` |
-| **itotori-api-contract** (dashboard/SPA REST surface)           | `*.v0.1` (per-route literals) | `beta` | —                                                                    | `0.1.0` |
-| **itotori-db-schema** (Postgres schema + migration registry)    | `0057` (migration head)       | `beta` | —                                                                    | `0.1.0` |
+| Format                                                          | `schemaVersion`               | Tier   | Known legacy | since   |
+| --------------------------------------------------------------- | ----------------------------- | ------ | ------------ | ------- |
+| **localization-bridge-schema** (bridge bundle + delta metadata) | `0.2.0`                       | `beta` | `0.1.0`      | `0.1.0` |
+| **kaifuu-delta-package** (`.kaifuu` engine delta)               | `0.3.0`                       | `beta` | `0.2.0`      | `0.1.0` |
+| **itotori-api-contract** (dashboard/SPA REST surface)           | `*.v0.1` (per-route literals) | `beta` | —            | `0.1.0` |
+| **itotori-db-schema** (Postgres schema + migration registry)    | `0057` (migration head)       | `beta` | —            | `0.1.0` |
 
 ### localization-bridge-schema
 
@@ -132,19 +129,6 @@ its human rendering. `since` is the product version under which the current
 - **Hash version is a SEPARATE axis:** `DELTA_HASH_VERSION` (currently
   `kaifuu-delta-root-v0.2`) is the domain-separation tag on the root-hash
   manifest; it moves independently of `DELTA_SCHEMA_VERSION`.
-
-### pair-policy
-
-- **Authority:** [`packages/localization-bridge-schema/src/pair-policy.v0.3.ts`](../packages/localization-bridge-schema/src/pair-policy.v0.3.ts).
-- **Version-negotiation:** `parsePairPolicyV03` enumerates
-  `KNOWN_LEGACY_PAIR_POLICY_VERSIONS` and rejects each (and an absent field)
-  with `PairPolicyVersionMismatchError`. This was the canonical no-legacy-
-  compat precedent that the shared `FormatVersionMismatchError` generalizes.
-- **Migration path (v0.x → v0.3):** rewrite the file to the v0.3 shape — a
-  single primary `(modelId, providerId)` pair plus per-stage postures;
-  resilience is OpenRouter-side (`provider.order` + `allow_fallbacks` within
-  the ZDR allow-list), so the legacy `alternateProviders[]` /
-  `failoverPredicate` machinery was removed.
 
 ### itotori-api-contract
 
@@ -194,7 +178,7 @@ cross-version pin are all covered by the bridge-schema package's test suite
 
 ```sh
 pnpm --filter @itotori/localization-bridge-schema test -- --run \
-  format-stability cross-version-compatibility schema pair-policy
+  format-stability cross-version-compatibility schema
 pnpm --filter @itotori/localization-bridge-schema typecheck
 ```
 

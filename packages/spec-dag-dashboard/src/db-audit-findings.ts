@@ -46,13 +46,16 @@ export type AuditFindingsByNode = Map<string, NodeAuditFindings>;
 
 export class AuditFindingsLoadError extends Error {
   constructor(
-    readonly code: "missing_database_url" | "query_failed" | "shape_invalid",
+    readonly code: "missing_database_url" | "query_failed" | "shape_invalid" | "shutdown_failed",
     message: string,
-    options?: { cause?: unknown },
+    options?: { cause?: unknown; shutdownError?: unknown },
   ) {
     super(message, options);
     this.name = "AuditFindingsLoadError";
+    this.shutdownError = options?.shutdownError;
   }
+
+  readonly shutdownError: unknown;
 }
 
 /**
@@ -62,6 +65,9 @@ export class AuditFindingsLoadError extends Error {
  */
 export async function loadAuditFindingsByNode(databaseUrl: string): Promise<AuditFindingsByNode> {
   const client = new pg.Client({ connectionString: databaseUrl });
+  let outcome:
+    | { kind: "loaded"; findings: AuditFindingsByNode }
+    | { kind: "failed"; error: AuditFindingsLoadError };
   try {
     await client.connect();
     const result = await client.query<{
@@ -89,21 +95,42 @@ export async function loadAuditFindingsByNode(databaseUrl: string): Promise<Audi
        where status = 'open'
        order by node_id asc, severity asc, audit_finding_id asc`,
     );
-    return rowsToByNode(result.rows);
+    outcome = { kind: "loaded", findings: rowsToByNode(result.rows) };
   } catch (error) {
-    if (error instanceof AuditFindingsLoadError) {
-      throw error;
+    outcome = {
+      kind: "failed",
+      error:
+        error instanceof AuditFindingsLoadError
+          ? error
+          : new AuditFindingsLoadError(
+              "query_failed",
+              `failed to query itotori_audit_findings: ${describeError(error)}`,
+              { cause: error },
+            ),
+    };
+  }
+
+  try {
+    await client.end();
+  } catch (shutdownError) {
+    if (outcome.kind === "failed") {
+      throw new AuditFindingsLoadError(
+        outcome.error.code,
+        `${outcome.error.message}; database client shutdown also failed: ${describeError(shutdownError)}`,
+        { cause: outcome.error, shutdownError },
+      );
     }
     throw new AuditFindingsLoadError(
-      "query_failed",
-      `failed to query itotori_audit_findings: ${describeError(error)}`,
-      { cause: error },
+      "shutdown_failed",
+      `failed to close itotori_audit_findings database client: ${describeError(shutdownError)}`,
+      { cause: shutdownError },
     );
-  } finally {
-    await client.end().catch(() => {
-      // teardown errors must not mask the original query result/error
-    });
   }
+
+  if (outcome.kind === "failed") {
+    throw outcome.error;
+  }
+  return outcome.findings;
 }
 
 /**
