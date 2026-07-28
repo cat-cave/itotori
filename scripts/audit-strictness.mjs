@@ -279,9 +279,7 @@ export function parseLaneCrates(justfileText) {
 
 export function parseManifestProofCrates(laneText) {
   return new Set(
-    [...laneText.matchAll(/args:\s*\[\s*"test",\s*"-p",\s*"([^"]+)"/gu)].map(
-      (match) => match[1],
-    ),
+    [...laneText.matchAll(/args:\s*\[\s*"test",\s*"-p",\s*"([^"]+)"/gu)].map((match) => match[1]),
   );
 }
 

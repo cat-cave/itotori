@@ -298,6 +298,7 @@ fn assert_title_invariants(totals: &TitleTotals, label: &str) {
 mod real_bytes;
 
 #[test]
+#[ignore = "real-bytes; requires two declared Siglus corpus roots"]
 fn two_real_siglus_scene_packs_decode_all_statements_and_flow() {
     let (first_exe, first_scene) = real_bytes::require_real_bytes(
         title_paths(FIRST_TITLE_ENV),

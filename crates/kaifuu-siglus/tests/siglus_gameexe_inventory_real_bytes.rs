@@ -124,6 +124,7 @@ fn exercise_title(exe_path: &Path, gameexe_path: &Path, label: &str, expected_en
 mod real_bytes;
 
 #[test]
+#[ignore = "real-bytes; requires two declared Siglus corpus roots"]
 fn two_real_siglus_gameexe_inventories_read_and_summarize() {
     let (first_exe, first_gameexe) = real_bytes::require_real_bytes(
         title_paths(FIRST_TITLE_ENV),

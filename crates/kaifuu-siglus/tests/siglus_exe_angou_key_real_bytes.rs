@@ -111,6 +111,7 @@ fn exercise_title(exe_path: &Path, gameexe_path: &Path, label: &str) {
 mod real_bytes;
 
 #[test]
+#[ignore = "real-bytes; requires two declared Siglus corpus roots"]
 fn recovered_key_decodes_two_real_siglus_gameexe_dats() {
     let (first_exe, first_gameexe) = real_bytes::require_real_bytes(
         title_paths(FIRST_TITLE_ENV),

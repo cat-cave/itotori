@@ -198,6 +198,7 @@ fn translated_json(source: &serde_json::Value, changed: Option<(&str, &str)>) ->
 mod real_bytes;
 
 #[test]
+#[ignore = "real-bytes; requires two declared Siglus corpus roots"]
 fn two_real_siglus_installations_patch_back_byte_correctly() {
     let (first_exe, first_scene, first_gameexe) = real_bytes::require_real_bytes(
         installation_paths(FIRST_ROOT_ENV),

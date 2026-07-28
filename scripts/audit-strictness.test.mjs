@@ -168,7 +168,8 @@ test("rule 5 parses Cargo package flag variants and continuations", () => {
 });
 
 test("rule 5 recognizes manifest-selected proof packages", () => {
-  const runner = 'const proof = { args: ["test", "-p", "utsushi-siglus", "--test", "observe_real_bytes"] };';
+  const runner =
+    'const proof = { args: ["test", "-p", "utsushi-siglus", "--test", "observe_real_bytes"] };';
   assert.deepEqual([...parseManifestProofCrates(runner)], ["utsushi-siglus"]);
 });
 

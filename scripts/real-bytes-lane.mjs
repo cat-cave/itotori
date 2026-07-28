@@ -10,19 +10,40 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const manifestPath = join(repoRoot, "corpora", "manifest.v1.json");
 const proofByEngine = new Map([
-  ["reallive", [{ name: "kaifuu-reallive", args: ["test", "-p", "kaifuu-reallive", "--", "--ignored"] }]],
+  [
+    "reallive",
+    [{ name: "kaifuu-reallive", args: ["test", "-p", "kaifuu-reallive", "--", "--ignored"] }],
+  ],
   [
     "siglus",
     [
-      { name: "kaifuu-siglus", args: ["test", "-p", "kaifuu-siglus"] },
-      { name: "utsushi-siglus-observe", args: ["test", "-p", "utsushi-siglus", "--test", "observe_real_bytes"] },
-      { name: "utsushi-siglus-scene-vm", args: ["test", "-p", "utsushi-siglus", "--test", "scene_vm_real_bytes"] },
-      { name: "utsushi-siglus-g00", args: ["test", "-p", "utsushi-siglus", "--test", "siglus_g00_real_bytes"] },
-      { name: "utsushi-siglus-structure", args: ["test", "-p", "utsushi-siglus", "--test", "structure_export_real_bytes"] },
-      { name: "utsushi-siglus-launch", args: ["test", "-p", "utsushi-siglus", "--test", "launch_hydration"] },
+      { name: "kaifuu-siglus", args: ["test", "-p", "kaifuu-siglus", "--", "--ignored"] },
+      {
+        name: "utsushi-siglus-observe",
+        args: ["test", "-p", "utsushi-siglus", "--test", "observe_real_bytes"],
+      },
+      {
+        name: "utsushi-siglus-scene-vm",
+        args: ["test", "-p", "utsushi-siglus", "--test", "scene_vm_real_bytes"],
+      },
+      {
+        name: "utsushi-siglus-g00",
+        args: ["test", "-p", "utsushi-siglus", "--test", "siglus_g00_real_bytes"],
+      },
+      {
+        name: "utsushi-siglus-structure",
+        args: ["test", "-p", "utsushi-siglus", "--test", "structure_export_real_bytes"],
+      },
+      {
+        name: "utsushi-siglus-launch",
+        args: ["test", "-p", "utsushi-siglus", "--test", "launch_hydration"],
+      },
     ],
   ],
-  ["softpal", [{ name: "kaifuu-softpal", args: ["test", "-p", "kaifuu-softpal", "--", "--ignored"] }]],
+  [
+    "softpal",
+    [{ name: "kaifuu-softpal", args: ["test", "-p", "kaifuu-softpal", "--", "--ignored"] }],
+  ],
 ]);
 
 function fail(message) {

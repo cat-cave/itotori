@@ -167,6 +167,7 @@ fn exercise_title(exe_path: &Path, scene_path: &Path, label: &str) -> usize {
 mod real_bytes;
 
 #[test]
+#[ignore = "real-bytes; requires two declared Siglus corpus roots"]
 fn two_real_siglus_scene_packs_partition_all_scenes() {
     let (first_exe, first_scene) = real_bytes::require_real_bytes(
         title_paths(FIRST_TITLE_ENV),

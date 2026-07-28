@@ -87,6 +87,7 @@ fn exercise_title(path: &Path, label: &str) {
 mod real_bytes;
 
 #[test]
+#[ignore = "real-bytes; requires two declared Siglus corpus roots"]
 fn two_real_siglus_gameexe_dats_read_and_gate() {
     let first = real_bytes::require_real_bytes(
         gameexe_path(FIRST_TITLE_ENV),

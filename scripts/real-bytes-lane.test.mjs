@@ -50,21 +50,40 @@ function withoutRequiredInput(...names) {
 test("the Kaifuu Siglus proof refuses missing declared titles", () => {
   const result = spawnSync(
     "cargo",
-    ["test", "-p", "kaifuu-siglus", "--test", "siglus_gameexe_dat_real_bytes"],
-    { cwd: new URL("..", import.meta.url), encoding: "utf8", env: withoutRequiredInput("ITOTORI_REAL_GAME_ROOT_SIGLUS", "ITOTORI_REAL_GAME_ROOT_SIGLUS_2") },
+    ["test", "-p", "kaifuu-siglus", "--test", "siglus_gameexe_dat_real_bytes", "--", "--ignored"],
+    {
+      cwd: new URL("..", import.meta.url),
+      encoding: "utf8",
+      env: withoutRequiredInput("ITOTORI_REAL_GAME_ROOT_SIGLUS", "ITOTORI_REAL_GAME_ROOT_SIGLUS_2"),
+    },
   );
   assert.notEqual(result.status, 0, "missing input must not receive a green Cargo receipt");
   assert.match(result.stdout + result.stderr, /REAL-BYTES SKIP .*siglus\/1\/encrypted/u);
 });
 
-test("the Softpal Pal.dll proof refuses a missing named binary", () => {
+test("the Softpal Pal.dll proof has a missing-binary regression assertion", () => {
   const result = spawnSync(
     "cargo",
-    ["test", "-p", "kaifuu-softpal", "--test", "pal_dll_loose_override_real", "--", "--ignored"],
-    { cwd: new URL("..", import.meta.url), encoding: "utf8", env: withoutRequiredInput("ITOTORI_SOFTPAL_RESEARCH_ROOT") },
+    [
+      "test",
+      "-p",
+      "kaifuu-softpal",
+      "--test",
+      "pal_dll_loose_override_real",
+      "missing_pal_dll_is_a_non_passing_required_input",
+    ],
+    {
+      cwd: new URL("..", import.meta.url),
+      encoding: "utf8",
+      env: withoutRequiredInput("ITOTORI_SOFTPAL_RESEARCH_ROOT"),
+    },
   );
-  assert.notEqual(result.status, 0, "missing Pal.dll must not receive a green Cargo receipt");
-  assert.match(result.stdout + result.stderr, /REAL-BYTES SKIP .*softpal\/Pal\.dll/u);
+  assert.equal(
+    result.status,
+    0,
+    "the #[should_panic] assertion must receive the missing-input panic",
+  );
+  assert.match(result.stdout + result.stderr, /1 passed/u);
 });
 
 test("an engine without a proof is named as declared but unproven", () => {
