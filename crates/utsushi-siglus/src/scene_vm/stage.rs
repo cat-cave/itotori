@@ -26,7 +26,9 @@ const OBJECT_CLIP_TOP: i32 = 20;
 const OBJECT_CLIP_RIGHT: i32 = 21;
 const OBJECT_CLIP_BOTTOM: i32 = 22;
 const OBJECT_TR: i32 = 27;
+const OBJECT_WIPE_COPY: i32 = 56;
 const OBJECT_ORDER: i32 = 55;
+const OBJECT_WIPE_ERASE: i32 = 92;
 
 const OBJECT_INIT: i32 = 35;
 const OBJECT_FREE: i32 = 36;
@@ -82,6 +84,10 @@ pub struct StageObject {
     pub identity: Option<String>,
     pub visible: bool,
     pub transparency: i32,
+    /// Retained lifetime flag read by a later stage wipe operation.
+    pub wipe_copy: i32,
+    /// Retained lifetime flag read by a later stage wipe operation.
+    pub wipe_erase: i32,
     pub order: i32,
     pub layer: i32,
     pub geometry: StageGeometry,
@@ -94,6 +100,8 @@ impl Default for StageObject {
             identity: None,
             visible: false,
             transparency: 255,
+            wipe_copy: 0,
+            wipe_erase: 0,
             order: 0,
             layer: 0,
             geometry: StageGeometry::default(),
@@ -206,6 +214,7 @@ pub(super) fn command(
     state: &mut VmState,
     target: StageObjectTarget,
     args: &[Value],
+    arg_list_id: i32,
     offset: usize,
     scene_id: u32,
 ) -> Result<Value, VmError> {
@@ -221,8 +230,19 @@ pub(super) fn command(
                 .and_then(text)
                 .ok_or_else(|| unsupported(scene_id, offset, "stage-object-create-identity"))?;
             object.active = true;
-            object.visible = true;
             object.identity = Some(identity.to_string());
+            // OBJECT.CREATE's overloads are `(file)`, `(file, disp)`, and
+            // `(file, disp, x, y[, patno])`. Preserve x/y only when the
+            // executed bytecode supplied that overload. The reference writes
+            // these values during create, before any later SET_POS call; see
+            // siglus_scene_vm/src/runtime/forms/stage.rs:8900-8923.
+            if create_overload_at_least(arg_list_id, args.len(), 1, 2) {
+                object.visible = int(args, 1, scene_id, offset)? != 0;
+            }
+            if create_overload_at_least(arg_list_id, args.len(), 2, 4) {
+                object.geometry.x = int(args, 2, scene_id, offset)?;
+                object.geometry.y = int(args, 3, scene_id, offset)?;
+            }
         }
         OBJECT_SET_POS => set_vec3(
             &mut object.geometry.x,
@@ -265,6 +285,15 @@ pub(super) fn command(
     Ok(Value::Int(0))
 }
 
+fn create_overload_at_least(
+    arg_list_id: i32,
+    argument_count: usize,
+    level: i32,
+    required_arguments: usize,
+) -> bool {
+    arg_list_id >= level || argument_count >= required_arguments
+}
+
 fn object_mut(state: &mut VmState, target: StageObjectTarget) -> &mut StageObject {
     state
         .stage_objects
@@ -296,7 +325,9 @@ fn property(object: &StageObject, op: i32) -> Option<i32> {
         OBJECT_CLIP_RIGHT => object.geometry.clip.map_or(0, |clip| clip.2),
         OBJECT_CLIP_BOTTOM => object.geometry.clip.map_or(0, |clip| clip.3),
         OBJECT_TR => object.transparency,
+        OBJECT_WIPE_COPY => object.wipe_copy,
         OBJECT_ORDER => object.order,
+        OBJECT_WIPE_ERASE => object.wipe_erase,
         _ => return None,
     })
 }
@@ -334,7 +365,9 @@ fn set_property(object: &mut StageObject, op: i32, value: i32) -> bool {
             object.geometry.clip = Some(clip);
         }
         OBJECT_TR => object.transparency = value,
+        OBJECT_WIPE_COPY => object.wipe_copy = value,
         OBJECT_ORDER => object.order = value,
+        OBJECT_WIPE_ERASE => object.wipe_erase = value,
         _ => return false,
     }
     true
@@ -369,6 +402,15 @@ fn ints(args: &[Value], minimum: usize, scene_id: u32, offset: usize) -> Result<
     (values.len() >= minimum)
         .then_some(values)
         .ok_or_else(|| unsupported(scene_id, offset, "stage-object-arguments"))
+}
+
+fn int(args: &[Value], index: usize, scene_id: u32, offset: usize) -> Result<i32, VmError> {
+    args.get(index)
+        .and_then(|value| match value {
+            Value::Int(value) => Some(*value),
+            _ => None,
+        })
+        .ok_or_else(|| unsupported(scene_id, offset, "stage-object-create-arguments"))
 }
 
 fn text(value: &Value) -> Option<&str> {

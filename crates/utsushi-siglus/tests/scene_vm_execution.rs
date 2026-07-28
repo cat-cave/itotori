@@ -284,13 +284,16 @@ fn preserves_structured_system_assignment_for_a_later_branch() {
 #[test]
 fn stage_object_commands_and_properties_populate_slot_geometry_and_order() {
     let mut code = Vec::new();
-    stage_path(&mut code, 1, 4, 38);
+    stage_alias_path(&mut code, 38, 4, 38);
     push_str(&mut code, 0);
-    command(&mut code, 1, 0);
-    stage_assign(&mut code, 1, 4, 3, 640);
-    stage_assign(&mut code, 1, 4, 4, 360);
+    push_int(&mut code, 1);
+    push_int(&mut code, 640);
+    push_int(&mut code, 360);
+    command(&mut code, 4, 0);
     stage_assign(&mut code, 1, 4, 55, 12);
     stage_assign(&mut code, 1, 4, 2, 3);
+    stage_assign(&mut code, 1, 4, 56, 1);
+    stage_assign(&mut code, 1, 4, 92, 1);
     stage_path(&mut code, 1, 4, 49);
     push_int(&mut code, 1200);
     push_int(&mut code, 800);
@@ -322,6 +325,7 @@ fn stage_object_commands_and_properties_populate_slot_geometry_and_order() {
     assert!(object.active);
     assert!(object.visible);
     assert_eq!((object.order, object.layer), (12, 3));
+    assert_eq!((object.wipe_copy, object.wipe_erase), (1, 1));
     assert_eq!((object.geometry.x, object.geometry.y), (640, 360));
     assert_eq!(
         (object.geometry.scale_x, object.geometry.scale_y),
@@ -339,7 +343,8 @@ fn captures_the_stage_state_that_produced_each_real_text_boundary() {
     let mut code = Vec::new();
     stage_path(&mut code, 0, 4, 38);
     push_str(&mut code, 0);
-    command(&mut code, 1, 0);
+    push_int(&mut code, 1);
+    command(&mut code, 2, 0);
     stage_assign(&mut code, 0, 4, 3, 1);
     push_str(&mut code, 1);
     text(&mut code);
@@ -362,7 +367,7 @@ fn captures_the_stage_state_that_produced_each_real_text_boundary() {
         snapshot.moment,
         Moment::Text {
             scene_id: 12,
-            offset: 189,
+            offset: 202,
             speaker: None,
             text: "first line".to_string(),
         },
@@ -466,6 +471,12 @@ fn assign(out: &mut Vec<u8>) {
 fn stage_path(out: &mut Vec<u8>, stage: i32, slot: i32, operation: i32) {
     elm(out);
     for value in [49, -1, stage, 2, -1, slot, operation] {
+        push_int(out, value);
+    }
+}
+fn stage_alias_path(out: &mut Vec<u8>, stage_alias: i32, slot: i32, operation: i32) {
+    elm(out);
+    for value in [stage_alias, 2, -1, slot, operation] {
         push_int(out, value);
     }
 }

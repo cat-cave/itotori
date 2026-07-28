@@ -25,6 +25,16 @@ records observed byte shapes and the reference model without copying code.
   properties, and eventually free/reset it. The reference dispatches each of
   those operations separately rather than treating an unrecognized call as a
   successful no-op: `siglus_scene_vm/src/runtime/forms/stage.rs:8714-9250`.
+- Picture creation is also a position write for the four-argument overload:
+  `(file, disp, x, y[, patno])`. The reference selects the overload from the
+  argument-list id or real positional count and stores `x`/`y` in the base
+  properties: `siglus_scene_vm/src/runtime/forms/stage.rs:8900-8923` (shared
+  overload predicate: `:3414-3421`).
+- `OBJECT_WIPE_COPY` (56) and `OBJECT_WIPE_ERASE` (92) are persisted object
+  properties, not no-op commands; the later stage-wipe transition reads them
+  to decide whether the old front object stays and whether the back object is
+  promoted: `siglus_scene_vm/src/runtime/forms/stage.rs:1699-1713`,
+  `:1957-1980`, and `:6381-6400`.
 
 ## Current port gap
 

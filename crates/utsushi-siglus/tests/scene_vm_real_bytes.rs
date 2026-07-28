@@ -96,6 +96,10 @@ fn two_real_corpora_report_the_execution_frontier_and_preserve_static_overlap() 
             one.active_stage_objects, one.identified_stage_objects,
             "{label}: every active stage object needs source identity"
         );
+        assert!(
+            one.nondefault_position_stage_objects > 0,
+            "{label}: real OBJECT.CREATE coordinates must populate at least one active object"
+        );
         print_report(label, &one);
     }
 }
