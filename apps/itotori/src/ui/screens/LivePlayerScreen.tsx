@@ -23,6 +23,7 @@ type PlayerState = {
     | null;
   ended: boolean;
   terminalDiagnostic?: string | null;
+  oracleOverlap?: { executed: number; ordered: number; static: number };
   frame: { frameId: string; artifactId: string; width: number; height: number } | null;
 };
 
@@ -158,6 +159,11 @@ function PlayerPanel({
       data-event-index={state.eventIndex}
       data-waiting-for={state.ended ? "ended" : (state.waitingFor?.type ?? "none")}
       data-busy={busy ? "true" : "false"}
+      data-oracle-overlap={
+        state.oracleOverlap === undefined
+          ? undefined
+          : `${state.oracleOverlap.ordered}/${state.oracleOverlap.executed}/${state.oracleOverlap.static}`
+      }
     >
       {state.frame === null ? (
         <p>The engine reached a boundary without a renderable text frame.</p>
@@ -184,6 +190,12 @@ function PlayerPanel({
         </p>
       ) : (
         <PlayerInput waitingFor={state.waitingFor} busy={busy} send={send} />
+      )}
+      {state.oracleOverlap !== undefined && (
+        <p>
+          Executed text matches the static oracle in order: {state.oracleOverlap.ordered}/
+          {state.oracleOverlap.executed} (of {state.oracleOverlap.static} static dialogue units).
+        </p>
       )}
     </Panel>
   );
