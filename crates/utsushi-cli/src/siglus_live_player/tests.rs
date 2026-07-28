@@ -7,7 +7,7 @@ fn opaque_black_frame() -> SiglusCgFrame {
     SiglusCgFrame {
         width: 800,
         height: 600,
-        pixels_rgba: vec![0, 0, 0, 255].repeat(800 * 600),
+        pixels_rgba: [0, 0, 0, 255].repeat(800 * 600),
     }
 }
 

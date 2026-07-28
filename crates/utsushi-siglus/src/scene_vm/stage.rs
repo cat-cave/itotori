@@ -208,7 +208,12 @@ pub(super) fn read(
                         .stage_object_list_sizes
                         .get(&stage)
                         .copied()
-                        .or_else(|| state.stage_objects.get(&stage).map(|slots| slots.len()))
+                        .or_else(|| {
+                            state
+                                .stage_objects
+                                .get(&stage)
+                                .map(std::collections::BTreeMap::len)
+                        })
                         .unwrap_or(0) as i32,
                 )
             })

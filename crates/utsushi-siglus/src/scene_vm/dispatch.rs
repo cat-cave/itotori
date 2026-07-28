@@ -15,14 +15,13 @@ impl SceneVm<'_> {
     ) -> Result<(), VmError> {
         let args = self.pop_n(offset, arg_count)?;
         let values = self.frame(offset)?;
-        if self.stage_objects_enabled {
-            if let Some(result) = pcmch::command(self.state, &values, &args, offset, self.scene_id)?
-            {
-                if ret_form != 0 {
-                    self.values.push(result);
-                }
-                return Ok(());
+        if self.stage_objects_enabled
+            && let Some(result) = pcmch::command(self.state, &values, &args, offset, self.scene_id)?
+        {
+            if ret_form != 0 {
+                self.values.push(result);
             }
+            return Ok(());
         }
         if self.stage_objects_enabled
             && let Some(target) = stage::target(&values)
@@ -175,7 +174,7 @@ impl SceneVm<'_> {
             args.first()
                 .map(|value| self.string_value(offset, value))
                 .transpose()
-                .map(|value| value.unwrap_or_default())
+                .map(Option::unwrap_or_default)
         };
         let display_width = |text: &str| {
             text.chars()

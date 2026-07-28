@@ -7,8 +7,8 @@ use std::path::Path;
 use utsushi_reallive::{Framebuffer, TextLayer, WipeColour};
 use utsushi_siglus::scene_vm::{Moment, StageSnapshot};
 use utsushi_siglus::{
-    SiglusCgFrame, SiglusG00Image, SiglusG00Kind, SiglusStageRenderError, decode_siglus_g00,
-    encode_siglus_png, render_siglus_cg, render_siglus_stage,
+    SiglusCgFrame, SiglusCgRedaction, SiglusG00Image, SiglusG00Kind, SiglusStageRenderError,
+    decode_siglus_g00, encode_siglus_png, render_siglus_cg, render_siglus_stage,
 };
 
 /// The Gameexe-driven portion of the Siglus message-window projection.
@@ -84,12 +84,12 @@ impl MessageWindowProjection {
         }
         if let Some((columns, rows)) = get("MWND.000.MOJI_CNT").and_then(parse_pair) {
             projection.moji_count =
-                (columns > 0 && rows > 0).then(|| (columns as usize, rows as usize));
+                (columns > 0 && rows > 0).then_some((columns as usize, rows as usize));
         }
-        if let Some(size) = get("MWND.000.MOJI_SIZE").and_then(parse_integer) {
-            if size > 0 {
-                projection.moji_size = size as u32;
-            }
+        if let Some(size) = get("MWND.000.MOJI_SIZE").and_then(parse_integer)
+            && size > 0
+        {
+            projection.moji_size = size as u32;
         }
         if let Some(value) = get("MWND.000.MOJI_SPACE").and_then(parse_pair) {
             projection.moji_space = value;
@@ -331,7 +331,7 @@ fn wrap_message_text(text: &str, column_count: Option<usize>) -> Vec<String> {
 }
 
 fn source_over_frame(destination: &mut [u8], source: &[u8]) -> Result<(), Box<dyn Error>> {
-    if destination.len() != source.len() || destination.len() % 4 != 0 {
+    if destination.len() != source.len() || !destination.len().is_multiple_of(4) {
         return Err("siglus-live-player text surface dimensions disagreed with stage frame".into());
     }
     for (destination, source) in destination.chunks_exact_mut(4).zip(source.chunks_exact(4)) {
@@ -391,7 +391,7 @@ fn redact_frame(frame: &SiglusCgFrame) -> Result<SiglusCgFrame, Box<dyn Error>> 
         pixels_rgba: frame.pixels_rgba.clone(),
         layers: Vec::new(),
     };
-    Ok(render_siglus_cg(&image, Default::default())?)
+    Ok(render_siglus_cg(&image, SiglusCgRedaction::default())?)
 }
 
 fn sha256(bytes: &[u8]) -> String {
