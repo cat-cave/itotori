@@ -13,20 +13,16 @@
  *   - Write with JSON.stringify(dag, null, 2) + "\n" (the spec-dag lifecycle
  *     canonicalizer reformats on subsequent CLI runs).
  */
-
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
-
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dagPath = resolve(root, "roadmap/spec-dag.json");
 const schemaPath = resolve(root, "roadmap/spec-dag.schema.json");
-
 function loadJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
-
 function validateAgainstSchema(dag, schema, label) {
   const ajv = new Ajv2020({ allErrors: true });
   const validate = ajv.compile(schema);
@@ -37,7 +33,6 @@ function validateAgainstSchema(dag, schema, label) {
     throw new Error(`schema validation failed (${label}):\n${errors}`);
   }
 }
-
 // ID mapping helpers ---------------------------------------------------------
 
 // Proposal "146x" -> numeric DAG id (200 .. 221).
@@ -45,15 +40,12 @@ const SUFFIX_LETTERS = "abcdefghijklmnopqrstuv".split("");
 const ID_BY_SUFFIX = new Map(
   SUFFIX_LETTERS.map((letter, index) => [letter, `UTSUSHI-${200 + index}`]),
 );
-
 function mapProposalIdToDagId(suffix) {
   const id = ID_BY_SUFFIX.get(suffix);
   if (!id) throw new Error(`unknown proposal suffix: ${suffix}`);
   return id;
 }
-
 // Common fields applied to every sub-node -----------------------------------
-
 const COMMON = {
   projects: ["utsushi"],
   parallelGroup: "runtime-adapters",

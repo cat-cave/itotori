@@ -3,10 +3,8 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
-
 // Enforceable generalization-purge gate. The configured terms represent
 // concrete title names/slugs, vendor slugs, and title-derived environment
 // variables that MUST NOT appear as active code on generalized product or
@@ -34,7 +32,6 @@ export const defaultForbiddenTokens = [
     tokens: [["KAIFUU_REAL_", "SWE", "ETIE", "_HD_PATH"].join("")],
   },
 ];
-
 // Classified allowlist.
 //
 // These are the ONLY surfaces whose PURPOSE is to hold real-game references:
@@ -162,7 +159,6 @@ export const historicalResearchSurfaces = [
     value: "scripts/synthetic-coverage-manifest.mjs",
     reason: "synthetic corpus coverage catalogue derivation",
   },
-
   // This scanner and its test document the guardrail and must name the terms.
   {
     id: "scanner",
@@ -184,7 +180,6 @@ export const historicalResearchSurfaces = [
     reason: "absolute game-name guard pattern table",
   },
 ];
-
 export function parseArgs(argv) {
   const options = {
     mode: "check",
