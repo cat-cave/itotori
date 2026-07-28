@@ -8,26 +8,16 @@
 //
 // Nothing here is stubbed: real dashboard server, real engine child process,
 // real archive bytes, real Chromium. It is skipped — never faked — when the
-// runtime descriptor env vars are absent, because those bytes are not
+// private inventory lacks the runtime descriptor, because those bytes are not
 // redistributable and cannot live in the repo.
 
 import { expect, test, type Page } from "@playwright/test";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { resolvePrivateCorpus } from "../src/private-inventory.js";
+import { realliveBrowserPlayerLaunchFromInventory } from "../src/play/reallive-browser-player-launch.js";
 
-const corpusRoot = resolvePrivateCorpus("reallive", 1, "encrypted") ?? "";
-const dataRoot = join(corpusRoot, "REALLIVEDATA");
-const seenPath = join(dataRoot, "Seen.txt");
-const gameexePath = join(dataRoot, "Gameexe.ini");
-const g00Dir = join(dataRoot, "G00");
-const artifactRoot = join(tmpdir(), "itotori-browser-player-e2e");
-const entryScene = 1;
+const launch = realliveBrowserPlayerLaunchFromInventory();
 const session = "e2e";
 
-const descriptorPresent =
-  [seenPath, gameexePath, g00Dir, artifactRoot].every((value) => value.trim().length > 0) &&
-  Number.isInteger(entryScene);
+const descriptorPresent = launch !== undefined;
 
 // One engine frame is multiple megabytes of base64 over the wire, and the
 // engine rasterises a fresh one per input, so each step is seconds not

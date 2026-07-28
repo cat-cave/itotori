@@ -1,7 +1,6 @@
 import { createServer, type IncomingMessage } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { AuthorizationError } from "@itotori/db";
 import {
@@ -23,12 +22,12 @@ import { assertPrivacyRetentionEgressContract } from "./contracts/privacy.js";
 import { studioCapabilityPermissions } from "./auth.js";
 import { serveArtifactStoreRequest } from "./artifact-store.js";
 import { BrowserPlayerSessionManager } from "./play/browser-player-session.js";
-import { resolvePrivateCorpus } from "./private-inventory.js";
 import {
   isBrowserPlayerRoute,
   serveBrowserPlayerRequest,
   type BrowserPlayerLaunchRegistry,
 } from "./play/browser-player-routes.js";
+import { realliveBrowserPlayerLaunchFromInventory } from "./play/reallive-browser-player-launch.js";
 import {
   isPatchbackProduceRoute,
   parsePatchIterationDeliveryArchiveRoute,
@@ -301,36 +300,8 @@ async function canReveal(
 }
 
 function browserPlayerLaunchesFromInventory(): BrowserPlayerLaunchRegistry {
-  const root = resolvePrivateCorpus("reallive", 1, "encrypted");
-  if (root === undefined) return {};
-  const data = join(root, "REALLIVEDATA");
-  const seenPath = join(data, "Seen.txt");
-  const gameexePath = join(data, "Gameexe.ini");
-  const g00Dir = join(data, "G00");
-  const artifactRoot = join(tmpdir(), "itotori-browser-player-e2e");
-  const scene = 1;
-  if (
-    seenPath === undefined ||
-    gameexePath === undefined ||
-    g00Dir === undefined ||
-    artifactRoot === undefined ||
-    seenPath.trim() === "" ||
-    gameexePath.trim() === "" ||
-    g00Dir.trim() === "" ||
-    artifactRoot.trim() === "" ||
-    !Number.isInteger(scene)
-  ) {
-    return {};
-  }
-  return {
-    e2e: {
-      seenPath,
-      gameexePath,
-      g00Dir,
-      artifactRoot,
-      scene,
-    },
-  };
+  const launch = realliveBrowserPlayerLaunchFromInventory();
+  return launch === undefined ? {} : { e2e: launch };
 }
 
 function contentType(path: string): string {
