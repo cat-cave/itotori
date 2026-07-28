@@ -32,6 +32,18 @@ export function declaredNames() {
   return new Set(declared);
 }
 
+export function trackedRegularFiles(indexEntries) {
+  return indexEntries
+    .split("\n")
+    .filter(Boolean)
+    .map((entry) => {
+      const [metadata, file] = entry.split("\t");
+      return { mode: metadata.split(" ", 1)[0], file };
+    })
+    .filter(({ mode }) => mode.startsWith("100"))
+    .map(({ file }) => file);
+}
+
 export function checkBudget(actual, budget) {
   if (actual === 0) {
     if (budget !== undefined) {
@@ -69,9 +81,12 @@ function loadBudget() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const files = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" })
-    .split("\n")
-    .filter(Boolean);
+  // The index records Corepack launchers as symlinks whose Nix-store targets
+  // are intentionally host-specific. Scan tracked regular source files, not
+  // link targets that might not exist on the runner.
+  const files = trackedRegularFiles(
+    execFileSync("git", ["ls-files", "--stage"], { cwd: root, encoding: "utf8" }),
+  );
   const failures = [];
   const exemptions = [];
   for (const file of files) {

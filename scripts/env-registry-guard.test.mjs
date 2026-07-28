@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { checkBudget, declaredNames, undeclaredReads } from "./env-registry-guard.mjs";
+import {
+  checkBudget,
+  declaredNames,
+  trackedRegularFiles,
+  undeclaredReads,
+} from "./env-registry-guard.mjs";
 
 test("reports an undeclared literal project environment read", () => {
   const name = ["ITOTORI", "UNDECLARED_TEST_VALUE"].join("_");
@@ -11,6 +16,15 @@ test("reports an undeclared literal project environment read", () => {
 test("accepts the registered field-cipher secret", () => {
   assert.equal(declaredNames().has("ITOTORI_FIELD_CIPHER_KEY"), true);
   assert.deepEqual(undeclaredReads("const value = process.env.ITOTORI_FIELD_CIPHER_KEY;"), []);
+});
+
+test("scans tracked regular files without resolving host-specific Corepack symlinks", () => {
+  const indexEntries = [
+    "100644 0123456789012345678901234567890123456789 0\tscripts/reader.mjs",
+    "120000 0123456789012345678901234567890123456789 0\tapps/itotori/.corepack/bin/pnpm",
+  ].join("\n");
+
+  assert.deepEqual(trackedRegularFiles(indexEntries), ["scripts/reader.mjs"]);
 });
 
 test("rejects both an increased count and unrecorded progress", () => {
