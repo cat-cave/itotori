@@ -24,6 +24,8 @@ pub enum SiglusG00Kind {
     RawBgr,
     /// Type 2: LZSS-compressed table of layered BGRA tiles.
     LayeredBgra,
+    /// Type 3: a JPEG bitstream following the common G00 header.
+    Jpeg,
 }
 
 /// A layer rectangle preserved from a type-2 G00 header.
@@ -87,6 +89,9 @@ pub enum SiglusG00Error {
     /// The LZSS stream was malformed or incomplete.
     #[error("utsushi.siglus.g00.lzss: {detail}")]
     Lzss { detail: &'static str },
+    /// The JPEG payload in a type-3 container was malformed.
+    #[error("utsushi.siglus.g00.jpeg: {detail}")]
+    Jpeg { detail: String },
     /// Type-2 payload data did not describe a complete tile stream.
     #[error("utsushi.siglus.g00.invalid_layer_payload: {detail}")]
     InvalidLayerPayload { detail: &'static str },
@@ -95,9 +100,10 @@ pub enum SiglusG00Error {
 /// Decode a supported Siglus `.g00` container into an RGBA canvas.
 ///
 /// This is the production decoder called by [`crate::UtsushiSiglusPort`].
-/// It deliberately rejects the observed type-3 extension rather than
-/// guessing a layout for it; types 0 and 2 are independently validated on
-/// the two real Siglus corpora.
+/// Type 3 is a JPEG payload beginning immediately after the common header,
+/// following `siglus_scene_vm/src/assets/g00.rs:211-235` in the supplied
+/// reference implementation. Types 0 and 2 retain their existing real-byte
+/// decoder paths.
 pub fn decode_siglus_g00(input: &[u8]) -> Result<SiglusG00Image, SiglusG00Error> {
     if input.len() < HEADER_LEN {
         return Err(SiglusG00Error::TruncatedHeader {
@@ -110,8 +116,38 @@ pub fn decode_siglus_g00(input: &[u8]) -> Result<SiglusG00Image, SiglusG00Error>
     match input[0] {
         0 => decode_type0(input, width, height),
         2 => decode_type2(input, width, height),
+        3 => decode_type3(input, width, height),
         lead => Err(SiglusG00Error::UnsupportedType { lead }),
     }
+}
+
+fn decode_type3(input: &[u8], width: u32, height: u32) -> Result<SiglusG00Image, SiglusG00Error> {
+    let expected_rgba = checked_canvas_len(width, height, 4)?;
+    let decoded =
+        image::load_from_memory_with_format(&input[HEADER_LEN..], image::ImageFormat::Jpeg)
+            .or_else(|_| image::load_from_memory(&input[HEADER_LEN..]))
+            .map_err(|error| SiglusG00Error::Jpeg {
+                detail: error.to_string(),
+            })?
+            .to_rgba8();
+    if decoded.dimensions() != (width, height) {
+        return Err(SiglusG00Error::InvalidSection {
+            detail: "type-3 JPEG dimensions do not match the G00 header",
+        });
+    }
+    let pixels_rgba = decoded.into_raw();
+    if pixels_rgba.len() != expected_rgba {
+        return Err(SiglusG00Error::InvalidSection {
+            detail: "type-3 JPEG pixel count does not match the G00 canvas",
+        });
+    }
+    Ok(SiglusG00Image {
+        kind: SiglusG00Kind::Jpeg,
+        width,
+        height,
+        pixels_rgba,
+        layers: Vec::new(),
+    })
 }
 
 fn decode_type0(input: &[u8], width: u32, height: u32) -> Result<SiglusG00Image, SiglusG00Error> {
@@ -481,6 +517,55 @@ mod tests {
         assert_eq!(image.kind, SiglusG00Kind::LayeredBgra);
         assert_eq!(image.layers.len(), 1);
         assert_eq!(image.pixels_rgba, vec![1, 2, 3, 255]);
+    }
+
+    #[test]
+    fn type3_jpeg_payload_decodes_to_an_opaque_rgba_canvas() {
+        let mut jpeg = Vec::new();
+        let source = image::RgbImage::from_raw(2, 1, vec![250, 20, 10, 20, 200, 30])
+            .expect("test RGB dimensions");
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 100)
+            .encode_image(&source)
+            .expect("encode test JPEG");
+        let mut bytes = vec![3, 2, 0, 1, 0];
+        bytes.extend_from_slice(&jpeg);
+
+        let image = decode_siglus_g00(&bytes).expect("decode type-3 JPEG G00");
+
+        assert_eq!(image.kind, SiglusG00Kind::Jpeg);
+        assert_eq!((image.width, image.height), (2, 1));
+        assert_eq!(image.pixels_rgba.len(), 8);
+        assert!(
+            image
+                .pixels_rgba
+                .chunks_exact(4)
+                .all(|pixel| pixel[3] == 255)
+        );
+        assert!(
+            image
+                .pixels_rgba
+                .chunks_exact(4)
+                .any(|pixel| pixel[..3] != [0; 3])
+        );
+    }
+
+    #[test]
+    fn type3_jpeg_dimension_mismatch_is_rejected() {
+        let mut jpeg = Vec::new();
+        let source =
+            image::RgbImage::from_raw(2, 1, vec![1, 2, 3, 4, 5, 6]).expect("test RGB dimensions");
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 100)
+            .encode_image(&source)
+            .expect("encode test JPEG");
+        let mut bytes = vec![3, 1, 0, 1, 0];
+        bytes.extend_from_slice(&jpeg);
+
+        assert!(matches!(
+            decode_siglus_g00(&bytes),
+            Err(SiglusG00Error::InvalidSection {
+                detail: "type-3 JPEG dimensions do not match the G00 header"
+            })
+        ));
     }
 
     fn all_literal_bytes(input: &[u8]) -> Vec<u8> {
