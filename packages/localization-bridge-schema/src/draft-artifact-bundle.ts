@@ -62,6 +62,21 @@ export type WrittenUnitOutcome = {
   writtenAt: string;
 };
 
+/** Returns the selected candidate or reports the one durable selection invariant. */
+export function selectedWrittenOutcomeCandidate(
+  outcome: WrittenUnitOutcome,
+): WrittenOutcomeCandidate {
+  const candidate = outcome.candidates.find(
+    (candidate) => candidate.id === outcome.selectedCandidateId,
+  );
+  if (candidate === undefined) {
+    throw new Error(
+      `written outcome ${outcome.id} has no candidate matching selectedCandidateId ${outcome.selectedCandidateId}`,
+    );
+  }
+  return candidate;
+}
+
 export type DraftArtifactLedgerSummary = {
   totalCost: string;
   totalTokensIn: number;

@@ -25,6 +25,7 @@ import {
   assertDraftArtifactBundle,
   assertPatchExportBundle,
   PATCH_EXPORT_BUNDLE_SCHEMA_VERSION,
+  selectedWrittenOutcomeCandidate,
   type DraftArtifactBundle,
   type PatchExportAssetDecision,
   type PatchExportAssetDecisionPolicy,
@@ -374,14 +375,7 @@ function buildDraftEntries(
         `patch exporter: draft ${entry.draftId} references unknown sourceUnitId=${entry.sourceUnitId}`,
       );
     }
-    const selectedCandidate = entry.writtenOutcome.candidates.find(
-      (candidate: any) => candidate.id === entry.writtenOutcome.selectedCandidateId,
-    );
-    if (selectedCandidate === undefined) {
-      throw new Error(
-        `patch exporter: written outcome for ${entry.sourceUnitId} has no selected candidate`,
-      );
-    }
+    const selectedCandidate = selectedWrittenOutcomeCandidate(entry.writtenOutcome);
     const draftText = selectedCandidate.body;
     const engineVisibleSource = targetPolicy.normalizeVisibleText(unit.sourceText).trim();
     const engineVisibleDraft = targetPolicy.normalizeVisibleText(draftText).trim();

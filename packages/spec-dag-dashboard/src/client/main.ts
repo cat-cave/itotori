@@ -1,29 +1,10 @@
-// Browser client for the spec-dag dashboard. This is a faithful 1:1 TypeScript
-// port of the embedded IIFE in spec-dag-dashboard.reference.mjs (lines
-// ~287-621): layered layout, lineage tracing, pan/zoom auto-framing, detail
-// slideout, copy-for-agent, issues modal and keyboard shortcuts. Behavior must
-// match the reference exactly.
-//
-// Addition over the reference: a provenance banner in the topbar that reads
-// DATA.provenance and warns loudly when the page was generated from a stale or
-// dirty tree, always telling the user to re-run the generator.
-//
-// The page injects `var DATA = {...}` before this bundle, so we read a global.
-
 import { provenanceBannerClassName } from "../provenance-status.js";
 import type { DashboardData, EnrichedNode, Provenance } from "./client-types.js";
-
 declare const DATA: DashboardData;
-
 type AnyNode = EnrichedNode & Record<string, unknown>;
-
 (function (): void {
-  const D = DATA;
-  const nodes = D.nodes as AnyNode[];
-  const byId: Record<string, AnyNode> = {};
-  nodes.forEach(function (n) {
-    byId[n.id] = n;
-  });
+  const nodes = DATA.nodes as AnyNode[];
+  const byId: Record<string, AnyNode> = Object.fromEntries(nodes.map((node) => [node.id, node]));
   const PRANK: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
   const TRANK: Record<string, number> = { baseline: 0, alpha: 1, continuous: 2 };
   const SCOLOR: Record<string, string> = {
@@ -43,8 +24,27 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     const str = String(s == null ? "" : s);
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
-  function el(id: string): HTMLElement {
-    return document.getElementById(id) as HTMLElement;
+  function el(id: string): HTMLElement;
+  function el<T extends Element>(id: string, expected: abstract new () => T): T;
+  function el(id: string, expected?: abstract new () => Element): Element {
+    const element = document.getElementById(id);
+    if (element === null || !(element instanceof (expected ?? HTMLElement))) {
+      throw new Error(`dashboard template element ${id} is missing or has the wrong type`);
+    }
+    return element;
+  }
+  function required<T>(value: T | undefined, label: string): T {
+    if (value === undefined) throw new Error(`dashboard ${label} is missing`);
+    return value;
+  }
+  function nodeFor(id: string): AnyNode {
+    return required(byId[id], `node ${id}`);
+  }
+  function filterSet(facet: string): Set<string> {
+    if (facet === "status" || facet === "priority" || facet === "target") return state[facet];
+    if (facet === "projects") return state.project;
+    if (facet === "parallelGroup") return state.group;
+    throw new Error(`dashboard filter ${facet} is unknown`);
   }
   function uniq(key: string): Record<string, number> {
     const m: Record<string, number> = {};
@@ -63,7 +63,6 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
   function clamp(v: number, a: number, b: number): number {
     return Math.max(a, Math.min(b, v));
   }
-
   interface State {
     q: string;
     status: Set<string>;
@@ -88,25 +87,22 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     sort: "rank",
     sel: null,
   };
-
   el("s_nodes").textContent = String(nodes.length);
-  el("s_edges").textContent = String(D.edgeCount);
+  el("s_edges").textContent = String(DATA.edgeCount);
   el("s_ready").textContent = String(
     nodes.filter(function (n) {
       return n.ready;
     }).length,
   );
   const vb = el("s_valid");
-  if (D.errorCount > 0) {
+  if (DATA.errorCount > 0) {
     vb.className = "badwarn err";
-    vb.textContent = "⚠ " + D.errorCount + " issue" + (D.errorCount === 1 ? "" : "s");
+    vb.textContent = "⚠ " + DATA.errorCount + " issue" + (DATA.errorCount === 1 ? "" : "s");
     vb.onclick = openIssues;
   } else {
     vb.className = "badwarn ok";
     vb.textContent = "✓ clean";
   }
-
-  // ---------- provenance banner ----------
   function relativeTime(iso: string): string {
     const then = Date.parse(iso);
     if (isNaN(then)) return "unknown time";
@@ -122,7 +118,7 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
   function renderProvenance(): void {
     const pv = el("provbanner");
     if (!pv) return;
-    const p: Provenance = D.provenance;
+    const p: Provenance = DATA.provenance;
     const sha = p.headShortSha || "unknown";
     const when = relativeTime(p.generatedAt);
     const behind = (p.commitsBehind || 0) > 0;
@@ -157,8 +153,6 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     pv.textContent = "✓ " + sha + " · generated " + when;
   }
   renderProvenance();
-
-  // ---------- top filters ----------
   function pillset(
     host: HTMLElement,
     key: string,
@@ -192,8 +186,11 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
       .join("");
     Array.prototype.forEach.call(host.querySelectorAll(".pl"), function (p: HTMLElement) {
       p.onclick = function () {
-        const s = (state as unknown as Record<string, Set<string>>)[p.dataset.facet as string];
-        const v = p.dataset.v as string;
+        const facet = p.dataset.facet;
+        const v = p.dataset.v;
+        if (facet === undefined || v === undefined)
+          throw new Error("dashboard filter is incomplete");
+        const s = filterSet(facet);
         if (s.has(v)) s.delete(v);
         else s.add(v);
         p.classList.toggle("on");
@@ -221,7 +218,9 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
       .join("");
     Array.prototype.forEach.call(host.querySelectorAll("input"), function (cb: HTMLInputElement) {
       cb.onchange = function () {
-        const s = (state as unknown as Record<string, Set<string>>)[cb.dataset.facet as string];
+        const facet = cb.dataset.facet;
+        if (facet === undefined) throw new Error("dashboard filter is incomplete");
+        const s = filterSet(facet);
         if (cb.checked) s.add(cb.value);
         else s.delete(cb.value);
         apply(true);
@@ -246,20 +245,24 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
   pillset(el("p_target"), "target", TRANK, null);
   ddmenu(el("m_project"), "projects");
   ddmenu(el("m_group"), "parallelGroup");
-  (el("q") as HTMLInputElement).oninput = function (e) {
-    state.q = (e.target as HTMLInputElement).value.toLowerCase();
+  const query = el("q", HTMLInputElement);
+  const readyToggle = el("t_ready", HTMLInputElement);
+  const issuesToggle = el("t_issues", HTMLInputElement);
+  const sortSelect = el("sort", HTMLSelectElement);
+  query.oninput = function () {
+    state.q = query.value.toLowerCase();
     apply(true);
   };
-  (el("t_ready") as HTMLInputElement).onchange = function (e) {
-    state.readyOnly = (e.target as HTMLInputElement).checked;
+  readyToggle.onchange = function () {
+    state.readyOnly = readyToggle.checked;
     apply(true);
   };
-  (el("t_issues") as HTMLInputElement).onchange = function (e) {
-    state.issuesOnly = (e.target as HTMLInputElement).checked;
+  issuesToggle.onchange = function () {
+    state.issuesOnly = issuesToggle.checked;
     apply(true);
   };
-  (el("sort") as HTMLSelectElement).onchange = function (e) {
-    state.sort = (e.target as HTMLSelectElement).value;
+  sortSelect.onchange = function () {
+    state.sort = sortSelect.value;
     renderList();
   };
   el("clear").onclick = function () {
@@ -269,9 +272,9 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     });
     state.issuesOnly = false;
     state.readyOnly = false;
-    (el("q") as HTMLInputElement).value = "";
-    (el("t_ready") as HTMLInputElement).checked = false;
-    (el("t_issues") as HTMLInputElement).checked = false;
+    query.value = "";
+    readyToggle.checked = false;
+    issuesToggle.checked = false;
     Array.prototype.forEach.call(document.querySelectorAll(".pl.on"), function (p: HTMLElement) {
       p.classList.remove("on");
     });
@@ -283,7 +286,6 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     );
     apply(true);
   };
-
   function anyFilter(): boolean {
     return !!(
       state.q ||
@@ -326,8 +328,6 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     }
     return true;
   }
-
-  // ---------- layered layout ----------
   const NODE_W = 150;
   const NODE_H = 22;
   const COLX = 212;
@@ -361,26 +361,28 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     }
     nodes.forEach(function (n) {
       dep(n.id, {});
-      colOf[n.id] = depth[n.id];
+      colOf[n.id] = required(depth[n.id], `depth ${n.id}`);
     });
     const cols: Record<number, string[]> = {};
     nodes.forEach(function (n) {
-      (cols[depth[n.id]] = cols[depth[n.id]] || []).push(n.id);
+      const depthForNode = required(depth[n.id], `depth ${n.id}`);
+      (cols[depthForNode] = cols[depthForNode] || []).push(n.id);
     });
     const maxC = Math.max.apply(null, Object.keys(cols).map(Number));
     const row: Record<string, number> = {};
     for (let c = 0; c <= maxC; c++) {
       if (!cols[c]) continue;
-      cols[c].sort(function (a, b) {
-        const A = byId[a];
-        const B = byId[b];
+      const col = required(cols[c], `column ${c}`);
+      col.sort(function (a, b) {
+        const A = nodeFor(a);
+        const B = nodeFor(b);
         return (
           (PRANK[A.priority] ?? 9) - (PRANK[B.priority] ?? 9) ||
           (TRANK[A.target] ?? 9) - (TRANK[B.target] ?? 9) ||
           a.localeCompare(b)
         );
       });
-      cols[c].forEach(function (id, i) {
+      col.forEach(function (id, i) {
         row[id] = i;
       });
     }
@@ -389,31 +391,32 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
         const col = cols[c];
         if (!col) continue;
         col.forEach(function (id) {
-          let nb = useDeps ? byId[id].dependsOn || [] : byId[id].dependents;
+          const node = nodeFor(id);
+          let nb = useDeps ? node.dependsOn || [] : node.dependents;
           nb = nb.filter(function (x) {
             return byId[x];
           });
           if (nb.length) {
             let s = 0;
             nb.forEach(function (x) {
-              s += row[x];
+              s += required(row[x], `row ${x}`);
             });
             (byId[id] as Record<string, unknown>)._bc = s / nb.length;
-          } else (byId[id] as Record<string, unknown>)._bc = row[id];
+          } else (byId[id] as Record<string, unknown>)._bc = required(row[id], `row ${id}`);
         });
         col
           .slice()
           .sort(function (a, b) {
             return (
-              ((byId[a] as Record<string, number>)._bc ?? 0) -
-              ((byId[b] as Record<string, number>)._bc ?? 0)
+              ((nodeFor(a) as Record<string, number>)._bc ?? 0) -
+              ((nodeFor(b) as Record<string, number>)._bc ?? 0)
             );
           })
           .forEach(function (id, i) {
             row[id] = i;
           });
         col.sort(function (a, b) {
-          return row[a] - row[b];
+          return required(row[a], `row ${a}`) - required(row[b], `row ${b}`);
         });
       }
     }
@@ -423,7 +426,8 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     }
     let maxRows = 0;
     for (let c2 = 0; c2 <= maxC; c2++) {
-      if (cols[c2]) maxRows = Math.max(maxRows, cols[c2].length);
+      const col = cols[c2];
+      if (col) maxRows = Math.max(maxRows, col.length);
     }
     for (let c3 = 0; c3 <= maxC; c3++) {
       const col = cols[c3];
@@ -436,8 +440,6 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     layW = PAD * 2 + (maxC + 1) * COLX;
     layH = PAD * 2 + maxRows * ROWY;
   }
-
-  // ---------- render graph (transform-based for cheap animation) ----------
   const nodeEls: Record<string, SVGGElement> = {};
   const curPos: Record<string, { x: number; y: number }> = {};
   const edgeEls: Array<{ el: SVGPathElement; f: string; t: string }> = [];
@@ -456,7 +458,8 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
   function renderGraph(): void {
     let s = "";
     nodes.forEach(function (n) {
-      curPos[n.id] = { x: basePos[n.id].x, y: basePos[n.id].y };
+      const position = required(basePos[n.id], `position ${n.id}`);
+      curPos[n.id] = { x: position.x, y: position.y };
     });
     nodes.forEach(function (n) {
       (n.dependsOn || []).forEach(function (d) {
@@ -472,7 +475,7 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
       });
     });
     nodes.forEach(function (n) {
-      const p = curPos[n.id];
+      const p = required(curPos[n.id], `position ${n.id}`);
       const col = statusColor(n);
       s +=
         '<g class="ndg" data-id="' +
@@ -503,39 +506,50 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
         "</g>";
     });
     el("vp").innerHTML = s;
-    Array.prototype.forEach.call(el("vp").querySelectorAll(".ndg"), function (g: SVGGElement) {
-      const id = (g as unknown as HTMLElement).dataset.id as string;
-      nodeEls[id] = g;
-      g.addEventListener("mouseenter", function (e) {
-        showTip(id, e as MouseEvent);
+    el("vp", SVGGElement)
+      .querySelectorAll<SVGGElement>(".ndg")
+      .forEach(function (g) {
+        const id = g.dataset.id;
+        if (id === undefined) throw new Error("dashboard graph node has no id");
+        nodeEls[id] = g;
+        g.addEventListener("mouseenter", function (e) {
+          showTip(id, e as MouseEvent);
+        });
+        g.addEventListener("mousemove", function (e) {
+          moveTip(e as MouseEvent);
+        });
+        g.addEventListener("mouseleave", hideTip);
+        g.addEventListener("click", function (e) {
+          e.stopPropagation();
+          if (!dragMoved) select(id);
+        });
       });
-      g.addEventListener("mousemove", function (e) {
-        moveTip(e as MouseEvent);
+    el("vp", SVGGElement)
+      .querySelectorAll<SVGPathElement>(".edge")
+      .forEach(function (path) {
+        const from = path.dataset.f;
+        const to = path.dataset.t;
+        if (from === undefined || to === undefined)
+          throw new Error("dashboard edge has no endpoint");
+        edgeEls.push({ el: path, f: from, t: to });
       });
-      g.addEventListener("mouseleave", hideTip);
-      g.addEventListener("click", function (e) {
-        e.stopPropagation();
-        if (!dragMoved) select(id);
-      });
-    });
-    Array.prototype.forEach.call(el("vp").querySelectorAll(".edge"), function (p: SVGPathElement) {
-      const pe = p as unknown as HTMLElement;
-      edgeEls.push({ el: p, f: pe.dataset.f as string, t: pe.dataset.t as string });
-    });
   }
   function setPos(id: string, x: number, y: number): void {
-    curPos[id].x = x;
-    curPos[id].y = y;
-    nodeEls[id].setAttribute("transform", "translate(" + x + "," + y + ")");
+    const position = required(curPos[id], `position ${id}`);
+    position.x = x;
+    position.y = y;
+    required(nodeEls[id], `element ${id}`).setAttribute(
+      "transform",
+      "translate(" + x + "," + y + ")",
+    );
   }
-
-  // ---------- lineage ----------
   function ancestors(id: string): Set<string> {
     const out = new Set<string>();
     const st = [id];
     while (st.length) {
-      const x = st.pop() as string;
-      (byId[x].dependsOn || []).forEach(function (d) {
+      const x = st.pop();
+      if (x === undefined) continue;
+      (nodeFor(x).dependsOn || []).forEach(function (d) {
         if (byId[d] && !out.has(d)) {
           out.add(d);
           st.push(d);
@@ -548,8 +562,9 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     const out = new Set<string>();
     const st = [id];
     while (st.length) {
-      const x = st.pop() as string;
-      (byId[x].dependents || []).forEach(function (d) {
+      const x = st.pop();
+      if (x === undefined) continue;
+      (nodeFor(x).dependents || []).forEach(function (d) {
         if (byId[d] && !out.has(d)) {
           out.add(d);
           st.push(d);
@@ -568,12 +583,11 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     l.add(state.sel as string);
     return l;
   }
-
   function styleGraph(): void {
     if (state.sel) {
       const lin = lineageSet();
       nodes.forEach(function (n) {
-        const g = nodeEls[n.id];
+        const g = required(nodeEls[n.id], `element ${n.id}`);
         g.classList.toggle("dim", !lin.has(n.id));
         g.classList.toggle("sel", n.id === state.sel);
       });
@@ -591,18 +605,16 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     } else {
       const af = anyFilter();
       nodes.forEach(function (n) {
-        const g = nodeEls[n.id];
+        const g = required(nodeEls[n.id], `element ${n.id}`);
         g.classList.remove("sel");
         g.classList.toggle("dim", af && !passes(n));
       });
       edgeEls.forEach(function (e) {
         e.el.classList.remove("lit", "litUp");
-        e.el.style.opacity = !af || (passes(byId[e.f]) && passes(byId[e.t])) ? "1" : ".1";
+        e.el.style.opacity = !af || (passes(nodeFor(e.f)) && passes(nodeFor(e.t))) ? "1" : ".1";
       });
     }
   }
-
-  // ---------- animation (camera + node positions) ----------
   function ease(t: number): number {
     return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   }
@@ -622,7 +634,6 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
       else if (done) done();
     })(performance.now());
   }
-
   function animateNodes(
     targets: Record<string, { x: number; y: number }>,
     dur: number,
@@ -635,7 +646,8 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     }
     const starts: Record<string, { x: number; y: number }> = {};
     ids.forEach(function (id) {
-      starts[id] = { x: curPos[id].x, y: curPos[id].y };
+      const position = required(curPos[id], `position ${id}`);
+      starts[id] = { x: position.x, y: position.y };
     });
     const incident = edgeEls.filter(function (e) {
       return targets[e.f] || targets[e.t];
@@ -645,11 +657,9 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
       dur,
       function (p) {
         ids.forEach(function (id) {
-          setPos(
-            id,
-            starts[id].x + (targets[id].x - starts[id].x) * p,
-            starts[id].y + (targets[id].y - starts[id].y) * p,
-          );
+          const start = required(starts[id], `start ${id}`);
+          const target = required(targets[id], `target ${id}`);
+          setPos(id, start.x + (target.x - start.x) * p, start.y + (target.y - start.y) * p);
         });
         incident.forEach(function (e) {
           e.el.setAttribute("d", edgeD(e.f, e.t));
@@ -661,10 +671,8 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
       },
     );
   }
-
-  // ---------- pan / zoom / framing ----------
-  const svg = el("svg") as unknown as SVGSVGElement;
-  const vp = el("vp") as unknown as SVGGElement;
+  const svg = el("svg", SVGSVGElement),
+    vp = el("vp", SVGGElement);
   const view = { k: 1, tx: 0, ty: 0 };
   function applyView(): void {
     vp.setAttribute(
@@ -806,28 +814,27 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
   el("zout").onclick = function () {
     zoomAt(vw() / 2, vh() / 2, 1 / 1.2);
   };
-
-  // ---------- focus reflow: pull the lineage into a clean horizontal band ----------
   function compactTargets(lin: Set<string>): Record<string, { x: number; y: number }> {
     const cols: Record<number, string[]> = {};
     lin.forEach(function (id) {
-      (cols[colOf[id]] = cols[colOf[id]] || []).push(id);
+      const column = required(colOf[id], `column ${id}`);
+      (cols[column] = cols[column] || []).push(id);
     });
-    const centerY = basePos[state.sel as string].y + NODE_H / 2;
+    const selectedId = state.sel;
+    if (selectedId === null) throw new Error("dashboard has no selected node");
+    const centerY = required(basePos[selectedId], `position ${selectedId}`).y + NODE_H / 2;
     const targets: Record<string, { x: number; y: number }> = {};
     Object.keys(cols).forEach(function (c) {
-      const arr = cols[Number(c)].sort(function (a, b) {
-        return basePos[a].y - basePos[b].y;
+      const arr = required(cols[Number(c)], `column ${c}`).sort(function (a, b) {
+        return required(basePos[a], `position ${a}`).y - required(basePos[b], `position ${b}`).y;
       });
       const startY = centerY - ((arr.length - 1) / 2) * ROWY - NODE_H / 2;
       arr.forEach(function (id, i) {
-        targets[id] = { x: basePos[id].x, y: startY + i * ROWY };
+        targets[id] = { x: required(basePos[id], `position ${id}`).x, y: startY + i * ROWY };
       });
     });
     return targets;
   }
-
-  // ---------- list ----------
   function sortNodes(arr: AnyNode[]): AnyNode[] {
     const s = state.sort;
     return arr.slice().sort(function (a, b) {
@@ -894,8 +901,6 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
       };
     });
   }
-
-  // ---------- apply (filter change): style + auto-frame matches ----------
   let frameTimer = 0 as unknown as ReturnType<typeof setTimeout>;
   function apply(reframe: boolean): void {
     if (state.sel) {
@@ -915,8 +920,6 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
       }, 240);
     }
   }
-
-  // ---------- detail ----------
   function linkChip(id: string): string {
     const n = byId[id];
     if (!n) return '<span class="lk" style="opacity:.6">' + esc(id) + " (missing)</span>";
@@ -1042,8 +1045,6 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     };
     el("dscroll").scrollTop = 0;
   }
-
-  // ---------- select: trace lineage, reflow, frame ----------
   function select(id: string): void {
     const n = byId[id];
     if (!n) return;
@@ -1057,11 +1058,15 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     });
     const targets = compactTargets(lin);
     Object.keys(movedIds).forEach(function (mid) {
-      if (!targets[mid]) targets[mid] = { x: basePos[mid].x, y: basePos[mid].y };
+      if (!targets[mid]) {
+        const position = required(basePos[mid], `position ${mid}`);
+        targets[mid] = { x: position.x, y: position.y };
+      }
     });
     movedIds = {};
     Object.keys(targets).forEach(function (t) {
-      if (targets[t].y !== basePos[t].y) movedIds[t] = 1;
+      if (required(targets[t], `target ${t}`).y !== required(basePos[t], `position ${t}`).y)
+        movedIds[t] = 1;
     });
     styleGraph();
     renderList();
@@ -1076,7 +1081,8 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     }
     const targets: Record<string, { x: number; y: number }> = {};
     Object.keys(movedIds).forEach(function (mid) {
-      targets[mid] = { x: basePos[mid].x, y: basePos[mid].y };
+      const position = required(basePos[mid], `position ${mid}`);
+      targets[mid] = { x: position.x, y: position.y };
     });
     movedIds = {};
     state.sel = null;
@@ -1095,10 +1101,9 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
   el("unfocus").onclick = function () {
     unfocus();
   };
-
-  // ---------- tooltip ----------
   function showTip(id: string, e: MouseEvent): void {
     const n = byId[id];
+    if (n === undefined) return;
     el("gtip").innerHTML =
       '<div class="gi">' +
       esc(n.id) +
@@ -1123,8 +1128,6 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
   function hideTip(): void {
     el("gtip").style.display = "none";
   }
-
-  // ---------- copy-for-agent ----------
   function agentBlock(n: AnyNode, note: string): string {
     function list(label: string, a: string[] | undefined): string {
       if (!a || !a.length) return label + ":\n- (none)\n";
@@ -1232,18 +1235,16 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
       t.classList.remove("show");
     }, 1600);
   }
-
-  // ---------- issues modal ----------
   function openIssues(): void {
     const body = el("modalbody");
     const perNode = nodes.filter(function (n) {
       return n.issues.length;
     });
-    let html = "<h3>Validation issues (" + D.errorCount + ")</h3>";
-    if (D.globalIssues.length)
+    let html = "<h3>Validation issues (" + DATA.errorCount + ")</h3>";
+    if (DATA.globalIssues.length)
       html +=
         '<div class="sub">Graph-level</div>' +
-        D.globalIssues
+        DATA.globalIssues
           .map(function (i) {
             return '<div class="gi">⚠ ' + esc(i) + "</div>";
           })
@@ -1264,7 +1265,7 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
             );
           })
           .join("");
-    if (!D.globalIssues.length && !perNode.length)
+    if (!DATA.globalIssues.length && !perNode.length)
       html += '<div class="gi" style="color:var(--done)">No issues. The DAG validates clean.</div>';
     body.innerHTML = html;
     Array.prototype.forEach.call(body.querySelectorAll("[data-go]"), function (g: HTMLElement) {
@@ -1282,7 +1283,6 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
   el("modal").onclick = function (e) {
     if (e.target === el("modal")) closeModal();
   };
-
   document.addEventListener("keydown", function (e) {
     if (e.key === "/" && document.activeElement !== el("q")) {
       e.preventDefault();
@@ -1297,8 +1297,6 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
       else fit(420);
     }
   });
-
-  // ---------- boot ----------
   layout();
   renderGraph();
   renderList();

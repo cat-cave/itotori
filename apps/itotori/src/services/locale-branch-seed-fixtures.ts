@@ -20,6 +20,7 @@ import {
   asNonBlankTargetText,
   assertBenchmarkReportV02,
   assertDraftArtifactBundle,
+  selectedWrittenOutcomeCandidate,
   type BenchmarkReportV02,
   type DraftArtifactBundle,
 } from "@itotori/localization-bridge-schema";
@@ -193,20 +194,13 @@ function projectDraftOntoBranch(
     );
   }
   bundle.drafts = bundle.drafts.map((draft) => {
-    const selectedCandidate = draft.writtenOutcome.candidates.find(
-      (candidate: any) => candidate.id === draft.writtenOutcome.selectedCandidateId,
-    );
-    if (selectedCandidate === undefined) {
-      throw new LocaleBranchSeedConflationError(
-        `draft ${draft.draftId} has no selected written candidate`,
-      );
-    }
+    const selectedCandidate = selectedWrittenOutcomeCandidate(draft.writtenOutcome);
     return {
       ...draft,
       writtenOutcome: {
         ...draft.writtenOutcome,
         targetLocale: spec.targetLocale,
-        candidates: draft.writtenOutcome.candidates.map((candidate: any) =>
+        candidates: draft.writtenOutcome.candidates.map((candidate) =>
           candidate.id === selectedCandidate.id ? { ...candidate, body: selectedBody } : candidate,
         ),
       },
