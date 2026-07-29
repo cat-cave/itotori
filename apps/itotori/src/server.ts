@@ -270,9 +270,7 @@ async function readJsonRequestBody(request: IncomingMessage): Promise<unknown> {
 }
 
 function databaseOptions(options: DashboardServerOptions) {
-  return options.databaseUrl === undefined
-    ? { bootstrapLocalUser: false }
-    : { databaseUrl: options.databaseUrl, bootstrapLocalUser: false };
+  return options.databaseUrl === undefined ? {} : { databaseUrl: options.databaseUrl };
 }
 
 async function requireReveal(

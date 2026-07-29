@@ -40,13 +40,9 @@ describe("dashboard API failure responses", () => {
     expect(JSON.stringify(response.body)).not.toMatch(/insert|params|local-user|itotori_users/i);
   });
 
-  it("serves an independent dashboard read when the bootstrap write is unavailable", async () => {
+  it("serves a dashboard read without passing a request-time bootstrap option", async () => {
     const factory: ItotoriServiceFactory = async (callback, options) => {
-      if (options?.bootstrapLocalUser !== false) {
-        throw new Error(
-          'Failed query: insert into "itotori_users" ("user_id") values ($1) params: local-user',
-        );
-      }
+      expect(options).not.toHaveProperty("bootstrapLocalUser");
       return await callback({
         projectWorkflow: {
           async getDashboardDecisions() {

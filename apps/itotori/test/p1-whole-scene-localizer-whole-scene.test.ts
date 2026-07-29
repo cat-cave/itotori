@@ -10,6 +10,7 @@ import {
   BASE,
   BIBLE,
   draftBatchResponse,
+  installedBibleForUnits,
   recordedRuntime,
   unitFact,
   wholeSceneBatch,
@@ -22,7 +23,14 @@ describe("P1 whole-scene localizer — whole-scene mode", () => {
     const batch = wholeSceneBatch("6010", units, { "unit:6010:2": ["term"] });
     const captured: Captured[] = [];
     const result = await localizeScene(
-      { ...BASE, units, bibleRenderingIds: BIBLE, budgetBytes: 10_000, overlapUnits: 1 },
+      {
+        ...BASE,
+        units,
+        bibleRenderingIds: BIBLE,
+        unitBible: installedBibleForUnits(units),
+        budgetBytes: 10_000,
+        overlapUnits: 1,
+      },
       recordedRuntime([draftBatchResponse(batch)], captured),
     );
 

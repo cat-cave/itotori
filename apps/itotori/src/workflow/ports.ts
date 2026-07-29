@@ -32,14 +32,14 @@ import type {
 } from "./types.js";
 
 /** The readiness + bible-resolution answer for one unit. `ready:false` blocks
- * drafting and names the missing entries; `ready:true` carries the rendering ids
+ * drafting and names the missing entries; `ready:true` carries the exact binding
  * the draft must cite. */
 export type UnitReadiness =
   | {
       readonly ready: true;
       readonly bibleRenderingIds: readonly string[];
       /** The exact renderings + recorded dependencies behind the cited ids. */
-      readonly bibleBinding?: UnitBibleBinding;
+      readonly bibleBinding: UnitBibleBinding;
     }
   | { readonly ready: false; readonly missing: readonly string[] };
 

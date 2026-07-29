@@ -279,7 +279,15 @@ export function installedBibleRendering(renderingId: string) {
   });
 }
 
+export function installedBibleForUnits(units: readonly UnitFact[]) {
+  return units.map((unit) => ({
+    unitId: unit.value.unitId,
+    renderings: [installedBibleRendering(BIBLE[0])],
+  }));
+}
+
 export const BASE = {
+  bibleBasis: "wiki-first" as const,
   contextSnapshotId: CTX,
   localizationSnapshotId: LOC,
   schemaHash: SCHEMA,

@@ -106,4 +106,23 @@ describe("P1 whole-scene localizer — installed bible citations", () => {
     expect(result.finalizedDrafts).toHaveLength(units.length);
     expect(captured).toHaveLength(1);
   });
+
+  it("rejects wiki-first direct calls that omit every per-unit bible binding", async () => {
+    const good = wholeSceneBatch("6010", units);
+    const captured: Captured[] = [];
+
+    await expect(
+      localizeScene(
+        {
+          ...BASE,
+          units,
+          bibleRenderingIds: sceneBible,
+          budgetBytes: 10_000,
+          overlapUnits: 1,
+        },
+        recordedRuntime([draftBatchResponse(good)], captured),
+      ),
+    ).rejects.toMatchObject({ code: "bible-context" });
+    expect(captured).toHaveLength(0);
+  });
 });

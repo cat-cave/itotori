@@ -16,6 +16,7 @@ import {
   LOC,
   SCHEMA,
   draftBatchResponse,
+  installedBibleForUnits,
   pad,
   recordedRuntime,
   unitFact,
@@ -39,6 +40,7 @@ describe("P1 whole-scene localizer — end-to-end rejection", () => {
           ...BASE,
           units: [manifestGap],
           bibleRenderingIds: BIBLE,
+          unitBible: installedBibleForUnits([manifestGap]),
           budgetBytes: 10_000,
           overlapUnits: 1,
         },
@@ -59,12 +61,14 @@ describe("P1 whole-scene localizer — end-to-end rejection", () => {
         },
       },
     };
+    const protectedUnit = unitFact(0);
     await expect(
       localizeScene(
         {
           ...BASE,
-          units: [unitFact(0)],
+          units: [protectedUnit],
           bibleRenderingIds: BIBLE,
+          unitBible: installedBibleForUnits([protectedUnit]),
           budgetBytes: 10_000,
           overlapUnits: 1,
         },
@@ -112,7 +116,14 @@ describe("P1 whole-scene localizer — end-to-end rejection", () => {
     const captured: Captured[] = [];
     await expect(
       localizeScene(
-        { ...BASE, units: sceneUnits, bibleRenderingIds: BIBLE, budgetBytes: 40, overlapUnits: 1 },
+        {
+          ...BASE,
+          units: sceneUnits,
+          bibleRenderingIds: BIBLE,
+          unitBible: installedBibleForUnits(sceneUnits),
+          budgetBytes: 40,
+          overlapUnits: 1,
+        },
         recordedRuntime([draftBatchResponse(forgedBatch)], captured),
       ),
     ).rejects.toThrow(FinalizeError);
