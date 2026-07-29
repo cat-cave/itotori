@@ -14,6 +14,15 @@
 // artifact URIs (never as painted pixels), so no <img>/<video>/<audio> element
 // is ever produced.
 
+import {
+  definitionGridStyle,
+  escapeHtml,
+  headingStyle,
+  itemStyle,
+  pageStyle,
+  panelStyle,
+} from "./html-rendering.js";
+
 export const DEMO_BUNDLE_SCHEMA_VERSION = "0.1.0";
 export const DEMO_BUNDLE_KIND = "utsushi.mvmz.embedded_playback_demo_bundle";
 export const RUNTIME_ARTIFACT_URI_ROOT = "artifacts/utsushi/runtime/";
@@ -430,32 +439,4 @@ export function isManagedRuntimeUri(uri: string): boolean {
 
 function field(label: string, value: string | null): string {
   return `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value ?? "missing")}</dd>`;
-}
-
-function pageStyle(): string {
-  return "font-family: system-ui, sans-serif; margin: 2rem; color: #111827; max-width: 1280px";
-}
-
-function panelStyle(): string {
-  return "border: 1px solid #d1d5db; border-radius: 8px; padding: 1rem; margin-bottom: 1rem";
-}
-
-function headingStyle(): string {
-  return "margin: 0 0 .75rem; font-size: 1.25rem";
-}
-
-function definitionGridStyle(): string {
-  return "display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .35rem .75rem; margin: 0";
-}
-
-function itemStyle(): string {
-  return "border-top: 1px solid #e5e7eb; padding: .75rem 0";
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }

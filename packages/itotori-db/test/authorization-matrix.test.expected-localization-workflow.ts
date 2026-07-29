@@ -1,4 +1,4 @@
-export const permissionGateMatrixExpectedPart5 = [
+export const localizationWorkflowPermissionGateMatrixExpected = [
   {
     denialFixture: "missing permission actor user-without-required-permission",
     mutation: "ItotoriSourceUnitRepository.loadSourceUnitsForScope",

@@ -23,6 +23,7 @@ import {
   type BranchExplorerResponse,
 } from "./branch-explorer.js";
 import { type CoverageStatus } from "./branch-coverage.js";
+import { escapeHtml, headingStyle, pageStyle, panelStyle } from "./html-rendering.js";
 
 // The last in-flight render promise per host element. An interaction (status
 // filter change / pagination click) kicks off an async re-render; tests await
@@ -78,7 +79,7 @@ function renderSummary(page: BranchExplorerResponse): string {
   return `
     <section aria-label="Branch coverage summary" style="${panelStyle()}">
       <h2 style="${headingStyle()}">Coverage summary</h2>
-      <dl style="${definitionGridStyle()}">
+      <dl style="${summaryDefinitionGridStyle()}">
         ${summaryField("Branches", "branch-count", summary.branchCount)}
         ${summaryField("Visited", "visited", summary.visited)}
         ${summaryField("Unvisited", "unvisited", summary.unvisited)}
@@ -286,42 +287,22 @@ function diagnostic(value: string): string {
   return `<span role="status" style="color:#b91c1c; font-weight:600">${escapeHtml(value)}</span>`;
 }
 
-function pageStyle(): string {
-  return "font-family: system-ui, sans-serif; margin: 2rem; color: #111827; max-width: 1280px";
-}
-
 function titleStyle(): string {
   return "margin: 0 0 .5rem";
-}
-
-function panelStyle(): string {
-  return "border: 1px solid #d1d5db; border-radius: 8px; padding: 1rem; margin-bottom: 1rem";
 }
 
 function paginationStyle(): string {
   return "display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem";
 }
 
-function headingStyle(): string {
-  return "margin: 0 0 .75rem; font-size: 1.25rem";
-}
-
 function labelStyle(): string {
   return "display: inline-flex; flex-direction: column; gap: .25rem; font-size: .875rem";
 }
 
-function definitionGridStyle(): string {
+function summaryDefinitionGridStyle(): string {
   return "display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: .35rem .75rem; margin: 0";
 }
 
 function tableStyle(): string {
   return "border-collapse: collapse; width: 100%; font-size: .875rem";
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }

@@ -1,4 +1,4 @@
-export const permissionGateMatrixExpectedPart1 = [
+export const projectFeedbackLedgerPermissionGateMatrixExpected = [
   {
     denialFixture: "missing permission actor user-without-required-permission",
     mutation: "ItotoriProjectRepository.reset",

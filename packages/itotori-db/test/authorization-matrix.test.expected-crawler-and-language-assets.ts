@@ -1,4 +1,4 @@
-export const permissionGateMatrixExpectedPart4 = [
+export const crawlerAndLanguageAssetsPermissionGateMatrixExpected = [
   {
     denialFixture: "missing permission actor user-without-required-permission",
     mutation: "ItotoriCatalogCrawlerRepository.markStepFailed",

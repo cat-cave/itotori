@@ -1,4 +1,4 @@
-export const permissionGateMatrixExpectedPart2 = [
+export const queueAndCatalogSeedsPermissionGateMatrixExpected = [
   {
     denialFixture: "missing permission actor user-without-required-permission",
     mutation: "ItotoriModelLedgerRepository.getProjectTelemetryTimeseries",

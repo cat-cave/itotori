@@ -12,9 +12,18 @@ use crate::EvidenceTier;
 
 use super::ProfileId;
 use super::manifest::SubsystemRequirement;
+use super::{
+    capture_recording::codes as capture_recording_codes,
+    snapshot_check::codes as snapshot_check_codes,
+};
 
 /// Stable Utsushi conformance semantic codes.
 pub mod codes {
+    use super::super::{
+        capture_recording::codes as capture_recording_codes,
+        snapshot_check::codes as snapshot_check_codes,
+    };
+
     pub const UNSUPPORTED_SCHEMA_VERSION: &str = "utsushi.conformance.unsupported_schema_version";
     pub const ADAPTER_ID_MALFORMED: &str = "utsushi.conformance.adapter_id_malformed";
     pub const UNKNOWN_ABI_VERSION: &str = "utsushi.conformance.unknown_abi_version";
@@ -53,33 +62,6 @@ pub mod codes {
     pub const BRANCH_OUTCOME_MISMATCH: &str = "utsushi.conformance.branch_outcome_mismatch";
     pub const TRACE_EVIDENCE_TIER_OVERCLAIM: &str =
         "utsushi.conformance.trace_evidence_tier_overclaim";
-
-    // capture/recording codes. Source of truth is
-    // `super::super::capture_recording::codes`; re-export here so legacy
-    // dotted paths continue to resolve and so the unified `ALL` slice
-    // can name each entry locally. ----
-    pub use super::super::capture_recording::codes::{
-        ARTIFACT_COUNT_RANGE_MALFORMED, CAPTURE_CHECK_PROFILE_MISMATCH, DURATION_RANGE_MALFORMED,
-        FRAME_ARTIFACT_COUNT_OUT_OF_RANGE, FRAME_ARTIFACT_HOST_PATH,
-        FRAME_ARTIFACT_KIND_OUTSIDE_ALLOW_LIST, FRAME_CAPTURE_NO_ARTIFACTS,
-        FRAME_CAPTURE_UNSUPPORTED, FRAME_EVIDENCE_TIER_ABOVE_SINK_CEILING,
-        FRAME_EVIDENCE_TIER_BELOW_FLOOR, FRAME_SEQUENCE_DUPLICATE, FRAME_SEQUENCE_UNORDERED,
-        FRAME_TIER_FLOOR_ABOVE_PROFILE_CEILING, FRAME_TIER_FLOOR_BELOW_SINK_FLOOR,
-        RECORDING_ARTIFACT_HOST_PATH, RECORDING_ARTIFACT_KIND_OUTSIDE_ALLOW_LIST,
-        RECORDING_CAPTURE_UNSUPPORTED, RECORDING_CONTAINER_DUPLICATED, RECORDING_CONTAINER_MISSING,
-        RECORDING_DURATION_OUT_OF_RANGE, RECORDING_EVENT_COUNT_OUT_OF_RANGE,
-        RECORDING_EVIDENCE_TIER_OVERCLAIM, RECORDING_FRAME_COUNT_MISMATCH, RECORDING_ID_MALFORMED,
-    };
-
-    // snapshot conformance codes. Source of truth is
-    // `super::super::snapshot_check::codes`; re-export here so legacy
-    // dotted paths continue to resolve and so the unified `ALL` slice
-    // can name each entry locally. ----
-    pub use super::super::snapshot_check::codes::{
-        SNAPSHOT_CHECK_PROFILE_MISMATCH, SNAPSHOT_DIFF_INSPECTABLE_ID_MISMATCH,
-        SNAPSHOT_EVIDENCE_TIER_OVERCLAIM, SNAPSHOT_INSPECTABLE_ID_MISMATCH, SNAPSHOT_REF_INVALID,
-        SNAPSHOT_RESOLUTION_FAILED, SNAPSHOT_RESTORE_UNSUPPORTED,
-    };
 
     /// Full set of stable conformance semantic codes. Conformance
     /// schemas that gate runtime diagnostics by allowed-code list
@@ -121,38 +103,38 @@ pub mod codes {
         BRANCH_OUTCOME_MISMATCH,
         TRACE_EVIDENCE_TIER_OVERCLAIM,
         // capture/recording.
-        FRAME_CAPTURE_UNSUPPORTED,
-        RECORDING_CAPTURE_UNSUPPORTED,
-        FRAME_CAPTURE_NO_ARTIFACTS,
-        FRAME_ARTIFACT_HOST_PATH,
-        RECORDING_ARTIFACT_HOST_PATH,
-        RECORDING_EVIDENCE_TIER_OVERCLAIM,
-        FRAME_EVIDENCE_TIER_BELOW_FLOOR,
-        FRAME_EVIDENCE_TIER_ABOVE_SINK_CEILING,
-        CAPTURE_CHECK_PROFILE_MISMATCH,
-        ARTIFACT_COUNT_RANGE_MALFORMED,
-        DURATION_RANGE_MALFORMED,
-        FRAME_TIER_FLOOR_BELOW_SINK_FLOOR,
-        FRAME_TIER_FLOOR_ABOVE_PROFILE_CEILING,
-        FRAME_ARTIFACT_COUNT_OUT_OF_RANGE,
-        FRAME_ARTIFACT_KIND_OUTSIDE_ALLOW_LIST,
-        FRAME_SEQUENCE_UNORDERED,
-        FRAME_SEQUENCE_DUPLICATE,
-        RECORDING_ID_MALFORMED,
-        RECORDING_CONTAINER_MISSING,
-        RECORDING_CONTAINER_DUPLICATED,
-        RECORDING_ARTIFACT_KIND_OUTSIDE_ALLOW_LIST,
-        RECORDING_FRAME_COUNT_MISMATCH,
-        RECORDING_DURATION_OUT_OF_RANGE,
-        RECORDING_EVENT_COUNT_OUT_OF_RANGE,
+        capture_recording_codes::FRAME_CAPTURE_UNSUPPORTED,
+        capture_recording_codes::RECORDING_CAPTURE_UNSUPPORTED,
+        capture_recording_codes::FRAME_CAPTURE_NO_ARTIFACTS,
+        capture_recording_codes::FRAME_ARTIFACT_HOST_PATH,
+        capture_recording_codes::RECORDING_ARTIFACT_HOST_PATH,
+        capture_recording_codes::RECORDING_EVIDENCE_TIER_OVERCLAIM,
+        capture_recording_codes::FRAME_EVIDENCE_TIER_BELOW_FLOOR,
+        capture_recording_codes::FRAME_EVIDENCE_TIER_ABOVE_SINK_CEILING,
+        capture_recording_codes::CAPTURE_CHECK_PROFILE_MISMATCH,
+        capture_recording_codes::ARTIFACT_COUNT_RANGE_MALFORMED,
+        capture_recording_codes::DURATION_RANGE_MALFORMED,
+        capture_recording_codes::FRAME_TIER_FLOOR_BELOW_SINK_FLOOR,
+        capture_recording_codes::FRAME_TIER_FLOOR_ABOVE_PROFILE_CEILING,
+        capture_recording_codes::FRAME_ARTIFACT_COUNT_OUT_OF_RANGE,
+        capture_recording_codes::FRAME_ARTIFACT_KIND_OUTSIDE_ALLOW_LIST,
+        capture_recording_codes::FRAME_SEQUENCE_UNORDERED,
+        capture_recording_codes::FRAME_SEQUENCE_DUPLICATE,
+        capture_recording_codes::RECORDING_ID_MALFORMED,
+        capture_recording_codes::RECORDING_CONTAINER_MISSING,
+        capture_recording_codes::RECORDING_CONTAINER_DUPLICATED,
+        capture_recording_codes::RECORDING_ARTIFACT_KIND_OUTSIDE_ALLOW_LIST,
+        capture_recording_codes::RECORDING_FRAME_COUNT_MISMATCH,
+        capture_recording_codes::RECORDING_DURATION_OUT_OF_RANGE,
+        capture_recording_codes::RECORDING_EVENT_COUNT_OUT_OF_RANGE,
         // snapshot conformance.
-        SNAPSHOT_RESTORE_UNSUPPORTED,
-        SNAPSHOT_CHECK_PROFILE_MISMATCH,
-        SNAPSHOT_REF_INVALID,
-        SNAPSHOT_INSPECTABLE_ID_MISMATCH,
-        SNAPSHOT_EVIDENCE_TIER_OVERCLAIM,
-        SNAPSHOT_DIFF_INSPECTABLE_ID_MISMATCH,
-        SNAPSHOT_RESOLUTION_FAILED,
+        snapshot_check_codes::SNAPSHOT_RESTORE_UNSUPPORTED,
+        snapshot_check_codes::SNAPSHOT_CHECK_PROFILE_MISMATCH,
+        snapshot_check_codes::SNAPSHOT_REF_INVALID,
+        snapshot_check_codes::SNAPSHOT_INSPECTABLE_ID_MISMATCH,
+        snapshot_check_codes::SNAPSHOT_EVIDENCE_TIER_OVERCLAIM,
+        snapshot_check_codes::SNAPSHOT_DIFF_INSPECTABLE_ID_MISMATCH,
+        snapshot_check_codes::SNAPSHOT_RESOLUTION_FAILED,
     ];
 }
 
@@ -353,40 +335,76 @@ impl ConformanceError {
             Self::ProfileNotReported { .. } => codes::PROFILE_NOT_REPORTED,
             Self::AdapterIdMismatch { .. } => codes::ADAPTER_ID_MISMATCH,
             Self::PassAboveManifestCeiling { .. } => codes::PASS_ABOVE_MANIFEST_CEILING,
-            Self::CaptureCheckProfileMismatch { .. } => codes::CAPTURE_CHECK_PROFILE_MISMATCH,
-            Self::ArtifactCountRangeMalformed { .. } => codes::ARTIFACT_COUNT_RANGE_MALFORMED,
-            Self::DurationRangeMalformed { .. } => codes::DURATION_RANGE_MALFORMED,
-            Self::FrameTierFloorBelowSinkFloor { .. } => codes::FRAME_TIER_FLOOR_BELOW_SINK_FLOOR,
+            Self::CaptureCheckProfileMismatch { .. } => {
+                capture_recording_codes::CAPTURE_CHECK_PROFILE_MISMATCH
+            }
+            Self::ArtifactCountRangeMalformed { .. } => {
+                capture_recording_codes::ARTIFACT_COUNT_RANGE_MALFORMED
+            }
+            Self::DurationRangeMalformed { .. } => {
+                capture_recording_codes::DURATION_RANGE_MALFORMED
+            }
+            Self::FrameTierFloorBelowSinkFloor { .. } => {
+                capture_recording_codes::FRAME_TIER_FLOOR_BELOW_SINK_FLOOR
+            }
             Self::FrameTierFloorAboveProfileCeiling { .. } => {
-                codes::FRAME_TIER_FLOOR_ABOVE_PROFILE_CEILING
+                capture_recording_codes::FRAME_TIER_FLOOR_ABOVE_PROFILE_CEILING
             }
-            Self::FrameArtifactCountOutOfRange { .. } => codes::FRAME_ARTIFACT_COUNT_OUT_OF_RANGE,
-            Self::FrameCaptureNoArtifacts { .. } => codes::FRAME_CAPTURE_NO_ARTIFACTS,
-            Self::FrameEvidenceTierBelowFloor { .. } => codes::FRAME_EVIDENCE_TIER_BELOW_FLOOR,
+            Self::FrameArtifactCountOutOfRange { .. } => {
+                capture_recording_codes::FRAME_ARTIFACT_COUNT_OUT_OF_RANGE
+            }
+            Self::FrameCaptureNoArtifacts { .. } => {
+                capture_recording_codes::FRAME_CAPTURE_NO_ARTIFACTS
+            }
+            Self::FrameEvidenceTierBelowFloor { .. } => {
+                capture_recording_codes::FRAME_EVIDENCE_TIER_BELOW_FLOOR
+            }
             Self::FrameEvidenceTierAboveSinkCeiling { .. } => {
-                codes::FRAME_EVIDENCE_TIER_ABOVE_SINK_CEILING
+                capture_recording_codes::FRAME_EVIDENCE_TIER_ABOVE_SINK_CEILING
             }
-            Self::FrameArtifactHostPath { .. } => codes::FRAME_ARTIFACT_HOST_PATH,
+            Self::FrameArtifactHostPath { .. } => capture_recording_codes::FRAME_ARTIFACT_HOST_PATH,
             Self::FrameArtifactKindOutsideAllowList { .. } => {
-                codes::FRAME_ARTIFACT_KIND_OUTSIDE_ALLOW_LIST
+                capture_recording_codes::FRAME_ARTIFACT_KIND_OUTSIDE_ALLOW_LIST
             }
-            Self::FrameSequenceUnordered { .. } => codes::FRAME_SEQUENCE_UNORDERED,
-            Self::FrameSequenceDuplicate { .. } => codes::FRAME_SEQUENCE_DUPLICATE,
-            Self::RecordingIdMalformed { .. } => codes::RECORDING_ID_MALFORMED,
-            Self::RecordingEvidenceTierOverclaim { .. } => codes::RECORDING_EVIDENCE_TIER_OVERCLAIM,
-            Self::RecordingContainerMissing => codes::RECORDING_CONTAINER_MISSING,
-            Self::RecordingContainerDuplicated { .. } => codes::RECORDING_CONTAINER_DUPLICATED,
+            Self::FrameSequenceUnordered { .. } => {
+                capture_recording_codes::FRAME_SEQUENCE_UNORDERED
+            }
+            Self::FrameSequenceDuplicate { .. } => {
+                capture_recording_codes::FRAME_SEQUENCE_DUPLICATE
+            }
+            Self::RecordingIdMalformed { .. } => capture_recording_codes::RECORDING_ID_MALFORMED,
+            Self::RecordingEvidenceTierOverclaim { .. } => {
+                capture_recording_codes::RECORDING_EVIDENCE_TIER_OVERCLAIM
+            }
+            Self::RecordingContainerMissing => capture_recording_codes::RECORDING_CONTAINER_MISSING,
+            Self::RecordingContainerDuplicated { .. } => {
+                capture_recording_codes::RECORDING_CONTAINER_DUPLICATED
+            }
             Self::RecordingArtifactKindOutsideAllowList { .. } => {
-                codes::RECORDING_ARTIFACT_KIND_OUTSIDE_ALLOW_LIST
+                capture_recording_codes::RECORDING_ARTIFACT_KIND_OUTSIDE_ALLOW_LIST
             }
-            Self::RecordingArtifactHostPath { .. } => codes::RECORDING_ARTIFACT_HOST_PATH,
-            Self::RecordingFrameCountMismatch { .. } => codes::RECORDING_FRAME_COUNT_MISMATCH,
-            Self::RecordingDurationOutOfRange { .. } => codes::RECORDING_DURATION_OUT_OF_RANGE,
-            Self::RecordingEventCountOutOfRange { .. } => codes::RECORDING_EVENT_COUNT_OUT_OF_RANGE,
-            Self::SnapshotCheckProfileMismatch { .. } => codes::SNAPSHOT_CHECK_PROFILE_MISMATCH,
-            Self::SnapshotRefInvalid { .. } => codes::SNAPSHOT_REF_INVALID,
-            Self::SnapshotInspectableIdMismatch { .. } => codes::SNAPSHOT_INSPECTABLE_ID_MISMATCH,
-            Self::SnapshotEvidenceTierOverclaim { .. } => codes::SNAPSHOT_EVIDENCE_TIER_OVERCLAIM,
+            Self::RecordingArtifactHostPath { .. } => {
+                capture_recording_codes::RECORDING_ARTIFACT_HOST_PATH
+            }
+            Self::RecordingFrameCountMismatch { .. } => {
+                capture_recording_codes::RECORDING_FRAME_COUNT_MISMATCH
+            }
+            Self::RecordingDurationOutOfRange { .. } => {
+                capture_recording_codes::RECORDING_DURATION_OUT_OF_RANGE
+            }
+            Self::RecordingEventCountOutOfRange { .. } => {
+                capture_recording_codes::RECORDING_EVENT_COUNT_OUT_OF_RANGE
+            }
+            Self::SnapshotCheckProfileMismatch { .. } => {
+                snapshot_check_codes::SNAPSHOT_CHECK_PROFILE_MISMATCH
+            }
+            Self::SnapshotRefInvalid { .. } => snapshot_check_codes::SNAPSHOT_REF_INVALID,
+            Self::SnapshotInspectableIdMismatch { .. } => {
+                snapshot_check_codes::SNAPSHOT_INSPECTABLE_ID_MISMATCH
+            }
+            Self::SnapshotEvidenceTierOverclaim { .. } => {
+                snapshot_check_codes::SNAPSHOT_EVIDENCE_TIER_OVERCLAIM
+            }
         }
     }
 }
