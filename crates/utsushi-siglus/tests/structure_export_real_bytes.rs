@@ -1,7 +1,7 @@
 //! Optional real-byte proof for the Siglus common structure projection.
 //!
-//! The corpus is private and read-only. CI without it emits a clean skip;
-//! configured runs must exercise two independent installations.
+//! The corpus is private and read-only. Configured runs must exercise two
+//! independent installations; an absent corpus leaves the proof unestablished.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -12,6 +12,7 @@ const FIRST_CORPUS_ENV: &str = "siglus/1/encrypted";
 const SECOND_CORPUS_ENV: &str = "siglus/2/encrypted";
 
 #[test]
+#[ignore = "real-bytes; requires private corpora"]
 fn exports_nontrivial_structure_for_two_real_siglus_corpora() {
     let Some(first) = corpus_root(FIRST_CORPUS_ENV) else {
         return;
@@ -26,8 +27,7 @@ fn exports_nontrivial_structure_for_two_real_siglus_corpora() {
 
 fn corpus_root(variable: &str) -> Option<PathBuf> {
     let Some(value) = corpus_registry::resolve_identity(variable).ok() else {
-        eprintln!("SKIP Siglus structure real bytes: {variable} is unset");
-        return None;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
     let candidate = value;
     let root = if candidate.is_dir() {
@@ -37,8 +37,7 @@ fn corpus_root(variable: &str) -> Option<PathBuf> {
     };
     for required in ["Scene.pck", "Gameexe.dat", "SiglusEngine.exe"] {
         if !root.join(required).is_file() {
-            eprintln!("SKIP Siglus structure real bytes: {variable} lacks {required}");
-            return None;
+            panic!("real-bytes proof not established: required corpus asset is unavailable");
         }
     }
     Some(root)

@@ -96,9 +96,10 @@ fn metadata_only_profile_a_declares_honest_inventory_and_kag_coverage() {
 }
 
 #[test]
+#[ignore = "real-bytes; requires a private corpus"]
 fn supplied_licensed_archive_matches_profile_a_inventory_metadata() {
     let Some(archive_path) = corpus_registry::resolve_identity("kirikiri-xp3/1/plain").ok() else {
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
     let bytes = std::fs::read(archive_path).expect("read supplied licensed archive");
     let inventory = read_plain_xp3_inventory(&bytes).expect("supplied archive must parse cleanly");

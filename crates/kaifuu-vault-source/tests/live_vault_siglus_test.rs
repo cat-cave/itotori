@@ -383,8 +383,7 @@ fn materialize_confirm_siglus(
 #[ignore = "requires ITOTORI_VAULT_ROOT=/archive/vault (live read-only vault)"]
 fn materializes_both_siglus_titles_to_plaintext_trees_and_records_manifest() {
     let Some(_vault) = require_live_vault() else {
-        eprintln!("skipping: set ITOTORI_VAULT_ROOT=/archive/vault to run this proof");
-        return;
+        panic!("real-bytes proof not established: required corpus vault is unavailable");
     };
     let scratch = scratch_base();
 

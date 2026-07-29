@@ -29,6 +29,7 @@ struct ExtractionCounts {
 }
 
 #[test]
+#[ignore = "real-bytes; requires a private corpus"]
 fn profile_a_metadata_matches_the_supplied_read_only_game_bytes() {
     let manifest: Value = serde_json::from_str(MANIFEST).expect("profile-A manifest parses");
     assert_eq!(
@@ -48,7 +49,7 @@ fn profile_a_metadata_matches_the_supplied_read_only_game_bytes() {
     );
 
     let Some(data_dir) = source_data_dir() else {
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
     let observed_files = source_file_bytes(&data_dir);
     let manifest_files = manifest["sourceFiles"]

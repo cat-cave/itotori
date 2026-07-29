@@ -2,7 +2,7 @@
 //!
 //! The two roots are intentionally explicit rather than checked into a test
 //! fixture: copyrighted title bytes stay outside this repository. When either
-//! root is absent the test reports a skip and succeeds; when both are present
+//! root is absent the proof is not established; when both are present
 //! it drives the real `EnginePort` + `Runner` lifecycle for one compressed
 //! type-0 and one layered type-2 asset from each title.
 
@@ -23,6 +23,7 @@ const FIRST_TITLE_ENV: &str = "siglus/1/encrypted";
 const SECOND_TITLE_ENV: &str = "siglus/2/encrypted";
 
 #[test]
+#[ignore = "real-bytes; requires private corpora"]
 fn two_real_siglus_titles_decode_layered_g00_and_capture_redacted_pngs() {
     let Some(first) = corpus_root(FIRST_TITLE_ENV) else {
         return;
@@ -35,6 +36,7 @@ fn two_real_siglus_titles_decode_layered_g00_and_capture_redacted_pngs() {
 }
 
 #[test]
+#[ignore = "real-bytes; requires a private corpus"]
 fn second_real_siglus_title_decodes_type3_encrypted_jpeg_into_visible_background() {
     let Some(root) = corpus_root(SECOND_TITLE_ENV) else {
         return;
@@ -62,13 +64,11 @@ fn second_real_siglus_title_decodes_type3_encrypted_jpeg_into_visible_background
 
 fn corpus_root(variable: &str) -> Option<PathBuf> {
     let Some(value) = corpus_registry::resolve_identity(variable).ok() else {
-        eprintln!("SKIP siglus real bytes: {variable} is unset");
-        return None;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
     let path = value;
     if !path.is_dir() {
-        eprintln!("SKIP siglus real bytes: {variable} is not a directory");
-        return None;
+        panic!("real-bytes proof not established: required corpus directory is unavailable");
     }
     Some(path)
 }

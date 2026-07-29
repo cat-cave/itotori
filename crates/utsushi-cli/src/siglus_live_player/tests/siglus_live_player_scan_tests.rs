@@ -37,9 +37,10 @@ fn player_response_reports_the_real_nonbackground_pixel_count() {
 }
 
 #[test]
+#[ignore = "real-bytes; requires a private corpus"]
 fn corpus_two_scene_85_renders_its_authored_bg01a01_text_boundary() {
     let Some(root) = corpus_registry::resolve_identity("siglus/2/encrypted").ok() else {
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
     let (title, _, message_window) = load_title(&root).expect("load corpus-two Siglus title");
     let mut state = VmState::default();

@@ -15,10 +15,6 @@ pub fn reallivedata_dir() -> Option<PathBuf> {
     Some(game_root()?.join("REALLIVEDATA"))
 }
 
-pub fn skip_message(test_name: &str) -> String {
-    format!("{REAL_GAME_ROOT_ENV} unset or no REALLIVEDATA directory found; skipping {test_name}")
-}
-
 fn resolve_reallive_game_root(root: &Path) -> Option<PathBuf> {
     let mut current = root.to_path_buf();
     for _ in 0..=4 {

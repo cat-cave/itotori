@@ -283,10 +283,7 @@ fn entry_report(engine: &ReplayEngine, entry: u16) -> BranchReplayReport {
 fn two_corpora_or_skip(test_name: &str) -> Option<Vec<real_corpus::RealCorpus>> {
     let corpora = real_corpus::corpora();
     if corpora.len() < 2 {
-        eprintln!(
-            "REAL-BYTES SKIP {test_name}: need reallive/1/encrypted and reallive/2/plain; found {}. Configure both records in the private platform inventory to exercise real bytes.",
-            corpora.len(),
-        );
+        real_corpus::require_real_bytes(test_name);
         return None;
     }
     Some(corpora)

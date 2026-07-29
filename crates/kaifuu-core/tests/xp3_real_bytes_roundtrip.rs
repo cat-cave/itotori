@@ -59,19 +59,15 @@ fn fixture_manifest() -> Value {
         .unwrap_or_else(|error| panic!("parse {} as JSON: {error}", path.display()))
 }
 
-/// Resolve the source archive path. Falls back to `None` (SKIP) when the env
-/// var is unset OR points at a missing file. A present-but-unreadable file
-/// is a hard error (the operator explicitly named a path that cannot be
-/// honoured).
+/// Resolve the source archive path. An unavailable source leaves this
+/// real-bytes proof unestablished.
 fn source_archive_path() -> Option<PathBuf> {
-    let raw = corpus_registry::resolve_identity(SOURCE_ARCHIVE_ENV).ok()?;
+    let raw = corpus_registry::resolve_identity(SOURCE_ARCHIVE_ENV).unwrap_or_else(|_| {
+        panic!("real-bytes proof not established: required corpus is unavailable")
+    });
     let path = raw;
     if !path.exists() {
-        eprintln!(
-            "SKIP: {SOURCE_ARCHIVE_ENV}={} does not exist; real-bytes round-trip is skipped",
-            path.display()
-        );
-        return None;
+        panic!("real-bytes proof not established: required corpus archive is unavailable");
     }
     Some(path)
 }
@@ -101,6 +97,7 @@ fn fixture_metadata_records_profile_a_id_and_zlib_index_encoding() {
 }
 
 #[test]
+#[ignore = "real-bytes; requires a private corpus"]
 fn repack_of_profile_a_source_archive_is_byte_for_byte_identical() {
     let Some(source_path) = source_archive_path() else {
         return;
@@ -196,6 +193,7 @@ fn repack_of_profile_a_source_archive_is_byte_for_byte_identical() {
 }
 
 #[test]
+#[ignore = "real-bytes; requires a private corpus"]
 fn repack_round_trip_is_idempotent_for_profile_a_source() {
     // Repacking twice yields the same bytes — the rebuild is deterministic,
     // not a one-shot fluke. The existing raw-index writer already proved

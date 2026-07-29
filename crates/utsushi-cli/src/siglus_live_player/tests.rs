@@ -71,9 +71,10 @@ fn decoded_mwnd_template_controls_message_projection() {
 }
 
 #[test]
+#[ignore = "real-bytes; requires a private corpus"]
 fn real_siglus_positioned_message_boundary_is_measured() {
     let Some(root) = corpus_registry::resolve_identity("siglus/1/encrypted").ok() else {
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
     let (title, scene_ids, _) = load_title(&root).expect("load real Siglus title");
     let mut text_scenes = 0usize;

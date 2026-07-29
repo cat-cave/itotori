@@ -121,16 +121,10 @@ fn extract_last_quoted(value: &str) -> Option<String> {
 }
 
 #[test]
+#[ignore = "real-bytes; requires a private corpus"]
 fn composite_asset_package_real_bytes_primary_corpus_realivedata() {
     let Some(realivedata) = real_corpus::reallivedata_dir() else {
-        // Visible-skip acceptance criteria.
-        eprintln!(
-            "SKIP composite_asset_package_real_bytes_primary_corpus_realivedata: {}; \
-             multi-engine validation needs both reallive/1/encrypted and \
-             rpg-maker-mv-mz/1/plain to confirm cross-engine genericity",
-            real_corpus::skip_message("RealLive composite asset package test")
-        );
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
 
     let gameexe_path = realivedata.join("Gameexe.ini");
@@ -234,10 +228,7 @@ fn composite_asset_package_real_bytes_primary_corpus_realivedata() {
             }
         }
         let Some(g00_path) = first_g00 else {
-            eprintln!(
-                "  primary_corpus HD g00/ folder present but contained no files; skipping byte check"
-            );
-            return;
+            panic!("real-bytes proof not established: required corpus asset is unavailable");
         };
         let logical = format!(
             "g00/{}",
@@ -264,6 +255,7 @@ fn composite_asset_package_real_bytes_primary_corpus_realivedata() {
 }
 
 #[test]
+#[ignore = "real-bytes; requires a private corpus"]
 fn composite_asset_package_real_bytes_lust_memory_www_data_system_json() {
     let env_path = if let Ok(value) = corpus_registry::resolve_identity(RPG_MAKER_MV_MZ_ROOT_ENV)
         .map(|path| path.to_string_lossy().into_owned())
@@ -276,13 +268,7 @@ fn composite_asset_package_real_bytes_lust_memory_www_data_system_json() {
                 .map(|path| path.to_string_lossy().into_owned())
                 .is_err()
         );
-        eprintln!(
-            "SKIP composite_asset_package_real_bytes_lust_memory_www_data_system_json: \
-             {RPG_MAKER_MV_MZ_ROOT_ENV} is unset; \
-             multi-engine validation needs both reallive/1/encrypted and \
-             {RPG_MAKER_MV_MZ_ROOT_ENV} to confirm cross-engine genericity"
-        );
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
 
     let www = locate_subdir(&env_path, "www").unwrap_or_else(|| {

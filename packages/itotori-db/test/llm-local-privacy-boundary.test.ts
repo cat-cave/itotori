@@ -198,6 +198,31 @@ postgresDescribe("rebuilt LLM local privacy boundary", () => {
       await context.close();
     }
   });
+
+  it("propagates an executor bug instead of recording it as a transport failure", async () => {
+    const context = await isolatedMigratedContext();
+    const cipher = new ProofCipher();
+    const defect = new Error("executor invariant failed");
+    try {
+      const repository = new ItotoriLlmCallMemoRepository(
+        context.pool,
+        cipher,
+        createContentAccess(context.db, localActor),
+      );
+      const input = memoInput("executor-bug", "EXECUTOR_BUG_CONTENT");
+
+      await expect(
+        repository.singleflight({
+          ...input,
+          execute: async () => {
+            throw defect;
+          },
+        }),
+      ).rejects.toBe(defect);
+    } finally {
+      await context.close();
+    }
+  });
 });
 
 type RegisteredCiphertextColumn = {
