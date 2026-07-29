@@ -7,7 +7,11 @@ import {
   type ConformanceResultV01,
 } from "@itotori/localization-bridge-schema";
 import { configuredServicePort } from "./services/configured-port.js";
-import type { ItotoriCliDependencies, JsonFileStore } from "./cli-handler-contracts.js";
+import type {
+  ItotoriCliDependencies,
+  ItotoriCliServices,
+  JsonFileStore,
+} from "./cli-handler-contracts.js";
 import { optionalFlag, requiredFlag } from "./cli/flags.js";
 import {
   extractCapabilities,
@@ -258,9 +262,17 @@ export async function runIngestRuntime(
   dependencies.io.writeJson(outputPath, result.result);
 }
 
+type IngestPatchResultDependencies = Pick<ItotoriCliDependencies, "io"> & {
+  withServices<T>(
+    callback: (services: {
+      projectWorkflow: Pick<ItotoriCliServices["projectWorkflow"], "ingestPatchResult">;
+    }) => Promise<T>,
+  ): Promise<T>;
+};
+
 export async function runIngestPatchResult(
   args: string[],
-  dependencies: ItotoriCliDependencies,
+  dependencies: IngestPatchResultDependencies,
 ): Promise<void> {
   const projectPath = requiredFlag(args, "--project");
   const patchResultPath = requiredFlag(args, "--patch-result");
@@ -271,7 +283,12 @@ export async function runIngestPatchResult(
   await dependencies.withServices((services) =>
     services.projectWorkflow.ingestPatchResult(project, patchResult),
   );
-  void outputPath;
+  dependencies.io.writeJson(outputPath, {
+    outcome: "ingested",
+    patchResultId: patchResult.patchResultId,
+    patchExportId: patchResult.patchExportId,
+    status: patchResult.status,
+  });
 }
 
 export async function runIngestConformance(

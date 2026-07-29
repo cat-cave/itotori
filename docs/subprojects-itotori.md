@@ -74,3 +74,5 @@ node apps/itotori/dist/cli.js ingest-patch-result \
 
 Persistence is in-memory for the current slice; `@itotori/db` schema work that
 records ingested patch results is tracked as a follow-up.
+On success, `--output` receives an ingestion receipt with the patch-result and
+patch-export identities plus the reported status.
