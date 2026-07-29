@@ -170,9 +170,6 @@ export const itotoriApiMswHandlers = [
   http.get("http://itotori.test/api/projects", () =>
     apiJson("projects.list", portfolioProjectsFixture),
   ),
-  http.get("http://itotori.test/api/hello/status", () =>
-    apiJson("runtime.status", runtimeStatusFixture),
-  ),
   http.get("http://itotori.test/api/runtime/v0.2/status", () =>
     apiJson("runtime.status", runtimeStatusFixture),
   ),

@@ -207,17 +207,12 @@ export async function routeProjectAndAuthReads(
     return responses.ok("auth.capabilities", shared.authCapabilitiesResponseBody(view));
   }
 
-  if (
-    request.method === "GET" &&
-    (request.pathname === "/api/hello/status" || request.pathname === "/api/runtime/v0.2/status")
-  ) {
+  if (request.method === "GET" && request.pathname === "/api/runtime/v0.2/status") {
     // gate-runtime-status-reads-and-redact-evidence-previews — the runtime
     // status read requires catalog.read for the DETAILED evidence report.
     // An unprivileged / absent-permission caller instead receives a redacted
     // summary that omits the evidence-text previews, finding free text, and
-    // artifact URIs/hashes. Both the /api/runtime/v0.2/status and the legacy
-    // /api/hello/status alias share this gate — there is no parallel ungated
-    // path to the same data.
+    // artifact URIs/hashes.
     const canRead = await shared.resolveProjectReadPermission(services);
     const status = await services.projectWorkflow.getRuntimeStatus(
       deps.parseRuntimeRunIdQuery(request.search),

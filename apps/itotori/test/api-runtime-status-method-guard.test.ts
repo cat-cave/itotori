@@ -35,6 +35,21 @@ describe("runtime v0.2 status API method guard", () => {
     expect(response).toEqual({ statusCode: 200, body: runtimeStatusFixture });
   });
 
+  it("does not expose the removed hello status alias", async () => {
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/hello/status" },
+      runtimeStatusServices(),
+    );
+
+    expect(response).toEqual({
+      statusCode: 404,
+      body: {
+        error: "unknown API route: /api/hello/status",
+        code: "not_found",
+      },
+    });
+  });
+
   it("returns not_found for an unknown runtime route", async () => {
     const response = await handleItotoriApiRequest(
       { method: "POST", pathname: "/api/runtime/v0.2/unknown" },

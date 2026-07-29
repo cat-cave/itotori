@@ -15,7 +15,6 @@ let currentFixture = runtimeFixture("passed-e2-capture");
 const server = setupServer(
   http.get("http://localhost/api/runtime/v0.2/status", () => apiRuntimeStatus(currentFixture)),
   http.get("http://itotori.test/api/runtime/v0.2/status", () => apiRuntimeStatus(currentFixture)),
-  http.get("http://itotori.test/api/hello/status", () => apiRuntimeStatus(currentFixture)),
 );
 
 beforeAll(() => server.listen());
@@ -254,17 +253,5 @@ describe("Utsushi runtime dashboard", () => {
 
     expect(root.querySelector('[data-metric="frame-captures"]')?.textContent).toBe("0");
     expect(root.querySelector('[data-metric="screenshots"]')?.textContent).toBe("1");
-  });
-
-  it("keeps explicit hello status endpoint compatibility through the same schema", async () => {
-    currentFixture = runtimeFixture("passed-e2-capture");
-    const root = document.createElement("div");
-    document.body.append(root);
-
-    await renderRuntimeDashboard(root, "http://itotori.test/api/hello/status");
-
-    expect(root.textContent).toContain("run-passed-e2-capture");
-    expect(root.textContent).toContain("layout_probe");
-    expect(root.textContent).toContain("1");
   });
 });
