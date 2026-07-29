@@ -22,8 +22,9 @@
 //   - When the whitelist reaches empty (all files modularized under the cap),
 //     the guard is absolute: every file must stay at or below the cap.
 //
-// Scope: every tracked Rust or TypeScript source file (`.rs`, `.ts`, `.tsx`).
-// Generated/build output (`target/`, `dist/`) is excluded as untracked anyway.
+// Scope: every tracked Rust, TypeScript, or JavaScript source file (`.rs`,
+// `.ts`, `.tsx`, `.js`, `.mjs`). Generated/build output is inspected only when
+// it is tracked and has one of those extensions.
 // Lines are counted as
 // newline characters (matches `wc -l`), deliberately INCLUDING inline
 // `#[cfg(test)] mod tests` lines so the cap reflects true file size.
@@ -42,7 +43,7 @@ const repoRoot = join(here, "..");
 const DEFAULT_WHITELIST_PATH = join(here, "lint", "file-line-cap-whitelist.json");
 
 export const THRESHOLD = 500;
-export const SCAN_EXTENSIONS = [".rs", ".ts", ".tsx"];
+export const SCAN_EXTENSIONS = [".js", ".mjs", ".rs", ".ts", ".tsx"];
 
 const WHITELIST_HEADER = `RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via
 "node scripts/file-line-cap-guard.mjs --update". Each entry maps an over-cap
@@ -142,7 +143,7 @@ export function evaluateUpdate(fileCounts, oldWhitelist) {
 // ---- tree scanning ---------------------------------------------------------
 
 export function listScanFiles(root) {
-  const out = execSync("git ls-files --cached --others --exclude-standard", {
+  const out = execSync("git ls-files", {
     cwd: root,
     encoding: "utf8",
   });
@@ -230,7 +231,7 @@ function runCheck(counts, whitelist) {
     if (Object.keys(whitelist.files ?? {}).length === 0) {
       process.stdout.write(
         `file-line-cap guard: passed. The ${whitelist.threshold}-line cap is absolute; ` +
-          `all tracked Rust files are at or below the threshold.\n`,
+          `all tracked files in the stated scope are at or below the threshold.\n`,
       );
       return 0;
     }
@@ -259,7 +260,11 @@ function printScope(scope) {
   const total = Object.values(scope).reduce((sum, count) => sum + count, 0);
   const detail = SCAN_EXTENSIONS.map((extension) => `${extension}: ${scope[extension]}`).join(", ");
   process.stdout.write(
-    `file-line-cap guard scope: tracked source files (${detail}); scanned ${total}.\n`,
+    `file-line-cap guard scope: enforces a ${THRESHOLD}-line cap on tracked source files ` +
+      `(${detail}); scanned ${total}.\n`,
+  );
+  process.stdout.write(
+    "file-line-cap guard limits: does not inspect untracked or ignored files, generated output not tracked by Git, or source files with other extensions.\n",
   );
 }
 
