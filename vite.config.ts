@@ -171,7 +171,11 @@ export default defineConfig({
       },
       "ts:test": {
         command: "vp run -r test",
-        dependsOn: ["schema:check"],
+        dependsOn: ["schema:check", "test:collection"],
+      },
+      "test:collection": {
+        command: "node scripts/test-collection-guard.mjs",
+        dependsOn: ["ts:build"],
       },
       "ts:build": {
         command: "vp run -r build",

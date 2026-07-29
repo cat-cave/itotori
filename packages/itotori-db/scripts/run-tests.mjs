@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
 
+import { databaseRunnerNodeTestFiles } from "./test-file-manifest.mjs";
+import { listDbTestFiles } from "../../../scripts/db-results-verify.mjs";
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const packageRoot = path.join(repoRoot, "packages/itotori-db");
-const testDir = path.join(packageRoot, "test");
 // Machine-readable skip marker. Consumers (automation/CI/honesty gate) parse this
 // file to distinguish an intentional no-DATABASE_URL skip from a real DB run.
 const skipReportPath = path.join(repoRoot, ".tmp/itotori-db/no-database-skipped.json");
@@ -25,13 +27,13 @@ if (!process.env[requiredEnv]) {
 
 runRequiredCommand(
   process.execPath,
-  ["--test", path.join(packageRoot, "scripts/verify-permission-constraints.test.mjs")],
+  ["--test", path.join(packageRoot, databaseRunnerNodeTestFiles[0])],
   "permission verifier regression tests",
 );
 
 runRequiredCommand(
   process.execPath,
-  ["--test", path.join(packageRoot, "scripts/verify-event-queue-index-alignment.test.mjs")],
+  ["--test", path.join(packageRoot, databaseRunnerNodeTestFiles[1])],
   "event queue index alignment regression tests",
 );
 
@@ -97,7 +99,13 @@ async function handleMissingDatabase() {
 
 await rm(skipReportPath, { force: true });
 
-const child = spawn("vitest", ["run", "--dir", "test", ...vitestArgs], {
+const suiteFilters = vitestArgs.filter((arg) => !arg.startsWith("-"));
+const suiteArguments =
+  suiteFilters.length > 0
+    ? vitestArgs
+    : (await listDbTestFiles(repoRoot)).map((file) => path.join("test", file));
+
+const child = spawn("vitest", ["run", ...suiteArguments], {
   stdio: "inherit",
   shell: process.platform === "win32",
 });
@@ -132,37 +140,10 @@ function runRequiredCommand(command, args, label) {
   }
 }
 
-// Enumerate DB-backed repository test suites so the skip report can carry an
-// honest skipped-suite count instead of a vague "tests skipped". A suite is
-// DB-backed when it drives the isolated migrated Postgres context or reads
-// DATABASE_URL directly.
+// The DB runner skips every DB-suite file when DATABASE_URL is absent. Report
+// that complete set rather than trying to infer which suites touch Postgres.
 async function discoverDatabaseBackedSuites() {
-  let entries;
-  try {
-    entries = await readdir(testDir, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  const suites = [];
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith(".test.ts")) {
-      continue;
-    }
-    let source;
-    try {
-      source = await readFile(path.join(testDir, entry.name), "utf8");
-    } catch {
-      continue;
-    }
-    if (
-      source.includes("db-test-context") ||
-      source.includes("isolatedMigratedContext") ||
-      source.includes("process.env.DATABASE_URL")
-    ) {
-      suites.push(entry.name);
-    }
-  }
-  return suites.sort();
+  return listDbTestFiles(repoRoot);
 }
 
 function emitSkipMarker(skipReport) {
