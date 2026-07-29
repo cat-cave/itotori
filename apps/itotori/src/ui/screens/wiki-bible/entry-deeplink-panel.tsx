@@ -82,7 +82,10 @@ export function WikiEntryDeepLinkPanel({
     scope.snapshotId,
     unitIds.join("\0"),
   ]);
-  const targets = mergeEntryPlayerTargets(verifiedTargets, structureTargets);
+  const targets = mergeEntryPlayerTargets(
+    verifiedTargets,
+    structureTargets.filter((target) => target.kind !== "unit"),
+  );
   if (targets.length === 0) {
     return null;
   }

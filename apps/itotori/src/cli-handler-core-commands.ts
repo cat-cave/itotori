@@ -6,6 +6,7 @@ import {
   type ConformanceManifestV01,
   type ConformanceResultV01,
 } from "@itotori/localization-bridge-schema";
+import { assertProjectState } from "./api-schema/api-project-response-validation.js";
 import { configuredServicePort } from "./services/configured-port.js";
 import type {
   ItotoriCliDependencies,
@@ -327,5 +328,7 @@ export async function runIngestConformance(
 }
 
 function readProject(io: JsonFileStore, path: string): ProjectState {
-  return io.readJson(path) as ProjectState;
+  const project = io.readJson(path);
+  assertProjectState(project);
+  return project;
 }

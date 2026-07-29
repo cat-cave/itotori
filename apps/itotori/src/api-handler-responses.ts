@@ -1,5 +1,7 @@
 import * as contracts from "./api-handler-contracts.js";
 import * as deps from "./api-handler-dependencies.js";
+import { translationScopeValues } from "./api-enum-values.js";
+import { ContextScopeValueSchema, RunModeValueSchema } from "./contracts/index.js";
 
 export function ok(
   routeId: "projects.list",
@@ -287,19 +289,36 @@ export function parseNewPipelineDraftFields(body: unknown): {
   } catch {
     return null;
   }
-  const runModeValues = ["production", "pilot", "test-dev"] as const;
-  if (!(runModeValues as readonly string[]).includes(record.runMode)) return null;
+  const runMode = RunModeValueSchema.safeParse(record.runMode);
+  if (!runMode.success) return null;
+  const contextScope = parseOptionalContextScope(record.contextScope);
+  const outputScope = parseOptionalOutputScope(record.outputScope);
   return {
-    runMode: record.runMode as deps.RunModeValue,
+    runMode: runMode.data,
     structure: record.structure,
     bridge: record.bridge,
-    ...(typeof record.contextScope === "string"
-      ? { contextScope: record.contextScope as deps.ContextScopeValue }
-      : {}),
-    ...(typeof record.outputScope === "string"
-      ? { outputScope: record.outputScope as deps.OutputScope }
-      : {}),
+    ...(contextScope === undefined ? {} : { contextScope }),
+    ...(outputScope === undefined ? {} : { outputScope }),
   };
+}
+
+function parseOptionalContextScope(value: unknown): deps.ContextScopeValue | undefined {
+  if (value === undefined) return undefined;
+  const parsed = ContextScopeValueSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  throw new deps.ApiValidationError("contextScope must be a valid context scope");
+}
+
+function parseOptionalOutputScope(value: unknown): deps.OutputScope | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") {
+    throw new deps.ApiValidationError("outputScope must be a translation scope");
+  }
+  const scope = Object.values(translationScopeValues).find((candidate) => candidate === value);
+  if (scope === undefined) {
+    throw new deps.ApiValidationError("outputScope must be a translation scope");
+  }
+  return scope;
 }
 
 /**

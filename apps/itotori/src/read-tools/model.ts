@@ -69,10 +69,16 @@ export function buildReadModel(input: BuildReadModelInput): ReadModel {
   }
 
   const unitFactIds = new Set(factSnapshot.orderedUnits.map((unit) => unit.factId));
+  const unitSourceKeys = new Set(factSnapshot.orderedUnits.map((unit) => unit.sourceUnitKey));
   const sceneIds = new Set(factSnapshot.scenes.map((scene) => scene.sceneId));
   const assertKnownScene = (fact: string, sceneId: string): void => {
     if (!sceneIds.has(sceneId)) {
       throw new ReadToolError("snapshot-integrity", `${fact} cites unknown scene ${sceneId}`);
+    }
+  };
+  const assertKnownUnitKey = (fact: string, unitKey: string): void => {
+    if (!unitSourceKeys.has(unitKey)) {
+      throw new ReadToolError("snapshot-integrity", `${fact} cites unbound unit ${unitKey}`);
     }
   };
 
@@ -102,6 +108,9 @@ export function buildReadModel(input: BuildReadModelInput): ReadModel {
   for (const sceneId of factSnapshot.routeTopology.unreachableSceneIds) {
     assertKnownScene("route topology unreachable set", sceneId);
   }
+  for (const unitKey of factSnapshot.routeTopology.reachableUnitKeys) {
+    assertKnownUnitKey("route topology reachable set", unitKey);
+  }
   for (const character of factSnapshot.characters) {
     assertKnownScene(`character ${character.characterId} first occurrence`, character.firstSceneId);
     assertKnownScene(`character ${character.characterId} last occurrence`, character.lastSceneId);
@@ -111,6 +120,14 @@ export function buildReadModel(input: BuildReadModelInput): ReadModel {
     for (const occurrence of character.linesByScene) {
       assertKnownScene(`character ${character.characterId} line count`, occurrence.sceneId);
     }
+  }
+  for (const term of factSnapshot.terminology) {
+    for (const unitKey of term.occurrenceUnitKeys) {
+      assertKnownUnitKey(`terminology ${term.factId}`, unitKey);
+    }
+  }
+  for (const unitKey of factSnapshot.choiceLabels.unitKeys) {
+    assertKnownUnitKey("choice-label occurrence", unitKey);
   }
 
   const characterProfiles = input.characterProfiles ?? new Map<string, CharacterProfile>();
