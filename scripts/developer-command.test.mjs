@@ -54,3 +54,42 @@ test("tier-one Rust selectors pass their distinct partition number to nextest", 
     rmSync(fixture, { force: true, recursive: true });
   }
 });
+
+test("doctor profiles reach native-deps through its profile flag", () => {
+  const fixture = mkdtempSync(path.join(tmpdir(), "itotori-doctor-profile-"));
+  try {
+    const bin = path.join(fixture, "bin");
+    const scripts = path.join(fixture, "scripts");
+    const invocationLog = path.join(fixture, "native-deps-invocation");
+    mkdirSync(bin);
+    mkdirSync(scripts);
+    copyFileSync("scripts/developer-command.mjs", path.join(scripts, "developer-command.mjs"));
+    const node = path.join(bin, "node");
+    writeFileSync(node, '#!/bin/sh\nprintf "%s\\n" "$@" > "$NATIVE_DEPS_LOG"\n');
+    chmodSync(node, 0o755);
+
+    const result = spawnSync(
+      process.execPath,
+      ["scripts/developer-command.mjs", "doctor", "render"],
+      {
+        cwd: fixture,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          NATIVE_DEPS_LOG: invocationLog,
+          PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(readFileSync(invocationLog, "utf8").trim().split("\n"), [
+      "scripts/native-deps.mjs",
+      "doctor",
+      "--profile",
+      "render",
+    ]);
+  } finally {
+    rmSync(fixture, { force: true, recursive: true });
+  }
+});

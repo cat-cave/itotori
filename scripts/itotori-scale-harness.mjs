@@ -77,16 +77,28 @@ async function main(argv = process.argv.slice(2)) {
     const actor = await modules.db.bootstrapLocalUser(context.db);
 
     const repositories = {
-      project: new modules.db.ItotoriProjectRepository(context.db),
+      project: new modules.db.ItotoriProjectRepository(
+        context.db,
+        modules.engine.createProjectEngineFamilyRegistry(modules.engineMatrix.default),
+      ),
       queue: new modules.db.ItotoriEventQueueRepository(context.db),
       ledger: new modules.db.ItotoriModelLedgerRepository(context.db),
     };
-    const workflow = new modules.app.ItotoriProjectWorkflowService(
-      repositories.project,
+    const workflow = new modules.app.ItotoriProjectWorkflowService({
       actor,
-      undefined,
-      repositories.ledger,
-    );
+      projects: repositories.project,
+      runs: new modules.db.ItotoriProjectRunRepository(context.db),
+      snapshots: new modules.db.ItotoriLlmSnapshotRepository(context.pool),
+      ledger: repositories.ledger,
+      passRunConfig: new modules.db.ItotoriLocalizationPassRunConfigRepository(context.db),
+      passRunner: {
+        start: async () => {
+          throw new Error("scale harness cannot start localization passes");
+        },
+      },
+      conformance: new modules.db.ItotoriConformanceRepository(context.db),
+      defaultTargetLocale: "en-US",
+    });
 
     const bridge = await timed(measurements, "generateBundle", () =>
       modules.synthetic.createSyntheticLargeBridgeBundle({
@@ -274,7 +286,7 @@ async function main(argv = process.argv.slice(2)) {
 
 async function loadBuiltModules() {
   try {
-    const [schema, synthetic, db, app, scale] = await Promise.all([
+    const [schema, synthetic, db, app, scale, engine, engineMatrix] = await Promise.all([
       import(new URL("../packages/localization-bridge-schema/dist/index.js", import.meta.url)),
       import(
         new URL(
@@ -283,10 +295,18 @@ async function loadBuiltModules() {
         )
       ),
       import(new URL("../packages/itotori-db/dist/index.js", import.meta.url)),
-      import(new URL("../apps/itotori/dist/services/project-workflow.js", import.meta.url)),
+      import(new URL("../apps/itotori/dist/services/project-workflow-service.js", import.meta.url)),
       import(new URL("../apps/itotori/dist/services/scale-harness.js", import.meta.url)),
+      import(new URL("../apps/itotori/dist/services/engine-capability-matrix.js", import.meta.url)),
+      import(
+        new URL(
+          "../apps/itotori/dist/engine-capability/engine-capability-matrix.v0.1.json",
+          import.meta.url,
+        ),
+        { with: { type: "json" } }
+      ),
     ]);
-    return { schema, synthetic, db, app, scale };
+    return { schema, synthetic, db, app, scale, engine, engineMatrix };
   } catch (error) {
     throw new Error(
       `scale harness requires built TypeScript packages; run just dev scale-smoke or pnpm exec vp run ts:build first: ${errorMessage(error)}`,

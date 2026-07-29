@@ -20,6 +20,16 @@ function run(command, commandArgs = [], options = {}) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
+function capture(command, commandArgs = []) {
+  const result = spawnSync(command, commandArgs, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "inherit"],
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) process.exit(result.status ?? 1);
+  return result.stdout.trim();
+}
+
 function shell(script) {
   run("bash", ["-eu", "-o", "pipefail", "-c", script]);
 }
@@ -313,6 +323,19 @@ function ci(lane, forwarded) {
   return run("node", ["scripts/ci/private-real-byte-proof.mjs", "--preflight", ...forwarded]);
 }
 
+function runScaleHarness(profile, forwarded) {
+  const databaseUrl = capture("node", [
+    "scripts/itotori-db-compose-env.mjs",
+    "--print-database-url",
+  ]);
+  run("node", ["scripts/developer-command.mjs", "dev", "db-up"]);
+  run("node", ["scripts/developer-command.mjs", "dev", "db-wait"]);
+  run("pnpm", ["exec", "vp", "run", "ts:build"]);
+  run("node", ["scripts/itotori-scale-harness.mjs", "--profile", profile, ...forwarded], {
+    env: { ...process.env, DATABASE_URL: databaseUrl },
+  });
+}
+
 switch (delegate) {
   case "worktree-setup":
     if (selector) fail("worktree-setup takes no selector");
@@ -348,7 +371,7 @@ switch (delegate) {
     else if (selector === "package-pack")
       shell("node packages/itotori-cli/build.mjs\ncd packages/itotori-cli && npm pack");
     else if (selector === "scale-smoke" || selector === "scale-large")
-      run("node", ["scripts/itotori-scale-harness.mjs", "--profile", selector.slice(6), ...args]);
+      runScaleHarness(selector.slice(6), args);
     else if (selector === "roadmap-dashboard" || selector === "roadmap-dashboard-watch")
       shell(
         `pnpm --filter @itotori/spec-dag-dashboard build\nnode packages/spec-dag-dashboard/dist/cli.js ${selector.endsWith("watch") ? "--watch" : ""}`,
@@ -391,7 +414,7 @@ switch (delegate) {
     run("node", [
       "scripts/native-deps.mjs",
       selector === "provision" ? "provision" : "doctor",
-      ...(selector === "provision" ? args : [selector, ...args]),
+      ...(selector === "provision" ? args : ["--profile", selector, ...args]),
     ]);
     break;
   case "check":
