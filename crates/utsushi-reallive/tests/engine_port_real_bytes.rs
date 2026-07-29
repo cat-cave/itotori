@@ -110,9 +110,9 @@ fn pick_all_three_scene(engine: &ReplayEngine, entry_scene: u16, label: &str) ->
 /// Drive the real port over a scene that exercises all three sinks and
 /// assert every sink flowed for the SAME run, plus the driven Snapshot
 /// DeterministicReplay capabilities.
-fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
-    let g00_dir = real_corpus::g00_dir_for_env(g00_env).unwrap_or_else(|| {
-        panic!("[{label}] no g00 asset directory reachable from {g00_env}");
+fn run_title(corpus: &RealCorpus, need: corpus_registry::Need<'_>, label: &str) {
+    let g00_dir = real_corpus::g00_dir_for(need).unwrap_or_else(|| {
+        panic!("[{label}] no g00 asset directory reachable from configured corpus root");
     });
     let entry_scene = corpus
         .entry_scene()
@@ -317,7 +317,7 @@ fn port_drives_all_three_sinks_title1_real_bytes() {
         );
         return;
     };
-    run_title(&corpus, real_corpus::REAL_GAME_ROOT_ENV, "title1");
+    run_title(&corpus, real_corpus::PRIMARY, "title1");
 }
 
 #[test]
@@ -329,5 +329,5 @@ fn port_drives_all_three_sinks_title2_real_bytes() {
         );
         return;
     };
-    run_title(&corpus, real_corpus::REAL_GAME_ROOT_2_ENV, "title2");
+    run_title(&corpus, real_corpus::SECONDARY, "title2");
 }

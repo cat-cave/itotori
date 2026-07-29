@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { AuthorizationActor } from "../authorization.js";
 import type { StyleGuideVersionStatus } from "../schema.js";
 import type { OutboxEventRecord } from "./event-queue-repository.js";
+import { stableJsonStringify } from "../stable-json.js";
 
 export const styleGuideVersionChangedPayloadSchemaVersion =
   "itotori.style_guide_version_changed.v1";
@@ -367,19 +368,5 @@ export interface ItotoriStyleGuideRepositoryPort {
 }
 
 export function contentHashForPolicy(policy: Record<string, unknown>): string {
-  return `sha256:${createHash("sha256").update(stableStringify(policy)).digest("hex")}`;
-}
-
-function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
-  }
-  if (value !== null && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
+  return `sha256:${createHash("sha256").update(stableJsonStringify(policy)).digest("hex")}`;
 }

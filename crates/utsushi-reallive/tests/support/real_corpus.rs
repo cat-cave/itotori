@@ -14,11 +14,6 @@ pub const SECONDARY: Need<'static> = Need {
     variant: "plain",
 };
 
-// Legacy callers outside the migrated RealLive slice still name their local
-// corpus roots directly. Keep this compatibility surface until that follow-up.
-pub const REAL_GAME_ROOT_ENV: &str = "reallive/1/encrypted";
-pub const REAL_GAME_ROOT_2_ENV: &str = "reallive/2/plain";
-
 /// Fails loudly when required registry-identified real bytes are unavailable.
 /// Returns `()` (not `!`) so call sites retain `return` without an
 /// `unreachable_code` lint.
@@ -139,12 +134,6 @@ pub fn game_root() -> Option<PathBuf> {
 /// to depth 4 and supports both common layouts.
 pub fn g00_dir_for(need: Need<'_>) -> Option<PathBuf> {
     let root = resolve(need).ok()?;
-    find_g00_dir(&root, 4)
-}
-
-/// Legacy accessor retained for the unmigrated RealLive tests.
-pub fn g00_dir_for_env(env_var: &str) -> Option<PathBuf> {
-    let root = corpus_registry::resolve_identity(env_var).ok()?;
     find_g00_dir(&root, 4)
 }
 

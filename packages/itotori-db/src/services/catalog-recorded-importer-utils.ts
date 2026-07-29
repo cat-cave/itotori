@@ -18,6 +18,7 @@ import {
   type CatalogCrawlerIngestContext,
 } from "./catalog-crawler-runner.js";
 import { requiredString } from "../required-string.js";
+import { stableJsonStringify } from "../stable-json.js";
 
 import { catalogRecordedImporterVersion } from "./catalog-recorded-importer-types.js";
 import { type CatalogRecordedImporterFact } from "./catalog-recorded-importer-dlsite.js";
@@ -166,24 +167,6 @@ export function stableCatalogId(namespace: string, parts: readonly string[]): st
 
 export function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
-}
-
-export function stableJsonStringify(input: unknown): string {
-  if (input === undefined) {
-    return "undefined";
-  }
-  if (input === null || typeof input !== "object") {
-    return JSON.stringify(input) ?? "undefined";
-  }
-  if (Array.isArray(input)) {
-    return `[${input.map((value) => stableJsonStringify(value)).join(",")}]`;
-  }
-  const entries = Object.entries(input as Record<string, unknown>).sort(([left], [right]) =>
-    left.localeCompare(right),
-  );
-  return `{${entries
-    .map(([key, value]) => `${JSON.stringify(key)}:${stableJsonStringify(value)}`)
-    .join(",")}}`;
 }
 
 export function compactJson(input: CatalogJsonRecord): CatalogJsonRecord {
