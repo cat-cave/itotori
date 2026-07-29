@@ -22,7 +22,7 @@ import {
 import { localActor, manualFeedbackFixture, projectFixture } from "./repository.test.shared.js";
 import { migratedContext } from "./repository.test.legacy.js";
 
-describe("ItotoriProjectRepository", () => {
+describe("repository feedback, authorization, and index invariants", () => {
   it("labels style preferences separately from objective defect candidates", async () => {
     const context = await migratedContext();
     try {

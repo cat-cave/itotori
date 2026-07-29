@@ -1,28 +1,4 @@
-// Typed job-name registry.
-//
-// Single source of truth mapping every persisted durable-job name to its
-// typed payload schema and exactly one intended handler. The queue layer
-// historically carried jobName: string and payload: Record<string, unknown>
-// on JobQueueInput, so a renamed job, a drifted payload, or an orphaned
-// handler could only be caught at runtime. This module closes that hole three
-// ways:
-//
-//   1. A closed RegisteredJobName union for the structural
-//      context-correction redraft job, plus template-literal family names
-//      (agent.* / tool.* / search.*) for registry-driven agent/tool jobs.
-//      Enqueueing through buildRegisteredJobInput is type-gated on that
-//      union, so an unregistered name is a compile-time error.
-//   2. A JOB_DEFINITIONS table typed as Record<RegisteredJobName,
-//      RegisteredJobDefinition>, so adding a structural name without a
-//      definition (or a payload validator) is a compile-time error.
-//   3. A runtime RegisteredJobHandlerRegistry that refuses to bind a handler
-//      for an unregistered name and refuses a second binding for a name that
-//      already has one — exactly one handler per persisted job name.
-//
-// The context-correction redraft contract lives in the db package because the
-// durable queue must keep its name, payload, and handler binding from
-// drifting. The app consumes these exports when it persists a canonical
-// context version, invalidates affected artifacts, and queues a real redraft.
+// Runtime enqueue and handler registry operations.
 
 import type {
   JobQueueInput,
@@ -30,28 +6,19 @@ import type {
   QueueJsonRecord,
 } from "./repositories/event-queue-repository.js";
 
-// ---------------------------------------------------------------------------
-// Context-correction redraft payload + structural job name.
-// ---------------------------------------------------------------------------
-
-/**
- * The only structural refinement job owned by this registry. Its registered
- * handler reloads the current ContextPacket before redrafting every affected
- * unit; it is not a staged fan-out chain.
- */
 import {
   type AnyRegisteredJobName,
   contextCorrectionRedraftJobName,
   type JobPayloadFor,
   type RegisteredJobName,
-} from "./job-registry-01.js";
+} from "./job-registry-payload.js";
 import {
   DuplicateJobHandlerError,
   type RegisteredJobDefinition,
   resolveRegisteredJobDefinition,
   UnregisteredJobHandlerError,
   UnregisteredJobNameError,
-} from "./job-registry-02.js";
+} from "./job-registry-definitions.js";
 
 export function isRegisteredJobName(jobName: string): boolean {
   return resolveRegisteredJobDefinition(jobName) !== undefined;
@@ -161,14 +128,3 @@ export class RegisteredJobHandlerRegistry {
     return Object.fromEntries(this.handlers);
   }
 }
-
-// ---------------------------------------------------------------------------
-// Compile-time self-checks (tsc-enforced on every build).
-//
-// These exported constants assert the registry's type-level contract:
-// unregistered names are excluded; the structural context-correction job and
-// each dynamic family are included; JobPayloadFor maps to the correct payload;
-// and a wrong-shaped payload is rejected.
-// ---------------------------------------------------------------------------
-
-/** Asserts bogus.thing is rejected by the registered-name union. */
