@@ -4,7 +4,6 @@ import type {
 } from "../repositories/catalog-repository.js";
 import {
   catalogConflictKindValues,
-  catalogConflictSubjectKindValues,
   catalogConflictStatusValues,
   catalogExternalIdKindValues,
   catalogLanguageStatusScopeValues,

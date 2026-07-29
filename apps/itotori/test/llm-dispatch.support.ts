@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import {
-  AuthorizationError,
   LlmDurabilityFaultError,
   LlmMemoConflictError,
   LlmRetriesExhaustedError,
@@ -9,24 +8,16 @@ import {
   type LlmMemoSingleflightInput,
   type LlmMemoSingleflightResult,
 } from "@itotori/db";
-import { describe, expect, it } from "vitest";
-import { z } from "zod";
+import { expect, it } from "vitest";
+
 import {
   CALL_SPEC_SCHEMA_VERSION,
-  DECODE_GET_UNITS_RESULT_SCHEMA_VERSION,
   REVIEW_VERDICT_SCHEMA_VERSION,
   type CallSpec,
 } from "../src/contracts/index.js";
 import { dispatch, type DispatchRuntime, type DispatchTool } from "../src/llm/dispatch.js";
 import { reviewVerdictExample } from "./contract-fixtures-core.js";
-import {
-  TEST_MODEL_PROFILE,
-  decodedUnitsTool,
-  httpProviderResponse,
-  rawTransportDropError,
-  toolLoopSpec,
-  toolProviderResponse,
-} from "./llm-step-test-support.js";
+import { TEST_MODEL_PROFILE } from "./llm-step-test-support.js";
 
 export const HASH_A = `sha256:${"a".repeat(64)}` as const;
 

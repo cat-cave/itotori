@@ -1,21 +1,8 @@
-import { and, eq, gt, inArray, isNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { ItotoriDatabase } from "./connection.js";
 import {
-  type AuthPrincipalKind,
-  type AuthProviderClaimKind,
-  authAccountMemberships,
-  authAccounts,
-  authExternalIdentityProviderClaims,
   authExternalIdentities,
-  authPermissionSetPermissions,
-  authPermissionSets,
   authProviderClaimKindValues,
-  authProviderClaimPermissionMappings,
-  authPrincipalPermissionGrants,
-  authPrincipalPermissionSetGrants,
-  authPrincipals,
-  authServicePrincipals,
-  authSessions,
   authUsers,
   userPermissionGrants,
   users,

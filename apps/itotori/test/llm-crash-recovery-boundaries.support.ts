@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import {
   ItotoriLlmAcceptedOutputRepository,
-  LlmAcceptedOutputCasError,
   LlmDurabilityFaultError,
   type AcceptLlmOutputInput,
   type DatabaseContext,
@@ -9,19 +8,15 @@ import {
   type LlmDurabilityFaultBoundary,
   type LlmDurabilityFaultInjector,
 } from "@itotori/db";
-import { describe, expect, it } from "vitest";
-import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
+import { describe } from "vitest";
+
 import { dispatch, type DispatchRuntime } from "../src/llm/dispatch.js";
 import { reviewVerdictExample } from "./contract-fixtures-core.js";
 import {
   STEP_HASH_D,
   TestMemoCipher,
-  decodedUnitsTool,
-  dispatchHarness,
   physicalCallSpec,
   structuredProviderResponse,
-  toolLoopSpec,
-  toolProviderResponse,
 } from "./llm-step-test-support.js";
 
 export const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;

@@ -10,7 +10,6 @@ import {
   type LlmProjectionVisibility,
   type LlmProjectableEventBody,
   type LlmThreadProjectionInput,
-  type ProjectedLlmConversationEvent,
 } from "./llm-conversation-repository-types.js";
 
 export function eligibleSelector(

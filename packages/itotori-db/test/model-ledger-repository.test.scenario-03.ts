@@ -2,23 +2,9 @@ import { testProjectEngineFamilyRegistry } from "./project-engine-family-registr
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
-import {
-  ItotoriModelLedgerRepository,
-  type ProviderRunLedgerInput,
-} from "../src/repositories/model-ledger-repository.js";
-import {
-  ItotoriProjectRepository,
-  type ItotoriProjectRecord,
-} from "../src/repositories/project-repository.js";
-import {
-  artifacts,
-  costLedgerEntries,
-  modelProviders,
-  modelRegistry,
-  promptPresets,
-  providerRuns,
-  translationMemoryReuseEvents,
-} from "../src/schema.js";
+import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-repository.js";
+import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
+import { promptPresets, providerRuns } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };

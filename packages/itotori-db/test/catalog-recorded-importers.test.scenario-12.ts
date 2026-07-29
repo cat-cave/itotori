@@ -1,54 +1,19 @@
-import { readFileSync } from "node:fs";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
-import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
+
 import {
-  catalogCompletenessPoolValues,
-  catalogSeedReadinessExplanationMetadataKey,
-  ItotoriCatalogRepository,
-  type ItotoriCatalogRepositoryPort,
-} from "../src/repositories/catalog-repository.js";
-import {
-  createRecordedCatalogCrawlerAdapter,
-  ItotoriCatalogCrawlerRunner,
-  type CatalogCrawlerAdapterStep,
-  type CatalogCrawlerSourceAdapter,
-  type RecordedCatalogCrawlerFixture,
-} from "../src/services/catalog-crawler-runner.js";
-import {
-  catalogRecordedConfidenceForSourceFact,
-  createCatalogRecordedImporterIngestStep,
-  createCatalogRecordedImporterVerifier,
-  createDlsiteRecordedStorefrontAdapter,
   createIgdbRecordedPlatformAdapter,
-  type CatalogRecordedImporterFact,
-  type CatalogRecordedPlatformFixture,
-  createSteamRecordedStorefrontAdapter,
   type CatalogRecordedStorefrontDiagnostic,
   type CatalogRecordedStorefrontDiagnosticCode,
   type CatalogRecordedStorefrontFixture,
   CatalogRecordedStorefrontSemanticError,
-  createWikidataRecordedPlatformAdapter,
-  mapDlsiteReleaseMappingsForRecordedResponse,
 } from "../src/services/catalog-recorded-importers.js";
 import {
-  catalogConfidenceValues,
   catalogConflictKindValues,
   catalogConflictSubjectKindValues,
   catalogConflicts,
   catalogConflictEvidence,
-  catalogDemandFactKindValues,
-  catalogExternalIdKindValues,
-  catalogLanguageStatusValues,
-  catalogReleaseKindValues,
-  catalogReleaseMappingKindValues,
-  catalogReleasePackageKindValues,
-  catalogSeedOriginValues,
-  catalogSeedStatusValues,
-  catalogSourceProvenance,
-  catalogSourceRecordKindValues,
-  catalogTranslationPortabilityValues,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
@@ -326,25 +291,11 @@ function assertCompleteStorefrontDiagnostic(
   }
 }
 
+import { servicesFor, runStorefrontFixture } from "./catalog-recorded-importers.test.shared-01.js";
 import {
-  type Services,
-  servicesFor,
-  runFixture,
-  runStorefrontFixture,
-  storefrontSteps,
-  sourceProvenanceById,
-  provenanceBySourceId,
-  provenanceCatalogSourcesByIds,
-  liveLikeCrawlAdapter,
-} from "./catalog-recorded-importers.test.shared-01.js";
-import {
-  catalogCounts,
-  rateLimitByAdapter,
   readFixture,
-  readFixtureText,
   readStorefrontFixture,
   readPlatformFixture,
-  withUpdatedFact,
   record,
   requiredArray,
   required,

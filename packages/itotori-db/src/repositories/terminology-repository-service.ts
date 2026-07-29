@@ -6,7 +6,6 @@ import {
   localeBranches,
   terminologyAliasKindValues,
   terminologyAliases,
-  terminologyConflictStatusValues,
   terminologyConflicts,
   terminologySemanticIndex,
   terminologySourceReferenceKindValues,

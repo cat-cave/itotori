@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { expect } from "vitest";
 
 export const HASH_PATCH_EXPORT_V02_EXAMPLE =

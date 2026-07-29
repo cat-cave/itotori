@@ -5,13 +5,8 @@ import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
 import {
   catalogCrawlerIdempotentFactImportContractId,
-  catalogCrawlerFactImportStrategyValues,
   createRecordedCatalogCrawlerAdapter,
   ItotoriCatalogCrawlerRunner,
-  type CatalogCrawlerFactImportEvidence,
-  type CatalogCrawlerIngestContext,
-  type CatalogCrawlerSourceAdapter,
-  type CatalogCrawlerVerifyFactImportStep,
   type RecordedCatalogCrawlerFixture,
 } from "../src/services/catalog-crawler-runner.js";
 import {
@@ -58,15 +53,7 @@ const duplicateFactsFixture = JSON.parse(
 ) as RecordedCatalogCrawlerFixture<FixtureFact>;
 
 import {
-  createCatalogFactImportsTable,
-  createCatalogDurableMarkersTable,
-  durableMarkerAdapter,
-  upsertFactImports,
-  upsertFactImportsRebindingStep,
   verifyPersistedFactImports,
-  verifyPersistedDurableMarkers,
-  persistedEvidence,
-  persistDurableMarker,
   importProof,
   crawlerJobInput,
   crawlerStepInput,

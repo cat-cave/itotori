@@ -4,12 +4,12 @@ import {
   ItotoriLlmSnapshotRepository,
   ItotoriLlmWikiRepository,
 } from "@itotori/db";
-import { describe, expect, it } from "vitest";
+import { describe } from "vitest";
 import { WIKI_OBJECT_SCHEMA_VERSION } from "../src/contracts/index.js";
 import { handleItotoriApiRequest, type ItotoriApiServices } from "../src/api-handlers.js";
 import { canonicalJson, sha256 } from "../src/llm/canonical-json.js";
 import { persistLocalizedRendering, persistWikiObject } from "../src/wiki/object-persistence.js";
-import { ForgedWikiAssertionError, WikiObjectApiService } from "../src/wiki/object-api/index.js";
+import { WikiObjectApiService } from "../src/wiki/object-api/index.js";
 import {
   createDispatchEnhancementRunner,
   type EnhancementRequest,

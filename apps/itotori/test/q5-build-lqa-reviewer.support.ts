@@ -1,32 +1,11 @@
-import { describe, expect, it } from "vitest";
 import {
-  RENDER_AND_OCR_RESULT_SCHEMA_VERSION,
   REVIEW_VERDICT_SCHEMA_VERSION,
   type CallResult,
   type CallSpec,
   type EncryptedPayloadRef,
-  type RenderAndOcrResult,
 } from "../src/contracts/index.js";
-import { specialistFor } from "../src/roster/index.js";
+
 import {
-  Q5DecodedObservationError,
-  Q5_ONSCREEN_CATEGORIES,
-  Q5RouteError,
-  assertCertifiedBuildLqaRoute,
-  assertBuildLqaOnlyToolGrant,
-  buildQ5CallSpec,
-  canFinalize,
-  deterministicFaults,
-  frameHasBlockingFault,
-  gateForFaultKind,
-  interpretQ5Verdict,
-  parseQ5ReviewInput,
-  q5BuildLqaToolGrant,
-  q5FrameFromRenderResult,
-  q5SystemPrompt,
-  q5UserPrompt,
-  Q5_PROMPT_VERSION,
-  runQ5Review,
   type EvidenceResolver,
   type Q5DispatchRefs,
   type Q5RenderFrame,

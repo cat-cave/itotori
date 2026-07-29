@@ -1,53 +1,26 @@
-import { createHash } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { localUserId, permissionValues, type AuthorizationActor } from "../src/authorization.js";
-import type { ItotoriDatabase } from "../src/connection.js";
+import { localUserId, type AuthorizationActor } from "../src/authorization.js";
+
 import {
   type CatalogArtifactMappingErrorCode,
   CatalogArtifactMappingError,
-  type CatalogOpportunityFactorName,
-  type CatalogOpportunityRow,
   ItotoriCatalogRepository,
-  type CatalogSourceProvenanceRecord,
 } from "../src/repositories/catalog-repository.js";
 import {
-  capabilityLevelStatusKindValues,
-  capabilityLevelValues,
-  catalogConflictKindValues,
-  catalogConflictSubjectKindValues,
   catalogConfidenceValues,
   catalogCandidateMatches,
   catalogCandidateMatchStatusValues,
   catalogEngineSourceValues,
   catalogExternalIdKindValues,
-  catalogExternalIds,
-  catalogInstallStateValues,
-  catalogLanguageStatusScopeValues,
-  catalogLanguageStatusValues,
   catalogLocalScanEntries,
   catalogLocalScanExternalIds,
   catalogPathRedactionClassValues,
-  catalogRawContentRedactionClassValues,
-  catalogReleaseInstallStates,
-  catalogReleaseKindValues,
-  catalogReleaseMappingKindValues,
-  catalogReleaseMappings,
-  catalogReleasePackageKindValues,
-  catalogTranslationPortabilityValues,
   catalogSeedOriginValues,
   catalogSeedStatusValues,
   catalogSeedTargets,
-  catalogSourceProvenance,
   catalogSourceRecordKindValues,
   catalogSourceValues,
-  catalogWorks,
-  engineCapabilityEvidence,
-  engineCapabilityEvidenceKindValues,
-  engineCapabilityEvidenceSourceValues,
-  engineCapabilityEvidenceStatusValues,
-  engineCapabilityReports,
-  userPermissionGrants,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
@@ -75,19 +48,7 @@ async function expectArtifactMappingError(
   return error;
 }
 
-import {
-  recordWorkWithRelease,
-  recordRuntimeReadinessCapabilityEvidence,
-  runtimeReadinessWorkInput,
-  recordFixtureProvenance,
-  provenance,
-  completenessStatus,
-  uuid,
-  hash,
-  requiredTestRow,
-  requiredOpportunityRow,
-  runtimeEvidenceFactor,
-} from "./catalog-repository.test.shared-01.js";
+import { provenance, uuid, hash, requiredTestRow } from "./catalog-repository.test.shared-01.js";
 
 describe("ItotoriCatalogRepository", () => {
   it("upserts local scan entries and nested scan children by natural key without precomputed child IDs", async () => {

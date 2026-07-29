@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
-import {
-  catalogCompletenessPoolValues,
-  ItotoriCatalogRepository,
-  type CatalogExternalIdRecord,
-  type CatalogLanguageStatusRecord,
-  type CatalogWorkSnapshot,
-} from "../src/repositories/catalog-repository.js";
-import { isolatedMigratedContext } from "./db-test-context.js";
+
 import {
   catalogPlatformLanguageConflictOriginValues,
   catalogPlatformLanguageConflictReasonCode,
@@ -21,16 +14,9 @@ import {
   type CatalogRepositoryDerivedConflictReader,
 } from "../src/services/catalog-repository-derived-platform-language-conflicts.js";
 import {
-  catalogConfidenceValues,
   catalogExternalIdKindValues,
   catalogLanguageStatusScopeValues,
   catalogLanguageStatusValues,
-  catalogRawContentRedactionClassValues,
-  catalogSourceRecordKindValues,
-  type CatalogExternalIdKind,
-  type CatalogLanguageStatus,
-  type CatalogLanguageStatusScope,
-  type CatalogSource,
 } from "../src/schema.js";
 
 const actor: AuthorizationActor = { userId: localUserId };
@@ -48,8 +34,6 @@ const officialEvidence: CatalogPlatformLanguageConflictEvidence = {
 };
 
 import {
-  externalIdIdentity,
-  uuid,
   readerFor,
   row,
   buildSnapshot,

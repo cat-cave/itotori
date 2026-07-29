@@ -3,8 +3,6 @@ import {
   type DraftArtifactBundle,
   type DraftArtifactDraftEntry,
   type DraftArtifactLedgerSummary,
-  type WrittenOutcomeCandidate,
-  type WrittenQaFinding,
   type WrittenUnitOutcome,
 } from "./draft-artifact-bundle.types.js";
 import { assertNonBlankTargetText } from "./target-text.js";

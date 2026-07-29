@@ -1,36 +1,23 @@
-import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import {
   capabilityEvidenceLabelValues,
   EngineCapabilityReportRepository,
 } from "../src/repositories/engine-capability-report-repository.js";
-import {
-  type CatalogOpportunityFactorName,
-  type CatalogOpportunityRankingReadModel,
-  ItotoriCatalogRepository,
-  type CatalogSourceProvenanceRecord,
-} from "../src/repositories/catalog-repository.js";
+import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository.js";
 import { catalogPlatformLanguageConflictReasonCode } from "../src/services/catalog-platform-language-conflicts.js";
 import {
   capabilityLevelValues,
   catalogConfidenceValues,
   catalogConflictKindValues,
   catalogConflictStatusValues,
-  catalogConflictSubjectKindValues,
-  catalogDemandFactKindValues,
   catalogEngineSourceValues,
   catalogExternalIdKindValues,
   catalogLanguageStatusValues,
-  catalogPathRedactionClassValues,
-  catalogRawContentRedactionClassValues,
-  catalogReleaseKindValues,
-  catalogSourceRecordKindValues,
   catalogSourceValues,
   engineCapabilityEvidenceKindValues,
   engineCapabilityEvidenceSourceValues,
   engineCapabilityEvidenceStatusValues,
-  type EngineCapabilityEvidenceStatus,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
@@ -42,14 +29,10 @@ import {
   recordRuntimeEvidenceCapability,
   recordExtractAdapterMatrixCapability,
   recordOpportunityCatalog,
-  opportunityWorkInput,
   opportunityWorkInputWithEngine,
   recordOpportunityProvenance,
   provenance,
-  externalId,
-  release,
   languageStatus,
-  demandFact,
   localScanEntry,
   uuid,
   hash,

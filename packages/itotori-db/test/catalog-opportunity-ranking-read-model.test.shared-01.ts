@@ -1,13 +1,11 @@
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "vitest";
+
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import {
   capabilityEvidenceLabelValues,
   EngineCapabilityReportRepository,
 } from "../src/repositories/engine-capability-report-repository.js";
 import {
-  type CatalogOpportunityFactorName,
-  type CatalogOpportunityRankingReadModel,
   ItotoriCatalogRepository,
   type CatalogSourceProvenanceRecord,
 } from "../src/repositories/catalog-repository.js";
@@ -32,7 +30,6 @@ import {
   engineCapabilityEvidenceStatusValues,
   type EngineCapabilityEvidenceStatus,
 } from "../src/schema.js";
-import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 const fetchedAt = "2026-06-27T12:00:00.000Z";

@@ -1,22 +1,12 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
-import {
-  catalogConflictOriginMetadataDropDiagnostic,
-  catalogConflictOriginMetadataDropDiagnosticCode,
-  ItotoriCatalogRepository,
-} from "../src/repositories/catalog-repository.js";
-import { catalogPlatformLanguageConflictOriginValues } from "../src/services/catalog-platform-language-conflicts.js";
+import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository.js";
+
 import {
   catalogCandidateMatchStatusValues,
   catalogConflictKindValues,
   catalogConflictStatusValues,
-  catalogConflictSubjectKindValues,
-  catalogConfidenceValues,
-  catalogExternalIdKindValues,
-  catalogLanguageStatusValues,
-  catalogSourceRecordKindValues,
   catalogSourceValues,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
@@ -39,12 +29,7 @@ const fixture = JSON.parse(
   }[];
 };
 
-import {
-  seedConflictReviewFixture,
-  provenanceRecord,
-  uuid,
-  hash,
-} from "./catalog-conflict-review.test.shared-01.js";
+import { seedConflictReviewFixture } from "./catalog-conflict-review.test.shared-01.js";
 
 describe("catalogConflictReview read model", () => {
   it("returns provenance-preserving diagnostics for exact, fuzzy, resolved, and stale conflicts", async () => {

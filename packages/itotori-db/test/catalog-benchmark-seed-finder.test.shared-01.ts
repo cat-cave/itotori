@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { EngineCapabilityReportRepository } from "../src/repositories/engine-capability-report-repository.js";
 import {
@@ -9,7 +9,6 @@ import {
   type CatalogSourceProvenanceRecord,
 } from "../src/repositories/catalog-repository.js";
 import {
-  capabilityLevelValues,
   catalogConfidenceValues,
   catalogConflictKindValues,
   catalogConflictStatusValues,
@@ -24,7 +23,6 @@ import {
   catalogSourceRecordKindValues,
   catalogSourceValues,
 } from "../src/schema.js";
-import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 const fetchedAt = "2026-06-27T12:00:00.000Z";

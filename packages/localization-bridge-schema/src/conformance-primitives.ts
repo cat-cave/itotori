@@ -1,9 +1,4 @@
 import {
-  CONFORMANCE_EVIDENCE_REF_KINDS_V01,
-  CONFORMANCE_EVIDENCE_TIERS_V01,
-  CONFORMANCE_OUTCOME_KINDS_V01,
-  CONFORMANCE_RUNTIME_ARTIFACT_KINDS_V01,
-  CONFORMANCE_SUBSYSTEM_REQUIREMENTS_V01,
   ADAPTER_ID_PATTERN,
   ALLOWED_SEMANTIC_CODE_PREFIXES,
   ConformanceIngestionError,
@@ -15,11 +10,6 @@ import {
   RUNTIME_ARTIFACT_URI_PREFIX,
   SEMANTIC_CODE_PATTERN,
   URI_SCHEME_PATTERN,
-  type ConformanceEvidenceRefV01,
-  type ConformanceEvidenceTierV01,
-  type ConformanceProfileExtensionV01,
-  type ConformanceProfileV01,
-  type ConformanceResultOutcomeV01,
 } from "./conformance-types.js";
 
 export function reject(code: string, message: string): never {

@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  REVIEW_VERDICT_SCHEMA_VERSION,
-  type CallResult,
-  type CallSpec,
-  type EncryptedPayloadRef,
-  type RouteScope,
-} from "../src/contracts/index.js";
+import { type CallResult, type CallSpec } from "../src/contracts/index.js";
 import { ROSTER_SPECIALISTS, specialistFor, validateRosterManifest } from "../src/roster/index.js";
 import {
   Q4_CONTINUITY_CATEGORIES,
@@ -21,9 +15,6 @@ import {
   q4SystemPrompt,
   q4UserPrompt,
   runQ4Review,
-  type ContinuityLedger,
-  type Q4ContinuityFacts,
-  type Q4DispatchRefs,
   type Q4ReviewInput,
 } from "../src/roles/q4/index.js";
 import { buildClaimFixture, unitFactIdAt } from "./support/claim-fixture.js";

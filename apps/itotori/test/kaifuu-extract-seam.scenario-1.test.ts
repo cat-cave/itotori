@@ -4,19 +4,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolvePrivateCorpus } from "../src/private-inventory.js";
 import {
-  buildExtractArgs,
   extractCapabilities,
-  KaifuuExtractError,
-  KAIFUU_NATIVE_OUTPUT_REDACTED,
-  REALLIVE_SCENE_ID_MAX,
   registeredExtractEngines,
   resolveExtractAdapter,
   runKaifuuExtract,
   type KaifuuExtractArgs,
-  type KaifuuProcessResult,
 } from "../src/extract/kaifuu-extract-seam.js";
-
-import { IDENTITY, RPG_IDENTITY } from "./kaifuu-extract-seam.support.js";
 
 describe("extract-adapter registry", () => {
   it("registers reallive, softpal, rpg-maker, and siglus adapters", () => {

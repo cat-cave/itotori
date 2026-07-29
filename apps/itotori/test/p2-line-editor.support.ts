@@ -5,7 +5,7 @@ import {
   type LlmMemoSingleflightInput,
   type LlmMemoSingleflightResult,
 } from "@itotori/db";
-import { describe, expect, it } from "vitest";
+
 import {
   DEFECT_BUNDLE_SCHEMA_VERSION,
   DRAFT_BATCH_SCHEMA_VERSION,
@@ -19,21 +19,7 @@ import { sha256 } from "../src/llm/canonical-json.js";
 import { deepSeekV4FlashProfile } from "../src/llm/role-model-profiles.js";
 import type { MeasuredModelProfile } from "../src/llm/physical-attempt-policy.js";
 import { realliveSjisPolicy } from "../src/gates/index.js";
-import {
-  assertExactAgainstSource,
-  assertPlaceholdersPreserved,
-  assertRepairPatchMatchesScope,
-  assertTargetEncodable,
-  buildEditCall,
-  deriveEditScope,
-  dispatchEditCall,
-  editLine,
-  mergePatch,
-  EditError,
-  FinalizeError,
-  type EditorRuntimeBase,
-} from "../src/roles/p2/index.js";
-import { specialistFor } from "../src/roster/index.js";
+import { type EditorRuntimeBase } from "../src/roles/p2/index.js";
 
 export const DRAFT_PROFILE: MeasuredModelProfile = {
   name: "draft",

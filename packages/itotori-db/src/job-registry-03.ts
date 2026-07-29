@@ -29,8 +29,6 @@ import type {
   JobQueueRecord,
   QueueJsonRecord,
 } from "./repositories/event-queue-repository.js";
-import type { JobTaskType } from "./schema.js";
-import { jobTaskTypeValues } from "./schema.js";
 
 // ---------------------------------------------------------------------------
 // Context-correction redraft payload + structural job name.

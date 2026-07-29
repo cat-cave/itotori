@@ -1,8 +1,5 @@
 import { createHash } from "node:crypto";
-import {
-  BENCHMARK_TOKEN_COUNT_SOURCES,
-  type BenchmarkTokenCountSourceV02,
-} from "@itotori/localization-bridge-schema";
+import { BENCHMARK_TOKEN_COUNT_SOURCES } from "@itotori/localization-bridge-schema";
 import { sql } from "drizzle-orm";
 import {
   costLedgerEntries,

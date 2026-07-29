@@ -1,15 +1,10 @@
 // @vitest-environment jsdom
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { http, HttpResponse } from "msw";
+import { http } from "msw";
 import { setupServer } from "msw/node";
-import { assertItotoriApiResponse } from "../../itotori/src/api-schema.js";
+
 import { renderRuntimeDashboard, renderRuntimeEvidenceRoute } from "../src/dashboard.js";
-import {
-  apiRuntimeStatus,
-  frameArtifact,
-  runtimeFixture,
-  type RuntimeDashboardStatus,
-} from "./dashboard.fixtures.js";
+import { apiRuntimeStatus, frameArtifact, runtimeFixture } from "./dashboard.fixtures.js";
 
 let currentFixture = runtimeFixture("passed-e2-capture");
 

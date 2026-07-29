@@ -1,43 +1,15 @@
 import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
-import { eq, sql } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import type { ItotoriDatabase } from "../src/connection.js";
-import {
-  ItotoriBranchReferenceRepository,
-  branchPolicyGlossaryReferenceUpdatedEventKind,
-} from "../src/repositories/branch-reference-repository.js";
+
 import {
   ItotoriProjectRepository,
   type ItotoriProjectRecord,
 } from "../src/repositories/project-repository.js";
 import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
-import { ItotoriTerminologyRepository } from "../src/repositories/terminology-repository.js";
-import {
-  ItotoriSemanticGlossarySearchService,
-  RecordedEmbeddingFixtureAdapter,
-  semanticGlossarySearchDiagnosticCodeValues,
-} from "../src/services/semantic-search.js";
-import {
-  catalogSourceProvenance,
-  catalogSourceRecordKindValues,
-  catalogSourceValues,
-  branchPolicyGlossaryReferences,
-  events,
-  findings,
-  localeBranchUnits,
-  styleGuideVersionStatusValues,
-  terminologyAliasKindValues,
-  terminologyConflictEvidence,
-  terminologyConflictKindValues,
-  terminologyConflictStatusValues,
-  terminologySemanticIndex,
-  terminologySemanticIndexStatusValues,
-  terminologySourceReferenceKindValues,
-  terminologyTermKindValues,
-  terminologyTerms,
-} from "../src/schema.js";
-import { isolatedMigratedContext } from "./db-test-context.js";
+
+import { styleGuideVersionStatusValues } from "../src/schema.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 

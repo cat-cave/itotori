@@ -7,7 +7,6 @@ import test from "node:test";
 import {
   LABELS,
   RS,
-  TS,
   labels,
   runAuditCli,
   writeShippedProbe,

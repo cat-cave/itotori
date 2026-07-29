@@ -18,16 +18,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import { writeFixtureContent } from "./generate-kaifuu-encrypted-public-fixtures-content.mjs";
-import {
-  bytes,
-  capabilityLevelForHelperKind,
-  executionForHelperKind,
-  helperResult,
-  keyProfile,
-  plainXp3Fixture,
-  sha256Ref,
-  stableJson,
-} from "./generate-kaifuu-encrypted-public-fixtures-helpers.mjs";
+import { stableJson } from "./generate-kaifuu-encrypted-public-fixtures-helpers.mjs";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const liveFixtureRoot = resolve(repoRoot, "fixtures/public/kaifuu-encrypted-matrix");
 const liveManifestPath = resolve(repoRoot, "fixtures/public/kaifuu-encrypted-matrix.manifest.json");

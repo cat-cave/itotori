@@ -1,24 +1,9 @@
-import { describe, expect, it } from "vitest";
 import { buildDefect } from "../src/gates/index.js";
 import type { Defect } from "../src/contracts/index.js";
 import type { ReviewVerdict } from "../src/contracts/index.js";
 import { FULL_ROSTER, type RunPolicyRequest } from "../src/run-policy/index.js";
 import {
-  applyCorrections,
-  classifyStratum,
-  coherenceSchedule,
-  FinalizeBatchError,
-  finalizeUnit,
-  finalizeUnits,
-  implicatedRerun,
-  joinFindings,
-  missingStageUnits,
-  planStratifiedReview,
-  releaseUnit,
-  resolveWorkflowPolicy,
-  runLocalizationWorkflow,
   TransientStepError,
-  WorkflowReadinessError,
   type AttemptContext,
   type AttemptLineageEntry,
   type CorrectionOutcome,

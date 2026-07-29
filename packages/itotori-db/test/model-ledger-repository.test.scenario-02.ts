@@ -6,19 +6,8 @@ import {
   ItotoriModelLedgerRepository,
   type ProviderRunLedgerInput,
 } from "../src/repositories/model-ledger-repository.js";
-import {
-  ItotoriProjectRepository,
-  type ItotoriProjectRecord,
-} from "../src/repositories/project-repository.js";
-import {
-  artifacts,
-  costLedgerEntries,
-  modelProviders,
-  modelRegistry,
-  promptPresets,
-  providerRuns,
-  translationMemoryReuseEvents,
-} from "../src/schema.js";
+import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
+import { artifacts, providerRuns } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };

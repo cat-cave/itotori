@@ -9,7 +9,7 @@
 // single model response, while this bundle records the durable, selected
 // outcome together with the provider-ledger evidence that funded it.
 
-import { assertNonBlankTargetText, type NonBlankTargetText } from "./target-text.js";
+import { type NonBlankTargetText } from "./target-text.js";
 
 // v2 replaces the optional-draft, no-text union with the canonical
 // WrittenUnitOutcome. v1 input is deliberately rejected: callers must migrate

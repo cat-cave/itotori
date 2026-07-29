@@ -1,61 +1,21 @@
-import { createHash } from "node:crypto";
-import {
-  ItotoriLlmAcceptedOutputRepository,
-  ItotoriLlmSnapshotRepository,
-  ItotoriLlmWikiRepository,
-} from "@itotori/db";
-import { describe, expect, it } from "vitest";
-import type { DependencyRef } from "../src/contracts/index.js";
-import { dispatch } from "../src/llm/dispatch.js";
-import {
-  bindScopedTargets,
-  buildPatchExportV02,
-  type NativePatchbackInput,
-} from "../src/patchback/index.js";
-import { persistLocalizedRendering, persistWikiObject } from "../src/wiki/object-persistence.js";
-import {
-  ScopedInvalidationService,
-  computeImpactSet,
-  diffUpstreamObject,
-  type ImpactSet,
-  type ImpactedConsumer,
-} from "../src/wiki/scoped-invalidation/index.js";
+import { ItotoriLlmWikiRepository } from "@itotori/db";
+import { expect, it } from "vitest";
+
+import { computeImpactSet, diffUpstreamObject } from "../src/wiki/scoped-invalidation/index.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
-import {
-  localizedRenderingExample,
-  reviewVerdictExample,
-  wikiObjectExample,
-} from "./contract-fixtures-core.js";
-import {
-  TestMemoCipher,
-  dispatchHarness,
-  physicalCallSpec,
-  structuredProviderResponse,
-} from "./llm-step-test-support.js";
-import { buildRb024Snapshot, loadBridgeBundle, makeAccepted } from "./support/gate-fixtures.js";
+
+import { TestMemoCipher } from "./llm-step-test-support.js";
 
 import {
   postgresDescribe,
-  CREATED_AT,
   UPSTREAM_ID,
-  CHANGED_FIELD,
-  R1,
-  R2,
   byObject,
   upstream,
-  consumer,
-  fieldDep,
-  claimDep,
   seed,
   seedUnrelatedArtifacts,
   artifactHashes,
-  onlyHash,
-  hashFor,
   unrelatedPatchExportHash,
   consumerRow,
-  putContextSnapshot,
-  revision,
-  hashOf,
 } from "./scoped-invalidation-live-db.support.js";
 
 postgresDescribe("field/claim-scoped invalidation", () => {

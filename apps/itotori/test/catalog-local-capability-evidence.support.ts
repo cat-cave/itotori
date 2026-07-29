@@ -1,26 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import {
-  type CapabilityEvidenceInput as DbCapabilityEvidenceInput,
-  EngineCapabilityReportRepository,
-  capabilityEvidenceLabelValues,
-  engineCapabilityEvidenceKindValues,
-  engineCapabilityEvidenceSourceValues,
-  engineCapabilityEvidenceStatusValues,
-} from "@itotori/db";
-import { describe, expect, it } from "vitest";
+import { EngineCapabilityReportRepository } from "@itotori/db";
+
 import {
   type CatalogCapabilityEvidenceMergeInput,
-  type CatalogCapabilityEvidenceReadiness,
   type CatalogKeyValidationFixture,
-  catalogCapabilityEvidenceInputSchemaVersion,
-  catalogPublicRpgMakerMvMzAdapterId,
   catalogRpgMakerMvMzKeyValidationFixtureId,
-  mapKeyValidationFixtureToCapabilityEvidence,
-  mapLocalCapabilityEvidenceToDbInput,
-  mapLocalEngineEvidenceToCapabilityEvidence,
-  mapPublicKeyValidationEvidenceToDbInput,
-  mergeCapabilityEvidenceFixture,
 } from "../src/services/catalog-local-capability-evidence.js";
 import type { CatalogLocalEngineEvidence } from "../src/services/catalog-local-scan.js";
 

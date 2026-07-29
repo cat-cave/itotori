@@ -3,9 +3,6 @@ import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import {
   catalogCompletenessPoolValues,
   ItotoriCatalogRepository,
-  type CatalogExternalIdRecord,
-  type CatalogLanguageStatusRecord,
-  type CatalogWorkSnapshot,
 } from "../src/repositories/catalog-repository.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 import {
@@ -15,22 +12,13 @@ import {
   type CatalogPlatformLanguageConflictEvidence,
 } from "../src/services/catalog-platform-language-conflicts.js";
 import { augmentCatalogPlatformLanguageConflicts } from "../src/services/catalog-platform-language-conflicts.js";
+import { deriveCatalogPlatformLanguageConflictsFromRepository } from "../src/services/catalog-repository-derived-platform-language-conflicts.js";
 import {
-  catalogRepositoryDerivedConflictDiagnosticCodeValues,
-  deriveCatalogPlatformLanguageConflictsFromRepository,
-  type CatalogRepositoryDerivedConflictReader,
-} from "../src/services/catalog-repository-derived-platform-language-conflicts.js";
-import {
-  catalogConfidenceValues,
   catalogExternalIdKindValues,
   catalogLanguageStatusScopeValues,
   catalogLanguageStatusValues,
   catalogRawContentRedactionClassValues,
   catalogSourceRecordKindValues,
-  type CatalogExternalIdKind,
-  type CatalogLanguageStatus,
-  type CatalogLanguageStatusScope,
-  type CatalogSource,
 } from "../src/schema.js";
 
 const actor: AuthorizationActor = { userId: localUserId };
@@ -50,11 +38,6 @@ const officialEvidence: CatalogPlatformLanguageConflictEvidence = {
 import {
   externalIdIdentity,
   uuid,
-  readerFor,
-  row,
-  buildSnapshot,
-  externalId,
-  languageStatus,
 } from "./catalog-repository-derived-platform-language-conflicts.test.shared-01.js";
 
 describe("repository-derived platform-language conflicts on real Postgres", () => {

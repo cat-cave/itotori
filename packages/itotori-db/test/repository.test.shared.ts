@@ -1,50 +1,20 @@
-import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { eq, sql } from "drizzle-orm";
-import pg from "pg";
-import { describe, expect, it } from "vitest";
+
 import type {
   BridgeBundleV02,
   PatchExportV02,
   RuntimeEvidenceReportV02,
 } from "@itotori/localization-bridge-schema";
+import { localUserId, type AuthorizationActor } from "../src/authorization.js";
+import { type ItotoriProjectRecord } from "../src/repositories/project-repository.js";
+
 import {
-  allPermissions,
-  localUserId,
-  permissionValues,
-  type AuthorizationActor,
-} from "../src/authorization.js";
-import {
-  ItotoriProjectRepository,
-  RuntimeRunNotFoundError,
-  type ItotoriProjectRecord,
-} from "../src/repositories/project-repository.js";
-import { createDatabaseContext } from "../src/connection.js";
-import { ItotoriLocalizationResultRevisionRepository } from "../src/repositories/localization-result-revision-repository.js";
-import { migrate, migrations } from "../src/migrations.js";
-import {
-  feedbackContextStatusValues,
-  feedbackReportStatusValues,
-  feedbackTriageLabelValues,
   feedbackTypeValues,
-  ItotoriFeedbackRepository,
-  parseManualFeedbackImportInput,
   type ManualFeedbackImportInput,
 } from "../src/repositories/feedback-repository.js";
-import {
-  artifacts,
-  events,
-  feedbackReportEvidence,
-  feedbackReports,
-  feedbackSources,
-  localeBranches,
-  sourceBundles,
-  userPermissionGrants,
-} from "../src/schema.js";
-import { isolatedMigratedContext } from "./db-test-context.js";
 
 export const localActor: AuthorizationActor = { userId: localUserId };
 

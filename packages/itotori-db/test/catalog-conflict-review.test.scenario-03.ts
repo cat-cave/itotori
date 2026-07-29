@@ -1,24 +1,12 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import {
-  catalogConflictOriginMetadataDropDiagnostic,
   catalogConflictOriginMetadataDropDiagnosticCode,
   ItotoriCatalogRepository,
 } from "../src/repositories/catalog-repository.js";
 import { catalogPlatformLanguageConflictOriginValues } from "../src/services/catalog-platform-language-conflicts.js";
-import {
-  catalogCandidateMatchStatusValues,
-  catalogConflictKindValues,
-  catalogConflictStatusValues,
-  catalogConflictSubjectKindValues,
-  catalogConfidenceValues,
-  catalogExternalIdKindValues,
-  catalogLanguageStatusValues,
-  catalogSourceRecordKindValues,
-  catalogSourceValues,
-} from "../src/schema.js";
+import { catalogConflictKindValues } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
@@ -39,12 +27,7 @@ const fixture = JSON.parse(
   }[];
 };
 
-import {
-  seedConflictReviewFixture,
-  provenanceRecord,
-  uuid,
-  hash,
-} from "./catalog-conflict-review.test.shared-01.js";
+import { uuid } from "./catalog-conflict-review.test.shared-01.js";
 
 describe("catalogConflictReview conflictOrigin observability", () => {
   it("emits a process warning for an expected-but-missing origin drop while preserving the safe default", async () => {

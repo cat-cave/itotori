@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
-import { localUserId, permissionValues, type AuthorizationActor } from "../src/authorization.js";
+
+import { expect } from "vitest";
+import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import type { ItotoriDatabase } from "../src/connection.js";
 import {
   type CatalogArtifactMappingErrorCode,
@@ -14,42 +14,20 @@ import {
 import {
   capabilityLevelStatusKindValues,
   capabilityLevelValues,
-  catalogConflictKindValues,
-  catalogConflictSubjectKindValues,
   catalogConfidenceValues,
-  catalogCandidateMatches,
-  catalogCandidateMatchStatusValues,
   catalogEngineSourceValues,
   catalogExternalIdKindValues,
-  catalogExternalIds,
-  catalogInstallStateValues,
-  catalogLanguageStatusScopeValues,
   catalogLanguageStatusValues,
-  catalogLocalScanEntries,
-  catalogLocalScanExternalIds,
-  catalogPathRedactionClassValues,
   catalogRawContentRedactionClassValues,
-  catalogReleaseInstallStates,
   catalogReleaseKindValues,
-  catalogReleaseMappingKindValues,
-  catalogReleaseMappings,
-  catalogReleasePackageKindValues,
-  catalogTranslationPortabilityValues,
-  catalogSeedOriginValues,
-  catalogSeedStatusValues,
-  catalogSeedTargets,
-  catalogSourceProvenance,
   catalogSourceRecordKindValues,
   catalogSourceValues,
-  catalogWorks,
   engineCapabilityEvidence,
   engineCapabilityEvidenceKindValues,
   engineCapabilityEvidenceSourceValues,
   engineCapabilityEvidenceStatusValues,
   engineCapabilityReports,
-  userPermissionGrants,
 } from "../src/schema.js";
-import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 const fetchedAt = "2026-06-17T12:00:00.000Z";

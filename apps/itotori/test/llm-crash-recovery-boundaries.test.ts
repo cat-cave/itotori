@@ -1,25 +1,18 @@
-import { createHash } from "node:crypto";
 import {
   ItotoriLlmAcceptedOutputRepository,
   LlmAcceptedOutputCasError,
   LlmDurabilityFaultError,
-  type AcceptLlmOutputInput,
-  type DatabaseContext,
   type LlmAcceptedOutputHead,
-  type LlmDurabilityFaultBoundary,
-  type LlmDurabilityFaultInjector,
 } from "@itotori/db";
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
-import { dispatch, type DispatchRuntime } from "../src/llm/dispatch.js";
-import { reviewVerdictExample } from "./contract-fixtures-core.js";
+import { dispatch } from "../src/llm/dispatch.js";
+
 import {
-  STEP_HASH_D,
   TestMemoCipher,
   decodedUnitsTool,
   dispatchHarness,
   physicalCallSpec,
-  structuredProviderResponse,
   toolLoopSpec,
   toolProviderResponse,
 } from "./llm-step-test-support.js";
@@ -29,9 +22,7 @@ import {
   verdict,
   crashAt,
   recoverAcceptedUnit,
-  ACCEPT_SNAPSHOT_ID,
   unitOutput,
-  deterministicOutputJson,
   deterministicOutputHash,
   headIdentity,
   countRows,

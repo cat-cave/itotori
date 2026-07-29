@@ -1,18 +1,7 @@
 import { API_ERROR_RESPONSE_CODES, STRICT_API_BODY_KEYS } from "./api-schema.js";
 import { extractCapabilities } from "./extract/extract-adapter-registry.js";
-import {
-  any,
-  arr,
-  bool,
-  nullableStr,
-  num,
-  obj,
-  object,
-  str,
-  type Ref,
-  type Schema,
-} from "./api-contract-schema.js";
-import type { JsonValue } from "./api-contract-json.js";
+import { arr, bool, num, obj, object, str, type Schema } from "./api-contract-schema.js";
+
 import type { ComponentBuilders } from "./api-contract-components.js";
 
 function extractFormFieldSchema(input: "text" | "number"): Schema {

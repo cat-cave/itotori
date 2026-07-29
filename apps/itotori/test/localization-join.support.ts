@@ -1,15 +1,7 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
-import {
-  ConflictingNarrativeLinkError,
-  DanglingBridgeRefError,
-  DuplicateLocalizationUnitError,
-  IncompleteNarrativeLinkError,
-  SourceBindingMismatchError,
-  UnreferencedLocalizationUnitError,
-  joinNarrativeToLocalization,
-} from "../src/structure/index.js";
+
 import type {
   NarrativeChoice,
   NarrativeMessage,

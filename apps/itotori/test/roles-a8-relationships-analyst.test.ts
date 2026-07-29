@@ -29,16 +29,7 @@ import {
   type EgressPolicy,
 } from "../src/egress/index.js";
 import { specialistFor } from "../src/roster/index.js";
-import type { WikiObject } from "../src/contracts/index.js";
-import {
-  assembleCharacterBio,
-  buildCharacterPortrait,
-  characterIndex as a7CharacterIndex,
-  readCharacterEvidence as a7ReadEvidence,
-  type A7BioDraft,
-  type A7Context,
-  type A7PortraitProvider,
-} from "../src/roles/a7/index.js";
+
 import {
   A8RoleError,
   assembleCharacterBackground,
@@ -51,22 +42,17 @@ import {
   sceneEvidenceId,
   type A8BackgroundDraft,
   type A8BackgroundRequest,
-  type A8Context,
-  type A8ModelCaller,
-  type A8RelationshipDraft,
 } from "../src/roles/a8/index.js";
-import { buildClaimFixture, type FixtureCharacterSpec } from "./support/claim-fixture.js";
+import { buildClaimFixture } from "./support/claim-fixture.js";
 
 import {
   CONTEXT,
-  A7_CONTEXT,
   SCENE_1,
   SCENE_2,
   SCENE_3,
   SCENE_999,
   CHARACTERS,
   fixture,
-  portraits,
   bioFor,
   bioProvider,
   recordedCaller,

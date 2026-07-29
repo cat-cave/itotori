@@ -1,57 +1,26 @@
-import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { localUserId, permissionValues, type AuthorizationActor } from "../src/authorization.js";
-import type { ItotoriDatabase } from "../src/connection.js";
-import {
-  ItotoriProjectRepository,
-  type ItotoriProjectRecord,
-} from "../src/repositories/project-repository.js";
-import {
-  contentHashForPolicy,
-  ItotoriStyleGuideRepository,
-} from "../src/repositories/style-guide-repository.js";
+import { localUserId, type AuthorizationActor } from "../src/authorization.js";
+
+import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
 import { ItotoriStyleGuideService } from "../src/services/style-guide-service.js";
 import {
-  artifacts,
   eventOutbox,
-  findings,
   localeBranchUnits,
   outboxEventTypeValues,
-  styleGuides,
-  styleGuideVersions,
   styleGuideVersionStatusValues,
-  userPermissionGrants,
-  users,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
 import {
-  type StyleGuideFixture,
-  type FixtureSubmitCase,
-  type FixtureApproveCase,
   styleGuideFixture,
   readMigrationSql,
-  projectFixture,
   seedProject,
-  seedDraftWriteOnlyUser,
-  seedStyleGuideApproverOnlyUser,
-  seedUserWithoutPermissions,
   seedAffectedWorkForPriorPolicy,
-  outboxEventCount,
-  outboxEventCountByType,
   affectedSurface,
   affectedReferences,
-  installStyleGuideOutboxFailureTrigger,
-  installAffectedWorkOutboxFailureTrigger,
-  expectForcedStyleGuideOutboxFailure,
-  expectForcedAffectedWorkOutboxFailure,
-  errorCauseMessage,
 } from "./style-guide-repository.test.shared-01.js";
 
 describe("ItotoriStyleGuideService", () => {

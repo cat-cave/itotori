@@ -1,12 +1,10 @@
 import {
   bigint as pgBigint,
   boolean,
-  check,
   foreignKey,
   index,
   integer,
   jsonb,
-  numeric,
   pgTable,
   primaryKey,
   text,
@@ -19,7 +17,6 @@ import { sql } from "drizzle-orm";
 // authorization.ts, which imports table VALUES from this module). Types the
 // auth permission-set / grant / audit columns to the single Permission source
 // of truth in authorization.ts.
-import type { Permission } from "./authorization.js";
 
 import { projects } from "./schema-07.js";
 import { localeBranches } from "./schema-08.js";

@@ -2,7 +2,7 @@
 
 import { parse } from "@babel/parser";
 
-import { forEachPatternBinding, unwrapTsTypeAssertions } from "./stable-ts-ast-patterns.mjs";
+import { unwrapTsTypeAssertions } from "./stable-ts-ast-patterns.mjs";
 
 export { permissionHelperCallName } from "./stable-ts-ast-permission-call.mjs";
 export { forEachPatternBinding, unwrapTsTypeAssertions } from "./stable-ts-ast-patterns.mjs";

@@ -1,13 +1,9 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
-  catalogCrawlerJobStatusValues,
-  catalogCrawlerStepStatusValues,
   catalogCrawlerIdempotentFactImportContractId,
   catalogCrawlerFactImportStrategyValues,
   createRecordedCatalogCrawlerAdapter,
-  InMemoryCatalogCrawlerRepository,
-  ItotoriCatalogCrawlerRunner,
   type AuthorizationActor,
   type CatalogCrawlerFactImportEvidence,
   type CatalogCrawlerIngestContext,
@@ -15,7 +11,6 @@ import {
   type CatalogCrawlerVerifyFactImportStep,
   type RecordedCatalogCrawlerFixture,
 } from "@itotori/db";
-import { describe, expect, it } from "vitest";
 
 export const actor: AuthorizationActor = { userId: "fixture-user" };
 

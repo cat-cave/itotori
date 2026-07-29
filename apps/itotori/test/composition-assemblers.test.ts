@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { UnitFactSchema, type Defect, type ReviewVerdict } from "../src/contracts/index.js";
+import { UnitFactSchema, type Defect } from "../src/contracts/index.js";
 import { buildDefect, evaluateDeterministicGates, realliveSjisPolicy } from "../src/gates/index.js";
 import {
   MissingBibleEntryError,
   resolveUnitBibleGroundTruth,
-  type InstalledBible,
 } from "../src/localized-wiki/ground-truth/index.js";
-import type { FactSnapshot, OrderedUnitFact } from "../src/prepass/index.js";
+
 import { deriveEditScope } from "../src/roles/p2/index.js";
 import { normalizeRepairRequest } from "../src/roles/p3/index.js";
 import { Q1ReviewInputSchema } from "../src/roles/q1/index.js";
@@ -15,12 +14,7 @@ import { Q3ReviewInputSchema } from "../src/roles/q3/index.js";
 import { Q4ReviewInputSchema } from "../src/roles/q4/index.js";
 import { contestEligible } from "../src/roles/q6/index.js";
 import { createWorkflowPorts } from "../src/composition/index.js";
-import type {
-  DraftedScene,
-  DraftedUnit,
-  LaneVerdict,
-  WorkflowScene,
-} from "../src/workflow/index.js";
+import type { LaneVerdict } from "../src/workflow/index.js";
 import {
   AssemblerError,
   buildDeterministicGateInput,
@@ -35,27 +29,20 @@ import {
   createReadinessDeps,
   decodeFactSourceFrom,
   interpretLaneVerdict,
-  type RunScopeConfig,
 } from "../src/composition/live/assemblers/index.js";
-import type { LocalizationUnitV02 } from "@itotori/localization-bridge-schema";
 
 import {
   SNAP,
   CTX,
-  SCHEMA,
   HASH1,
-  HASH2,
   ROUTE,
   config,
   orderedUnit,
   U1,
-  U2,
   bridgeUnits,
   snapshot,
   facts,
-  draftedUnit,
   D1,
-  D2,
   draftedScene,
   workflowScene,
   installedBible,

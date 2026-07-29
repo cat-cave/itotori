@@ -2,14 +2,12 @@ import type { CatalogConflictReviewReadModel } from "../repositories/catalog-rep
 import {
   catalogExactExternalIdLinkSchemaVersion,
   catalogExactExternalIdLinkStatusValues,
-  type CatalogExactExternalIdLinkDiagnostic,
   type CatalogExactExternalIdLinkResult,
 } from "./catalog-exact-external-id-linker.js";
 import {
   catalogFuzzyCandidateGeneratorVersion,
   catalogFuzzyCandidateSchemaVersion,
   catalogFuzzyCandidateStatusValues,
-  type CatalogFuzzyCandidateDiagnostic,
   type CatalogFuzzyCandidateResult,
 } from "./catalog-fuzzy-candidate-generator.js";
 

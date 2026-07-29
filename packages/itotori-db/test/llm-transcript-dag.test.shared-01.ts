@@ -1,12 +1,8 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe } from "vitest";
 import type { DatabaseContext } from "../src/connection.js";
-import { conversationEventId, type LlmJsonValue } from "../src/llm-content-address.js";
-import {
-  ItotoriLlmAcceptedOutputRepository,
-  LlmQuarantinedResponseError,
-  type AcceptLlmOutputInput,
-} from "../src/repositories/llm-accepted-output-repository.js";
+import { type LlmJsonValue } from "../src/llm-content-address.js";
+import { type AcceptLlmOutputInput } from "../src/repositories/llm-accepted-output-repository.js";
 import {
   ItotoriLlmConversationRepository,
   type LlmProjectableEventBody,
@@ -16,14 +12,11 @@ import {
 import type { LlmMemoCipher } from "../src/repositories/llm-call-memo-repository.js";
 import {
   ItotoriLlmSnapshotRepository,
-  contextSnapshot,
-  localizationSnapshot,
   namespacedFactId,
   type LlmContextSnapshotInput,
   type LlmLocalizationSnapshot,
   type LlmLocalizationSnapshotInput,
 } from "../src/repositories/llm-snapshot-repository.js";
-import { isolatedMigratedContext } from "./db-test-context.js";
 
 const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
 

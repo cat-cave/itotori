@@ -1,30 +1,8 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
-import { EngineCapabilityReportRepository } from "../src/repositories/engine-capability-report-repository.js";
-import {
-  type CatalogBenchmarkSeedFinderReadModel,
-  ItotoriCatalogRepository,
-  type CatalogSourceProvenanceRecord,
-} from "../src/repositories/catalog-repository.js";
-import {
-  capabilityLevelValues,
-  catalogConfidenceValues,
-  catalogConflictKindValues,
-  catalogConflictStatusValues,
-  catalogConflictSubjectKindValues,
-  catalogDemandFactKindValues,
-  catalogEngineSourceValues,
-  catalogExternalIdKindValues,
-  catalogLanguageStatusValues,
-  catalogPathRedactionClassValues,
-  catalogRawContentRedactionClassValues,
-  catalogReleaseKindValues,
-  catalogSourceRecordKindValues,
-  catalogSourceValues,
-} from "../src/schema.js";
-import { isolatedMigratedContext } from "./db-test-context.js";
+
+import { type CatalogBenchmarkSeedFinderReadModel } from "../src/repositories/catalog-repository.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 const fetchedAt = "2026-06-27T12:00:00.000Z";
@@ -39,21 +17,6 @@ const publicSeedFinderFixture = JSON.parse(
   };
   publicLeakagePolicy: { forbiddenSubstrings: string[] };
 };
-
-import {
-  recordCapabilityMatrices,
-  recordAmbiguousAdapterWork,
-  recordPatchOnlyCapabilityBait,
-  recordSeedFinderCatalog,
-  recordSeedFinderProvenance,
-  provenance,
-  externalId,
-  release,
-  languageStatus,
-  demandFact,
-  hash,
-  uuid,
-} from "./catalog-benchmark-seed-finder.test.shared-01.js";
 
 export function requiredTestRow<T>(rows: T[], label: string): T {
   const row = rows[0];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sql } from "drizzle-orm";
+
 import {
   type AdapterCapabilityMatrixRecord,
   type CapabilityEvidenceInput,

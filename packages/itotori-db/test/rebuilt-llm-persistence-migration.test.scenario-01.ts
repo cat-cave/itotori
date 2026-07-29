@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DatabaseContext } from "../src/connection.js";
-import { conversationEventIdFromContentHash } from "../src/llm-content-address.js";
+
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const historyTables = [
@@ -98,7 +98,6 @@ const hash = (value: string) =>
   `sha256:${createHash("sha256").update(value).digest("hex")}` as const;
 
 import {
-  type Queryable,
   assertExactRebuiltColumns,
   insertMemo,
   insertAttempt,

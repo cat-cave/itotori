@@ -1,17 +1,11 @@
 import {
-  bigint as pgBigint,
-  boolean,
   check,
-  foreignKey,
   index,
   integer,
   jsonb,
-  numeric,
   pgTable,
-  primaryKey,
   text,
   timestamp,
-  unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -19,7 +13,6 @@ import { sql } from "drizzle-orm";
 // authorization.ts, which imports table VALUES from this module). Types the
 // auth permission-set / grant / audit columns to the single Permission source
 // of truth in authorization.ts.
-import type { Permission } from "./authorization.js";
 
 import { users } from "./schema-03.js";
 import { projects, sourceRevisions } from "./schema-07.js";

@@ -2,32 +2,23 @@ import { testProjectEngineFamilyRegistry } from "./project-engine-family-registr
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { eq, sql } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { sql } from "drizzle-orm";
+import { expect } from "vitest";
 import { localUserId, permissionValues, type AuthorizationActor } from "../src/authorization.js";
 import type { ItotoriDatabase } from "../src/connection.js";
 import {
   ItotoriProjectRepository,
   type ItotoriProjectRecord,
 } from "../src/repositories/project-repository.js";
-import {
-  contentHashForPolicy,
-  ItotoriStyleGuideRepository,
-} from "../src/repositories/style-guide-repository.js";
-import { ItotoriStyleGuideService } from "../src/services/style-guide-service.js";
+
 import {
   artifacts,
   eventOutbox,
   findings,
   localeBranchUnits,
-  outboxEventTypeValues,
-  styleGuides,
-  styleGuideVersions,
-  styleGuideVersionStatusValues,
   userPermissionGrants,
   users,
 } from "../src/schema.js";
-import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 

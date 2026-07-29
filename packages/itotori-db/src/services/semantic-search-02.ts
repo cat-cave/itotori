@@ -1,11 +1,8 @@
-import { createHash } from "node:crypto";
 import { and, asc, eq, inArray, ne } from "drizzle-orm";
 import type { AuthorizationActor } from "../authorization.js";
 import { permissionValues, requirePermission } from "../authorization.js";
 import type { ItotoriDatabase } from "../connection.js";
 import {
-  localeBranches,
-  sourceBundles,
   terminologySemanticIndex,
   terminologySemanticIndexStatusValues,
   terminologySourceReferences,
@@ -16,8 +13,6 @@ import {
 import {
   ItotoriTerminologyRepository,
   type ItotoriTerminologyRepositoryPort,
-  type TerminologySearchMatchKind,
-  type TerminologySearchResult,
 } from "../repositories/terminology-repository.js";
 import {
   exactSearchToolName,

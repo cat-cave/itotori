@@ -8,22 +8,9 @@ import {
   type LlmRevisionRef,
 } from "@itotori/db";
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
-import { describe, expect, it } from "vitest";
+import { expect } from "vitest";
 import type { GlossaryFactValue, HumanNoteFactValue } from "../src/contracts/index.js";
-import {
-  buildReadModel,
-  decodeGetCharacterOccurrences,
-  decodeGetNeighbors,
-  decodeGetRouteGraph,
-  decodeGetUnits,
-  glossaryLookup,
-  outputsGetAccepted,
-  ReadToolError,
-  referencesSearch,
-  type CharacterProfile,
-  type ReadModel,
-  type ReadToolCaller,
-} from "../src/read-tools/index.js";
+import { buildReadModel, type ReadModel, type ReadToolCaller } from "../src/read-tools/index.js";
 import {
   buildFactSnapshot,
   contextSnapshotFactsFrom,

@@ -1,18 +1,11 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import type { DatabaseContext } from "../src/connection.js";
-import { conversationEventId, type LlmJsonValue } from "../src/llm-content-address.js";
+
 import {
   ItotoriLlmAcceptedOutputRepository,
   LlmQuarantinedResponseError,
-  type AcceptLlmOutputInput,
 } from "../src/repositories/llm-accepted-output-repository.js";
-import {
-  ItotoriLlmConversationRepository,
-  type LlmProjectableEventBody,
-  type LlmProjectionSelector,
-  type LlmProjectionVisibility,
-} from "../src/repositories/llm-conversation-repository.js";
+import { ItotoriLlmConversationRepository } from "../src/repositories/llm-conversation-repository.js";
 import type { LlmMemoCipher } from "../src/repositories/llm-call-memo-repository.js";
 import {
   ItotoriLlmSnapshotRepository,
@@ -20,7 +13,6 @@ import {
   localizationSnapshot,
   namespacedFactId,
   type LlmContextSnapshotInput,
-  type LlmLocalizationSnapshot,
   type LlmLocalizationSnapshotInput,
 } from "../src/repositories/llm-snapshot-repository.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
@@ -56,25 +48,19 @@ class ProofCipher implements LlmMemoCipher {
 }
 
 import {
-  conversationRepository,
   putSnapshots,
   contextInput,
   localizationInput,
   revision,
   projectable,
   visible,
-  appendLabel,
   projectionInput,
   projectedLabel,
-  eventCount,
   insertVerifiedMemo,
   outputCandidate,
   headIdentity,
-  insertSemanticNoteHead,
-  timestampOrdinal,
   nextTimestamp,
   hash,
-  compareCodeUnits,
 } from "./llm-transcript-dag.test.shared-01.js";
 
 postgresDescribe("immutable transcript DAG and checkpoints", () => {

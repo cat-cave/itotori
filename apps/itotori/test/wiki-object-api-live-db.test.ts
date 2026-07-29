@@ -1,28 +1,12 @@
-import { createHash } from "node:crypto";
-import {
-  ItotoriLlmHumanInputRepository,
-  ItotoriLlmSnapshotRepository,
-  ItotoriLlmWikiRepository,
-} from "@itotori/db";
-import { describe, expect, it } from "vitest";
-import { WIKI_OBJECT_SCHEMA_VERSION } from "../src/contracts/index.js";
-import { handleItotoriApiRequest, type ItotoriApiServices } from "../src/api-handlers.js";
-import { canonicalJson, sha256 } from "../src/llm/canonical-json.js";
-import { persistLocalizedRendering, persistWikiObject } from "../src/wiki/object-persistence.js";
-import { ForgedWikiAssertionError, WikiObjectApiService } from "../src/wiki/object-api/index.js";
-import {
-  createDispatchEnhancementRunner,
-  type EnhancementRequest,
-  type EnhancementRunner,
-} from "../src/wiki/human-enhancement/index.js";
+import { expect, it } from "vitest";
+
+import { type ItotoriApiServices } from "../src/api-handlers.js";
+
+import { ForgedWikiAssertionError } from "../src/wiki/object-api/index.js";
+
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
-import { H2, localizedRenderingExample, wikiObjectExample } from "./contract-fixtures-core.js";
-import {
-  TestMemoCipher,
-  dispatchHarness,
-  physicalCallSpec,
-  structuredProviderResponse,
-} from "./llm-step-test-support.js";
+
+import { TestMemoCipher } from "./llm-step-test-support.js";
 
 import {
   postgresDescribe,
@@ -31,17 +15,12 @@ import {
   SOURCE_SELECTOR,
   RENDERING_ID,
   OTHER_SNAPSHOT,
-  PORTRAIT_MEDIA,
   request,
   editInput,
   feedbackInput,
   memoizedApiRunner,
   setup,
   sourceObject,
-  dependentRendering,
-  putSnapshots,
-  revision,
-  hashOf,
 } from "./wiki-object-api-live-db.support.js";
 
 postgresDescribe("wiki object read/write API over the WikiObject substrate", () => {

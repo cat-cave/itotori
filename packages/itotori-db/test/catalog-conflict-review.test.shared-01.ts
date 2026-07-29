@@ -1,13 +1,9 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
-import {
-  catalogConflictOriginMetadataDropDiagnostic,
-  catalogConflictOriginMetadataDropDiagnosticCode,
-  ItotoriCatalogRepository,
-} from "../src/repositories/catalog-repository.js";
-import { catalogPlatformLanguageConflictOriginValues } from "../src/services/catalog-platform-language-conflicts.js";
+import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository.js";
+
 import {
   catalogCandidateMatchStatusValues,
   catalogConflictKindValues,
@@ -19,7 +15,6 @@ import {
   catalogSourceRecordKindValues,
   catalogSourceValues,
 } from "../src/schema.js";
-import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 const fixture = JSON.parse(

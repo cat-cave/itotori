@@ -1,7 +1,5 @@
 import {
   bytes,
-  capabilityLevelForHelperKind,
-  executionForHelperKind,
   helperResult,
   keyProfile,
   plainXp3Fixture,

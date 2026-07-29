@@ -1,27 +1,11 @@
 import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
-import { readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { eq, sql } from "drizzle-orm";
-import pg from "pg";
+
+import { eq } from "drizzle-orm";
+
 import { describe, expect, it } from "vitest";
-import type { RuntimeEvidenceReportV02 } from "@itotori/localization-bridge-schema";
-import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
-import {
-  allPermissions,
-  localUserId,
-  permissionValues,
-  type AuthorizationActor,
-} from "../src/authorization.js";
-import {
-  ItotoriProjectRepository,
-  RuntimeRunNotFoundError,
-  type ItotoriProjectRecord,
-} from "../src/repositories/project-repository.js";
-import { createDatabaseContext } from "../src/connection.js";
-import { ItotoriLocalizationResultRevisionRepository } from "../src/repositories/localization-result-revision-repository.js";
-import { migrate, migrations } from "../src/migrations.js";
+
+import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
+
 import {
   feedbackContextStatusValues,
   feedbackReportStatusValues,
@@ -29,7 +13,6 @@ import {
   feedbackTypeValues,
   ItotoriFeedbackRepository,
   parseManualFeedbackImportInput,
-  type ManualFeedbackImportInput,
 } from "../src/repositories/feedback-repository.js";
 import {
   artifacts,
@@ -39,33 +22,15 @@ import {
   feedbackSources,
   localeBranches,
   sourceBundles,
-  userPermissionGrants,
 } from "../src/schema.js";
-import { isolatedMigratedContext } from "./db-test-context.js";
+
 import {
-  bridgeV02Fixture,
-  escapeRegExp,
-  invalidLegacyRuntimeArtifactUriCases,
-  invalidManagedRuntimeArtifactUriCases,
   localActor,
   manualFeedbackFixture,
-  patchExportV02Fixture,
   projectFixture,
-  projectV02Fixture,
   runtimeEvidenceReportFixture,
-  stableSerializeHashInput,
-  stableSerializeValue,
-  v02Sha256,
 } from "./repository.test.shared.js";
-import {
-  databaseUrlWithSearchPath,
-  migratedContext,
-  migrationSql,
-  quoteIdentifier,
-  requiredDatabaseUrl,
-  seedLegacyHelloWorldState,
-  seedLegacySelectedPatchForRetirement,
-} from "./repository.test.legacy.js";
+import { migratedContext } from "./repository.test.legacy.js";
 
 describe("ItotoriProjectRepository", () => {
   it("reads dashboard pending decisions without inferring across finding sources", async () => {

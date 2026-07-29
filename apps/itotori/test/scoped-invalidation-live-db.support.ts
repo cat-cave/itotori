@@ -4,7 +4,7 @@ import {
   ItotoriLlmSnapshotRepository,
   ItotoriLlmWikiRepository,
 } from "@itotori/db";
-import { describe, expect, it } from "vitest";
+import { describe, expect } from "vitest";
 import type { DependencyRef } from "../src/contracts/index.js";
 import { dispatch } from "../src/llm/dispatch.js";
 import {
@@ -15,8 +15,6 @@ import {
 import { persistLocalizedRendering, persistWikiObject } from "../src/wiki/object-persistence.js";
 import {
   ScopedInvalidationService,
-  computeImpactSet,
-  diffUpstreamObject,
   type ImpactSet,
   type ImpactedConsumer,
 } from "../src/wiki/scoped-invalidation/index.js";

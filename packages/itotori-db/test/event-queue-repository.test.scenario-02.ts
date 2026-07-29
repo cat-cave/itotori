@@ -1,35 +1,20 @@
-import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
-import { eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { localUserId, permissionValues, type AuthorizationActor } from "../src/authorization.js";
-import { type ItotoriDatabase } from "../src/connection.js";
+import { localUserId, type AuthorizationActor } from "../src/authorization.js";
+
 import {
   ItotoriEventQueueRepository,
-  JobLeaseRevalidationError,
-  jobLeaseRevalidationReasons,
   type JobQueueInput,
   OutboxLeaseRevalidationError,
   outboxLeaseRevalidationReasons,
 } from "../src/repositories/event-queue-repository.js";
+import { type ItotoriProjectRecord } from "../src/repositories/project-repository.js";
+import { ItotoriJobWorkerService } from "../src/services/event-queue-service.js";
 import {
-  ItotoriProjectRepository,
-  type ItotoriProjectRecord,
-} from "../src/repositories/project-repository.js";
-import {
-  ItotoriJobWorkerService,
-  ItotoriOutboxPublisherService,
-} from "../src/services/event-queue-service.js";
-import {
-  eventOutbox,
   jobIdempotencyPolicyValues,
-  jobQueue,
   jobStatusValues,
   jobTaskTypeValues,
-  outboxEventTypeValues,
   outboxStatusValues,
-  userPermissionGrants,
 } from "../src/schema.js";
-import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 

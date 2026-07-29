@@ -1,16 +1,4 @@
 import { createHash } from "node:crypto";
-import type { AuthorizationActor } from "../authorization.js";
-import { catalogSourceRecordKindValues, type CatalogSource } from "../schema.js";
-import {
-  type CatalogCrawlerCheckpointRecord,
-  type CatalogCrawlerCursor,
-  type CatalogCrawlerJobInput,
-  type CatalogCrawlerJobRecord,
-  type CatalogCrawlerJsonRecord,
-  type CatalogCrawlerRateLimitInput,
-  type CatalogCrawlerStepRecord,
-  type ItotoriCatalogCrawlerRepositoryPort,
-} from "../repositories/catalog-crawler-repository.js";
 
 import {
   type CatalogCrawlerAdapterStep,

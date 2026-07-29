@@ -2,28 +2,14 @@ import { testProjectEngineFamilyRegistry } from "./project-engine-family-registr
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
-import {
-  ItotoriModelLedgerRepository,
-  type ProviderRunLedgerInput,
-} from "../src/repositories/model-ledger-repository.js";
-import {
-  ItotoriProjectRepository,
-  type ItotoriProjectRecord,
-} from "../src/repositories/project-repository.js";
-import {
-  artifacts,
-  costLedgerEntries,
-  modelProviders,
-  modelRegistry,
-  promptPresets,
-  providerRuns,
-  translationMemoryReuseEvents,
-} from "../src/schema.js";
+import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-repository.js";
+import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
+import { translationMemoryReuseEvents } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
-import { runInput, projectFixture } from "./model-ledger-repository.test.shared-01.js";
+import { projectFixture } from "./model-ledger-repository.test.shared-01.js";
 
 describe("ItotoriModelLedgerRepository", () => {
   it("keeps the project cost report available when a tm reuse event has a malformed cost_impact JSON", async () => {

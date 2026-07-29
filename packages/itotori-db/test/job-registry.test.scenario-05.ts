@@ -7,8 +7,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  assertContextCorrectionRedraftPayload,
-  buildRegisteredJobInput,
   COMPILE_TIME_AGENT_PAYLOAD_TYPE,
   COMPILE_TIME_CONTEXT_CORRECTION_REDRAFT_NAME_REGISTERED,
   COMPILE_TIME_CONTEXT_CORRECTION_REDRAFT_PAYLOAD_TYPE,
@@ -18,25 +16,11 @@ import {
   COMPILE_TIME_WRONG_CONTEXT_CORRECTION_PAYLOAD_REJECTED,
   contextCorrectionRedraftJobName,
   contextCorrectionRedraftPayloadSchemaVersion,
-  DuplicateJobHandlerError,
-  isRegisteredJobName,
-  JOB_DEFINITIONS,
-  JOB_NAME_FAMILIES,
-  jobPayloadValidationReasons,
-  REGISTERED_JOB_NAMES,
-  RegisteredJobHandlerRegistry,
-  requireRegisteredJobDefinition,
-  resolveRegisteredJobDefinition,
-  UnregisteredJobHandlerError,
-  UnregisteredJobNameError,
 } from "../src/job-registry.js";
 import type {
-  AgentJobPayload,
-  AnyRegisteredJobName,
   ContextCorrectionRedraftPayload,
   JobPayloadFor,
   RegisteredJobInputBase,
-  RegisteredJobName,
 } from "../src/job-registry.js";
 import type { JobQueueRecord } from "../src/repositories/event-queue-repository.js";
 import { jobIdempotencyPolicyValues, jobTaskTypeValues } from "../src/schema.js";

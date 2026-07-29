@@ -1,20 +1,15 @@
 import {
-  bigint as pgBigint,
-  boolean,
-  check,
   foreignKey,
   index,
   integer,
   jsonb,
-  numeric,
   pgTable,
   primaryKey,
   text,
   timestamp,
   unique,
-  uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+
 // Type-only import (erased at compile time — no runtime cycle with
 // authorization.ts, which imports table VALUES from this module). Types the
 // auth permission-set / grant / audit columns to the single Permission source

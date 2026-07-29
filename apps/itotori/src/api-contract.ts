@@ -31,7 +31,7 @@
 // by real response fixtures. The parity suite adds per-route teeth for all
 // routes (a dropped required key or a leaked strict field fails).
 import { ITOTORI_PRODUCT_VERSION } from "@itotori/localization-bridge-schema";
-import { API_ERROR_RESPONSE_CODES, type ItotoriApiRouteId } from "./api-schema.js";
+import { type ItotoriApiRouteId } from "./api-schema.js";
 import { API_BINARY_ROUTES, API_ROUTE_IDS, API_ROUTES } from "./api-routes.js";
 import { materializeComponents } from "./api-contract-components.js";
 import { serializeJsonDocument, type JsonValue } from "./api-contract-json.js";

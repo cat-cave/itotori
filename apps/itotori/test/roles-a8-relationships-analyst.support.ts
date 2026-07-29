@@ -1,13 +1,3 @@
-import { describe, expect, it, vi } from "vitest";
-import { validateWikiObjectClaims } from "../src/wiki/claim-validation.js";
-import { assertRoleAllowed, ReadToolError } from "../src/read-tools/index.js";
-import {
-  EgressDeniedError,
-  assertWebEgressAllowed,
-  webEgressAllowed,
-  type EgressPolicy,
-} from "../src/egress/index.js";
-import { specialistFor } from "../src/roster/index.js";
 import type { WikiObject } from "../src/contracts/index.js";
 import {
   assembleCharacterBio,
@@ -19,11 +9,7 @@ import {
   type A7PortraitProvider,
 } from "../src/roles/a7/index.js";
 import {
-  A8RoleError,
   assembleCharacterBackground,
-  backgroundObjectId,
-  backgroundRoster,
-  buildA8CallSpec,
   characterIndex,
   counterpartIds,
   readCharacterEvidence,

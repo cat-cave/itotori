@@ -1,50 +1,17 @@
-import { createHash } from "node:crypto";
-import {
-  AuthorizationError,
-  LlmDurabilityFaultError,
-  LlmMemoConflictError,
-  LlmRetriesExhaustedError,
-  type LlmAttemptFailure,
-  type LlmCallMemoStore,
-  type LlmMemoSingleflightInput,
-  type LlmMemoSingleflightResult,
-} from "@itotori/db";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import {
-  CALL_SPEC_SCHEMA_VERSION,
-  DECODE_GET_UNITS_RESULT_SCHEMA_VERSION,
-  REVIEW_VERDICT_SCHEMA_VERSION,
-  type CallSpec,
-} from "../src/contracts/index.js";
-import { dispatch, type DispatchRuntime, type DispatchTool } from "../src/llm/dispatch.js";
+import { DECODE_GET_UNITS_RESULT_SCHEMA_VERSION } from "../src/contracts/index.js";
+import { dispatch, type DispatchTool } from "../src/llm/dispatch.js";
 import { reviewVerdictExample } from "./contract-fixtures-core.js";
-import {
-  TEST_MODEL_PROFILE,
-  decodedUnitsTool,
-  httpProviderResponse,
-  rawTransportDropError,
-  toolLoopSpec,
-  toolProviderResponse,
-} from "./llm-step-test-support.js";
 
 import {
   HASH_A,
   HASH_B,
   CapturedRequest,
-  ProviderResponse,
-  MemoryMemoStore,
-  contentHash,
-  streamChunk,
-  sse,
   structuredResponse,
-  completedThenLostResponse,
-  TRANSIENT_TRANSPORT,
   toolCallResponse,
   callSpec,
   runtime,
-  faultAt,
-  liveEnabled,
 } from "./llm-dispatch.support.js";
 
 describe("the rebuilt LLM dispatcher", () => {

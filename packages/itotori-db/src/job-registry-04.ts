@@ -24,14 +24,6 @@
 // drifting. The app consumes these exports when it persists a canonical
 // context version, invalidates affected artifacts, and queues a real redraft.
 
-import type {
-  JobQueueInput,
-  JobQueueRecord,
-  QueueJsonRecord,
-} from "./repositories/event-queue-repository.js";
-import type { JobTaskType } from "./schema.js";
-import { jobTaskTypeValues } from "./schema.js";
-
 // ---------------------------------------------------------------------------
 // Context-correction redraft payload + structural job name.
 // ---------------------------------------------------------------------------

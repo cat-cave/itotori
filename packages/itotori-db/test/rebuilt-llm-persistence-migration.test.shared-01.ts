@@ -2,10 +2,9 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
 import type { DatabaseContext } from "../src/connection.js";
 import { conversationEventIdFromContentHash } from "../src/llm-content-address.js";
-import { isolatedMigratedContext } from "./db-test-context.js";
 
 const historyTables = [
   "itotori_llm_call_memos",

@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import {
@@ -11,7 +10,6 @@ import {
   joinNarrativeToLocalization,
 } from "../src/structure/index.js";
 import type {
-  NarrativeChoice,
   NarrativeMessage,
   NarrativeScene,
   NarrativeStructure,
@@ -20,8 +18,6 @@ import type {
 
 import {
   loadBridgeBundle,
-  BUNDLE_HASH,
-  UnitSpec,
   realliveEvidence,
   sceneRef,
   SCENE_1_LINE,

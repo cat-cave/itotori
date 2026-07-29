@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { FactSnapshot } from "../src/prepass/index.js";
-import type { EntityRef, RouteScope, RunModeValue, WikiObject } from "../src/contracts/index.js";
+
+import type { EntityRef, RouteScope } from "../src/contracts/index.js";
 import {
   InMemoryArtifactLedger,
   ObjectRejectedError,
@@ -19,15 +19,10 @@ import {
 import { ANALYST_RUNNER_ROLE_IDS, assertAnalystRunnerCoverage } from "../src/composition/index.js";
 
 import {
-  SNAP,
   RUN_MODE,
   SOURCE_LANG,
-  unit,
   syntheticSnapshot,
-  claim,
-  ObjectOverrides,
   makeObject,
-  recordedRunner,
   baseDeps,
 } from "./source-wiki-orchestration.support.js";
 

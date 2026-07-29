@@ -37,7 +37,7 @@ import {
   ItotoriProjectRepository,
   type ItotoriProjectRecord,
 } from "../src/repositories/project-repository.js";
-import { translationMemoryReuseEvents, translationMemorySegments } from "../src/schema.js";
+import { translationMemorySegments } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };

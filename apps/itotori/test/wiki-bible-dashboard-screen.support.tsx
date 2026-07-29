@@ -1,19 +1,14 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import {
   WikiBibleDashboardScreen,
   parseWikiBibleRoute,
 } from "../src/ui/screens/WikiBibleDashboardScreen.js";
-import { AddressableFocusScreen } from "../src/ui/screens/AddressableFocusScreen.js";
-import { parsePlayFlagComposerRoute } from "../src/ui/screens/PlayFlagComposerScreen.js";
-import { grantedStudioCapabilityView } from "../src/ui/caps-context.js";
+
 import { RedactionGovernor } from "../src/ui/redaction-governor.js";
-import { App } from "../src/ui/App.js";
-import { parseAddressableLocation } from "../src/ui/addressable-routing.js";
-import { parseReturnTo } from "../src/ui/screens/AddressableFocusScreen.js";
+
 import type {
   WikiHistoryEntry,
   WikiRenderingView,

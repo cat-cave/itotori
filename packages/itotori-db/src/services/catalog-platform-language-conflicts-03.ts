@@ -1,22 +1,4 @@
-import type {
-  CatalogConflictEvidenceInput,
-  CatalogJsonRecord,
-} from "../repositories/catalog-repository.js";
-import {
-  catalogConflictKindValues,
-  catalogConflictSubjectKindValues,
-  catalogConflictStatusValues,
-  catalogExternalIdKindValues,
-  catalogLanguageStatusScopeValues,
-  catalogLanguageStatusValues,
-  catalogSourceValues,
-  type CatalogConflictKind,
-  type CatalogConflictStatus,
-  type CatalogExternalIdKind,
-  type CatalogLanguageStatus,
-  type CatalogLanguageStatusScope,
-  type CatalogSource,
-} from "../schema.js";
+import type { CatalogJsonRecord } from "../repositories/catalog-repository.js";
 
 import { type CatalogPlatformLanguageConflictEvidence } from "./catalog-platform-language-conflicts-01.js";
 

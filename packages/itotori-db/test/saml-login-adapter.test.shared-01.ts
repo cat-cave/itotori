@@ -1,30 +1,15 @@
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+
 import { SignedXml } from "xml-crypto";
 import type { ItotoriDatabase } from "../src/connection.js";
 import {
   bootstrapDefaultAccountPrincipal,
   bootstrapLocalUser,
   defaultLocalAccountId,
-  localOperatorPrincipalId,
   localUserId,
-  permissionValues,
-  requirePermission,
 } from "../src/authorization.js";
-import {
-  ItotoriSamlLoginAdapter,
-  samlExternalIdentityProviderKey,
-} from "../src/repositories/saml-login-adapter.js";
+
 import { ItotoriAuthSsoSettingsRepository } from "../src/repositories/auth-sso-settings-repository.js";
-import { ItotoriPrincipalRepository } from "../src/repositories/principal-repository.js";
-import {
-  authAccountMemberships,
-  authExternalIdentities,
-  authExternalIdentityProviderClaims,
-  authSessions,
-} from "../src/schema.js";
-import { isolatedMigratedContext } from "./db-test-context.js";
 
 export async function configureMockSamlProvider(db: ItotoriDatabase, providerId: string) {
   await bootstrapLocalUser(db);

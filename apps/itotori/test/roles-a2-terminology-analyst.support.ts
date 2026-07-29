@@ -1,38 +1,20 @@
-import { describe, expect, it } from "vitest";
 import {
   CALL_RESULT_SCHEMA_VERSION,
   CallResultSchema,
   WIKI_OBJECT_SCHEMA_VERSION,
-  type CallSpec,
   type Citation,
   type RunModeValue,
   type WikiObject,
 } from "../src/contracts/index.js";
-import {
-  assertCallUsesCertifiedRoleModelProfile,
-  deepSeekV4FlashProfile,
-} from "../src/llm/role-model-profiles.js";
+import { deepSeekV4FlashProfile } from "../src/llm/role-model-profiles.js";
 import type { PolicyRecordV02 } from "@itotori/localization-bridge-schema";
-import { buildEvidenceIndex } from "../src/wiki/evidence-index.js";
-import { CitationResolutionError } from "../src/wiki/citation-resolution.js";
+
 import {
   ambiguousTermCandidates,
-  assembleTermAnalystCallSpec,
-  assertTermAnalystCertifiedRoute,
-  composeTermAnalystPrompt,
-  dispatchTermAnalyst,
-  inlineTermPromptStore,
-  isAmbiguousCandidate,
-  recordedTermAnalystModel,
-  readTermOccurrenceEvidence,
-  runTermAnalyst,
-  TermAnalystError,
-  TermEnumerationError,
-  TermAnalystRouteError,
   type AmbiguousTermCandidate,
   type TermAnalystRequest,
 } from "../src/roles/a2/index.js";
-import { ROSTER, specialistFor } from "../src/roster/index.js";
+
 import { buildClaimFixture } from "./support/claim-fixture.js";
 
 export const HASH = (c: string): `sha256:${string}` =>

@@ -5,7 +5,7 @@ import {
   type LlmMemoSingleflightInput,
   type LlmMemoSingleflightResult,
 } from "@itotori/db";
-import { describe, expect, it } from "vitest";
+
 import {
   DEFECT_BUNDLE_SCHEMA_VERSION,
   DRAFT_BATCH_SCHEMA_VERSION,
@@ -16,16 +16,9 @@ import { sha256 } from "../src/llm/canonical-json.js";
 import { deepSeekV4FlashProfile } from "../src/llm/role-model-profiles.js";
 import type { MeasuredModelProfile } from "../src/llm/physical-attempt-policy.js";
 import { realliveSjisPolicy } from "../src/gates/index.js";
-import { specialistFor, toolsForRole } from "../src/roster/index.js";
+
 import {
-  assertBlindedGroundedFork,
-  assertRepairPatchBatch,
-  buildRepairCall,
-  normalizeRepairRequest,
-  repairSemanticDefects,
   REPAIR_MODE,
-  RepairError,
-  RepairFinalizeError,
   type RepairCandidateUnit,
   type RepairRequest,
   type RepairRuntimeBase,

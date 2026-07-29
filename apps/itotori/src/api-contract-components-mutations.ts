@@ -1,6 +1,6 @@
 import { STRICT_API_BODY_KEYS } from "./api-schema.js";
 import { extractRequestVariants, extractResponseVariants } from "./api-contract-components-base.js";
-import { arr, bool, nullableStr, num, obj, object, str } from "./api-contract-schema.js";
+import { bool, nullableStr, num, obj, object, str } from "./api-contract-schema.js";
 import type { ComponentBuilders } from "./api-contract-components.js";
 
 export const mutationComponentBuilders: ComponentBuilders = {

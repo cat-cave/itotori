@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, it } from "vitest";
 import { deniedActor, repositoryPermissionGateMatrix } from "./authorization-matrix.test.core.js";
 import { requiredContext } from "./authorization-matrix.test.helpers.js";
 import type { DatabaseContext } from "../src/connection.js";

@@ -1,4 +1,4 @@
-import { isRecord, justfilePath, root, viteConfigPath } from "./spec-dag-shared.mjs";
+import { isRecord, justfilePath, viteConfigPath } from "./spec-dag-shared.mjs";
 import { readFileSync } from "node:fs";
 
 export function validateAlphaCommandReferences(nodes) {

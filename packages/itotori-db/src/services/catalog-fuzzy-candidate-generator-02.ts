@@ -1,17 +1,3 @@
-import type { AuthorizationActor } from "../authorization.js";
-import type {
-  CatalogCandidateMatchRecord,
-  CatalogCandidateTargetWorkRecord,
-  ItotoriCatalogRepositoryPort,
-} from "../repositories/catalog-repository.js";
-import {
-  catalogCandidateMatchStatusValues,
-  catalogExternalIdKindValues,
-  catalogSourceValues,
-  type CatalogExternalIdKind,
-  type CatalogSource,
-} from "../schema.js";
-
 import {
   type CatalogFuzzyCandidateDiagnostic,
   catalogFuzzyCandidateDiagnosticCodeValues,

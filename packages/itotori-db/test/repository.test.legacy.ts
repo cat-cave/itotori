@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { migrate, migrations } from "../src/migrations.js";
+
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 export async function migratedContext() {

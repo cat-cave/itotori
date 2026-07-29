@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import {
   catalogCrawlerJobStatusValues,
   catalogCrawlerStepStatusValues,
@@ -8,12 +6,6 @@ import {
   createRecordedCatalogCrawlerAdapter,
   InMemoryCatalogCrawlerRepository,
   ItotoriCatalogCrawlerRunner,
-  type AuthorizationActor,
-  type CatalogCrawlerFactImportEvidence,
-  type CatalogCrawlerIngestContext,
-  type CatalogCrawlerSourceAdapter,
-  type CatalogCrawlerVerifyFactImportStep,
-  type RecordedCatalogCrawlerFixture,
 } from "@itotori/db";
 import { describe, expect, it } from "vitest";
 
@@ -24,12 +16,9 @@ import {
   PersistedImport,
   durableMarkerAdapter,
   persistFacts,
-  persistDurableMarker,
   verifyPersistedImport,
   importProof,
   stableImportKeyForStep,
-  sha256,
-  stableJsonStringify,
 } from "./catalog-crawler-runner.support.js";
 
 describe("Itotori catalog crawler runner", () => {

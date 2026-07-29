@@ -8,15 +8,12 @@ import {
   type ProtectedSkeleton,
   type ProtectedSpanPart,
   type RedactedTextPart,
-  type Sha256,
 } from "./manifest.js";
 import {
   array,
   assertExactKeys,
-  integer,
   metadataString,
   nonNegativeInteger,
-  nullableNativeString,
   positiveInteger,
   record,
   sha256,

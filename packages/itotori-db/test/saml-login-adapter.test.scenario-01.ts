@@ -1,8 +1,6 @@
-import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { SignedXml } from "xml-crypto";
-import type { ItotoriDatabase } from "../src/connection.js";
+
 import {
   bootstrapDefaultAccountPrincipal,
   bootstrapLocalUser,
@@ -29,12 +27,7 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 import {
   configureMockSamlProvider,
   mockSamlResponse,
-  signSamlAssertion,
   testSamlCertificateFingerprint,
-  samlCertificateDer,
-  escapeXml,
-  TEST_SAML_PRIVATE_KEY,
-  TEST_SAML_CERTIFICATE,
 } from "./saml-login-adapter.test.shared-01.js";
 
 describe("ItotoriSamlLoginAdapter", () => {

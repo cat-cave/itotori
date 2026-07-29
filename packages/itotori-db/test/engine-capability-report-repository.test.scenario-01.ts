@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sql } from "drizzle-orm";
+
 import {
   type AdapterCapabilityMatrixRecord,
   type CapabilityEvidenceInput,
@@ -13,7 +13,6 @@ import {
   engineCapabilityEvidenceSourceValues,
   engineCapabilityEvidenceStatusValues,
 } from "../src/schema.js";
-import { isolatedMigratedContext } from "./db-test-context.js";
 
 // db-side capability-leveled engine detector coverage. The CHECK
 // constraint declared in

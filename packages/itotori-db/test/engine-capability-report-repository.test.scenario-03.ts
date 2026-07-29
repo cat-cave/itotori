@@ -5,7 +5,6 @@ import {
   type CapabilityEvidenceInput,
   capabilityEvidenceLabelValues,
   EngineCapabilityReportRepository,
-  EngineCapabilityReportShapeError,
 } from "../src/repositories/engine-capability-report-repository.js";
 import {
   capabilityLevelValues,

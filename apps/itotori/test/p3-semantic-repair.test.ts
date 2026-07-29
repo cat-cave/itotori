@@ -1,20 +1,6 @@
-import {
-  LlmMemoConflictError,
-  LlmRetriesExhaustedError,
-  type LlmCallMemoStore,
-  type LlmMemoSingleflightInput,
-  type LlmMemoSingleflightResult,
-} from "@itotori/db";
 import { describe, expect, it } from "vitest";
-import {
-  DEFECT_BUNDLE_SCHEMA_VERSION,
-  DRAFT_BATCH_SCHEMA_VERSION,
-  type DefectBundle,
-  type DraftBatch,
-} from "../src/contracts/index.js";
-import { sha256 } from "../src/llm/canonical-json.js";
-import { deepSeekV4FlashProfile } from "../src/llm/role-model-profiles.js";
-import type { MeasuredModelProfile } from "../src/llm/physical-attempt-policy.js";
+import { type DraftBatch } from "../src/contracts/index.js";
+
 import { realliveSjisPolicy } from "../src/gates/index.js";
 import { specialistFor, toolsForRole } from "../src/roster/index.js";
 import {
@@ -23,33 +9,21 @@ import {
   buildRepairCall,
   normalizeRepairRequest,
   repairSemanticDefects,
-  REPAIR_MODE,
   RepairError,
   RepairFinalizeError,
-  type RepairCandidateUnit,
   type RepairRequest,
-  type RepairRuntimeBase,
 } from "../src/roles/p3/index.js";
 
 import {
-  DRAFT_PROFILE,
   CTX,
   LOC,
   SCHEMA,
-  REV_A,
-  REV_B,
   BIBLE,
-  PARENT_BATCH,
   BUNDLE_ID,
-  MemoryMemoStore,
-  sse,
   draftBatchResponse,
   Captured,
   recordedRuntime,
   candidate,
-  meaningDefect,
-  defectBundle,
-  patchDraft,
   repairPatchBatch,
   request,
   OPTIONS,

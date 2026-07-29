@@ -1,5 +1,3 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { AddressInfo } from "node:net";
 import { and, eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -10,21 +8,17 @@ import {
   localUserId,
   permissionValues,
   requirePermission,
-  type AuthorizationActor,
 } from "../src/authorization.js";
-import type { ItotoriDatabase } from "../src/connection.js";
+
 import {
   ItotoriOidcLoginAdapter,
   oidcExternalIdentityProviderKey,
-  type OidcProtocolClient,
-  type OidcUserInfoResult,
 } from "../src/repositories/oidc-login-adapter.js";
 import { ItotoriAuthMemberManagementRepository } from "../src/repositories/auth-member-management-repository.js";
 import { ItotoriAuthSsoSettingsRepository } from "../src/repositories/auth-sso-settings-repository.js";
 import { ItotoriPrincipalRepository } from "../src/repositories/principal-repository.js";
 import {
   authAccountMemberships,
-  authAccounts,
   authExternalIdentities,
   authExternalIdentityProviderClaims,
   authSessions,
@@ -42,10 +36,7 @@ import {
   configureOidcProvider,
   StaticOidcClient,
   type MockOidcServer,
-  type MockOidcRequest,
   startMockOidcServer,
-  readBody,
-  writeJson,
 } from "./oidc-login-adapter.test.shared-01.js";
 
 describe("ItotoriOidcLoginAdapter", () => {

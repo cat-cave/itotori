@@ -1,24 +1,15 @@
 import { readFileSync } from "node:fs";
-import { eq, sql } from "drizzle-orm";
+
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
 import {
-  catalogCrawlerIdempotentFactImportContractId,
   catalogCrawlerFactImportStrategyValues,
   createRecordedCatalogCrawlerAdapter,
   ItotoriCatalogCrawlerRunner,
-  type CatalogCrawlerFactImportEvidence,
-  type CatalogCrawlerIngestContext,
-  type CatalogCrawlerSourceAdapter,
-  type CatalogCrawlerVerifyFactImportStep,
   type RecordedCatalogCrawlerFixture,
 } from "../src/services/catalog-crawler-runner.js";
-import {
-  catalogCrawlerJobs,
-  catalogCrawlerJobSteps,
-  catalogCrawlerStepStatusValues,
-} from "../src/schema.js";
+import { catalogCrawlerJobSteps, catalogCrawlerStepStatusValues } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const actor: AuthorizationActor = { userId: localUserId };
@@ -59,18 +50,8 @@ const duplicateFactsFixture = JSON.parse(
 
 import {
   createCatalogFactImportsTable,
-  createCatalogDurableMarkersTable,
-  durableMarkerAdapter,
   upsertFactImports,
-  upsertFactImportsRebindingStep,
   verifyPersistedFactImports,
-  verifyPersistedDurableMarkers,
-  persistedEvidence,
-  persistDurableMarker,
-  importProof,
-  crawlerJobInput,
-  crawlerStepInput,
-  checkpointInput,
 } from "./catalog-crawler-repository.test.shared-01.js";
 
 describe("ItotoriCatalogCrawlerRepository", () => {

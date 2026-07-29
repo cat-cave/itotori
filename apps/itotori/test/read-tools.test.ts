@@ -1,15 +1,7 @@
-import { readFileSync } from "node:fs";
-import {
-  canonicalLlmJson,
-  contextSnapshot,
-  type LlmJsonValue,
-  type LlmContextSnapshotInput,
-  type LlmRevealHorizon,
-  type LlmRevisionRef,
-} from "@itotori/db";
-import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
+import { canonicalLlmJson } from "@itotori/db";
+
 import { describe, expect, it } from "vitest";
-import type { GlossaryFactValue, HumanNoteFactValue } from "../src/contracts/index.js";
+
 import {
   buildReadModel,
   decodeGetCharacterOccurrences,
@@ -24,42 +16,21 @@ import {
   type ReadModel,
   type ReadToolCaller,
 } from "../src/read-tools/index.js";
-import {
-  buildFactSnapshot,
-  contextSnapshotFactsFrom,
-  type FactSnapshot,
-} from "../src/prepass/index.js";
-import type { NarrativeScene, NarrativeStructure, NarrativeUnit } from "../src/structure/types.js";
-import { acceptedOutputExample } from "./contract-fixtures-core.js";
+import { buildFactSnapshot, type FactSnapshot } from "../src/prepass/index.js";
 
 import {
   loadBundle,
-  BUNDLE_HASH,
-  LOCALIZATION_ID,
-  Spec,
   S1_LINE,
-  S1_A,
-  S1_B,
   S2_LINE,
-  S2_A,
-  S2_B,
-  unit,
   sceneRef,
-  scene,
   structure,
   revision,
   makeContext,
   ANALYST,
   LOCALIZER,
-  glossaryEntry,
-  note,
   baseModel,
   factIdAtPlayOrder,
   characterStructure,
-  PagedToolResult,
-  resultItems,
-  assertStrictPagedSurface,
-  characterModelForStrictProof,
 } from "./read-tools.support.js";
 
 describe("read tools — ordering, bounds, and pagination", () => {

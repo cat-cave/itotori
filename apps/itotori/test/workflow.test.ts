@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildDefect } from "../src/gates/index.js";
-import type { Defect } from "../src/contracts/index.js";
-import type { ReviewVerdict } from "../src/contracts/index.js";
-import { FULL_ROSTER, type RunPolicyRequest } from "../src/run-policy/index.js";
+
+import { type RunPolicyRequest } from "../src/run-policy/index.js";
 import {
   applyCorrections,
   classifyStratum,
@@ -19,23 +18,11 @@ import {
   releaseUnit,
   resolveWorkflowPolicy,
   runLocalizationWorkflow,
-  TransientStepError,
   WorkflowReadinessError,
-  type AttemptContext,
-  type AttemptLineageEntry,
-  type CorrectionOutcome,
-  type DraftMode,
   type DraftedScene,
-  type DraftedUnit,
-  type FinalizedUnit,
   type LaneVerdict,
-  type MemoStepResult,
-  type ReviewLane,
   type UnitArtifactRef,
-  type UnitReadiness,
-  type UnitStage,
   type WorkflowPorts,
-  type WorkflowScene,
 } from "../src/workflow/index.js";
 
 import {
@@ -49,9 +36,7 @@ import {
   meaningFail,
   protectedSpanDefect,
   FakeStore,
-  Recorder,
   newRecorder,
-  FakeOptions,
   buildPorts,
   PRODUCTION,
   TEST_DEV_NARROWED,
