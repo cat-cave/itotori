@@ -1,9 +1,7 @@
-import type { AuthorizationActor } from "../src/authorization.js";
+export { deniedActor } from "./authorization-matrix.test.constants.js";
 import { repositoryPermissionGateMatrixPart1 } from "./authorization-matrix.test.matrix-01.js";
 import { repositoryPermissionGateMatrixPart2 } from "./authorization-matrix.test.matrix-02.js";
 import { repositoryPermissionGateMatrixPart3 } from "./authorization-matrix.test.matrix-03.js";
-
-export const deniedActor: AuthorizationActor = { userId: "user-without-required-permission" };
 
 export const repositoryPermissionGateMatrix = [
   ...repositoryPermissionGateMatrixPart1,

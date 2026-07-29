@@ -52,7 +52,9 @@ import {
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
+const actor: AuthorizationActor = { userId: localUserId };
 const dlsiteFixture = readStorefrontFixture("dlsite-storefront-replay.json");
+const steamFixture = readStorefrontFixture("steam-storefront-replay.json");
 
 const DLSITE_FIXTURE_ID = "catalog-recorded-importer-dlsite-storefront-v0.1";
 const DLSITE_SOURCE_REVISION = "dlsite-storefront-synthetic-2026-06-18";
@@ -496,4 +498,3 @@ export function readPlatformFixture(name: string): CatalogRecordedPlatformFixtur
     ),
   ) as CatalogRecordedPlatformFixture;
 }
-const dlsiteFixture = readStorefrontFixture("dlsite-storefront-replay.json");

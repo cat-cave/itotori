@@ -1,4 +1,5 @@
 import type { RepositoryPermissionGateCase } from "./authorization-matrix.test.helpers.js";
+import { deniedActor } from "./authorization-matrix.test.constants.js";
 import {
   projectGate,
   feedbackGate,

@@ -53,6 +53,7 @@ import { ItotoriLocalizationPassRunConfigRepository } from "../src/repositories/
 import type { DatabaseContext, ItotoriDatabase } from "../src/connection.js";
 import { assertDeniedRepositoryMutation } from "./authorization-test-helpers.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
+import { repositoryPermissionGateMatrix } from "./authorization-matrix.test.core.js";
 
 export type PermissionKey = keyof typeof permissionValues;
 

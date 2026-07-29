@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { permissionValues } from "../src/authorization.js";
 import {
   repositoryPermissionGateMatrix,
   authManagementOperations,

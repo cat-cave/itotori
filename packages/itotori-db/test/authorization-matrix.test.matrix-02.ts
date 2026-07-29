@@ -1,4 +1,9 @@
 import type { RepositoryPermissionGateCase } from "./authorization-matrix.test.helpers.js";
+import { deniedActor } from "./authorization-matrix.test.constants.js";
+import {
+  listAccountPermissionSets,
+  loadPermissionSetAccountId,
+} from "../src/repositories/principal-repository.js";
 import {
   branchReferenceGate,
   styleGuideGate,
