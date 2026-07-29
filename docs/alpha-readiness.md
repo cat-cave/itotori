@@ -179,11 +179,11 @@ pnpm exec vp run kaifuu:encrypted-readiness -- --no-corpus
 
 ## 5. Required gates (CI + workflows)
 
-| gate                | command / workflow                                                               | scope                                                                               |
-| ------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| CI                  | `.github/workflows/pr-tiers.yml` → `_tier0.yml` / `_tier1.yml` (`just ci-tier*`) | tiered TS + Rust + DB + browser + alpha + mutation gates.                           |
-| Alpha proof         | `_tier1.yml` `alpha` job → `just test alpha`                                     | public-fixture vertical + independent linkage validator.                            |
-| Readiness checklist | `just check alpha-readiness` (in `just check`)                                   | docs-vs-generated-artifact drift + node refs + patched-output proof + demo command. |
+| gate                | command / workflow                                                                | scope                                                                               |
+| ------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| CI                  | `.github/workflows/pr-tiers.yml` → `_tier0.yml` / `_tier1.yml` (`just ci <lane>`) | tiered TypeScript, Rust, database, browser, alpha, and mutation gates.              |
+| Alpha proof         | `_tier1.yml` `alpha` job → `just test alpha`                                      | public-fixture vertical + independent linkage validator.                            |
+| Readiness checklist | `just check alpha-readiness` (in `just check`)                                    | docs-vs-generated-artifact drift + node refs + patched-output proof + demo command. |
 
 ## 6. Running the checklist
 

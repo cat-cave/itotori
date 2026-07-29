@@ -57,8 +57,8 @@ npm install -g packages/itotori-cli/itotori-<version>.tgz
 ### 2. Set up (guided)
 
 ```sh
-itotori init                      # records available OpenRouter + database configuration
-itotori db-migrate                # apply the database schema (needs DATABASE_URL)
+itotori init                      # records application and deployment configuration
+itotori db-migrate                # apply the database schema
 ```
 
 `itotori init` writes a config file to `~/.config/itotori/config.env` (mode
@@ -101,8 +101,8 @@ Use `itotori <command> --help` at the command you are about to run; it prints
 that command's required flags. A live run additionally requires the provider
 credentials and ZDR posture described in step 2.
 
-For a step-by-step RealLive walkthrough with generic game placeholders, exact
-flags, environment variables, and honest signposts, see the
+For a step-by-step RealLive walkthrough with configuration boundaries and
+honest signposts, see the
 [RealLive localizer runbook](docs/localize-reallive.md).
 
 ### 4. Review the results

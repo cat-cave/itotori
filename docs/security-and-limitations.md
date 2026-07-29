@@ -23,14 +23,14 @@ Real game bytes are never copied into the repo or mutated in place.
 
 ### Credentials & ZDR
 
-- Provider credentials live only in git-ignored `.env*` files. Repo tooling must
-  not read, print, expose, or commit them (`.gitignore` enforces `.env` /
-  `.env.*` with `.env.example` exceptions).
+- Deployment inputs are limited to the registry-generated environment example.
+  Operators keep their values outside Git; repo tooling must not read, print,
+  expose, or commit them.
 - Privacy relies on a per-request OpenRouter routing posture: every live call
   carries `zdr: true` and `data_collection: "deny"`, validated by the strict
   provider-policy contract before transport construction. Live dispatch also
-  requires an explicit exported `OPENROUTER_API_KEY`; recorded default runs make
-  no network calls at all.
+  requires configured live credentials; recorded default runs make no network
+  calls at all.
 
 ### No shell-outs to foreign tools in the shipped pipeline
 

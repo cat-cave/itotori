@@ -244,7 +244,7 @@ reference-runtime fidelity.
 
 Browser launch is a required capability for MV/MZ end-to-end runtime evidence,
 which is a beta (real-game-testing-ready) tier, not alpha. A supported host
-environment must provide Chromium on PATH or through `UTSUSHI_BROWSER_BIN`.
+application setup must provide a runnable Chromium binary.
 Missing Chromium, incompatible Chromium version, or other environmental
 misconfiguration are hard errors with semantic codes in the `utsushi.browser.*`
 namespace (e.g. `utsushi.browser.chromium_unavailable`,

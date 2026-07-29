@@ -29,24 +29,14 @@ must rely on exact Postgres indexes first, and agent-facing semantic retrieval
 must expose the ADR's tool contract and exact fallback behavior instead of an
 opaque retrieval store.
 
-## Local Database And Scale Checks
+## Local database and scale checks
 
-Itotori DB-backed checks use `DATABASE_URL`. The local disposable Postgres
-default is `postgres://itotori:itotori@127.0.0.1:55433/itotori`, with
-`COMPOSE_PROJECT_NAME=itotori` as the no-secret public CI default. For qd local
-CI, use `qd ci run <NODE-ID>` or `just ci affected`; that wrapper derives a
-worktree-specific host port and Compose project name, writes a per-run compose
-env file, starts Postgres, waits for readiness, runs `just ci`, and tears the
-stack down. If the derived port range is occupied, it fails before startup with
-the blocked ports listed. For manual parallel worktrees outside qd, set a unique
-`DATABASE_URL` host port and `COMPOSE_PROJECT_NAME`; when `COMPOSE_PROJECT_NAME`
-is unset locally, `just dev db-up` derives one from the worktree directory.
-
-The local compose Postgres service uses runtime server flags, not initdb-only
-settings: `max_connections=400` and `shared_buffers=512MB`. `shared_buffers`
-tracks the same 4x increase from Postgres' default 128MB as the connection cap
-increase from the default 100, so recreating the container keeps the intended
-capacity without relying on persisted initialization state.
+The application configuration selects the local database. For qd local CI, use
+`just ci affected`; that runner owns the disposable database lifecycle. For
+manual development, use the supported `just dev db-*` selectors. Do not use
+ad-hoc environment variables for database URLs, Compose project names, ports,
+or scale schemas: they are application/development configuration, not
+deployment inputs.
 
 ```sh
 just dev db-up
@@ -58,19 +48,9 @@ just ci public
 just dev scale-smoke
 ```
 
-`ITOTORI_SCALE_SCHEMA` optionally pins the schema name used by
-`just dev scale-smoke`; otherwise the harness creates a unique temporary
-schema and drops it after the run. The smoke summary is
+The scale harness creates an isolated temporary schema and writes the smoke
+summary to
 `.tmp/itotori-scale-harness/smoke/summary.json`.
-
-For DB-only verification without a database, run:
-
-```sh
-env -u DATABASE_URL pnpm --filter @itotori/db test
-```
-
-The command exits successfully, prints the skip reason, and writes
-`.tmp/itotori-db/no-database-skipped.json`.
 
 ## Ingesting patch results
 

@@ -44,7 +44,7 @@ clobbering one another.
   point two concurrent worktrees at the same target dir — concurrent writes
   corrupt the build.
 - **`qd` is used ONLY by the orchestrator from the main checkout; subagents
-  never call `qd`.** The `.envrc` `QD_ROOT` guard points `QD_ROOT` at the main
+  never call `qd`.** The dev-shell qd guard points qd at the main
   checkout (the git common dir's parent) in every shell, so even a stray `qd`
   call from inside a worktree resolves against the single shared ledger instead
   of forking an empty `.qd/qd.db` here (which would make `qd claim` grant
@@ -58,12 +58,12 @@ clobbering one another.
 
 ## Provisioning `node_modules` (`just worktree-setup`)
 
-A fresh worktree has **no `node_modules`**, so `pnpm exec vp check`, `just
-fixtures-validate`, and public-manifest regeneration cannot run until it is
+A fresh worktree has **no `node_modules`**, so TypeScript checks,
+`just check fixtures`, and public-manifest regeneration cannot run until it is
 provisioned. Do this ONCE, right after `cd`-ing into the new worktree:
 
 ```sh
-direnv exec . just worktree-setup    # or, inside `nix develop`: just worktree-setup
+direnv exec . just worktree-setup    # after `direnv allow` approves this checkout
 ```
 
 `worktree-setup` runs `pnpm install --frozen-lockfile --offline`. It is:
@@ -76,8 +76,8 @@ direnv exec . just worktree-setup    # or, inside `nix develop`: just worktree-s
 - **Fast + deterministic.** ~1.5s; `--frozen-lockfile` pins to the committed
   `pnpm-lock.yaml`.
 
-After it runs, `direnv exec . pnpm exec vp check` and `direnv exec . node
-fixtures/validate-public-manifests.mjs` (a.k.a. `just check fixtures`) work.
+After it runs, `direnv exec . pnpm exec vp check` and `just check fixtures`
+work.
 
 **Why not symlink `node_modules` from the main checkout?** pnpm's `node_modules`
 is a symlink farm whose workspace entries (`apps/*`, `packages/*`) point back at

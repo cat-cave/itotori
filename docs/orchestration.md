@@ -19,7 +19,7 @@ Related references:
 path is:
 
 ```text
-pull request → required CI → merge queue → squash merge to main
+pull request → native merge queue → gh pr merge --auto
 ```
 
 Do not push or cherry-pick directly to `main`.
@@ -27,10 +27,10 @@ Do not push or cherry-pick directly to `main`.
 After opening a ready pull request, enable auto-merge:
 
 ```sh
-gh pr merge <number> --squash --auto
+gh pr merge --auto
 ```
 
-When the node is mergeable, have qd drive the same queue:
+When the work item is mergeable, have qd record and reconcile the same queue:
 
 ```sh
 qd merge <node> --enqueue
@@ -159,7 +159,7 @@ point it at the main checkout with `qd --root <main-checkout> …`.
 
 ## Evidence and audit discipline
 
-Per-gate CI is mostly synthetic. A green `just ci` or pull-request tier does
+Per-gate CI is mostly synthetic. A green `just ci public` or pull-request tier does
 not prove behavior on private bytes. The periodic ground-truth lane is
 `just test real-bytes-oracle`; see [the oracle guide](real-bytes-periodic-oracle.md).
 
