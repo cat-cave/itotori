@@ -226,17 +226,15 @@ fn classify_covers_plain_and_marker_variants() {
     assert_eq!(classify_xp3_variant(b"not an xp3"), "unrecognized");
 }
 
-/// Env-gated real-bytes proof. Point `private inventory row` at
-/// a directory of a private-local owned KiriKiri game's `.xp3` archives.
-/// SKIPS (does not fail) when the env var is absent, so public CI is green
-/// without any private corpus.
+/// Real-bytes proof over a private-local KiriKiri game's `.xp3` archives.
+/// An unavailable corpus leaves the proof unestablished.
 #[test]
+#[ignore = "real-bytes; requires a private corpus"]
 fn real_private_local_game_readiness_when_present() {
     let Ok(dir) = corpus_registry::resolve_identity("kirikiri-xp3/1/plain")
         .map(|path| path.to_string_lossy().into_owned())
     else {
-        eprintln!("SKIP real_private_local_game_readiness: env var not set");
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
     let report = scan_xp3_readiness_report(Path::new(&dir)).expect("real scan");
     let json = report.stable_json().expect("json");

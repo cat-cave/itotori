@@ -123,6 +123,7 @@ describe("wiki entry deep-link panel → player landing", () => {
     expect(panel).toHaveAttribute("data-entry-primary-id", "scene-2031");
 
     const sceneJump = screen.getByRole("link", { name: /Jump to scene scene-2031/u });
+    expect(screen.queryByRole("link", { name: /Jump to unit unit-42/u })).not.toBeInTheDocument();
     const href = sceneJump.getAttribute("href");
     expect(href).not.toBeNull();
     const url = new URL(href!, "http://itotori.test");

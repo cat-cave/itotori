@@ -47,7 +47,7 @@ export {
   catalogLanguageStatusScopes,
   catalogLanguageStatuses as catalogLanguageStatusEnums,
   catalogSources,
-} from "./catalog-enum-values.js";
+} from "../../catalog-enum-values.js";
 import {
   CatalogSourceProvenanceInput,
   CatalogSourceProvenanceRecord,

@@ -131,10 +131,7 @@ fn reallive_adapter_length_changing_patch_round_trips_on_primary_corpus() {
     let Ok(root) = corpus_registry::resolve_identity(REAL_GAME_ROOT_ENV)
         .map(|path| path.to_string_lossy().into_owned())
     else {
-        // Strict-by-default: an absent corpus is a skip only when the env is
-        // unset (the harness runs this under --include-ignored WITH the env).
-        eprintln!("SKIP: {REAL_GAME_ROOT_ENV} unset");
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
     let root = PathBuf::from(root);
     let adapter = RealLiveProfileDetectorAdapter;
@@ -384,8 +381,7 @@ fn reallive_adapter_extract_still_reads_plaintext_kanon_title() {
     let Ok(root) = corpus_registry::resolve_identity(REAL_GAME_ROOT_2_ENV)
         .map(|path| path.to_string_lossy().into_owned())
     else {
-        eprintln!("SKIP: {REAL_GAME_ROOT_2_ENV} unset");
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
     let root = PathBuf::from(root);
     let adapter = RealLiveProfileDetectorAdapter;

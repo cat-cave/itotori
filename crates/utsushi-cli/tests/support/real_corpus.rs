@@ -52,10 +52,6 @@ pub fn save_file_path(file_name: &str) -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
-pub fn skip_message(test_name: &str) -> String {
-    format!("{REAL_GAME_ROOT_ENV} unset or no REALLIVEDATA directory found; skipping {test_name}")
-}
-
 fn file_in_reallivedata(name: &str) -> Option<PathBuf> {
     let path = reallivedata_dir()?.join(name);
     path.is_file().then_some(path)

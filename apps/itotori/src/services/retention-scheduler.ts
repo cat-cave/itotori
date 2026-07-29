@@ -18,7 +18,13 @@ export type RetentionSchedulerEvent =
       readonly kind: "retention_deletion_failed";
       readonly startedAt: string;
       readonly finishedAt: string;
+      readonly cause: RetentionSchedulerFailureCause;
     };
+
+export type RetentionSchedulerFailureCause = {
+  readonly name: string;
+  readonly message: string;
+};
 
 export type RetentionSchedulerSnapshot = {
   readonly started: boolean;
@@ -65,11 +71,12 @@ export function createRetentionScheduler(input: {
         finishedAt: now().toISOString(),
         report,
       });
-    } catch {
+    } catch (error) {
       emit({
         kind: "retention_deletion_failed",
         startedAt,
         finishedAt: now().toISOString(),
+        cause: retentionSchedulerFailureCause(error),
       });
     } finally {
       running = false;
@@ -99,4 +106,9 @@ export function createRetentionScheduler(input: {
 
 function observeRetentionSchedulerEvent(event: RetentionSchedulerEvent): void {
   console.info(JSON.stringify(event));
+}
+
+function retentionSchedulerFailureCause(error: unknown): RetentionSchedulerFailureCause {
+  if (error instanceof Error) return { name: error.name, message: error.message };
+  return { name: "NonErrorThrown", message: String(error) };
 }

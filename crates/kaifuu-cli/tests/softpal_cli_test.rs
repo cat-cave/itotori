@@ -87,8 +87,7 @@ fn extract_bundle(game_dir: &std::path::Path, bundle_out: &std::path::Path) -> V
 #[ignore = "real-bytes; requires private inventory row (read-only Softpal corpus)"]
 fn cli_extract_engine_softpal_positional_root_writes_bridge_with_expected_units() {
     let Some(game_dir) = v60663_game_dir() else {
-        eprintln!("skipping: set softpal/1/plain with a v60663/game/data.pac");
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
 
     let tmp_dir = tempfile::tempdir().expect("tmp dir");
@@ -127,10 +126,7 @@ fn cli_extract_engine_softpal_positional_root_writes_bridge_with_expected_units(
 #[ignore = "real-bytes; requires private inventory row (read-only Softpal corpus)"]
 fn cli_extract_layered_pac_matches_its_loose_pair_reference() {
     let Some((pac_root, loose_root)) = v21465_source_roots() else {
-        eprintln!(
-            "skipping: set softpal/1/plain with v21465 data.pac and loose SCRIPT.SRC/TEXT.DAT"
-        );
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
 
     let tmp_dir = tempfile::tempdir().expect("tmp dir");

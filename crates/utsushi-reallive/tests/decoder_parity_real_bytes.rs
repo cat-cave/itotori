@@ -178,6 +178,6 @@ fn utsushi_decode_reaches_kaifuu_parity_on_every_populated_scene() {
         "decoder parity must be proven on >= 2 RealLive corpora; only {} resolved \
          (set {})",
         corpora.len(),
-        real_corpus::REAL_GAME_ROOT_2_ENV,
+        "the second configured RealLive corpus",
     );
 }

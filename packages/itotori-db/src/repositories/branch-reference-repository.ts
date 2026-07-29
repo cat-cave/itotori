@@ -12,6 +12,7 @@ import {
   terminologyTerms,
 } from "../schema.js";
 import { createUuid7 } from "./event-queue-repository.js";
+import { stableJsonStringify } from "../stable-json.js";
 
 export const branchPolicyGlossaryReferenceSchemaVersion =
   "itotori.branch_policy_glossary_reference.v1";
@@ -325,9 +326,7 @@ async function glossarySnapshotForBranch(
   };
 
   return {
-    glossaryContentHash: `sha256:${createHash("sha256")
-      .update(stableStringify(hashPayload))
-      .digest("hex")}`,
+    glossaryContentHash: branchReferenceContentHash(hashPayload),
     glossaryTermRefs,
   };
 }
@@ -366,16 +365,6 @@ function requiredString(value: string | undefined, label: string): string {
   return value;
 }
 
-function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
-  }
-  if (value !== null && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
+export function branchReferenceContentHash(value: unknown): string {
+  return `sha256:${createHash("sha256").update(stableJsonStringify(value)).digest("hex")}`;
 }

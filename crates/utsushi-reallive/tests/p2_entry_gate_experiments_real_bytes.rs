@@ -16,6 +16,8 @@ use utsushi_reallive::{
     decompress_all_scenes, parse_expression,
 };
 
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
 #[path = "support/real_g00_package.rs"]
 mod real_g00_package;
 
@@ -115,7 +117,9 @@ fn normalized_primary(point: (i32, i32), screen: (i32, i32)) -> InputEvent {
 #[ignore = "requires the existing private inventory row Kanon asset root"]
 fn p2_script_rectangle_click_advances_without_hydrated_object() {
     let Some((seen, _gameexe, g00)) = root_paths(SECONDARY_ROOT_ENV) else {
-        eprintln!("SKIP P2 raw-pointer experiment: {SECONDARY_ROOT_ENV} is unavailable.");
+        real_corpus::require_real_bytes(
+            "utsushi-reallive p2_script_rectangle_click_advances_without_hydrated_object",
+        );
         return;
     };
     let (engine, _) = staged_engine_and_bytes(&fs::read(seen).expect("read secondary Seen.txt"));
@@ -185,7 +189,9 @@ fn p2_script_rectangle_click_advances_without_hydrated_object() {
 #[ignore = "requires the existing private inventory row Kanon asset root"]
 fn p2_declared_screen_size_matches_the_live_conversion_candidate() {
     let Some((_seen, gameexe_path, _g00)) = root_paths(SECONDARY_ROOT_ENV) else {
-        eprintln!("SKIP P2 coordinate experiment: {SECONDARY_ROOT_ENV} is unavailable.");
+        real_corpus::require_real_bytes(
+            "utsushi-reallive p2_declared_screen_size_matches_the_live_conversion_candidate",
+        );
         return;
     };
     let gameexe = utsushi_reallive::Gameexe::parse(
@@ -245,7 +251,9 @@ fn target_ref_count(bytes: &[u8]) -> usize {
 #[ignore = "requires the existing private inventory row Kanon asset root"]
 fn p2_backward_slice_classifies_the_rectangle_operand_provenance() {
     let Some((seen, _gameexe, _g00)) = root_paths(SECONDARY_ROOT_ENV) else {
-        eprintln!("SKIP P2 provenance experiment: {SECONDARY_ROOT_ENV} is unavailable.");
+        real_corpus::require_real_bytes(
+            "utsushi-reallive p2_backward_slice_classifies_the_rectangle_operand_provenance",
+        );
         return;
     };
     let (_, scenes) = staged_engine_and_bytes(&fs::read(seen).expect("read secondary Seen.txt"));
@@ -316,7 +324,9 @@ fn p2_backward_slice_classifies_the_rectangle_operand_provenance() {
 #[ignore = "requires the existing private inventory row primary asset root"]
 fn p2_primary_executed_line_oracle_remains_7750() {
     let Some((seen, gameexe, _g00)) = root_paths(PRIMARY_ROOT_ENV) else {
-        eprintln!("SKIP primary regression oracle: {PRIMARY_ROOT_ENV} is unavailable.");
+        real_corpus::require_real_bytes(
+            "utsushi-reallive p2_primary_executed_line_oracle_remains_7750",
+        );
         return;
     };
     let (engine, _) = staged_engine_and_bytes(&fs::read(seen).expect("read primary Seen.txt"));

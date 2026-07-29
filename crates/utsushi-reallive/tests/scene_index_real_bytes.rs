@@ -12,17 +12,13 @@
 //! real engine substrate must be exercised against at least two real
 //! corpora before its node is merged-complete. The MV/MZ and KAG
 //! corpora are different engines and do not contain a `Seen.txt`.
-//! `utsushi-reallive` is therefore in the same single-RealLive-corpus
-//! position as `kaifuu-reallive` was for: Sweetie HD is the
-//! only RealLive title currently staged. mirrors that
-//! pattern — the node stays `planned` until a second RealLive corpus is
-//! sourced and exercised by an additional
-//! `scene_index_second_reallive_real_bytes.rs` test. The orchestrator
-//! must not approve completion until that happens.
+//! Both configured RealLive corpora are now staged and parser-gate clean.
+//! This test remains a primary-corpus format pin: its slot count and offsets
+//! intentionally describe that corpus. Per-decoder paired-corpus coverage is
+//! still separate work.
 //!
-//! Until the second corpus is staged this test is `#[ignore]`-gated and
-//! only runs when `private inventory row` is set (the same env
-//! var uses, so a single export drives both projects).
+//! The test is `#[ignore]`-gated and runs only when the private corpus
+//! inventory is available.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;

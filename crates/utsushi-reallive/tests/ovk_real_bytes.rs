@@ -28,10 +28,10 @@
 //!
 //! Per the itotori operating model, a parser that targets a real
 //! engine substrate must be exercised against at least two real
-//! corpora before its node is merged-complete. primary_corpus HD is the only
-//! RealLive title currently staged. The OVK module mirrors the
-//! single-corpus posture its sibling parsers ( g00 etc.)
-//! landed; the commit message records the gap explicitly.
+//! corpora before its node is merged-complete. Both staged RealLive corpora
+//! have passed the parser gate. This decoder-specific test remains pinned to
+//! the primary corpus because its OVK fixture has the documented entry values;
+//! per-decoder paired-corpus coverage remains separate work.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;

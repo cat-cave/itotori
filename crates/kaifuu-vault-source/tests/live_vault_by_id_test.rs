@@ -142,8 +142,7 @@ fn materialize_and_hash_seen(canonical_id: &str, scratch_root: &Path) -> String 
 #[ignore = "requires ITOTORI_VAULT_ROOT=/archive/vault (live read-only vault)"]
 fn resolves_primary_corpus_by_id_and_seen_txt_matches_known_bytes() {
     let Some(_vault) = require_live_vault() else {
-        eprintln!("skipping: set ITOTORI_VAULT_ROOT=/archive/vault to run this proof");
-        return;
+        panic!("real-bytes proof not established: required corpus vault is unavailable");
     };
     let scratch = scratch_base();
     let sha = materialize_and_hash_seen(PRIMARY_CORPUS_CANONICAL_ID, &scratch);
@@ -159,8 +158,7 @@ fn resolves_primary_corpus_by_id_and_seen_txt_matches_known_bytes() {
 #[ignore = "requires ITOTORI_VAULT_ROOT=/archive/vault (live read-only vault)"]
 fn resolves_kanon_by_id_and_materializes_reallive_tree() {
     let Some(_vault) = require_live_vault() else {
-        eprintln!("skipping: set ITOTORI_VAULT_ROOT=/archive/vault to run this proof");
-        return;
+        panic!("real-bytes proof not established: required corpus vault is unavailable");
     };
     let scratch = scratch_base();
 

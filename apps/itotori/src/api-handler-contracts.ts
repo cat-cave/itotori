@@ -253,9 +253,9 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
   };
   /**
    * The kept `patch play` mutation's new-pipeline substrate: the exact-surface
-   * loader + Utsushi runtime launcher the composition `runPlaySession` drives. The
-   * live factory wires it from the localization-iteration surface read + the real
-   * `UtsushiPatchRuntimeLauncher` (no journal reservation/finalizer).
+   * loader + registered runtime-launcher registry the composition `runPlaySession`
+   * drives. The live factory wires it from the localization-iteration surface read
+   * (no journal reservation/finalizer).
    */
   patchPlay: deps.PlayEntrypointDeps;
   /**

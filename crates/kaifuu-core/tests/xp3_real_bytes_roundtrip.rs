@@ -59,21 +59,30 @@ fn fixture_manifest() -> Value {
         .unwrap_or_else(|error| panic!("parse {} as JSON: {error}", path.display()))
 }
 
-/// Resolve the source archive path. Falls back to `None` (SKIP) when the env
-/// var is unset OR points at a missing file. A present-but-unreadable file
-/// is a hard error (the operator explicitly named a path that cannot be
-/// honoured).
-fn source_archive_path() -> Option<PathBuf> {
-    let raw = corpus_registry::resolve_identity(SOURCE_ARCHIVE_ENV).ok()?;
-    let path = raw;
+/// Resolve the source archive path. An unavailable source leaves this
+/// real-bytes proof unestablished.
+fn source_archive_path() -> PathBuf {
+    let path = corpus_registry::resolve_identity(SOURCE_ARCHIVE_ENV).unwrap_or_else(|_| {
+        panic!("real-bytes proof not established: required corpus is unavailable")
+    });
+    require_source_archive_path(path)
+}
+
+fn require_source_archive_path(path: PathBuf) -> PathBuf {
     if !path.exists() {
-        eprintln!(
-            "SKIP: {SOURCE_ARCHIVE_ENV}={} does not exist; real-bytes round-trip is skipped",
-            path.display()
-        );
-        return None;
+        panic!("real-bytes proof not established: required corpus archive is unavailable");
     }
-    Some(path)
+    path
+}
+
+#[test]
+#[should_panic(
+    expected = "real-bytes proof not established: required corpus archive is unavailable"
+)]
+fn source_archive_path_refuses_a_missing_archive() {
+    require_source_archive_path(PathBuf::from(
+        "/scratch/corpus/absent-xp3-real-bytes-proof-source.xp3",
+    ));
 }
 
 #[test]
@@ -101,10 +110,9 @@ fn fixture_metadata_records_profile_a_id_and_zlib_index_encoding() {
 }
 
 #[test]
+#[ignore = "real-bytes; requires a private corpus"]
 fn repack_of_profile_a_source_archive_is_byte_for_byte_identical() {
-    let Some(source_path) = source_archive_path() else {
-        return;
-    };
+    let source_path = source_archive_path();
 
     let manifest = fixture_manifest();
     let expected_sha = manifest["archive"]["sha256"]
@@ -196,14 +204,13 @@ fn repack_of_profile_a_source_archive_is_byte_for_byte_identical() {
 }
 
 #[test]
+#[ignore = "real-bytes; requires a private corpus"]
 fn repack_round_trip_is_idempotent_for_profile_a_source() {
     // Repacking twice yields the same bytes — the rebuild is deterministic,
     // not a one-shot fluke. The existing raw-index writer already proved
     // this on synthetic fixtures; this case extends the proof to the real
     // zlib-indexed licensed archive.
-    let Some(source_path) = source_archive_path() else {
-        return;
-    };
+    let source_path = source_archive_path();
     let source = fs::read(&source_path)
         .unwrap_or_else(|error| panic!("read {}: {error}", source_path.display()));
     let archive =

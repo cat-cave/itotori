@@ -8,10 +8,7 @@ import {
   type CatalogExternalIdKind,
   type CatalogSource,
 } from "../schema.js";
-import {
-  catalogExternalIdKinds,
-  catalogSources,
-} from "../repositories/catalog-repository/catalog-enum-values.js";
+import { catalogExternalIdKinds, catalogSources } from "../catalog-enum-values.js";
 
 export const catalogExactExternalIdLinkSchemaVersion =
   "catalog.exact_external_id_link.v0.1" as const;

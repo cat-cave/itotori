@@ -45,8 +45,7 @@ fn utsushi_structure_primary_corpus_rejects_truncation_without_an_artifact() {
             .map(|root| root.join("bridge.json"))
             .filter(|path| path.is_file()),
     ) else {
-        eprintln!("{}", real_corpus::skip_message("structure truncation test"));
-        return;
+        panic!("real-bytes proof not established: required corpus artifact is unavailable");
     };
     let tmp_dir = tempfile::tempdir().expect("tmp dir");
     let structure_out = tmp_dir.path().join("must-not-exist.json");
@@ -82,10 +81,7 @@ fn utsushi_structure_primary_corpus_v2_matches_bridge_and_graph() {
             .map(|root| root.join("bridge.json"))
             .filter(|path| path.is_file()),
     ) else {
-        eprintln!(
-            "reallive/1/encrypted or its generated bridge artifact is unavailable for expanded structure proof"
-        );
-        return;
+        panic!("real-bytes proof not established: required corpus artifact is unavailable");
     };
     let bridge: Value = serde_json::from_slice(&std::fs::read(&bridge_path).expect("read bridge"))
         .expect("bridge JSON");

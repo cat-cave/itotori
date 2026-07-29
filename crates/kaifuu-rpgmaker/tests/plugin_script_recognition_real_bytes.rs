@@ -348,12 +348,10 @@ fn assert_title(name: &str, root: &Path) {
 #[ignore = "real-bytes; requires both RPG Maker MV/MZ title roots"]
 fn both_real_titles_have_only_typed_plugin_script_commands() {
     let Some(root) = corpus_registry::resolve_identity(REAL_ROOT_ENV).ok() else {
-        eprintln!("SKIP: {REAL_ROOT_ENV} unset");
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
     let Some(root_2) = corpus_registry::resolve_identity(REAL_ROOT_2_ENV).ok() else {
-        eprintln!("SKIP: {REAL_ROOT_2_ENV} unset");
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
 
     assert_title("LustMemory", Path::new(&root));

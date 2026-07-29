@@ -163,12 +163,10 @@ fn iscript_body_lines(text: &str) -> std::collections::BTreeSet<usize> {
 }
 
 #[test]
+#[ignore = "real-bytes; requires a private corpus"]
 fn real_ks_never_emits_iscript_tjs_as_dialogue() {
     let Ok(dir) = corpus_registry::resolve_identity("kirikiri/1/plain") else {
-        eprintln!(
-            "kirikiri/1/plain unavailable in the private inventory — skipping real-bytes gate"
-        );
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
     let mut files = 0usize;
     let mut files_with_iscript = 0usize;

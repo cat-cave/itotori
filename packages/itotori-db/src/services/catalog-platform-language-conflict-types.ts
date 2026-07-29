@@ -18,13 +18,13 @@ import {
   catalogLanguageStatusScopes as languageStatusScopes,
   catalogLanguageStatuses as languageStatuses,
   catalogSources,
-} from "../repositories/catalog-repository/catalog-enum-values.js";
+} from "../catalog-enum-values.js";
 export {
   catalogExternalIdKinds as externalIdKinds,
   catalogLanguageStatusScopes as languageStatusScopes,
   catalogLanguageStatuses as languageStatuses,
   catalogSources,
-} from "../repositories/catalog-repository/catalog-enum-values.js";
+} from "../catalog-enum-values.js";
 
 import {
   candidateCompatibilityBasis,
