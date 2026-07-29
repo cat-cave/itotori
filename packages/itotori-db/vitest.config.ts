@@ -7,7 +7,12 @@ const dbIntegrationTimeoutMs = 90_000;
 
 export default defineConfig({
   test: {
-    // Full DB runs start many isolated schemas in parallel; migrations are serialized by advisory lock.
+    // The DB runner owns `test/`; make that ownership explicit instead of
+    // relying on Vitest's evolving default file glob.
+    include: ["test/**/*.test.ts"],
+    // Every suite migrates an isolated schema under one advisory lock. Running
+    // those files in parallel turns a valid queue into 90-second hook timeouts.
+    fileParallelism: false,
     hookTimeout: dbIntegrationTimeoutMs,
     testTimeout: dbIntegrationTimeoutMs,
   },

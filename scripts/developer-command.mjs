@@ -93,6 +93,7 @@ node scripts/audit-no-hardcoded-cost.mjs
 node --test scripts/audit-strictness.test.mjs
 node scripts/audit-strictness.mjs
 node --test scripts/classify-test-seams.test.mjs
+node --test scripts/test-collection-guard.test.mjs
 node --test scripts/audit-no-hardcoded-roles.test.mjs
 node scripts/audit-no-hardcoded-roles.mjs
 node --test scripts/audit-no-direct-provider-invoke.test.mjs
