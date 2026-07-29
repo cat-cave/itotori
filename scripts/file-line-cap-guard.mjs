@@ -22,9 +22,10 @@
 //   - When the whitelist reaches empty (all files modularized under the cap),
 //     the guard is absolute: every file must stay at or below the cap.
 //
-// Scope: tracked `crates/**/*.rs` (the documented file-size tension is a Rust
-// phenomenon; package TS may be added later). Generated/build output
-// (`target/`, `dist/`) is excluded as untracked anyway. Lines are counted as
+// Scope: every tracked Rust, TypeScript, or JavaScript source file (`.rs`,
+// `.ts`, `.tsx`, `.js`, `.mjs`). Generated/build output is inspected only when
+// it is tracked and has one of those extensions.
+// Lines are counted as
 // newline characters (matches `wc -l`), deliberately INCLUDING inline
 // `#[cfg(test)] mod tests` lines so the cap reflects true file size.
 //
@@ -42,6 +43,7 @@ const repoRoot = join(here, "..");
 const DEFAULT_WHITELIST_PATH = join(here, "lint", "file-line-cap-whitelist.json");
 
 export const THRESHOLD = 500;
+export const SCAN_EXTENSIONS = [".js", ".mjs", ".rs", ".ts", ".tsx"];
 
 const WHITELIST_HEADER = `RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via
 "node scripts/file-line-cap-guard.mjs --update". Each entry maps an over-cap
@@ -141,19 +143,29 @@ export function evaluateUpdate(fileCounts, oldWhitelist) {
 // ---- tree scanning ---------------------------------------------------------
 
 export function listScanFiles(root) {
-  const out = execSync("git ls-files crates", {
+  const out = execSync("git ls-files", {
     cwd: root,
     encoding: "utf8",
   });
   return out
     .split("\n")
     .map((l) => l.trim())
-    .filter((l) => l.length > 0 && l.endsWith(".rs"));
+    .filter((l) => l.length > 0 && SCAN_EXTENSIONS.some((extension) => l.endsWith(extension)));
+}
+
+export function summarizeScope(files) {
+  const counts = Object.fromEntries(SCAN_EXTENSIONS.map((extension) => [extension, 0]));
+  for (const file of files) {
+    const extension = SCAN_EXTENSIONS.find((candidate) => file.endsWith(candidate));
+    if (extension) counts[extension] += 1;
+  }
+  return counts;
 }
 
 function scanTree(root) {
   const counts = new Map();
-  for (const rel of listScanFiles(root)) {
+  const files = listScanFiles(root);
+  for (const rel of files) {
     let contents;
     try {
       contents = readFileSync(join(root, rel), "utf8");
@@ -162,7 +174,7 @@ function scanTree(root) {
     }
     counts.set(rel, countLines(contents));
   }
-  return counts;
+  return { counts, scope: summarizeScope(files) };
 }
 
 // ---- CLI -------------------------------------------------------------------
@@ -194,7 +206,7 @@ function usage() {
   return [
     "usage: node scripts/file-line-cap-guard.mjs [--check|--update|--init] [--whitelist PATH] [--root DIR] [<file>...]",
     "",
-    `check   fail on any .rs file over ${THRESHOLD} lines not grandfathered, or a grandfathered file that grew (default).`,
+    `check   fail on any tracked ${SCAN_EXTENSIONS.join(", ")} file over ${THRESHOLD} lines not grandfathered, or a grandfathered file that grew (default).`,
     "update  rewrite the whitelist from the current tree; REFUSE to grow (shrink ratchet).",
     "init    one-time bootstrap: write the whitelist from the current tree unconditionally.",
   ].join("\n");
@@ -219,7 +231,7 @@ function runCheck(counts, whitelist) {
     if (Object.keys(whitelist.files ?? {}).length === 0) {
       process.stdout.write(
         `file-line-cap guard: passed. The ${whitelist.threshold}-line cap is absolute; ` +
-          `all tracked Rust files are at or below the threshold.\n`,
+          `all tracked files in the stated scope are at or below the threshold.\n`,
       );
       return 0;
     }
@@ -242,6 +254,18 @@ function runCheck(counts, whitelist) {
     }
   }
   return 1;
+}
+
+function printScope(scope) {
+  const total = Object.values(scope).reduce((sum, count) => sum + count, 0);
+  const detail = SCAN_EXTENSIONS.map((extension) => `${extension}: ${scope[extension]}`).join(", ");
+  process.stdout.write(
+    `file-line-cap guard scope: enforces a ${THRESHOLD}-line cap on tracked source files ` +
+      `(${detail}); scanned ${total}.\n`,
+  );
+  process.stdout.write(
+    "file-line-cap guard limits: does not inspect untracked or ignored files, generated output not tracked by Git, or source files with other extensions.\n",
+  );
 }
 
 function runInit(counts, target) {
@@ -296,7 +320,7 @@ function readCounts(opts) {
         continue;
       }
     }
-    return counts;
+    return { counts, scope: null };
   }
   return scanTree(opts.root);
 }
@@ -308,7 +332,8 @@ function main() {
     return;
   }
   const whitelist = loadWhitelist(opts.whitelist);
-  const counts = readCounts(opts);
+  const { counts, scope } = readCounts(opts);
+  if (scope) printScope(scope);
   if (opts.mode === "update") {
     process.exit(runUpdate(counts, whitelist, opts.whitelist));
   }

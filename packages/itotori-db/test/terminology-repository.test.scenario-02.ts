@@ -1,0 +1,458 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
+import { eq, sql } from "drizzle-orm";
+import { describe, expect, it } from "vitest";
+import { localUserId, type AuthorizationActor } from "../src/authorization.js";
+
+import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
+
+import { ItotoriTerminologyRepository } from "../src/repositories/terminology-repository.js";
+import {
+  ItotoriSemanticGlossarySearchService,
+  RecordedEmbeddingFixtureAdapter,
+  semanticGlossarySearchDiagnosticCodeValues,
+} from "../src/services/semantic-search.js";
+import {
+  catalogSourceProvenance,
+  catalogSourceRecordKindValues,
+  catalogSourceValues,
+  findings,
+  terminologyConflictEvidence,
+  terminologyConflictKindValues,
+  terminologyConflictStatusValues,
+  terminologySemanticIndex,
+  terminologySemanticIndexStatusValues,
+  terminologySourceReferenceKindValues,
+  terminologyTermKindValues,
+  terminologyTerms,
+} from "../src/schema.js";
+import { isolatedMigratedContext } from "./db-test-context.js";
+
+const localActor: AuthorizationActor = { userId: localUserId };
+
+import {
+  projectFixture,
+  otherProjectFixture,
+  seedProject,
+} from "./terminology-repository.test.shared-01.js";
+
+describe("ItotoriTerminologyRepository", () => {
+  it("prefers exact glossary matches missing semantic rows over weaker semantic candidates", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProject(context.db);
+      const terminology = new ItotoriTerminologyRepository(context.db);
+      await terminology.upsertTerm(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-partial-exact",
+        sourceTerm: "Moonseal",
+        preferredTranslation: "Moon Seal",
+        termKind: terminologyTermKindValues.loreTerm,
+      });
+      await terminology.upsertTerm(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-partial-weak-semantic",
+        sourceTerm: "欠片",
+        preferredTranslation: "Shard",
+        termKind: terminologyTermKindValues.general,
+        semanticIndex: {
+          searchDocument: "Shard fragment low-similarity glossary candidate",
+          embeddingProvider: "itotori-recorded-fixture",
+          embeddingModel: "semantic-fixture-v1",
+          embeddingDimension: 2,
+          embeddingVector: [0.25, 0.97],
+          status: terminologySemanticIndexStatusValues.ready,
+        },
+      });
+      await context.db
+        .delete(terminologySemanticIndex)
+        .where(eq(terminologySemanticIndex.termId, "term-partial-exact"));
+
+      const service = new ItotoriSemanticGlossarySearchService(
+        context.db,
+        new RecordedEmbeddingFixtureAdapter({
+          fixtureId: "semantic-glossary-fixture-v1",
+          provider: "recorded-fixture",
+          model: "semantic-fixture-v1",
+          dimension: 2,
+          vectors: [{ text: "Moonseal", embedding: [1, 0] }],
+        }),
+      );
+
+      const result = await service.searchGlossary(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        query: "Moonseal",
+        minScore: 0.1,
+        limit: 2,
+      });
+
+      expect(result).toMatchObject({
+        status: "completed",
+        readiness: {
+          exactFallback: { triggered: true, reason: "semantic_exact_match" },
+        },
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: semanticGlossarySearchDiagnosticCodeValues.exactFallbackUsed,
+          }),
+        ]),
+      });
+      expect(result.matches.map((match) => match.term.termId)).toEqual([
+        "term-partial-exact",
+        "term-partial-weak-semantic",
+      ]);
+      expect(result.matches[0]).toMatchObject({
+        score: 100,
+        matchKinds: ["exact_fallback"],
+        exactMatchKinds: ["exact_source"],
+      });
+      expect(result.matches[1]).toMatchObject({
+        matchKinds: ["semantic_vector"],
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("records preferred translation conflicts as glossary conflicts and open terminology findings", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProject(context.db);
+      const repository = new ItotoriTerminologyRepository(context.db);
+      await repository.upsertTerm(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-hero",
+        sourceTerm: "勇者",
+        preferredTranslation: "Hero",
+        termKind: terminologyTermKindValues.characterName,
+      });
+
+      const conflictResult = await repository.upsertTerm(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-brave",
+        sourceTerm: "勇者",
+        preferredTranslation: "Brave",
+        termKind: terminologyTermKindValues.characterName,
+      });
+
+      expect(conflictResult.conflict).toMatchObject({
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        normalizedSourceTerm: "勇者",
+        conflictKind: terminologyConflictKindValues.preferredTranslation,
+        status: terminologyConflictStatusValues.open,
+        summary: expect.stringContaining("Hero"),
+        metadata: expect.objectContaining({
+          reasonCode: "preferred_translation_conflict",
+          translations: expect.arrayContaining(["Hero", "Brave"]),
+        }),
+      });
+
+      const termRows = await context.db
+        .select({ termId: terminologyTerms.termId, status: terminologyTerms.status })
+        .from(terminologyTerms)
+        .where(eq(terminologyTerms.normalizedSourceTerm, "勇者"))
+        .orderBy(terminologyTerms.termId);
+      expect(termRows).toEqual([
+        { termId: "term-brave", status: "conflicted" },
+        { termId: "term-hero", status: "conflicted" },
+      ]);
+
+      const findingRows = await context.db
+        .select()
+        .from(findings)
+        .where(eq(findings.findingId, conflictResult.conflict?.findingId ?? ""));
+      expect(findingRows).toEqual([
+        expect.objectContaining({
+          findingKind: "terminology_conflict",
+          qualityCategory: "terminology",
+          status: "open",
+          title: "Glossary preferred translation conflict",
+        }),
+      ]);
+
+      const evidenceCount = await context.db.execute(sql`
+        select count(*)::int as count
+        from ${terminologyConflictEvidence}
+        where conflict_id = ${conflictResult.conflict?.conflictId}
+      `);
+      expect(evidenceCount.rows[0]).toMatchObject({ count: 2 });
+
+      await expect(
+        repository.listConflicts(localActor, {
+          localeBranchId: "locale-en-us",
+          status: terminologyConflictStatusValues.open,
+        }),
+      ).resolves.toEqual([
+        expect.objectContaining({ conflictId: conflictResult.conflict?.conflictId }),
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("serializes concurrent preferred translation upserts and reconciles conflicts after write", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProject(context.db);
+      const repository = new ItotoriTerminologyRepository(context.db);
+
+      const results = await Promise.all([
+        repository.upsertTerm(localActor, {
+          projectId: "project-terminology",
+          localeBranchId: "locale-en-us",
+          termId: "term-sage",
+          sourceTerm: "賢者",
+          preferredTranslation: "Sage",
+          termKind: terminologyTermKindValues.characterName,
+        }),
+        repository.upsertTerm(localActor, {
+          projectId: "project-terminology",
+          localeBranchId: "locale-en-us",
+          termId: "term-wise-one",
+          sourceTerm: "賢者",
+          preferredTranslation: "Wise One",
+          termKind: terminologyTermKindValues.characterName,
+        }),
+      ]);
+
+      expect(results.some((result) => result.conflict !== null)).toBe(true);
+      const conflicts = await repository.listConflicts(localActor, {
+        localeBranchId: "locale-en-us",
+        status: terminologyConflictStatusValues.open,
+      });
+      expect(conflicts).toEqual([
+        expect.objectContaining({
+          normalizedSourceTerm: "賢者",
+          metadata: expect.objectContaining({
+            translations: expect.arrayContaining(["Sage", "Wise One"]),
+          }),
+        }),
+      ]);
+
+      const termRows = await context.db
+        .select({ termId: terminologyTerms.termId, status: terminologyTerms.status })
+        .from(terminologyTerms)
+        .where(eq(terminologyTerms.normalizedSourceTerm, "賢者"))
+        .orderBy(terminologyTerms.termId);
+      expect(termRows).toEqual([
+        { termId: "term-sage", status: "conflicted" },
+        { termId: "term-wise-one", status: "conflicted" },
+      ]);
+
+      const evidenceCount = await context.db.execute(sql`
+        select count(*)::int as count
+        from ${terminologyConflictEvidence}
+        where conflict_id = ${conflicts[0]?.conflictId}
+      `);
+      expect(evidenceCount.rows[0]).toMatchObject({ count: 2 });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects source references from another project or source bundle", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
+      await projectRepository.reset(localActor);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      await projectRepository.importSourceBundle(localActor, otherProjectFixture());
+      const repository = new ItotoriTerminologyRepository(context.db);
+
+      await expect(
+        repository.upsertTerm(localActor, {
+          projectId: "project-terminology",
+          localeBranchId: "locale-en-us",
+          termId: "term-cross-revision",
+          sourceTerm: "異界",
+          preferredTranslation: "Otherworld",
+          sourceReferences: [
+            {
+              sourceRevisionId: "bridge-terminology-other:unit:bridge-unit-other",
+              referenceKind: terminologySourceReferenceKindValues.sourceUnit,
+              citation: "other.scene.001.line.001",
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        code: "terminology.source_reference.source_revision_mismatch",
+      });
+
+      await expect(
+        repository.upsertTerm(localActor, {
+          projectId: "project-terminology",
+          localeBranchId: "locale-en-us",
+          termId: "term-cross-unit",
+          sourceTerm: "門",
+          preferredTranslation: "Gate",
+          sourceReferences: [
+            {
+              bridgeUnitId: "bridge-unit-other",
+              referenceKind: terminologySourceReferenceKindValues.sourceUnit,
+              citation: "other.scene.001.line.001",
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        code: "terminology.source_reference.bridge_unit_mismatch",
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects unscoped or cross-project source provenance references", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
+      await projectRepository.reset(localActor);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      await projectRepository.importSourceBundle(localActor, otherProjectFixture());
+      await context.db.insert(catalogSourceProvenance).values([
+        {
+          sourceProvenanceId: "provenance-unscoped",
+          catalogSource: catalogSourceValues.manual,
+          sourceRecordKind: catalogSourceRecordKindValues.manualAssertion,
+          sourceId: "manual-unscoped",
+          ok: true,
+          fetchedAt: new Date("2026-01-01T00:00:00.000Z"),
+        },
+        {
+          sourceProvenanceId: "provenance-other-project",
+          catalogSource: catalogSourceValues.manual,
+          sourceRecordKind: catalogSourceRecordKindValues.manualAssertion,
+          sourceId: "manual-other-project",
+          ok: true,
+          fetchedAt: new Date("2026-01-01T00:00:00.000Z"),
+          metadata: {
+            projectId: "project-terminology-other",
+            localeBranchId: "locale-en-us-other",
+            sourceBundleId: "bridge-terminology-other",
+          },
+        },
+        {
+          sourceProvenanceId: "provenance-project-source",
+          catalogSource: catalogSourceValues.manual,
+          sourceRecordKind: catalogSourceRecordKindValues.manualAssertion,
+          sourceId: "manual-project-source",
+          ok: true,
+          fetchedAt: new Date("2026-01-01T00:00:00.000Z"),
+          metadata: {
+            projectId: "project-terminology",
+            localeBranchId: "locale-en-us",
+            sourceBundleId: "bridge-terminology",
+          },
+        },
+      ]);
+      const repository = new ItotoriTerminologyRepository(context.db);
+
+      await expect(
+        repository.upsertTerm(localActor, {
+          projectId: "project-terminology",
+          localeBranchId: "locale-en-us",
+          termId: "term-unscoped-provenance",
+          sourceTerm: "出所",
+          preferredTranslation: "Origin",
+          sourceReferences: [
+            {
+              sourceProvenanceId: "provenance-unscoped",
+              referenceKind: terminologySourceReferenceKindValues.catalog,
+              citation: "manual-unscoped",
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        code: "terminology.source_reference.source_provenance_mismatch",
+      });
+
+      await expect(
+        repository.upsertTerm(localActor, {
+          projectId: "project-terminology",
+          localeBranchId: "locale-en-us",
+          termId: "term-cross-provenance",
+          sourceTerm: "外部",
+          preferredTranslation: "External",
+          sourceReferences: [
+            {
+              sourceProvenanceId: "provenance-other-project",
+              referenceKind: terminologySourceReferenceKindValues.catalog,
+              citation: "manual-other-project",
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        code: "terminology.source_reference.source_provenance_mismatch",
+      });
+
+      const result = await repository.upsertTerm(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-scoped-provenance",
+        sourceTerm: "証跡",
+        preferredTranslation: "Evidence",
+        sourceReferences: [
+          {
+            sourceProvenanceId: "provenance-project-source",
+            referenceKind: terminologySourceReferenceKindValues.catalog,
+            citation: "manual-project-source",
+          },
+        ],
+      });
+
+      expect(result.term.sourceReferences).toEqual([
+        expect.objectContaining({
+          sourceProvenanceId: "provenance-project-source",
+        }),
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("derives lexical readiness metadata instead of trusting caller metadata", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProject(context.db);
+      const repository = new ItotoriTerminologyRepository(context.db);
+
+      const result = await repository.upsertTerm(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-spoofed-readiness",
+        sourceTerm: "偽装",
+        preferredTranslation: "Spoof",
+        semanticIndex: {
+          metadata: {
+            semanticReady: true,
+            vectorReady: true,
+          },
+        },
+      });
+
+      expect(result.term.semanticIndex).toMatchObject({
+        embeddingProvider: "itotori-lexical",
+        embeddingModel: "terminology-lexical-token-index-v1",
+        embeddingDimension: 0,
+        embeddingVector: null,
+        status: terminologySemanticIndexStatusValues.indexedLexical,
+        metadata: expect.objectContaining({
+          semanticReady: false,
+          vectorReady: false,
+        }),
+      });
+    } finally {
+      await context.close();
+    }
+  });
+});

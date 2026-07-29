@@ -29,7 +29,10 @@ const packageName = "@itotori/db";
 const gateId = "permission-denial-db-strict";
 const node = "SHARED-027";
 const permissionDenialSuites = ["authorization-matrix.test.ts"];
-const authorizationMatrixPath = path.join(
+// Resolve the matrix through the suite's stable façade. The implementation can
+// move or split again as long as the façade continues to re-export its public
+// matrix contract.
+const authorizationMatrixEntrypointPath = path.join(
   repoRoot,
   "packages/itotori-db/test/authorization-matrix.test.ts",
 );
@@ -264,28 +267,116 @@ printBanner([
 process.exit(0);
 
 async function countRepositoryPermissionGateMatrixEntries() {
-  const source = await readFile(authorizationMatrixPath, "utf8");
-  const ast = parseTypeScript(source, authorizationMatrixPath);
-  let count;
-  visit(ast);
-  if (count === undefined) {
-    throw new Error("repositoryPermissionGateMatrix declaration not found");
+  return countNamedArrayExport(authorizationMatrixEntrypointPath, "repositoryPermissionGateMatrix");
+}
+
+async function countNamedArrayExport(modulePath, exportedName, visited = new Set()) {
+  const resolutionKey = `${modulePath}:${exportedName}`;
+  if (visited.has(resolutionKey)) {
+    throw new Error(`circular matrix export while resolving ${exportedName} from ${modulePath}`);
   }
-  return count;
+  visited.add(resolutionKey);
+
+  const source = await readFile(modulePath, "utf8");
+  const ast = parseTypeScript(source, modulePath);
+  const declaration = findNamedArrayDeclaration(ast, exportedName);
+  if (declaration) return countArrayElements(ast, modulePath, declaration, visited);
+
+  for (const statement of ast.program.body) {
+    if (statement.type !== "ExportNamedDeclaration" || !statement.source) continue;
+    const reExportsName = statement.specifiers.some(
+      (specifier) =>
+        specifier.type === "ExportSpecifier" &&
+        specifier.exported.type === "Identifier" &&
+        specifier.exported.name === exportedName,
+    );
+    if (!reExportsName) continue;
+    const targetPath = await resolveTypeScriptModule(modulePath, statement.source.value);
+    return countNamedArrayExport(targetPath, exportedName, visited);
+  }
+  throw new Error(
+    `${exportedName} declaration not found from ${path.relative(repoRoot, authorizationMatrixEntrypointPath)}`,
+  );
+}
+
+async function resolveTypeScriptModule(fromPath, specifier) {
+  if (!specifier.startsWith(".")) {
+    throw new Error(`cannot resolve non-relative matrix module ${specifier}`);
+  }
+  const basePath = path.resolve(path.dirname(fromPath), specifier);
+  const candidates = [
+    basePath,
+    basePath.replace(/\.js$/u, ".ts"),
+    `${basePath}.ts`,
+    path.join(basePath, "index.ts"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      await readFile(candidate, "utf8");
+      return candidate;
+    } catch (error) {
+      if (error && error.code === "ENOENT") continue;
+      throw error;
+    }
+  }
+  throw new Error(`cannot resolve matrix module ${specifier} from ${fromPath}`);
+}
+
+function findNamedArrayDeclaration(ast, name) {
+  let declaration;
+  visit(ast);
+  return declaration;
 
   function visit(node) {
     if (
       node.type === "VariableDeclarator" &&
       node.id.type === "Identifier" &&
-      node.id.name === "repositoryPermissionGateMatrix"
+      node.id.name === name
     ) {
       const initializer = unwrapTsTypeAssertions(node.init);
       if (initializer && initializer.type === "ArrayExpression") {
-        count = initializer.elements.length;
+        declaration = initializer;
       }
     }
     forEachChild(node, visit);
   }
+}
+
+async function countArrayElements(ast, modulePath, array, visited) {
+  let count = 0;
+  for (const element of array.elements) {
+    if (!element) continue;
+    if (element.type !== "SpreadElement") {
+      count += 1;
+      continue;
+    }
+    if (element.argument.type !== "Identifier") {
+      throw new Error(`matrix spread in ${modulePath} must be a named import`);
+    }
+    const imported = findNamedImport(ast, element.argument.name);
+    if (!imported) {
+      throw new Error(
+        `matrix spread ${element.argument.name} in ${modulePath} is not a named import`,
+      );
+    }
+    const targetPath = await resolveTypeScriptModule(modulePath, imported.source);
+    count += await countNamedArrayExport(targetPath, imported.name, visited);
+  }
+  return count;
+}
+
+function findNamedImport(ast, localName) {
+  for (const statement of ast.program.body) {
+    if (statement.type !== "ImportDeclaration") continue;
+    for (const specifier of statement.specifiers) {
+      if (specifier.type !== "ImportSpecifier" || specifier.local.name !== localName) continue;
+      if (specifier.imported.type !== "Identifier") {
+        throw new Error(`matrix import ${localName} must use an identifier export`);
+      }
+      return { name: specifier.imported.name, source: statement.source.value };
+    }
+  }
+  return undefined;
 }
 
 function isRepositoryPermissionDenialAssertion(assertion) {

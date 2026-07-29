@@ -1,11 +1,11 @@
 // Stable TypeScript AST parse + walk helpers for CI/security tooling.
-//
-// Decoupled from the TypeScript compiler API (which TS7 moved under
-// `typescript/unstable/*`). Uses @babel/parser with the TypeScript plugin —
-// a stable public surface with full TS syntax support and parent-linked trees
-// for scope-aware analysis.
 
 import { parse } from "@babel/parser";
+
+import { unwrapTsTypeAssertions } from "./stable-ts-ast-patterns.mjs";
+
+export { permissionHelperCallName } from "./stable-ts-ast-permission-call.mjs";
+export { forEachPatternBinding, unwrapTsTypeAssertions } from "./stable-ts-ast-patterns.mjs";
 
 const SKIP_KEYS = new Set([
   "parent",
@@ -352,70 +352,6 @@ export function stringLiteralValue(node) {
 }
 
 /**
- * Unwrap TS `as` / `satisfies` wrappers and parentheses.
- * @param {import("@babel/types").Node | null | undefined} node
- */
-export function unwrapTsTypeAssertions(node) {
-  let current = node;
-  while (
-    current &&
-    (current.type === "TSAsExpression" ||
-      current.type === "TSSatisfiesExpression" ||
-      current.type === "TSTypeAssertion" ||
-      current.type === "TSNonNullExpression" ||
-      current.type === "ParenthesizedExpression")
-  ) {
-    current = current.expression;
-  }
-  return current;
-}
-
-/**
- * Walk a binding pattern (ObjectPattern / ArrayPattern / AssignmentPattern /
- * RestElement / Identifier) and invoke `onBinding` for every bound Identifier.
- * Used by permission-helper alias collection so destructured renames are not
- * dropped.
- *
- * @param {import("@babel/types").Node | null | undefined} pattern
- * @param {(binding: import("@babel/types").Identifier, keyName: string | undefined, patternNode: import("@babel/types").Node) => void} onBinding
- * @param {string | undefined} [parentKeyName]
- */
-export function forEachPatternBinding(pattern, onBinding, parentKeyName = undefined) {
-  if (!pattern) return;
-  if (pattern.type === "AssignmentPattern") {
-    forEachPatternBinding(pattern.left, onBinding, parentKeyName);
-    return;
-  }
-  if (pattern.type === "RestElement") {
-    forEachPatternBinding(pattern.argument, onBinding, parentKeyName);
-    return;
-  }
-  if (pattern.type === "Identifier") {
-    onBinding(pattern, parentKeyName, pattern);
-    return;
-  }
-  if (pattern.type === "ObjectPattern") {
-    for (const property of pattern.properties) {
-      if (property.type === "RestElement") {
-        forEachPatternBinding(property.argument, onBinding, parentKeyName);
-        continue;
-      }
-      if (property.type !== "ObjectProperty") continue;
-      const keyName = objectPropertyKeyName(property.key, property.computed);
-      // Nested pattern or binding under this key.
-      forEachPatternBinding(property.value, onBinding, keyName);
-    }
-    return;
-  }
-  if (pattern.type === "ArrayPattern") {
-    for (const element of pattern.elements) {
-      if (element === null) continue;
-      forEachPatternBinding(element, onBinding, parentKeyName);
-    }
-  }
-}
-
-/**
  * Collect import renames and variable aliases of `helperName`, including
  * destructured/object/array/default patterns and literal-computed member
  * access (`authorization?.["requirePermission"]`).
@@ -558,15 +494,4 @@ export function permissionHelperAliases(root, helperName, options = {}) {
   }
 
   return aliases;
-}
-
-/**
- * @param {import("@babel/types").Node} expression
- * @param {ReadonlySet<string>} aliases
- * @param {{ includeComputedMember?: boolean }} [options]
- * @returns {string | undefined}
- */
-export function permissionHelperCallName(expression, aliases, options = {}) {
-  const name = callExpressionName(expression, options);
-  return name !== undefined && aliases.has(name) ? name : undefined;
 }

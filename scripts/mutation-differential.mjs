@@ -60,10 +60,14 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative, resolve, sep } from "node:path";
+
+import { applyMutation, classifyOutcome } from "./mutation-differential-outcome.mjs";
+import { runCargoTest } from "./mutation-differential-cargo.mjs";
+
+export { applyMutation, classifyOutcome } from "./mutation-differential-outcome.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
@@ -209,74 +213,6 @@ export const REAL_GUARDS = {
     ignored: true,
   },
 };
-
-// ---------------------------------------------------------------------------
-// Pure helpers (exercised directly by scripts/mutation-differential.test.mjs).
-// ---------------------------------------------------------------------------
-
-/**
- * Apply one mutation's `find -> replace` to `source`, asserting the `find`
- * token occurs EXACTLY once (so a mutation can never silently no-op or hit an
- * unintended second site).
- */
-export function applyMutation(source, mutation) {
-  const parts = source.split(mutation.find);
-  const occurrences = parts.length - 1;
-  if (occurrences !== 1) {
-    throw new Error(
-      `mutation '${mutation.id}': expected exactly 1 occurrence of find token in ` +
-        `${mutation.file}, found ${occurrences}`,
-    );
-  }
-  return parts.join(mutation.replace);
-}
-
-/**
- * Classify a cargo run into `killed` (synthetic suite went red on a real test
- * assertion — GOOD), `escaped` (suite stayed green despite the mutation — a
- * coverage hole), or `compile_error` (the mutation did not compile — INVALID,
- * not a legitimate kill).
- */
-export function classifyOutcome({ status, output }) {
-  // Only treat *rustc* failures as INVALID mutations. Do not match broad
-  // phrases like `error: expected` — cargo/libtest panic output can include
-  // those substrings when a mutant *compiles* but assertions fail (a kill).
-  const compileError =
-    /error\[E\d{2,4}\]/u.test(output) ||
-    /error: could not compile/u.test(output) ||
-    /error: linking with/u.test(output) ||
-    /error: aborting due to/u.test(output) ||
-    // rustc parse/resolve forms (require the rustc "expected X, found Y" shape —
-    // not bare "error: expected" which can appear in libtest panic text).
-    /error: expected `.+`, found /u.test(output) ||
-    /error: cannot find (?:value|type|function|macro|crate|trait) /u.test(output);
-  if (compileError) return "compile_error";
-  if (status === 0) return "escaped";
-  return "killed";
-}
-
-// ---------------------------------------------------------------------------
-// cargo driver.
-// ---------------------------------------------------------------------------
-function cargoBin() {
-  return "cargo";
-}
-
-function runCargoTest({ crates, ignored, cwd, env }) {
-  const pflags = crates.map((c) => `-p ${c}`).join(" ");
-  const ignoredFlag = ignored ? " -- --ignored" : "";
-  const cmd = `${cargoBin()} test ${pflags} --quiet${ignoredFlag}`;
-  const started = Date.now();
-  const res = spawnSync(cmd, {
-    shell: true,
-    cwd,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-    env,
-  });
-  const output = `${res.stdout || ""}${res.stderr || ""}`;
-  return { status: res.status, output, elapsedMs: Date.now() - started, cmd };
-}
 
 // ---------------------------------------------------------------------------
 // Disposable per-run sandbox.

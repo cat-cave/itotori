@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import {
   catalogCrawlerJobStatusValues,
   catalogCrawlerStepStatusValues,
@@ -8,28 +6,20 @@ import {
   createRecordedCatalogCrawlerAdapter,
   InMemoryCatalogCrawlerRepository,
   ItotoriCatalogCrawlerRunner,
-  type AuthorizationActor,
-  type CatalogCrawlerFactImportEvidence,
-  type CatalogCrawlerIngestContext,
-  type CatalogCrawlerSourceAdapter,
-  type CatalogCrawlerVerifyFactImportStep,
-  type RecordedCatalogCrawlerFixture,
 } from "@itotori/db";
 import { describe, expect, it } from "vitest";
 
-const actor: AuthorizationActor = { userId: "fixture-user" };
-
-type FixtureFact = {
-  sourceId: string;
-  normalizedTitle: string;
-};
-
-const fixture = JSON.parse(
-  readFileSync(
-    new URL("../../../fixtures/catalog-crawler-vndb/replay.json", import.meta.url),
-    "utf8",
-  ),
-) as RecordedCatalogCrawlerFixture<FixtureFact>;
+import {
+  actor,
+  FixtureFact,
+  fixture,
+  PersistedImport,
+  durableMarkerAdapter,
+  persistFacts,
+  verifyPersistedImport,
+  importProof,
+  stableImportKeyForStep,
+} from "./catalog-crawler-runner.support.js";
 
 describe("Itotori catalog crawler runner", () => {
   it("replays recorded public fixtures, resumes from checkpoints, and skips duplicate imports", async () => {
@@ -475,180 +465,4 @@ describe("Itotori catalog crawler runner", () => {
       repository.checkpoints.get("vndb:vndb-durable-marker-fixture:public-fixture"),
     ).toBeUndefined();
   });
-
-  it("uses a stable persisted import key for durable marker importers across crash replay jobs", async () => {
-    const repository = new InMemoryCatalogCrawlerRepository();
-    const runner = new ItotoriCatalogCrawlerRunner();
-    const adapter = durableMarkerAdapter();
-    const observedKeys: string[] = [];
-    const persistedImports = new Map<string, PersistedImport>();
-
-    await expect(
-      runner.run(adapter, {
-        repository,
-        actor,
-        workerId: "worker-durable-crash",
-        mode: "recorded_fixture",
-        ingestStep: (context) => {
-          observedKeys.push(context.stableImportKey);
-          persistDurableMarker(context, persistedImports);
-          throw new Error("crash after durable marker");
-        },
-        verifyFactImport: verifyPersistedImport(persistedImports),
-      }),
-    ).rejects.toThrow(/crash after durable marker/u);
-
-    await runner.run(adapter, {
-      repository,
-      actor,
-      workerId: "worker-durable-replay",
-      mode: "recorded_fixture",
-      ingestStep: (context) => {
-        observedKeys.push(context.stableImportKey);
-        persistDurableMarker(context, persistedImports);
-        return importProof(context);
-      },
-      verifyFactImport: verifyPersistedImport(persistedImports),
-    });
-
-    expect(observedKeys[0]).toBe(observedKeys[1]);
-    expect(observedKeys[0]).toMatch(/^catalog-import:/u);
-  });
-
-  it("refuses recorded fixtures in live mode so public CI never needs network credentials", async () => {
-    const repository = new InMemoryCatalogCrawlerRepository();
-    const runner = new ItotoriCatalogCrawlerRunner();
-
-    await expect(
-      runner.run(createRecordedCatalogCrawlerAdapter(fixture), {
-        repository,
-        actor,
-        workerId: "worker-live",
-      }),
-    ).rejects.toThrow(/recorded_fixture mode/u);
-  });
 });
-
-type PersistedImport = {
-  strategy: CatalogCrawlerFactImportEvidence["strategy"];
-  factIdentities: readonly string[];
-  durableMarkerId?: string;
-};
-
-function durableMarkerAdapter(): CatalogCrawlerSourceAdapter<FixtureFact> {
-  return {
-    ...createRecordedCatalogCrawlerAdapter(fixture),
-    adapterName: "vndb-durable-marker-fixture",
-    factImportContract: {
-      contractId: catalogCrawlerIdempotentFactImportContractId,
-      strategy: catalogCrawlerFactImportStrategyValues.durableImportMarker,
-      factIdentity: ["catalogSource", "sourceId"],
-      replayValidation: [
-        "sourceId",
-        "fixtureId",
-        "stableImportKey",
-        "importTransactionId",
-        "factCount",
-        "factIdentities",
-      ],
-    },
-  };
-}
-
-function persistFacts(
-  context: CatalogCrawlerIngestContext<FixtureFact>,
-  persistedImports: Map<string, PersistedImport>,
-) {
-  persistedImports.set(context.stableImportKey, {
-    strategy: catalogCrawlerFactImportStrategyValues.upsert,
-    factIdentities: context.expectedFactIdentities,
-  });
-  return importProof(context);
-}
-
-function persistDurableMarker(
-  context: CatalogCrawlerIngestContext<FixtureFact>,
-  persistedImports: Map<string, PersistedImport>,
-) {
-  persistedImports.set(context.stableImportKey, {
-    strategy: catalogCrawlerFactImportStrategyValues.durableImportMarker,
-    factIdentities: context.expectedFactIdentities,
-    durableMarkerId: context.stableImportKey,
-  });
-}
-
-function verifyPersistedImport(
-  persistedImports: Map<string, PersistedImport>,
-): CatalogCrawlerVerifyFactImportStep<FixtureFact> {
-  return ({ proof }) => {
-    const persisted = persistedImports.get(proof.stableImportKey);
-    if (persisted === undefined) {
-      return null;
-    }
-    return {
-      stableImportKey: proof.stableImportKey,
-      strategy: persisted.strategy,
-      factCount: persisted.factIdentities.length,
-      factIdentities: persisted.factIdentities,
-      durableMarkerId: persisted.durableMarkerId,
-      persisted: true,
-    };
-  };
-}
-
-function importProof(context: CatalogCrawlerIngestContext<FixtureFact>) {
-  return {
-    stableImportKey: context.stableImportKey,
-    strategy:
-      context.adapter.factImportContract?.strategy ?? catalogCrawlerFactImportStrategyValues.upsert,
-    factCount: context.facts.length,
-    factIdentities: context.expectedFactIdentities,
-    durableMarkerId:
-      context.adapter.factImportContract?.strategy ===
-      catalogCrawlerFactImportStrategyValues.durableImportMarker
-        ? context.stableImportKey
-        : undefined,
-  };
-}
-
-function stableImportKeyForStep(
-  adapter: CatalogCrawlerSourceAdapter<FixtureFact>,
-  step: RecordedCatalogCrawlerFixture<FixtureFact>["steps"][number],
-): string {
-  const payloadHash = step.payloadHash ?? `sha256:${sha256(stableJsonStringify(step.payload))}`;
-  return `catalog-import:${sha256(
-    stableJsonStringify({
-      catalogSource: adapter.catalogSource,
-      adapterName: adapter.adapterName,
-      partitionKey: adapter.partitionKey ?? "default",
-      sourceVersion: adapter.sourceVersion,
-      parserVersion: adapter.parserVersion,
-      stepKey: step.stepKey,
-      sourceId: step.sourceId,
-      requestIdentity: step.requestIdentity,
-      payloadHash,
-    }),
-  )}`;
-}
-
-function sha256(input: string): string {
-  return createHash("sha256").update(input).digest("hex");
-}
-
-function stableJsonStringify(input: unknown): string {
-  if (input === undefined) {
-    return "undefined";
-  }
-  if (input === null || typeof input !== "object") {
-    return JSON.stringify(input) ?? "undefined";
-  }
-  if (Array.isArray(input)) {
-    return `[${input.map((value) => stableJsonStringify(value)).join(",")}]`;
-  }
-  const entries = Object.entries(input as Record<string, unknown>).sort(([left], [right]) =>
-    left.localeCompare(right),
-  );
-  return `{${entries
-    .map(([key, value]) => `${JSON.stringify(key)}:${stableJsonStringify(value)}`)
-    .join(",")}}`;
-}

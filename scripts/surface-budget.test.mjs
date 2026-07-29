@@ -11,6 +11,7 @@ import {
   findEnvVarNames,
   findRecipeNames,
   measureSurface,
+  regeneratedBudget,
 } from "./surface-budget.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -75,6 +76,16 @@ test("rejects a budget increase without a changed justification", () => {
   assert.match(
     evaluateBudget({ envVarNames: 5, justRecipes: 2 }, unchanged, reviewedPrevious).join("\n"),
     /changed non-empty increaseJustification/u,
+  );
+});
+
+test("regenerates every measured field while preserving the justification", () => {
+  assert.deepEqual(
+    regeneratedBudget(
+      { envVarNames: 3, justRecipes: 1 },
+      { envVarNames: 4, justRecipes: 2, increaseJustification: "reviewed module boundary" },
+    ),
+    { envVarNames: 3, justRecipes: 1, increaseJustification: "reviewed module boundary" },
   );
 });
 

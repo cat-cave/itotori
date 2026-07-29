@@ -1,37 +1,10 @@
-// Terminology Analyst — mutation-falsifiable proofs. Each clause below fails if
-// its guarantee is removed.
-//
-// Clause 1 (reasons ONLY over ambiguous candidates): the deterministic index
-//   surfaces exactly the genuinely ambiguous term (conflicting policy) and hides
-//   the unambiguous one; the analyst cannot rule off its dispatched candidate.
-// Clause 2 (cited source-language ruling, no target form): runTermAnalyst
-//   dispatches through the sole ZDR boundary, returns a term-ruling WikiObject
-//   with meaning/register/source-scope/confidence, resolves every model-selected
-//   occurrence label against the real snapshot, and rejects a wrong terminal, a
-//   wrong served model, or a target-language object. The body carries NO target
-//   form and the system stamps every ruling PROVISIONAL.
-// Clause 3 (enumeration byte-derived; model lie ignored/rejected): the alias set,
-//   occurrence count, and occurrence units come from the byte-derived index, not
-//   the model — an alias re-count is rejected, a citation label for a non-existent
-//   occurrence fails during same-snapshot resolution, and the result's
-//   authoritative enumeration is the index's, never the model's.
-
 import { describe, expect, it } from "vitest";
-
-import {
-  CALL_RESULT_SCHEMA_VERSION,
-  CallResultSchema,
-  WIKI_OBJECT_SCHEMA_VERSION,
-  type CallSpec,
-  type Citation,
-  type RunModeValue,
-  type WikiObject,
-} from "../src/contracts/index.js";
+import { type CallSpec } from "../src/contracts/index.js";
 import {
   assertCallUsesCertifiedRoleModelProfile,
   deepSeekV4FlashProfile,
 } from "../src/llm/role-model-profiles.js";
-import type { PolicyRecordV02 } from "@itotori/localization-bridge-schema";
+
 import { buildEvidenceIndex } from "../src/wiki/evidence-index.js";
 import { CitationResolutionError } from "../src/wiki/citation-resolution.js";
 import {
@@ -48,161 +21,21 @@ import {
   TermAnalystError,
   TermEnumerationError,
   TermAnalystRouteError,
-  type AmbiguousTermCandidate,
-  type TermAnalystRequest,
 } from "../src/roles/a2/index.js";
 import { ROSTER, specialistFor } from "../src/roster/index.js";
-import { buildClaimFixture } from "./support/claim-fixture.js";
 
-const HASH = (c: string): `sha256:${string}` => `sha256:${c.repeat(64)}` as `sha256:${string}`;
-
-const AI_KEY = "term:ai";
-const SOLO_KEY = "term:solo";
-
-/** Two policy records disagree on the ruling for `term:ai` (a genuine
- * ambiguity); `term:solo` has a single, undisputed ruling. Both source forms are
- * REAL glyphs the fixture units carry, so occurrence counts are byte-derived. */
-function policyRecords(): PolicyRecordV02[] {
-  const base = {
-    policyRecordKind: "romanized_term" as const,
-    policyReason: "fixture",
-  };
-  return [
-    {
-      ...base,
-      policyRecordId: "00000000-0000-7000-8000-000000000001",
-      termKey: AI_KEY,
-      sourceText: "あ",
-      policyAction: "localize",
-    },
-    {
-      ...base,
-      policyRecordId: "00000000-0000-7000-8000-000000000002",
-      termKey: AI_KEY,
-      sourceText: "あ",
-      policyAction: "romanize",
-    },
-    {
-      ...base,
-      policyRecordId: "00000000-0000-7000-8000-000000000003",
-      termKey: SOLO_KEY,
-      sourceText: "い",
-      policyAction: "localize",
-    },
-  ] as PolicyRecordV02[];
-}
-
-/** The fact snapshot, read model, and candidate index are built over the same
- * real fixture bytes plus deterministic policy records. */
-function fixture() {
-  return buildClaimFixture({
-    snapshotBundle: (bundle) => ({ ...bundle, policyRecords: policyRecords() }),
-  });
-}
-
-function termIndex(model: ReturnType<typeof fixture>["model"]) {
-  return model.factSnapshot;
-}
-
-/** A schema-valid term-ruling WikiObject. Enumeration (sourceForm/aliases) and
- * citations are supplied so each proof can inject a specific model behavior. */
-function termRuling(opts: {
-  objectId: string;
-  snapshotId: `sha256:${string}`;
-  lang?: string;
-  termId?: string;
-  sourceForm?: string;
-  aliases?: string[];
-  citations: Citation[];
-}): WikiObject {
-  return {
-    schemaVersion: WIKI_OBJECT_SCHEMA_VERSION,
-    objectId: opts.objectId,
-    version: 1,
-    lang: opts.lang ?? "ja-JP",
-    subject: { kind: "glossary-term", id: opts.termId ?? AI_KEY },
-    scope: { kind: "global" },
-    kind: "term-ruling",
-    body: {
-      termId: opts.termId ?? AI_KEY,
-      sourceForm: opts.sourceForm ?? "あ",
-      meaning: "An informal greeting interjection between peers.",
-      register: "Casual; peer-to-peer.",
-      confidence: "high",
-      sourceScope: { kind: "global" },
-      aliases: opts.aliases ?? ["あ"],
-    },
-    claims: [
-      {
-        claimId: `${opts.objectId}:term-1`,
-        statement: "The term reads as a casual greeting in its occurrences.",
-        scope: { kind: "global" },
-        kind: "term",
-        confidence: "high",
-        citations: opts.citations,
-      },
-    ],
-    media: [],
-    dependencies: [],
-    provisional: false,
-    provenance: {
-      contextSnapshotId: opts.snapshotId,
-      contextScope: "whole-game",
-      runMode: "production",
-      snapshotKind: "context",
-    },
-  } as unknown as WikiObject;
-}
-
-function recordedSuccess(object: WikiObject, servedModel = deepSeekV4FlashProfile.model) {
-  return CallResultSchema.parse({
-    schemaVersion: CALL_RESULT_SCHEMA_VERSION,
-    status: "success",
-    memoKey: HASH("b"),
-    requested: { model: deepSeekV4FlashProfile.model },
-    memoHit: true,
-    value: object,
-    responseEventId: HASH("c"),
-    served: { status: "confirmed", model: servedModel, provider: "fireworks" },
-    generationId: "generation:a2-rec",
-    verification: "verified",
-    usage: { promptTokens: 900, completionTokens: 300, reasoningTokens: 120, cachedTokens: 0 },
-    billing: { status: "confirmed", costUsd: "0.0009" },
-    events: [],
-  });
-}
-
-/** A model-authored occurrence-label citation. Its mechanical coordinates are
- * deliberately wrong: A2 overwrites them from the immutable snapshot. */
-function citationForOccurrence(label: string): Citation {
-  return {
-    evidenceId: label,
-    evidenceHash: HASH("0"),
-    snapshotId: HASH("0"),
-    subject: { kind: "unit", id: "model-invented-subject" },
-    role: "establishes",
-    playOrderIndex: 999,
-  };
-}
-
-function request(
-  snapshotId: `sha256:${string}`,
-  candidate: AmbiguousTermCandidate,
-  runMode?: RunModeValue,
-): TermAnalystRequest {
-  return {
-    contextSnapshotId: snapshotId,
-    sourceLanguage: "ja-JP",
-    candidate,
-    ...(runMode === undefined ? {} : { runMode }),
-    operatorBrief: "House glossary for a peer-to-peer romance VN.",
-    parentEventId: HASH("d"),
-  };
-}
-
-function aiCandidate(model: ReturnType<typeof fixture>["model"]): AmbiguousTermCandidate {
-  return ambiguousTermCandidates(termIndex(model)).find((c) => c.termKey === AI_KEY)!;
-}
+import {
+  HASH,
+  AI_KEY,
+  SOLO_KEY,
+  fixture,
+  termIndex,
+  termRuling,
+  recordedSuccess,
+  citationForOccurrence,
+  request,
+  aiCandidate,
+} from "./roles-a2-terminology-analyst.support.js";
 
 describe("A2 clause 1 — reasons ONLY over the ambiguous candidates the index flags", () => {
   it("PROOF: only the conflicting term is a candidate; the undisputed term is hidden", () => {

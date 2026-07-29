@@ -1,16 +1,6 @@
-// Whole-game source-Wiki orchestration — mutation-falsifiable control-flow proofs.
-//
-// This node is the DETERMINISTIC control flow that drives the analyst roster to
-// build the whole-game source Wiki. The role agent outputs are best-effort and
-// supplied here by a recorded runner; every proof targets a CONTROL-FLOW
-// guarantee — selection, dependency ordering, bounded-concurrency fan-out with
-// the serial fold, the accept gate, and crash recovery by missing-artifact
-// query — and fails if that guarantee is removed.
-
 import { describe, expect, it } from "vitest";
 
-import type { FactSnapshot } from "../src/prepass/index.js";
-import type { EntityRef, RouteScope, RunModeValue, WikiObject } from "../src/contracts/index.js";
+import type { EntityRef, RouteScope } from "../src/contracts/index.js";
 import {
   InMemoryArtifactLedger,
   ObjectRejectedError,
@@ -28,190 +18,14 @@ import {
 } from "../src/source-wiki/index.js";
 import { ANALYST_RUNNER_ROLE_IDS, assertAnalystRunnerCoverage } from "../src/composition/index.js";
 
-const SNAP = `sha256:${"a".repeat(64)}` as const;
-const RUN_MODE: RunModeValue = "test-dev";
-const SOURCE_LANG = "ja-JP";
+import {
+  RUN_MODE,
+  SOURCE_LANG,
+  syntheticSnapshot,
+  makeObject,
+  baseDeps,
+} from "./source-wiki-orchestration.support.js";
 
-// ── a synthetic fact snapshot: two routes, three characters, two terms ──────────
-// deriveWorkSource reads only source.bridgeId, orderedUnits (factId/sceneId/
-// routeScope), characters, terminology, and routeTopology.sceneDispatchOrder.
-function unit(factId: string, sceneId: number, routeId: string) {
-  return {
-    factId,
-    sceneId,
-    routeScope: { kind: "route", routeId } as const,
-    playReveal: { playOrderIndex: sceneId, revealSceneOrder: null, revealItemOrder: null },
-  };
-}
-
-function syntheticSnapshot(): FactSnapshot {
-  const partial = {
-    source: {
-      bridgeId: "game-alpha",
-      sourceBundleHash: SNAP,
-      entryScene: 10,
-      structureSchemaVersion: "v2",
-    },
-    orderedUnits: [
-      unit("u-10", 10, "r1"),
-      unit("u-11", 11, "r1"),
-      unit("u-12", 12, "r2"),
-      unit("u-13", 13, "r2"),
-    ],
-    scenes: [],
-    routeTopology: {
-      entryScene: 10,
-      sceneDispatchOrder: [10, 11, 12, 13],
-      edges: [],
-      reachableSceneIds: [],
-      unreachableSceneIds: [],
-      reachableUnitKeys: [],
-    },
-    characters: [
-      {
-        factId: "character:c1",
-        characterId: "c1",
-        totalLines: 1,
-        firstSceneId: 10,
-        lastSceneId: 10,
-        sceneIds: [10],
-        linesByScene: [{ sceneId: 10, lineCount: 1 }],
-      },
-      {
-        factId: "character:c2",
-        characterId: "c2",
-        totalLines: 1,
-        firstSceneId: 11,
-        lastSceneId: 11,
-        sceneIds: [11],
-        linesByScene: [{ sceneId: 11, lineCount: 1 }],
-      },
-      {
-        factId: "character:c3",
-        characterId: "c3",
-        totalLines: 1,
-        firstSceneId: 12,
-        lastSceneId: 12,
-        sceneIds: [12],
-        linesByScene: [{ sceneId: 12, lineCount: 1 }],
-      },
-    ],
-    terminology: [
-      {
-        factId: "term:t-alpha",
-        termKey: "t-alpha",
-        policyAction: "preserve",
-        aliases: ["alpha"],
-        occurrenceCount: 1,
-        occurrenceUnitKeys: ["u-10"],
-      },
-      {
-        factId: "term:t-beta",
-        termKey: "t-beta",
-        policyAction: "preserve",
-        aliases: ["beta"],
-        occurrenceCount: 1,
-        occurrenceUnitKeys: ["u-11"],
-      },
-    ],
-    choiceLabels: { totalCount: 0, unitKeys: [] },
-    glossaryConflicts: [
-      {
-        factId: "conflict:t-alpha",
-        kind: "policy_action_conflict",
-        termKey: "t-alpha",
-        detail: "synthetic ambiguity",
-      },
-    ],
-    snapshotId: SNAP,
-    contentHash: SNAP,
-    schemaVersion: "itotori.fact-snapshot.v1",
-  };
-  return partial as unknown as FactSnapshot;
-}
-
-// ── a recorded runner: one on-target, source-language, cited, stamped object per
-//    assigned target. The orchestrator persists it; it is not re-proven here. ──
-function claim() {
-  return {
-    claimId: "claim-0",
-    statement: "この作品は一貫した語り口を保つ。",
-    scope: { kind: "global" },
-    kind: "beat",
-    confidence: "high",
-    citations: [
-      {
-        evidenceId: "u-10",
-        evidenceHash: SNAP,
-        snapshotId: SNAP,
-        subject: { kind: "unit", id: "u-10" },
-        role: "supports",
-        playOrderIndex: 0,
-      },
-    ],
-  };
-}
-
-interface ObjectOverrides {
-  lang?: string;
-  contextScope?: string;
-  runMode?: string;
-  claims?: unknown[];
-  subject?: EntityRef;
-  scope?: RouteScope;
-  kind?: string;
-}
-
-function makeObject(
-  kind: string,
-  subject: EntityRef,
-  scope: RouteScope,
-  role: string,
-  overrides: ObjectOverrides = {},
-): WikiObject {
-  return {
-    schemaVersion: "itotori.wiki-object.v1",
-    objectId: `${kind}:${subject.id}`,
-    version: 1,
-    lang: overrides.lang ?? SOURCE_LANG,
-    subject: overrides.subject ?? subject,
-    scope: overrides.scope ?? scope,
-    claims: overrides.claims ?? [claim()],
-    media: [],
-    dependencies: [],
-    provisional: false,
-    kind: overrides.kind ?? kind,
-    body: {},
-    provenance: {
-      snapshotKind: "context",
-      contextSnapshotId: SNAP,
-      contextScope: overrides.contextScope ?? "whole-game",
-      runMode: overrides.runMode ?? RUN_MODE,
-      authorRoleId: role,
-    },
-  } as unknown as WikiObject;
-}
-
-function recordedRunner(): AnalystRunner {
-  return async (input) =>
-    input.step.targets.map((target) =>
-      makeObject(target.kind, target.subject, target.scope, input.role),
-    );
-}
-
-function baseDeps(overrides: Partial<Parameters<typeof orchestrateSourceWiki>[0]> = {}) {
-  return {
-    snapshot: syntheticSnapshot(),
-    sourceLanguage: SOURCE_LANG,
-    runMode: RUN_MODE,
-    concurrency: 2,
-    runner: recordedRunner(),
-    ledger: new InMemoryArtifactLedger(),
-    ...overrides,
-  };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
 describe("clause 1 — default roster is ALL A1-A10 + whole-game context", () => {
   it("PROOF: the default selection is exactly the ten analyst roles", () => {
     const roles = selectSourceWikiRoles().map((s) => s.roleId);
@@ -239,7 +53,6 @@ describe("clause 1 — default roster is ALL A1-A10 + whole-game context", () =>
   });
 });
 
-// ═══════════════════════════════════════════════════════════════════════════════
 describe("clause 2 — A3 serial fold, bounded fan-out, dependency-ordered prerequisites", () => {
   it("PROOF: A4/A9/A5 land on strictly later phases than their factual prerequisites", () => {
     const plan = planSourceWiki(syntheticSnapshot());
@@ -315,7 +128,6 @@ describe("clause 2 — A3 serial fold, bounded fan-out, dependency-ordered prere
   });
 });
 
-// ═══════════════════════════════════════════════════════════════════════════════
 describe("clause 3 — every accepted object is source-language, cited, route-scoped, stamped", () => {
   const target = {
     kind: "character-bio",
@@ -374,7 +186,6 @@ describe("clause 3 — every accepted object is source-language, cited, route-sc
   });
 });
 
-// ═══════════════════════════════════════════════════════════════════════════════
 describe("clause 4 — recoverable by missing-artifact query (only the gaps fill)", () => {
   it("PROOF: a restart produces ONLY the missing artifacts; a completed phase is never rerun", async () => {
     // The full plan is the ground truth for what a complete Wiki contains.
@@ -460,7 +271,6 @@ describe("clause 5 — incomplete best-effort outputs retry without weakening co
   });
 });
 
-// ═══════════════════════════════════════════════════════════════════════════════
 describe("clause 6 — a persistently-uncitable analyst object is retried then skipped, never fatal", () => {
   const SCENE_12 = "A3:game:scene:12";
 
@@ -566,7 +376,6 @@ describe("clause 6 — a persistently-uncitable analyst object is retried then s
   });
 });
 
-// ═══════════════════════════════════════════════════════════════════════════════
 describe("work-source derivation wires onto the real fact snapshot", () => {
   it("derives two routes, three characters, one ambiguous term, and the exact A9 intersections", () => {
     const source = deriveWorkSource(syntheticSnapshot());
@@ -590,7 +399,6 @@ describe("work-source derivation wires onto the real fact snapshot", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════════════════════════
 describe("clause — a transient role failure is retried before failing loudly", () => {
   it("PROOF: a step whose first attempt throws is retried, and its object still lands", async () => {
     // deepseek-flash returns empty/malformed structured output on some rolls; the

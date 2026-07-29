@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -88,6 +88,26 @@ test("scans a NUL-containing tracked-artifact payload", () => {
   assert.deepEqual(
     violations.map((item) => item.token),
     [nodeId("rb", 99)],
+  );
+});
+
+test("history decomposition modules avoid node-id references", () => {
+  const history = join(here, "history");
+  const parentStem = ["apply", "utsushi", "146", "decomposition"].join("-");
+  const modulePaths = [
+    join(history, `${parentStem}.mjs`),
+    join(history, "decomposition-foundation.mjs"),
+    join(history, "decomposition-runtime.mjs"),
+    join(history, "decomposition-subsystems.mjs"),
+  ];
+  const violations = modulePaths.flatMap((path) =>
+    findNodeIdViolations(path, readFileSync(path, "utf8")),
+  );
+
+  assert.equal(
+    violations.length,
+    0,
+    `node-id violations:\n${violations.map((item) => `${item.file}:${item.line} ${item.token}`).join("\n")}`,
   );
 });
 

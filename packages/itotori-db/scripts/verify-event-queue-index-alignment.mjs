@@ -114,7 +114,7 @@ export function extractMigrationIndexes(migrationSources) {
 
 function verifierPaths({ schemaPath, migrationsDir } = {}) {
   return {
-    schemaPath: schemaPath ?? path.join(packageRoot, "src/schema.ts"),
+    schemaPath: schemaPath ?? path.join(packageRoot, "src/schema-11.ts"),
     migrationsDir: migrationsDir ?? path.join(packageRoot, "migrations"),
   };
 }

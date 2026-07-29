@@ -20,6 +20,7 @@ import {
   emptyWhitelist,
   evaluateCheck,
   evaluateUpdate,
+  listScanFiles,
 } from "./file-line-cap-guard.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -35,6 +36,26 @@ test("countLines matches wc -l (newline count)", () => {
   assert.equal(countLines("a\n"), 1);
   assert.equal(countLines("a\nb\n"), 2);
   assert.equal(countLines("a\nb\nc"), 2);
+});
+
+test("tree scan includes tracked JavaScript and TypeScript alongside Rust", () => {
+  const dir = mkdtempSync(join(tmpdir(), "linecap-scope-"));
+  execFileSync("git", ["init", "--quiet"], { cwd: dir });
+  writeFileSync(join(dir, "rust.rs"), "fn main() {}\n");
+  writeFileSync(join(dir, "javascript.js"), "export const guard = true;\n");
+  writeFileSync(join(dir, "module.mjs"), "export const guard = true;\n");
+  writeFileSync(join(dir, "typescript.ts"), "export const guard = true;\n");
+  writeFileSync(join(dir, "tsx.tsx"), "export const Guard = () => null;\n");
+  execFileSync("git", ["add", "."], { cwd: dir });
+  writeFileSync(join(dir, "untracked.mjs"), "export const ignored = false;\n");
+
+  assert.deepEqual(listScanFiles(dir), [
+    "javascript.js",
+    "module.mjs",
+    "rust.rs",
+    "tsx.tsx",
+    "typescript.ts",
+  ]);
 });
 
 test("a NEW oversized file (not whitelisted) fails", () => {
@@ -149,6 +170,21 @@ test("CLI check exits 1 on a planted oversized file, 0 when grandfathered", () =
   const pass = runCli("--whitelist", wlPath, probe);
   assert.equal(pass.code, 0);
   assert.match(pass.stdout, /passed/u);
+});
+
+test("CLI rejects tracked oversized .mjs and .ts files", () => {
+  for (const extension of [".mjs", ".ts"]) {
+    const dir = mkdtempSync(join(tmpdir(), "linecap-scanned-extension-"));
+    const name = `oversized${extension}`;
+    const whitelist = join(dir, "absent-whitelist.json");
+    writeFileSync(join(dir, name), "x\n".repeat(THRESHOLD + 1));
+    execFileSync("git", ["init", "--quiet"], { cwd: dir });
+    execFileSync("git", ["add", name], { cwd: dir });
+
+    const rejected = runCli("--root", dir, "--whitelist", whitelist);
+    assert.equal(rejected.code, 1, `${extension} must be scanned`);
+    assert.match(rejected.stderr, new RegExp(`NEW\\s+${name}`, "u"));
+  }
 });
 
 test("CLI --update refuses to grow but allows a shrink", () => {
