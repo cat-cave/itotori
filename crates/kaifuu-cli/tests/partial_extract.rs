@@ -11,7 +11,7 @@
 //! - `kaifuu extract <fixture> --output …` exits 0 and writes a
 //!   `PartialAdapterReport` envelope (`partial == true`, nonzero
 //!   `inventory.entries`).
-//! - `kaifuu profile <fixture> --output …` emits the same envelope with
+//! - `kaifuu profile init <fixture> --output …` emits the same envelope with
 //!   `command: "profile"`, carrying SEEN.TXT envelope evidence plus the
 //!   Gameexe.ini key-mismatch diagnostic.
 //! - `kaifuu verify <fixture> --output …` exits 0 (no P0/P1 diagnostics)
@@ -165,15 +165,15 @@ fn extract_emits_partial_report_when_envelope_ok_but_gameexe_keys_mismatch() {
 }
 
 #[test]
-fn profile_emits_partial_report_with_envelope_evidence() {
+fn profile_init_emits_partial_report_with_envelope_evidence() {
     let fixture = build_partial_fixture("-profile");
     let tmp_out = tempfile::tempdir().expect("tmp out");
     let report_path = tmp_out.path().join("profile.json");
 
-    let output = run_cli(fixture.path(), &["profile"], &report_path);
+    let output = run_cli(fixture.path(), &["profile", "init"], &report_path);
     assert!(
         output.status.success(),
-        "kaifuu-cli profile must exit 0 on partial path; status={:?}\nstdout={}\nstderr={}",
+        "kaifuu-cli profile init must exit 0 on partial path; status={:?}\nstdout={}\nstderr={}",
         output.status,
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),

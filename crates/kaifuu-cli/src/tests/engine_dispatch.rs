@@ -208,50 +208,40 @@ fn detection_and_capabilities_reports_redact_sensitive_free_text() {
 }
 
 #[test]
-fn profile_write_gate_rejects_unredacted_adapter_payloads_on_init_and_legacy_paths() {
+fn profile_write_gate_rejects_unredacted_adapter_payloads_before_init_write() {
     let root = temp_dir("sensitive-profile-write-gate");
     let game_dir = root.join("game");
     fs::create_dir_all(&game_dir).unwrap();
     let registry = sensitive_report_registry();
 
-    for legacy in [false, true] {
-        let label = if legacy { "legacy" } else { "init" };
-        let output = root.join(format!("profile-{label}.json"));
-        let args = if legacy {
-            vec![
-                "profile",
-                game_dir.to_str().unwrap(),
-                "--output",
-                output.to_str().unwrap(),
-            ]
-        } else {
-            vec![
-                "profile",
-                "init",
-                game_dir.to_str().unwrap(),
-                "--output",
-                output.to_str().unwrap(),
-            ]
-        };
-        let error = run_cli_with_registry_result(&args, &registry)
-            .expect_err("sensitive profile payload should be rejected")
-            .to_string();
+    let output = root.join("profile-init.json");
+    let error = run_cli_with_registry_result(
+        &[
+            "profile",
+            "init",
+            game_dir.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ],
+        &registry,
+    )
+    .expect_err("sensitive profile payload should be rejected")
+    .to_string();
 
-        assert!(
-            error.contains("generated profile failed validation"),
-            "{label} path returned unexpected error: {error}"
-        );
-        assert!(
-            error.contains(kaifuu_core::SEMANTIC_SECRET_REDACTED),
-            "{label} path did not report the redaction boundary: {error}"
-        );
-        assert!(
-            !output.exists(),
-            "{label} path persisted an invalid profile to {}",
-            output.display()
-        );
-        assert_no_sensitive_profile_material(&error);
-    }
+    assert!(
+        error.contains("generated profile failed validation"),
+        "init path returned unexpected error: {error}"
+    );
+    assert!(
+        error.contains(kaifuu_core::SEMANTIC_SECRET_REDACTED),
+        "init path did not report the redaction boundary: {error}"
+    );
+    assert!(
+        !output.exists(),
+        "init path persisted an invalid profile to {}",
+        output.display()
+    );
+    assert_no_sensitive_profile_material(&error);
 
     let _ = fs::remove_dir_all(root);
 }
@@ -304,8 +294,8 @@ fn profile_write_gate_redacts_raw_key_material_before_persisting_valid_profile()
 }
 
 #[test]
-fn legacy_profile_command_rejects_structurally_invalid_profiles_before_write() {
-    let root = temp_dir("legacy-profile-invalid-write-gate");
+fn profile_init_rejects_structurally_invalid_profiles_before_write() {
+    let root = temp_dir("profile-init-invalid-write-gate");
     let game_dir = root.join("game");
     fs::create_dir_all(&game_dir).unwrap();
     let output = root.join("profile.json");
@@ -314,13 +304,14 @@ fn legacy_profile_command_rejects_structurally_invalid_profiles_before_write() {
     let error = run_cli_with_registry_result(
         &[
             "profile",
+            "init",
             game_dir.to_str().unwrap(),
             "--output",
             output.to_str().unwrap(),
         ],
         &registry,
     )
-    .expect_err("legacy profile command should reject invalid generated profiles")
+    .expect_err("profile init should reject invalid generated profiles")
     .to_string();
 
     assert!(error.contains("generated profile failed validation"));
