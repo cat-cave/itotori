@@ -9,8 +9,6 @@ import {
   CatalogEngineSource,
   CatalogExternalIdKind,
   CatalogInstallState,
-  CatalogLanguageStatus,
-  CatalogLanguageStatusScope,
   CatalogOpportunityDecision,
   CatalogOpportunityFactor,
   CatalogOpportunityMarketPrevalenceSignal,
@@ -32,10 +30,7 @@ import {
   catalogConflictSubjectKindValues,
   catalogDemandFactKindValues,
   catalogEngineSourceValues,
-  catalogExternalIdKindValues,
   catalogInstallStateValues,
-  catalogLanguageStatusScopeValues,
-  catalogLanguageStatusValues,
   catalogOpportunityWeightsVersion,
   catalogPathRedactionClassValues,
   catalogRawContentRedactionClassValues,
@@ -45,9 +40,14 @@ import {
   catalogSeedOriginValues,
   catalogSeedStatusValues,
   catalogSourceRecordKindValues,
-  catalogSourceValues,
   catalogTranslationPortabilityValues,
 } from "./dependencies.js";
+export {
+  catalogExternalIdKinds,
+  catalogLanguageStatusScopes,
+  catalogLanguageStatuses as catalogLanguageStatusEnums,
+  catalogSources,
+} from "./catalog-enum-values.js";
 import {
   CatalogSourceProvenanceInput,
   CatalogSourceProvenanceRecord,
@@ -191,13 +191,9 @@ export interface ItotoriCatalogRepositoryPort {
   ): Promise<CatalogOpportunityRankingReadModel>;
 }
 
-export const catalogSources = Object.values(catalogSourceValues) as CatalogSource[];
 export const catalogSourceRecordKinds = Object.values(
   catalogSourceRecordKindValues,
 ) as CatalogSourceRecordKind[];
-export const catalogExternalIdKinds = Object.values(
-  catalogExternalIdKindValues,
-) as CatalogExternalIdKind[];
 export const catalogConfidences = Object.values(catalogConfidenceValues) as CatalogConfidence[];
 export const catalogEngineSources = Object.values(
   catalogEngineSourceValues,
@@ -215,12 +211,6 @@ export const catalogTranslationPortabilities = Object.values(
 export const catalogInstallStates = Object.values(
   catalogInstallStateValues,
 ) as CatalogInstallState[];
-export const catalogLanguageStatusEnums = Object.values(
-  catalogLanguageStatusValues,
-) as CatalogLanguageStatus[];
-export const catalogLanguageStatusScopes = Object.values(
-  catalogLanguageStatusScopeValues,
-) as CatalogLanguageStatusScope[];
 export const catalogDemandFactKinds = Object.values(
   catalogDemandFactKindValues,
 ) as CatalogDemandFactKind[];

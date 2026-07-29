@@ -5,10 +5,13 @@ import type {
 } from "../repositories/catalog-repository.js";
 import {
   catalogExternalIdKindValues,
-  catalogSourceValues,
   type CatalogExternalIdKind,
   type CatalogSource,
 } from "../schema.js";
+import {
+  catalogExternalIdKinds,
+  catalogSources,
+} from "../repositories/catalog-repository/catalog-enum-values.js";
 
 export const catalogExactExternalIdLinkSchemaVersion =
   "catalog.exact_external_id_link.v0.1" as const;
@@ -95,11 +98,6 @@ type NormalizedRequest = {
   externalIds: NormalizedExternalId[];
   diagnostics: CatalogExactExternalIdLinkDiagnostic[];
 };
-
-const catalogSources = Object.values(catalogSourceValues) as CatalogSource[];
-const catalogExternalIdKinds = Object.values(
-  catalogExternalIdKindValues,
-) as CatalogExternalIdKind[];
 
 export class ItotoriCatalogExactExternalIdLinkerService implements ItotoriCatalogExactExternalIdLinkerPort {
   constructor(

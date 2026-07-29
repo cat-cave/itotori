@@ -9,6 +9,7 @@ import "@testing-library/jest-dom/vitest";
 import { WikiEntryDeepLinkPanel } from "../src/ui/screens/wiki-bible/entry-deeplink-panel.js";
 import { AddressableFocusScreen } from "../src/ui/screens/AddressableFocusScreen.js";
 import { parseAddressableLocation } from "../src/ui/addressable-routing.js";
+import { structureAddressIndexFromFacts } from "../src/ui/screens/wiki-bible/entry-deeplink.js";
 import type { WikiSourceObjectView } from "../src/wiki/dashboard/read-model.js";
 
 const PROJECT_ID = "project-1";
@@ -183,5 +184,46 @@ describe("wiki entry deep-link panel → player landing", () => {
       />,
     );
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("renders character scenes resolved by the supplied structure index", () => {
+    const object = sceneObject();
+    object.subject = { kind: "character", id: "character-7" };
+    object.citations = [];
+    object.claims = [
+      {
+        claimId: "claim-character",
+        statement: "A character summary.",
+        scope: { kind: "global" },
+        kind: "character-profile",
+        confidence: "high",
+        supersedesClaimId: null,
+        citations: [],
+      },
+    ];
+    const structure = structureAddressIndexFromFacts({
+      orderedUnits: [],
+      characters: [{ characterId: "character-7", sceneIds: ["scene-7"] }],
+    });
+
+    render(
+      <WikiEntryDeepLinkPanel
+        object={object}
+        scope={{
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          snapshotId: SNAPSHOT_ID,
+        }}
+        structure={structure}
+      />,
+    );
+
+    const panel = screen.getByTestId("wiki-entry-deeplink-panel");
+    expect(panel).toHaveAttribute("data-entry-primary-kind", "scene");
+    expect(panel).toHaveAttribute("data-entry-primary-id", "scene-7");
+    expect(screen.getByRole("link", { name: /Jump to scene scene-7/u })).toHaveAttribute(
+      "href",
+      expect.stringContaining("/play/scenes/scene-7"),
+    );
   });
 });

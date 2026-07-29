@@ -8,6 +8,7 @@ import type { WikiBibleScope } from "./client.js";
 import {
   citedBridgeUnitIds,
   entryDeepLinkSourceFromView,
+  resolveEntryPlayerTargets,
   type EntryPlayerTarget,
   type StructureAddressIndex,
 } from "./entry-deeplink.js";
@@ -24,9 +25,14 @@ export function WikiEntryDeepLinkPanel({
   scope: WikiBibleScope;
   structure?: StructureAddressIndex | null;
 }): ReactNode {
-  void structure;
-  const unitIds = citedBridgeUnitIds(entryDeepLinkSourceFromView(object));
-  const [targets, setTargets] = useState<readonly EntryPlayerTarget[]>([]);
+  const source = entryDeepLinkSourceFromView(object);
+  const unitIds = citedBridgeUnitIds(source);
+  const structureTargets = resolveEntryPlayerTargets(
+    source,
+    { ...scope, objectId: object.objectId },
+    structure,
+  );
+  const [verifiedTargets, setVerifiedTargets] = useState<readonly EntryPlayerTarget[]>([]);
   useEffect(() => {
     let active = true;
     void Promise.all(
@@ -62,7 +68,7 @@ export function WikiEntryDeepLinkPanel({
           focus: addressableFocusToken({ kind: "unit", id: unit.bridgeUnitId }),
         });
       }
-      setTargets(
+      setVerifiedTargets(
         next.sort((a, b) => a.id.localeCompare(b.id) || a.unitId!.localeCompare(b.unitId!)),
       );
     });
@@ -76,6 +82,7 @@ export function WikiEntryDeepLinkPanel({
     scope.snapshotId,
     unitIds.join("\0"),
   ]);
+  const targets = mergeEntryPlayerTargets(verifiedTargets, structureTargets);
   if (targets.length === 0) {
     return null;
   }
@@ -107,6 +114,25 @@ export function WikiEntryDeepLinkPanel({
       </ul>
     </Panel>
   );
+}
+
+function mergeEntryPlayerTargets(
+  verifiedTargets: readonly EntryPlayerTarget[],
+  structureTargets: readonly EntryPlayerTarget[],
+): readonly EntryPlayerTarget[] {
+  const byAddress = new Map<string, EntryPlayerTarget>();
+  for (const target of [...verifiedTargets, ...structureTargets]) {
+    const key = `${target.kind}:${target.id}`;
+    if (!byAddress.has(key)) {
+      byAddress.set(key, target);
+    }
+  }
+  return [...byAddress.values()].sort((left, right) => {
+    if (left.kind !== right.kind) {
+      return left.kind === "scene" ? -1 : 1;
+    }
+    return left.id.localeCompare(right.id);
+  });
 }
 
 function EntryDeepLinkItem({ target }: { target: EntryPlayerTarget }): ReactNode {
