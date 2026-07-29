@@ -240,16 +240,100 @@ function buildRequestUrl(endpoint: string, query: BranchExplorerQuery): string {
   return url.toString();
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(isString);
+}
+
+function isBranchArtifactLink(value: unknown): value is BranchArtifactLink {
+  return (
+    isRecord(value) &&
+    (value.rel === "runtime-trace" || value.rel === "route-map") &&
+    isString(value.refId) &&
+    isString(value.href) &&
+    isString(value.mediaType)
+  );
+}
+
+function isBranchExplorerRecord(value: unknown): value is BranchExplorerRecord {
+  return (
+    isRecord(value) &&
+    isString(value.branchId) &&
+    (value.routeKey === undefined || isString(value.routeKey)) &&
+    isStringArray(value.routeMapIds) &&
+    isString(value.coverageStatus) &&
+    isCoverageStatus(value.coverageStatus) &&
+    isStringArray(value.observedTraceIds) &&
+    isNumber(value.reachableTextCount) &&
+    Array.isArray(value.artifactLinks) &&
+    value.artifactLinks.every(isBranchArtifactLink)
+  );
+}
+
+function isBranchExplorerPageInfo(value: unknown): value is BranchExplorerPageInfo {
+  return (
+    isRecord(value) &&
+    isNumber(value.page) &&
+    isNumber(value.pageSize) &&
+    isNumber(value.totalRecords) &&
+    isNumber(value.totalPages) &&
+    typeof value.hasPrev === "boolean" &&
+    typeof value.hasNext === "boolean"
+  );
+}
+
+function isBranchCoverageSummary(value: unknown): value is BranchCoverageSummary {
+  return (
+    isRecord(value) &&
+    isNumber(value.branchCount) &&
+    isNumber(value.visited) &&
+    isNumber(value.unvisited) &&
+    isNumber(value.ambiguous) &&
+    isNumber(value.unreachable) &&
+    isNumber(value.totalReachableText) &&
+    isNumber(value.coveredReachableText)
+  );
+}
+
+function isBranchExplorerResponse(value: unknown): value is BranchExplorerResponse {
+  return (
+    isRecord(value) &&
+    value.schemaVersion === BRANCH_EXPLORER_SCHEMA_VERSION &&
+    isString(value.adapterId) &&
+    isRecord(value.filter) &&
+    (value.filter.coverageStatus === null ||
+      (isString(value.filter.coverageStatus) && isCoverageStatus(value.filter.coverageStatus))) &&
+    isBranchExplorerPageInfo(value.page) &&
+    Array.isArray(value.records) &&
+    value.records.every(isBranchExplorerRecord) &&
+    isBranchCoverageSummary(value.summary)
+  );
+}
+
+/** Reject malformed server data before it reaches the branch explorer view. */
+export function parseBranchExplorerResponse(value: unknown): BranchExplorerResponse {
+  if (!isBranchExplorerResponse(value)) {
+    throw new Error("invalid branch coverage response");
+  }
+  return value;
+}
+
 function isBranchExplorerError(value: unknown): value is BranchExplorerError {
-  if (typeof value !== "object" || value === null || !("error" in value)) {
+  if (!isRecord(value) || !isRecord(value.error)) {
     return false;
   }
-  const { error } = value as { error: unknown };
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    typeof (error as { message?: unknown }).message === "string"
-  );
+  return isString(value.error.message);
 }
 
 // Client-side fetch: build the query URL, request the page, and surface API
@@ -271,5 +355,5 @@ export async function fetchBranchCoveragePage(
     }
     throw new Error(`failed to load branch coverage: ${response.status}${detail}`);
   }
-  return (await response.json()) as BranchExplorerResponse;
+  return parseBranchExplorerResponse(await response.json());
 }

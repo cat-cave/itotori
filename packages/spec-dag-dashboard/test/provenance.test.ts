@@ -51,6 +51,9 @@ describe("deriveProvenanceStatus", () => {
       "unknown",
     );
   });
+  it("is unknown when working-tree status cannot be verified", () => {
+    expect(deriveProvenanceStatus(prov({ dirty: null }))).toBe("unknown");
+  });
   it("is current when up to date and clean", () => {
     expect(deriveProvenanceStatus(prov({ commitsBehind: 0, dirty: false }))).toBe("current");
   });

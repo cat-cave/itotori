@@ -20,8 +20,8 @@ export function parseDirty(porcelain: string): boolean {
 
 /** Derive the headline provenance status from a collected Provenance record. */
 export function deriveProvenanceStatus(p: Provenance): ProvenanceStatus {
-  if (!p.originMainKnown) return "unknown";
-  const behind = (p.commitsBehind ?? 0) > 0;
+  if (!p.originMainKnown || p.commitsBehind === null || p.dirty === null) return "unknown";
+  const behind = p.commitsBehind > 0;
   if (behind && p.dirty) return "behind-dirty";
   if (behind) return "behind";
   if (p.dirty) return "dirty";

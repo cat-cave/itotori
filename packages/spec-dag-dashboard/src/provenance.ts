@@ -3,9 +3,9 @@
 //
 // The pure parsers/derivations live in provenance-status.ts (no node imports,
 // shared with the browser client); collectGitProvenance is the only impure part
-// and only ever reads local git state (NO network/fetch). Every git call is
-// wrapped in try/catch so a missing repo, detached state, or absent origin/main
-// degrades gracefully to "unknown" rather than throwing.
+// and only ever reads local git state (NO network/fetch). Failed git calls are
+// represented in the output as unverified fields; they never imply a clean or
+// current tree.
 
 import { execFileSync } from "node:child_process";
 
@@ -45,7 +45,7 @@ export function collectGitProvenance(repoRoot: string): Provenance {
   const headShortSha = headOut == null ? null : headOut.trim() || null;
 
   const porcelain = tryGit(repoRoot, ["status", "--porcelain"]);
-  const dirty = porcelain == null ? false : parseDirty(porcelain);
+  const dirty = porcelain == null ? null : parseDirty(porcelain);
 
   const originRef = tryGit(repoRoot, ["rev-parse", "--verify", "--quiet", "origin/main"]);
   const originMainKnown = originRef != null && originRef.trim().length > 0;

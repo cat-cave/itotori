@@ -66,7 +66,8 @@ export type StatusCounts = Partial<Record<string, number>>;
 export interface Provenance {
   headShortSha: string | null;
   generatedAt: string;
-  dirty: boolean;
+  /** `null` means `git status` could not verify the working tree. */
+  dirty: boolean | null;
   commitsBehind: number | null;
   originMainKnown: boolean;
 }

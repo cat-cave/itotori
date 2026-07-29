@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { http } from "msw";
+import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 
-import { renderRuntimeDashboard, renderRuntimeEvidenceRoute } from "../src/dashboard.js";
+import {
+  fetchRuntimeStatus,
+  renderRuntimeDashboard,
+  renderRuntimeEvidenceRoute,
+} from "../src/dashboard.js";
 import { apiRuntimeStatus, frameArtifact, runtimeFixture } from "./dashboard.fixtures.js";
 
 let currentFixture = runtimeFixture("passed-e2-capture");
@@ -24,6 +28,18 @@ afterEach(() => {
 afterAll(() => server.close());
 
 describe("Utsushi runtime dashboard", () => {
+  it("rejects a malformed runtime status response at the API boundary", async () => {
+    server.use(
+      http.get("http://itotori.test/api/runtime/v0.2/status", () =>
+        HttpResponse.json({ finalStatus: "hello_world_passed" }),
+      ),
+    );
+
+    await expect(fetchRuntimeStatus("http://itotori.test/api/runtime/v0.2/status")).rejects.toThrow(
+      "invalid runtime status response",
+    );
+  });
+
   it("renders the runtime evidence route from the v0.2 status loader", async () => {
     currentFixture = runtimeFixture("passed-e2-capture");
     window.history.pushState({}, "", "/runtime/evidence/run-passed-e2-capture");

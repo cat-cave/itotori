@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import {
   BRANCH_EXPLORER_DEFAULT_ENDPOINT,
@@ -62,6 +63,18 @@ async function collectAllPages(
 }
 
 describe("branch explorer API (policy)", () => {
+  it("rejects a malformed branch coverage response at the API boundary", async () => {
+    server.use(
+      http.get(BRANCH_EXPLORER_TEST_ENDPOINT, () =>
+        HttpResponse.json({ schemaVersion: "utsushi.branch_explorer.v0.1" }),
+      ),
+    );
+
+    await expect(fetchBranchCoveragePage(BRANCH_EXPLORER_TEST_ENDPOINT)).rejects.toThrow(
+      "invalid branch coverage response",
+    );
+  });
+
   it("serves records with all six required fields plus managed artifact links", async () => {
     const response = await fetchBranchCoveragePage(BRANCH_EXPLORER_TEST_ENDPOINT, {
       pageSize: 100,
