@@ -1,0 +1,123 @@
+export const permissionGateMatrixExpectedPart6 = [
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriAssetLocalizationDecisionRepository.loadDecisionsByPolicy",
+    requiredPermission: "catalog.read",
+    successFixture:
+      "asset-localization-decision-repository.test.ts load decisions by policy coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriAuditFindingRepository.recordFinding",
+    requiredPermission: "audit.write",
+    successFixture: "audit-finding-repository.test.ts record finding coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriAuditFindingRepository.loadFindingsByNode",
+    requiredPermission: "catalog.read",
+    successFixture: "audit-finding-repository.test.ts load findings by node coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriAuditFindingRepository.loadFindingsByReport",
+    requiredPermission: "catalog.read",
+    successFixture: "audit-finding-repository.test.ts load findings by report coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriAuditFindingRepository.loadOpenFindings",
+    requiredPermission: "catalog.read",
+    successFixture: "audit-finding-repository.test.ts load open findings coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriAuditFindingRepository.markFindingFixed",
+    requiredPermission: "audit.write",
+    successFixture: "audit-finding-repository.test.ts mark finding fixed coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriAuditFindingRepository.markFindingSuperseded",
+    requiredPermission: "audit.write",
+    successFixture: "audit-finding-repository.test.ts mark finding superseded coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriPrincipalRepository.createAccount",
+    requiredPermission: "auth.admin",
+    successFixture: "principal-repository.test.ts create account coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriPrincipalRepository.createPrincipal",
+    requiredPermission: "auth.admin",
+    successFixture: "principal-repository.test.ts create principal coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriPrincipalRepository.createPermissionSet",
+    requiredPermission: "auth.permissions.manage",
+    successFixture: "principal-repository.test.ts create permission set coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriPrincipalRepository.addPermissionToSet",
+    requiredPermission: "auth.permissions.manage",
+    successFixture: "permission-set-model.test.ts add permission to set coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriPrincipalRepository.removePermissionFromSet",
+    requiredPermission: "auth.permissions.manage",
+    successFixture: "permission-set-model.test.ts remove permission from set coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriPrincipalRepository.renamePermissionSet",
+    requiredPermission: "auth.permissions.manage",
+    successFixture: "permission-set-model.test.ts rename permission set coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriPrincipalRepository.deletePermissionSet",
+    requiredPermission: "auth.permissions.manage",
+    successFixture: "permission-set-model.test.ts delete permission set coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriPrincipalRepository.grantPermissionSet",
+    requiredPermission: "auth.permissions.manage",
+    successFixture: "principal-repository.test.ts grant permission set coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriPrincipalRepository.revokePermissionSet",
+    requiredPermission: "auth.permissions.manage",
+    successFixture: "auth-grant-audit-log.test.ts revoke permission set coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriPrincipalRepository.grantDirectPermission",
+    requiredPermission: "auth.permissions.manage",
+    successFixture: "principal-repository.test.ts grant direct permission coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriPrincipalRepository.mapProviderClaimToDirectPermission",
+    requiredPermission: "auth.admin",
+    successFixture: "effective-permission-resolver.test.ts provider claim mapping coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriPrincipalRepository.revokeDirectPermission",
+    requiredPermission: "auth.permissions.manage",
+    successFixture: "auth-grant-audit-log.test.ts revoke direct permission coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriPrincipalRepository.loadPrincipal",
+    requiredPermission: "auth.admin",
+    successFixture: "principal-repository.test.ts load principal coverage",
+  },
+] as const;

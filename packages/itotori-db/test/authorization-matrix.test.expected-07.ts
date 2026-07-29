@@ -1,0 +1,98 @@
+export const permissionGateMatrixExpectedPart7 = [
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriPrincipalRepository.resolvePrincipalPermissions",
+    requiredPermission: "auth.permissions.manage",
+    successFixture: "principal-repository.test.ts resolve principal permissions coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriPrincipalRepositoryExports.listAccountPermissionSets",
+    requiredPermission: "auth.permissions.manage",
+    successFixture: "principal-repository.test.ts permission set helper coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriPrincipalRepositoryExports.loadPermissionSetAccountId",
+    requiredPermission: "auth.permissions.manage",
+    successFixture: "principal-repository.test.ts permission set helper coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriAuthSsoSettingsRepository.configureSettings",
+    requiredPermission: "auth.sso.manage",
+    successFixture: "auth-sso-settings-repository.test.ts configure settings coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriAuthMemberManagementRepository.inviteMember",
+    requiredPermission: "auth.members.manage",
+    successFixture: "auth-member-management-repository.test.ts invite member coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriAuthMemberManagementRepository.acceptInvitation",
+    requiredPermission: "auth.members.manage",
+    successFixture: "auth-member-management-repository.test.ts accept invitation coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriAuthMemberManagementRepository.listMembers",
+    requiredPermission: "auth.members.manage",
+    successFixture: "auth-member-management-repository.test.ts list members coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriAuthMemberManagementRepository.removeMember",
+    requiredPermission: "auth.members.manage",
+    successFixture: "auth-member-management-repository.test.ts remove member coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriAuthBillingSeatRepository.loadSeatUsage",
+    requiredPermission: "auth.members.manage",
+    successFixture: "auth-billing-seat-repository.test.ts load seat usage coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriModelRoutingSettingsRepository.loadSettings",
+    requiredPermission: "catalog.read",
+    successFixture: "model-routing-settings-repository.test.ts load settings coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriModelRoutingSettingsRepository.saveRoute",
+    requiredPermission: "draft.write",
+    successFixture: "model-routing-settings-repository.test.ts save route coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriTranslationScopeSettingsRepository.loadSettings",
+    requiredPermission: "catalog.read",
+    successFixture: "translation-scope-settings-repository.test.ts load settings coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriTranslationScopeSettingsRepository.saveSettings",
+    requiredPermission: "draft.write",
+    successFixture: "translation-scope-settings-repository.test.ts save settings coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriLocalizationPassRunConfigRepository.saveRunConfig",
+    requiredPermission: "draft.write",
+    successFixture: "localization-pass-run-config-repository.test.ts save coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriAuthSessionService.listPrincipalSessions",
+    requiredPermission: "auth.sessions.manage",
+    successFixture: "auth-session-service.test.ts list principal sessions coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriAuthSessionService.revokePrincipalSession",
+    requiredPermission: "auth.sessions.manage",
+    successFixture: "auth-session-service.test.ts revoke principal session coverage",
+  },
+] as const;

@@ -1,0 +1,123 @@
+export const permissionGateMatrixExpectedPart3 = [
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogRepository.recordLocalScan",
+    requiredPermission: "catalog.write",
+    successFixture: "catalog-repository.test.ts local scan coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogRepository.recordSeedTarget",
+    requiredPermission: "catalog.write",
+    successFixture: "catalog-repository.test.ts seed target coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogRepository.getWorkSnapshot",
+    requiredPermission: "catalog.read",
+    successFixture: "catalog-repository.test.ts work read coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogRepository.getWorkByExternalId",
+    requiredPermission: "catalog.read",
+    successFixture: "catalog-repository.test.ts external id read coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogRepository.listSeedTargets",
+    requiredPermission: "catalog.read",
+    successFixture: "catalog-repository.test.ts seed target read coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogRepository.listBenchmarkSelectableSeedTargets",
+    requiredPermission: "catalog.read",
+    successFixture: "catalog-recorded-importers.test.ts benchmark selectable seed read coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogRepository.listCatalogCandidateTargetWorks",
+    requiredPermission: "catalog.read",
+    successFixture: "catalog-repository.test.ts candidate target read coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogRepository.recordCatalogCandidateMatch",
+    requiredPermission: "catalog.write",
+    successFixture: "catalog-repository.test.ts candidate match coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogRepository.listCatalogCandidateMatches",
+    requiredPermission: "catalog.read",
+    successFixture: "catalog-repository.test.ts candidate match read coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogRepository.catalogConflictReview",
+    requiredPermission: "catalog.read",
+    successFixture: "catalog-conflict-review.test.ts read model coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogRepository.catalogCompletenessBenchmarkPools",
+    requiredPermission: "catalog.read",
+    successFixture: "catalog-repository.test.ts completeness benchmark pool coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogRepository.catalogAlphaBenchmarkOpportunityRanking",
+    requiredPermission: "catalog.read",
+    successFixture:
+      "catalog-recorded-importers.test.ts alpha benchmark opportunity ranking coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogRepository.catalogOpportunityRanking",
+    requiredPermission: "catalog.read",
+    successFixture: "catalog-opportunity-ranking-read-model.test.ts read model coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogRepository.catalogContextPanelForWork",
+    requiredPermission: "catalog.read",
+    successFixture: "catalog-context-panel read model coverage (panel route)",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogRepository.catalogBenchmarkSeedFinder",
+    requiredPermission: "catalog.read",
+    successFixture: "catalog-benchmark-seed-finder.test.ts read model coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogCrawlerRepository.getCheckpoint",
+    requiredPermission: "catalog.read",
+    successFixture: "catalog-crawler-repository.test.ts checkpoint read coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogCrawlerRepository.startCrawlerJob",
+    requiredPermission: "catalog.write",
+    successFixture: "catalog-crawler-repository.test.ts crawler job start coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogCrawlerRepository.recordFetchedStep",
+    requiredPermission: "catalog.write",
+    successFixture: "catalog-crawler-repository.test.ts fetched step coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogCrawlerRepository.commitStepImport",
+    requiredPermission: "catalog.write",
+    successFixture: "catalog-crawler-repository.test.ts atomic step commit coverage",
+  },
+  {
+    denialFixture: "missing permission actor user-without-required-permission",
+    mutation: "ItotoriCatalogCrawlerRepository.markStepImported",
+    requiredPermission: "catalog.write",
+    successFixture: "catalog-crawler-repository.test.ts imported marker coverage",
+  },
+] as const;
