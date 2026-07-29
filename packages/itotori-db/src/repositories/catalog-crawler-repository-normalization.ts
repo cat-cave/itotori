@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import type { ItotoriDatabase } from "../connection.js";
 import { requiredString } from "../required-string.js";
@@ -19,7 +18,6 @@ import type {
   CatalogCrawlerCheckpointInput,
   CatalogCrawlerCheckpointRecord,
   CatalogCrawlerCursor,
-  CatalogCrawlerDateInput,
   CatalogCrawlerJobInput,
   CatalogCrawlerJobRecord,
   CatalogCrawlerJsonRecord,
@@ -29,6 +27,13 @@ import type {
   CatalogCrawlerStepInput,
   CatalogCrawlerStepRecord,
 } from "./catalog-crawler-repository.js";
+import {
+  dateInput,
+  hashJson,
+  jsonRecord,
+  optionalNonnegativeInteger,
+  stableId,
+} from "./catalog-crawler-repository-values.js";
 
 type NormalizedCrawlerJobInput = Required<Omit<CatalogCrawlerJobInput, "leaseSeconds">>;
 type NormalizedCrawlerCheckpointInput = Required<CatalogCrawlerKey> & {
@@ -295,43 +300,4 @@ export function requiredActiveCrawlerJob<T>(rows: T[], crawlerJobId: string): vo
 
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function dateInput(input: CatalogCrawlerDateInput): Date {
-  const date = input instanceof Date ? input : new Date(input);
-  if (Number.isNaN(date.getTime())) throw new Error("date input must be valid");
-  return date;
-}
-
-function optionalNonnegativeInteger(input: number | undefined, name: string): number | null {
-  if (input === undefined) return null;
-  if (!Number.isInteger(input) || input < 0)
-    throw new Error(`${name} must be a nonnegative integer`);
-  return input;
-}
-
-function jsonRecord(input: unknown, name: string): CatalogCrawlerJsonRecord {
-  if (input === null || typeof input !== "object" || Array.isArray(input))
-    throw new Error(`${name} must be a JSON object`);
-  return input as CatalogCrawlerJsonRecord;
-}
-
-function hashJson(input: unknown): string {
-  return `sha256:${createHash("sha256").update(stableJsonStringify(input)).digest("hex")}`;
-}
-
-export function stableId(prefix: string, parts: string[]): string {
-  const hash = createHash("sha256").update(parts.join("\0")).digest("hex");
-  return `${prefix}:${hash}`;
-}
-
-function stableJsonStringify(input: unknown): string {
-  if (input === null || typeof input !== "object") return JSON.stringify(input);
-  if (Array.isArray(input))
-    return `[${input.map((value) => stableJsonStringify(value)).join(",")}]`;
-  const record = input as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${stableJsonStringify(record[key])}`)
-    .join(",")}}`;
 }

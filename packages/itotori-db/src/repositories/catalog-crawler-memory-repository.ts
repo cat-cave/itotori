@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import type { AuthorizationActor } from "../authorization.js";
+import { requiredString } from "../required-string.js";
 import {
   catalogCrawlerJobStatusValues,
   catalogCrawlerStepStatusValues,
@@ -23,6 +23,13 @@ import {
   type CatalogCrawlerStepResult,
   type ItotoriCatalogCrawlerRepositoryPort,
 } from "./catalog-crawler-repository.js";
+import {
+  dateInput,
+  hashJson,
+  jsonRecord,
+  optionalNonnegativeInteger,
+  stableId,
+} from "./catalog-crawler-repository-values.js";
 
 export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRepositoryPort {
   readonly jobs = new Map<string, CatalogCrawlerJobRecord>();
@@ -102,7 +109,7 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     );
     const now = new Date();
     const step: CatalogCrawlerStepRecord = {
-      crawlerJobStepId: previous?.crawlerJobStepId ?? stableId("crawler-step", stepKey),
+      crawlerJobStepId: previous?.crawlerJobStepId ?? stableId("crawler-step", [stepKey]),
       crawlerJobId: requiredString(input.crawlerJobId, "crawlerJobId"),
       stepKey: requiredString(input.stepKey, "stepKey"),
       catalogSource: input.catalogSource,
@@ -117,7 +124,7 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
       httpStatus: input.httpStatus ?? null,
       ok: input.ok ?? true,
       payloadHash,
-      sourceProvenanceId: stableId("crawler-provenance", stepKey),
+      sourceProvenanceId: stableId("crawler-provenance", [stepKey]),
       status: alreadyImported
         ? catalogCrawlerStepStatusValues.imported
         : catalogCrawlerStepStatusValues.fetched,
@@ -414,63 +421,6 @@ function keyString(key: Required<CatalogCrawlerKey>): string {
   return `${key.catalogSource}:${key.adapterName}:${key.partitionKey}`;
 }
 
-function requiredString(input: string | undefined, name: string): string {
-  if (typeof input !== "string" || input.trim().length === 0) {
-    throw new Error(`${name} is required`);
-  }
-  return input;
-}
-
-function dateInput(input: string | Date): Date {
-  const date = input instanceof Date ? input : new Date(input);
-  if (Number.isNaN(date.getTime())) {
-    throw new Error("date input must be valid");
-  }
-  return date;
-}
-
-function jsonRecord(input: unknown, name: string): CatalogCrawlerJsonRecord {
-  if (input === null || typeof input !== "object" || Array.isArray(input)) {
-    throw new Error(`${name} must be a JSON object`);
-  }
-  return input as CatalogCrawlerJsonRecord;
-}
-
-function hashJson(input: unknown): string {
-  return `sha256:${createHash("sha256").update(stableJsonStringify(input)).digest("hex")}`;
-}
-
-function stableId(prefix: string, value: string): string {
-  return `${prefix}:${createHash("sha256").update(value).digest("hex")}`;
-}
-
-function stableJsonStringify(input: unknown): string {
-  if (input === null || typeof input !== "object") {
-    return JSON.stringify(input);
-  }
-  if (Array.isArray(input)) {
-    return `[${input.map((value) => stableJsonStringify(value)).join(",")}]`;
-  }
-  const record = input as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${stableJsonStringify(record[key])}`)
-    .join(",")}}`;
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-// CATALOG-066: Mirrors the DB repository's optionalNonnegativeInteger guard
-// so the in-memory double rejects the same invalid rate-limit inputs the DB
-// normalization would reject.
-function optionalNonnegativeInteger(input: number | undefined, name: string): number | null {
-  if (input === undefined) {
-    return null;
-  }
-  if (!Number.isInteger(input) || input < 0) {
-    throw new Error(`${name} must be a nonnegative integer`);
-  }
-  return input;
 }

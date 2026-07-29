@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { InMemoryCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-memory-repository.js";
+import {
+  normalizeCrawlerRateLimitInput,
+  normalizeCrawlerStepInput,
+} from "../src/repositories/catalog-crawler-repository-normalization.js";
 import { catalogCrawlerStepStatusValues } from "../src/schema.js";
 import {
   ItotoriCatalogCrawlerRunner,
@@ -266,6 +270,50 @@ describe("InMemoryCatalogCrawlerRepository standalone saveRateLimit DB-equivalen
     expect(rateLimit.remaining).toBe(0);
     expect(rateLimit.limit).toBe(100);
     expect(rateLimit.retryAfterSeconds).toBe(30);
+  });
+});
+
+describe("catalog crawler memory and database normalization parity", () => {
+  it("derives identical date values and stable JSON hashes from equivalent crawler input", async () => {
+    const repo = new InMemoryCatalogCrawlerRepository();
+    const job = await repo.startCrawlerJob(actor, "worker-1", jobInput());
+    const fetchedAt = "2026-07-29T12:34:56.000Z";
+    const input = {
+      ...stepInput(job.crawlerJobId, "worker-1", "stable-json"),
+      fetchedAt,
+      payload: { z: [3, { b: true, a: null }], a: "first" },
+    };
+
+    const databaseNormalized = normalizeCrawlerStepInput(input);
+    const memoryResult = await repo.recordFetchedStep(actor, input);
+
+    expect(memoryResult.step.fetchedAt.toISOString()).toBe(
+      databaseNormalized.fetchedAt.toISOString(),
+    );
+    expect(memoryResult.step.payloadHash).toBe(databaseNormalized.payloadHash);
+    expect(memoryResult.step.payloadHash).toBe(
+      "sha256:bbad75bdb9d7c6ca6b3708b4f754ba72c937c657170afbb9fe2fd1b7e8b98e57",
+    );
+
+    const rateLimitInput = {
+      ...sourceKey,
+      crawlerJobId: job.crawlerJobId,
+      workerId: "worker-1",
+      nextAvailableAt: fetchedAt,
+      resetAt: fetchedAt,
+      remaining: 0,
+      limit: 100,
+      retryAfterSeconds: 30,
+      metadata: { z: "last", a: "first" },
+    };
+    const databaseRateLimit = normalizeCrawlerRateLimitInput(rateLimitInput);
+    const memoryRateLimit = await repo.saveRateLimit(actor, rateLimitInput);
+
+    expect(memoryRateLimit).toMatchObject({
+      ...databaseRateLimit,
+      nextAvailableAt: databaseRateLimit.nextAvailableAt,
+      resetAt: databaseRateLimit.resetAt,
+    });
   });
 });
 

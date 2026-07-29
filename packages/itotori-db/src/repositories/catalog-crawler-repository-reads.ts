@@ -25,9 +25,9 @@ import {
   normalizeCrawlerKey,
   normalizeCrawlerStepInput,
   requiredRow,
-  stableId,
   stepFromRow,
 } from "./catalog-crawler-repository-normalization.js";
+import { stableId } from "./catalog-crawler-repository-values.js";
 import { requiredString } from "../required-string.js";
 
 export async function getCheckpoint(

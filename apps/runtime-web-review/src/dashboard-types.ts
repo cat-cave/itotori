@@ -84,8 +84,8 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || isString(value);
 }
 
-function isNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
+function isNonnegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -102,7 +102,7 @@ function isRuntimeTraceRow(value: unknown): value is RuntimeTraceRow {
     isNullableString(value.draftId) &&
     isNullableString(value.runtimeTargetId) &&
     isNullableString(value.evidenceTier) &&
-    (value.frame === null || isNumber(value.frame)) &&
+    (value.frame === null || isNonnegativeInteger(value.frame)) &&
     isNullableString(value.textPreview) &&
     isStringArray(value.artifactIds)
   );
@@ -131,7 +131,7 @@ function isRuntimeArtifact(value: unknown): value is RuntimeArtifact {
     isNullableString(value.hash) &&
     isNullableString(value.hashProvenance) &&
     isNullableString(value.mediaType) &&
-    (value.byteSize === null || isNumber(value.byteSize)) &&
+    (value.byteSize === null || isNonnegativeInteger(value.byteSize)) &&
     isNullableString(value.bridgeUnitId) &&
     isNullableString(value.sourceUnitKey) &&
     isNullableString(value.diagnostic)
@@ -170,9 +170,9 @@ function isRuntimeStatus(value: unknown): value is RuntimeStatus {
     isNullableString(value.runtimeStatus) &&
     isNullableString(value.fidelityTier) &&
     isNullableString(value.evidenceTier) &&
-    isNumber(value.textEventCount) &&
-    isNumber(value.recordingArtifactCount) &&
-    isNumber(value.validationFindingCount) &&
+    isNonnegativeInteger(value.textEventCount) &&
+    isNonnegativeInteger(value.recordingArtifactCount) &&
+    isNonnegativeInteger(value.validationFindingCount) &&
     Array.isArray(value.traceEvents) &&
     value.traceEvents.every(isRuntimeTraceRow) &&
     Array.isArray(value.findings) &&
@@ -190,7 +190,74 @@ function isRuntimeStatus(value: unknown): value is RuntimeStatus {
 /** Reject malformed server data before it reaches the dashboard renderer. */
 export function parseRuntimeStatus(value: unknown): RuntimeStatus {
   if (!isRuntimeStatus(value)) {
-    throw new Error("invalid runtime status response");
+    throw new Error(`invalid runtime status response: ${invalidRuntimeStatusField(value)}`);
   }
   return value;
+}
+
+function invalidRuntimeStatusField(value: unknown): string {
+  if (!isRecord(value)) return "response";
+  const fields: readonly [string, (value: unknown) => boolean][] = [
+    ["finalStatus", isString],
+    ["runtimeRunId", isNullableString],
+    ["runtimeReportId", isNullableString],
+    ["runtimeStatus", isNullableString],
+    ["fidelityTier", isNullableString],
+    ["evidenceTier", isNullableString],
+    ["textEventCount", isNonnegativeInteger],
+    ["recordingArtifactCount", isNonnegativeInteger],
+    ["validationFindingCount", isNonnegativeInteger],
+    ["limitations", isStringArray],
+  ];
+  for (const [field, validator] of fields) {
+    if (!validator(value[field])) return field;
+  }
+  const traceEvents = invalidArrayMember(value.traceEvents, isRuntimeTraceRow, "traceEvents");
+  if (traceEvents !== undefined) return traceEvents;
+  const findings = invalidArrayMember(value.findings, isRuntimeFinding, "findings");
+  if (findings !== undefined) return findings;
+  const artifacts = invalidArrayMember(value.artifacts, isRuntimeArtifact, "artifacts");
+  if (artifacts !== undefined) return artifacts;
+  const approximations = invalidArrayMember(
+    value.approximations,
+    isRuntimeApproximation,
+    "approximations",
+  );
+  if (approximations !== undefined) return approximations;
+  const unsupportedCapabilities = invalidArrayMember(
+    value.unsupportedCapabilities,
+    isRuntimeUnsupportedCapability,
+    "unsupportedCapabilities",
+  );
+  return unsupportedCapabilities ?? "response";
+}
+
+function invalidArrayMember<T>(
+  value: unknown,
+  isMember: (value: unknown) => value is T,
+  field: string,
+): string | undefined {
+  if (!Array.isArray(value)) return field;
+  for (const [index, member] of value.entries()) {
+    if (!isMember(member)) {
+      if (
+        field === "traceEvents" &&
+        isRecord(member) &&
+        member.frame !== null &&
+        !isNonnegativeInteger(member.frame)
+      ) {
+        return `${field}[${index}].frame`;
+      }
+      if (
+        field === "artifacts" &&
+        isRecord(member) &&
+        member.byteSize !== null &&
+        !isNonnegativeInteger(member.byteSize)
+      ) {
+        return `${field}[${index}].byteSize`;
+      }
+      return `${field}[${index}]`;
+    }
+  }
+  return undefined;
 }

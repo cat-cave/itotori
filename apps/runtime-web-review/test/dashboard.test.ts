@@ -39,6 +39,42 @@ describe("Utsushi runtime dashboard", () => {
     );
   });
 
+  it.each([
+    ["textEventCount", (fixture: typeof currentFixture) => ({ ...fixture, textEventCount: -0.5 })],
+    [
+      "recordingArtifactCount",
+      (fixture: typeof currentFixture) => ({ ...fixture, recordingArtifactCount: -1 }),
+    ],
+    [
+      "validationFindingCount",
+      (fixture: typeof currentFixture) => ({ ...fixture, validationFindingCount: 1.5 }),
+    ],
+    [
+      "traceEvents[0].frame",
+      (fixture: typeof currentFixture) => ({
+        ...fixture,
+        traceEvents: [{ ...fixture.traceEvents[0], frame: -1 }],
+      }),
+    ],
+    [
+      "artifacts[0].byteSize",
+      (fixture: typeof currentFixture) => ({
+        ...fixture,
+        artifacts: [{ ...fixture.artifacts[0], byteSize: -1 }],
+      }),
+    ],
+  ])("rejects semantically invalid %s with its field name", async (field, invalidFixture) => {
+    server.use(
+      http.get("http://itotori.test/api/runtime/v0.2/status", () =>
+        HttpResponse.json(invalidFixture(runtimeFixture("passed-e2-capture"))),
+      ),
+    );
+
+    await expect(fetchRuntimeStatus("http://itotori.test/api/runtime/v0.2/status")).rejects.toThrow(
+      field,
+    );
+  });
+
   it("renders the runtime evidence route from the v0.2 status loader", async () => {
     currentFixture = runtimeFixture("passed-e2-capture");
     window.history.pushState({}, "", "/runtime/evidence/run-passed-e2-capture");
