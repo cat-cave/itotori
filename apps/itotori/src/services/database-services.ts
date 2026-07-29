@@ -13,6 +13,7 @@ import {
   ItotoriProjectRepository,
   ItotoriProjectRunRepository,
   ItotoriSourceUnitRepository,
+  bootstrapDefaultAccountPrincipal,
   localUserId,
   migrate,
   permissionBasedLlmContentRead,
@@ -108,9 +109,10 @@ export async function withDatabaseItotoriServices<T>(
   callback: (services: ItotoriApplicationServices) => Promise<T>,
 ): Promise<T> {
   return await withDatabase(async ({ db, pool }) => {
-    // Migration owns setup-time seeding. Request handling never writes a
-    // fallback authorization substrate: an unmigrated installation fails
-    // explicitly through its normal database error boundary.
+    // The application owns the idempotent default account bootstrap. Migrations
+    // establish schema only, so principal-backed identity reads are populated
+    // before this service graph is exposed.
+    await bootstrapDefaultAccountPrincipal(db);
     const actor = { userId: localUserId };
     const cipher = createFieldMemoCipher(process.env);
     let config: ReturnType<typeof productionLocalizationConfig> | undefined;
