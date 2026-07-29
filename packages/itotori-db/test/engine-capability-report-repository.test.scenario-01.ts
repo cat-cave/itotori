@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  type AdapterCapabilityMatrixRecord,
   type CapabilityEvidenceInput,
   capabilityEvidenceLabelValues,
   EngineCapabilityReportRepository,
@@ -41,16 +40,6 @@ const privateLocalEvidenceLabelValues = [
   capabilityEvidenceLabelValues.localCorpusMarkerEvidence,
   capabilityEvidenceLabelValues.mvMzMarkerEvidence,
 ];
-
-function fullSupportedMatrix(adapterId: string): AdapterCapabilityMatrixRecord {
-  return {
-    adapterId,
-    identify: { kind: "supported" },
-    inventory: { kind: "supported" },
-    extract: { kind: "supported" },
-    patch: { kind: "supported" },
-  };
-}
 
 function repositoryWithAuthorizedStub(): EngineCapabilityReportRepository {
   const db = {

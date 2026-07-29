@@ -37,51 +37,6 @@ const encryptedColumns = [
   ["itotori_llm_wiki_versions", "wiki_ciphertext"],
 ] as const;
 
-const expectedColumnsByTable = {
-  itotori_llm_encrypted_column_registry:
-    "table_name ciphertext_column key_ref_column hash_column retention_class deletion_state_column encryption_method".split(
-      " ",
-    ),
-  itotori_llm_call_memos:
-    "memo_key semantic_hash schema_version request_ciphertext request_key_ref request_content_hash response_ciphertext response_key_ref response_content_hash outcome_ciphertext outcome_key_ref outcome_content_hash outcome_kind verification_status generation_id requested_model provider_policy served_model served_provider prompt_token_count completion_token_count reasoning_token_count cached_token_count billing_state cost_usd completed_at retention_deadline deletion_state deleted_at served_pair_status".split(
-      " ",
-    ),
-  itotori_llm_http_attempts:
-    "attempt_id memo_key attempt_ordinal request_ciphertext request_key_ref request_content_hash response_ciphertext response_key_ref response_content_hash request_hash attempt_status http_status generation_id billing_state cost_usd started_at completed_at retention_deadline deletion_state deleted_at admission_scope failure_class max_exposure_usd deadline_at served_pair_status served_model served_provider verification_status router_attempts prompt_token_count completion_token_count reasoning_token_count cached_token_count reported_cost_usd".split(
-      " ",
-    ),
-  itotori_llm_conversation_events:
-    "event_id schema_version parent_event_ids event_kind snapshot_kind snapshot_id actor_role event_body_ciphertext event_body_key_ref event_body_content_hash memo_key accepted created_at retention_deadline deletion_state deleted_at projection_kind projection_ref projection_auxiliary_ref".split(
-      " ",
-    ),
-  itotori_llm_accepted_outputs:
-    "output_id semantic_key schema_version output_version supersedes_output_id parent_output_ids memo_keys snapshot_kind snapshot_id subject_type subject_id stage source_hash output_ciphertext output_key_ref output_content_hash accepted_at retention_deadline deletion_state deleted_at".split(
-      " ",
-    ),
-  itotori_llm_wiki_versions:
-    "wiki_version_id wiki_kind object_id object_version supersedes_version snapshot_kind snapshot_id object_kind wiki_ciphertext wiki_key_ref wiki_content_hash created_at retention_deadline deletion_state deleted_at object_language subject_kind subject_id scope_kind scope_route_ids provisional context_scope run_mode provenance_edited_by provenance_author_role localization_snapshot_id source_object_id".split(
-      " ",
-    ),
-  itotori_llm_dependency_edges:
-    "edge_id downstream_wiki_version_id dependency_hash upstream_object_id upstream_version claim_id field_path rendering_id scope_ref from_play_order through_play_order created_at".split(
-      " ",
-    ),
-  itotori_llm_human_inputs:
-    "input_id input_kind subject_ref human_input_ciphertext human_input_key_ref human_input_content_hash created_at retention_deadline deletion_state deleted_at".split(
-      " ",
-    ),
-  itotori_llm_cas_heads:
-    "head_namespace snapshot_id subject_type subject_id head_stage head_id head_version head_content_hash updated_at".split(
-      " ",
-    ),
-  itotori_llm_context_snapshots:
-    "snapshot_id schema_version snapshot_content_hash snapshot_identity created_at".split(" "),
-  itotori_llm_localization_snapshots:
-    "snapshot_id schema_version snapshot_content_hash context_snapshot_id snapshot_identity created_at".split(
-      " ",
-    ),
-} as const satisfies Record<(typeof rebuiltTables)[number], readonly string[]>;
-
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationSql = [
   "0101_rebuilt_llm_persistence.sql",

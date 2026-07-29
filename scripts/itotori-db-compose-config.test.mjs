@@ -15,7 +15,7 @@ import {
 } from "./itotori-db-compose-env.mjs";
 
 const compose = readFileSync("docker-compose.yml", "utf8");
-const justfile = readFileSync("justfile", "utf8");
+
 const commandScript = readFileSync("scripts/developer-command.mjs", "utf8");
 const tier1Workflow = readFileSync(".github/workflows/_tier1.yml", "utf8");
 const flake = readFileSync("flake.nix", "utf8");

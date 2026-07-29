@@ -44,7 +44,6 @@ export function createGraphController(input: {
   const currentPositions: Record<string, Position> = {};
   const edges: Array<{ el: SVGPathElement; from: string; to: string }> = [];
   let dragMoved = false;
-  let movedIds: Record<string, number> = {};
 
   function edgePath(from: string, to: string): string {
     const source = currentPositions[from];

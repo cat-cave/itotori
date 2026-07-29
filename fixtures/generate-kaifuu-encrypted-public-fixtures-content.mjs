@@ -43,7 +43,7 @@ export function writeFixtureContent({
   The helper-result fixtures conform to the KAIFUU-085 helper result schema. The
   negative key-profile fixtures intentionally fail validation and exist only to
   prove redacted diagnostics for raw-key-looking and private-path-looking refs.
-  `,
+`,
     "metadata",
     "text/markdown",
   );

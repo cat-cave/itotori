@@ -2,20 +2,13 @@ import { testProjectEngineFamilyRegistry } from "./project-engine-family-registr
 
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { type ItotoriDatabase } from "../src/connection.js";
-import {
-  ItotoriEventQueueRepository,
-  type JobQueueInput,
-} from "../src/repositories/event-queue-repository.js";
+import { ItotoriEventQueueRepository } from "../src/repositories/event-queue-repository.js";
 import {
   ItotoriProjectRepository,
   type ItotoriProjectRecord,
 } from "../src/repositories/project-repository.js";
 
-import {
-  jobIdempotencyPolicyValues,
-  jobTaskTypeValues,
-  outboxEventTypeValues,
-} from "../src/schema.js";
+import { outboxEventTypeValues } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
@@ -59,24 +52,6 @@ function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriP
     },
   };
   return { ...project, ...overrides };
-}
-
-function jobInput(overrides: Partial<JobQueueInput> = {}): JobQueueInput {
-  return {
-    jobId: "job-rerun-drafts",
-    projectId: "project-test",
-    localeBranchId: "locale-en-us",
-    jobType: jobTaskTypeValues.rerun,
-    jobName: "test.affected-drafts",
-    idempotency: {
-      policy: jobIdempotencyPolicyValues.idempotent,
-      key: "job:rerun:affected-drafts",
-    },
-    subjectRefs: [{ subjectKind: "bridge_unit", subjectId: "bridge-unit-test" }],
-    payload: { reason: "style-guide-version-created" },
-    maxAttempts: 2,
-    ...overrides,
-  };
 }
 
 export async function migratedContext() {

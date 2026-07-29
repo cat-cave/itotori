@@ -1,10 +1,8 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { EngineCapabilityReportRepository } from "../src/repositories/engine-capability-report-repository.js";
 import {
-  type CatalogBenchmarkSeedFinderReadModel,
   ItotoriCatalogRepository,
   type CatalogSourceProvenanceRecord,
 } from "../src/repositories/catalog-repository.js";
@@ -26,17 +24,6 @@ import {
 
 const localActor: AuthorizationActor = { userId: localUserId };
 const fetchedAt = "2026-06-27T12:00:00.000Z";
-const publicSeedFinderFixture = JSON.parse(
-  readFileSync(
-    new URL("../../../fixtures/catalog-benchmark-seeds/fixture.json", import.meta.url),
-    "utf8",
-  ),
-) as {
-  expectedDefaultReadModel: Omit<CatalogBenchmarkSeedFinderReadModel, "generatedAt"> & {
-    generatedAt: string;
-  };
-  publicLeakagePolicy: { forbiddenSubstrings: string[] };
-};
 
 export function uuid(id: number): string {
   return `019ed104-0000-7000-8000-${String(id).padStart(12, "0")}`;

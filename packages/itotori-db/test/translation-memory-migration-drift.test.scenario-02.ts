@@ -42,13 +42,7 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
-const SEGMENTS_TABLE_NAME = "itotori_translation_memory_segments";
 const REUSE_EVENTS_TABLE_NAME = "itotori_translation_memory_reuse_events";
-
-const EXPECTED_SEGMENT_CHECK_NAMES = [
-  "itotori_tm_segments_status_check",
-  "itotori_tm_segments_provenance_check",
-] as const;
 
 const EXPECTED_REUSE_EVENT_CHECK_NAMES = [
   "itotori_tm_reuse_events_match_kind_check",
@@ -199,12 +193,6 @@ function translationMemoryBridgeFixture(): BridgeBundle {
 
 // --- helpers: raw INSERTs that intentionally target a single CHECK -----------
 
-type SegmentInsertColumns = {
-  status?: string;
-  provenance?: string;
-  memorySegmentId?: string;
-};
-
 type ReuseEventInsertColumns = {
   match_kind?: string;
   match_score?: number;
@@ -226,52 +214,6 @@ async function captureCheckViolation(
     captured = error;
   }
   return pgErrorCodeOf(captured);
-}
-
-function segmentInsert(columns: SegmentInsertColumns) {
-  // Always pin the not-null-required columns (status is NOT NULL without a DB
-  // default); only the CHECK-relevant columns are varied per probe so each
-  // failure isolates a single guard.
-  const memorySegmentId = columns.memorySegmentId ?? "tm-drift-base";
-  const parts: string[] = [
-    "memory_segment_id",
-    "project_id",
-    "locale_branch_id",
-    "source_revision_id",
-    "source_unit_key",
-    "source_occurrence_id",
-    "source_hash",
-    "source_fingerprint",
-    "source_text",
-    "target_locale",
-    "target_text",
-    "status",
-  ];
-  const values: string[] = [
-    `'${memorySegmentId}'`,
-    "'project-tm-drift-145'",
-    "'locale-en-us-drift-145'",
-    "'bridge-tm-drift-145:bundle-revision'",
-    "'scene.drift-145'",
-    "'occurrence-drift-145'",
-    "'hash:drift-145'",
-    "'fingerprint:drift-145'",
-    "'おはようございます。'",
-    "'en-US'",
-    "'Good morning.'",
-    "'reusable'",
-  ];
-  if (columns.status !== undefined) {
-    values[values.length - 1] = `'${columns.status}'`;
-  }
-  if (columns.provenance !== undefined) {
-    parts.push("provenance");
-    values.push(`'${columns.provenance}'::jsonb`);
-  }
-  return {
-    sql: `insert into itotori_translation_memory_segments (${parts.join(", ")}) values (${values.join(", ")})`,
-    params: [] as unknown[],
-  };
 }
 
 function reuseEventInsert(columns: ReuseEventInsertColumns) {

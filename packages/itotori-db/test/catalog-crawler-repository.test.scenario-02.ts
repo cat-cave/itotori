@@ -30,23 +30,11 @@ const fixture = JSON.parse(
 // source-fact identities). The base `replay.json` only ever has one fact per
 // step, so deterministic multi-fact counts, per-fact identities, and exactly-
 // once persistence are otherwise untested.
-const multiFactFixture = JSON.parse(
-  readFileSync(
-    new URL("../../../fixtures/catalog-crawler-vndb/replay-multi-fact.json", import.meta.url),
-    "utf8",
-  ),
-) as RecordedCatalogCrawlerFixture<FixtureFact>;
 
 // CATALOG-073: two multi-fact steps whose fact sets OVERLAP (pagination re-
 // surfaces the same source-fact identity `v201` in step-002). The idempotent
 // import must dedupe by fact identity (source_id primary key) so the shared
 // fact is not double-persisted and its first-import provenance is preserved.
-const duplicateFactsFixture = JSON.parse(
-  readFileSync(
-    new URL("../../../fixtures/catalog-crawler-vndb/replay-duplicate-facts.json", import.meta.url),
-    "utf8",
-  ),
-) as RecordedCatalogCrawlerFixture<FixtureFact>;
 
 import {
   createCatalogFactImportsTable,

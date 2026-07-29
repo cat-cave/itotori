@@ -12,12 +12,7 @@ import {
   contextCorrectionRedraftPayloadSchemaVersion,
   jobPayloadValidationReasons,
 } from "../src/job-registry.js";
-import type {
-  ContextCorrectionRedraftPayload,
-  RegisteredJobInputBase,
-} from "../src/job-registry.js";
-import type { JobQueueRecord } from "../src/repositories/event-queue-repository.js";
-import { jobIdempotencyPolicyValues, jobTaskTypeValues } from "../src/schema.js";
+import type { ContextCorrectionRedraftPayload } from "../src/job-registry.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures.
@@ -36,52 +31,6 @@ function contextCorrectionPayload(
     sourceRevisionId: "source-revision-test",
     affectedUnitIds: ["bridge-unit-1"],
     ...overrides,
-  };
-}
-
-function jobInputBase(overrides: Partial<RegisteredJobInputBase> = {}): RegisteredJobInputBase {
-  return {
-    projectId: "project-test",
-    localeBranchId: "locale-en-us",
-    idempotency: {
-      policy: jobIdempotencyPolicyValues.idempotent,
-      key: "job:test",
-    },
-    ...overrides,
-  };
-}
-
-function jobRecord(jobName: string, payload: unknown): JobQueueRecord {
-  return {
-    jobId: "job-test",
-    projectId: "project-test",
-    localeBranchId: "locale-en-us",
-    sourceEventId: null,
-    triggerOutboxEventId: null,
-    jobType: jobTaskTypeValues.rerun,
-    jobName,
-    queueName: "default",
-    status: "running",
-    idempotencyPolicy: jobIdempotencyPolicyValues.idempotent,
-    idempotencyKey: "job:test",
-    correlationId: "job-test",
-    causationId: null,
-    subjectRefs: [],
-    dependsOnJobIds: [],
-    payload: payload as Record<string, unknown>,
-    priority: 0,
-    availableAt: new Date(),
-    attemptCount: 1,
-    maxAttempts: 3,
-    lockedBy: "worker-1",
-    lockedAt: new Date(),
-    leaseExpiresAt: new Date(Date.now() + 60_000),
-    completedAt: null,
-    lastError: null,
-    errorHistory: [],
-    result: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
   };
 }
 

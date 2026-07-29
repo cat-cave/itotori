@@ -1,7 +1,5 @@
 import { readFileSync } from "node:fs";
 
-import { localUserId, type AuthorizationActor } from "../src/authorization.js";
-
 import {
   catalogCrawlerIdempotentFactImportContractId,
   catalogCrawlerFactImportStrategyValues,
@@ -14,8 +12,6 @@ import {
 } from "../src/services/catalog-crawler-runner.js";
 
 import { isolatedMigratedContext } from "./db-test-context.js";
-
-const actor: AuthorizationActor = { userId: localUserId };
 
 type FixtureFact = {
   sourceId: string;
@@ -33,23 +29,11 @@ const fixture = JSON.parse(
 // source-fact identities). The base `replay.json` only ever has one fact per
 // step, so deterministic multi-fact counts, per-fact identities, and exactly-
 // once persistence are otherwise untested.
-const multiFactFixture = JSON.parse(
-  readFileSync(
-    new URL("../../../fixtures/catalog-crawler-vndb/replay-multi-fact.json", import.meta.url),
-    "utf8",
-  ),
-) as RecordedCatalogCrawlerFixture<FixtureFact>;
 
 // CATALOG-073: two multi-fact steps whose fact sets OVERLAP (pagination re-
 // surfaces the same source-fact identity `v201` in step-002). The idempotent
 // import must dedupe by fact identity (source_id primary key) so the shared
 // fact is not double-persisted and its first-import provenance is preserved.
-const duplicateFactsFixture = JSON.parse(
-  readFileSync(
-    new URL("../../../fixtures/catalog-crawler-vndb/replay-duplicate-facts.json", import.meta.url),
-    "utf8",
-  ),
-) as RecordedCatalogCrawlerFixture<FixtureFact>;
 
 export async function createCatalogFactImportsTable(
   context: Awaited<ReturnType<typeof isolatedMigratedContext>>,

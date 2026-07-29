@@ -1,3 +1,4 @@
+// localization bridge schema strict-guard suite, split below the line cap.
 import "./schema-guards-01.cases.js";
 import "./schema-guards-02.cases.js";
 import "./schema-guards-03.cases.js";

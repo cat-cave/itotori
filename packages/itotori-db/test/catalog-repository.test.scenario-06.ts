@@ -2,11 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { localUserId, permissionValues, type AuthorizationActor } from "../src/authorization.js";
 
-import {
-  type CatalogArtifactMappingErrorCode,
-  CatalogArtifactMappingError,
-  ItotoriCatalogRepository,
-} from "../src/repositories/catalog-repository.js";
+import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository.js";
 import {
   catalogConflictKindValues,
   catalogConflictSubjectKindValues,
@@ -28,21 +24,6 @@ const fetchedAt = "2026-06-17T12:00:00.000Z";
  * stable machine-readable code (not merely a matching message string), and
  * returns the caught error so callers can additionally assert the message.
  */
-async function expectArtifactMappingError(
-  promise: Promise<unknown>,
-  expectedCode: CatalogArtifactMappingErrorCode,
-): Promise<CatalogArtifactMappingError> {
-  let caught: unknown;
-  try {
-    await promise;
-  } catch (error) {
-    caught = error;
-  }
-  expect(caught, "expected upsertWork to reject").toBeInstanceOf(CatalogArtifactMappingError);
-  const error = caught as CatalogArtifactMappingError;
-  expect(error.code).toBe(expectedCode);
-  return error;
-}
 
 import { provenance, completenessStatus, uuid } from "./catalog-repository.test.shared-01.js";
 

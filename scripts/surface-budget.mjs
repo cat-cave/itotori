@@ -2,7 +2,7 @@
 // Ratchet the project control-plane surface: tracked prefixed names and recipes.
 
 import { execFileSync } from "node:child_process";
-import { lstatSync, readFileSync, readlinkSync } from "node:fs";
+import { lstatSync, readFileSync, readlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -89,6 +89,10 @@ export function evaluateBudget(actual, budget, previous) {
   return failures;
 }
 
+export function regeneratedBudget(actual, budget) {
+  return { ...budget, ...actual };
+}
+
 function git(root, args) {
   try {
     return execFileSync("git", args, {
@@ -110,6 +114,13 @@ export function previousBudget(root) {
 }
 
 function main() {
+  const update = process.argv.slice(2).includes("--update");
+  const unexpectedArgs = process.argv.slice(2).filter((arg) => arg !== "--update");
+  if (unexpectedArgs.length > 0) {
+    process.stderr.write("usage: node scripts/surface-budget.mjs [--update]\n");
+    process.exitCode = 1;
+    return;
+  }
   let actual;
   let budget;
   let previous;
@@ -123,12 +134,22 @@ function main() {
     return;
   }
 
-  const failures = evaluateBudget(actual, budget, previous);
+  const nextBudget = update ? regeneratedBudget(actual, budget) : budget;
+  const failures = evaluateBudget(actual, nextBudget, previous);
   if (failures.length > 0) {
     process.stderr.write(
       `surface budget: FAILED.\n${failures.map((failure) => `  ${failure}`).join("\n")}\n${STATED_LIMITS}`,
     );
     process.exitCode = 1;
+    return;
+  }
+  if (update) {
+    writeFileSync(join(repoRoot, BUDGET_PATH), `${JSON.stringify(nextBudget, null, 2)}\n`);
+    process.stdout.write(
+      `surface budget: regenerated. env-var names: ${actual.envVarNames}; ` +
+        `just recipes: ${actual.justRecipes}.\n` +
+        STATED_LIMITS,
+    );
     return;
   }
   const bootstrap = previous === null ? " (initial record)" : "";

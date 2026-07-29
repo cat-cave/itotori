@@ -16,7 +16,7 @@ import {
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
-const fetchedAt = "2026-06-27T12:00:00.000Z";
+
 const publicSeedFinderFixture = JSON.parse(
   readFileSync(
     new URL("../../../fixtures/catalog-benchmark-seeds/fixture.json", import.meta.url),

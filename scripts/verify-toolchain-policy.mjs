@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 
 const failures = [];
-const missingRecipes = new Set();
 
 const read = (path) => readFileSync(path, "utf8");
 const has = (path, pattern, message) => {
@@ -16,110 +15,8 @@ const hasNot = (path, pattern, message) => {
   }
 };
 
-const stripInlineComment = (value) => value.replace(/\s+#.*$/, "");
-
-const parseJustRecipeHeader = (line) => {
-  const match = line.match(/^@?([A-Za-z0-9_-]+)(.*)$/);
-  if (!match) {
-    return undefined;
-  }
-
-  const [, name, rest] = match;
-  const colonIndex = rest.indexOf(":");
-  if (colonIndex === -1 || rest[colonIndex + 1] === "=") {
-    return undefined;
-  }
-
-  const beforeColon = rest.slice(0, colonIndex);
-  if (beforeColon !== "" && !/^\s/.test(beforeColon)) {
-    return undefined;
-  }
-
-  const dependencyText = stripInlineComment(rest.slice(colonIndex + 1)).trim();
-  return {
-    dependencies: dependencyText === "" ? [] : dependencyText.split(/\s+/),
-    name,
-  };
-};
-
-const parseJustRecipes = (source) => {
-  const recipes = new Map();
-  let currentRecipe;
-
-  source.split(/\r?\n/).forEach((rawLine, index) => {
-    if (/^\s/.test(rawLine)) {
-      if (currentRecipe) {
-        const command = rawLine.trim();
-        if (command !== "" && !command.startsWith("#")) {
-          currentRecipe.commands.push(command.replace(/^[@+-]+/, "").trim());
-        }
-      }
-      return;
-    }
-
-    const line = rawLine.trim();
-    if (line === "" || line.startsWith("#") || line.startsWith("[")) {
-      return;
-    }
-
-    const recipe = parseJustRecipeHeader(line);
-    if (!recipe) {
-      currentRecipe = undefined;
-      return;
-    }
-
-    currentRecipe = {
-      ...recipe,
-      commands: [],
-      line: index + 1,
-    };
-    recipes.set(recipe.name, currentRecipe);
-  });
-
-  return recipes;
-};
-
 const packageJson = JSON.parse(read("package.json"));
 const nodeVersion = read(".node-version").trim();
-const justRecipes = parseJustRecipes(read("justfile"));
-
-const recipe = (recipeName) => {
-  const value = justRecipes.get(recipeName);
-  if (!value && !missingRecipes.has(recipeName)) {
-    failures.push(`justfile: missing ${recipeName} recipe`);
-    missingRecipes.add(recipeName);
-  }
-  return value;
-};
-
-const hasRecipeCommand = (recipeName, expectedCommand, message) => {
-  const value = recipe(recipeName);
-  if (value && !value.commands.includes(expectedCommand)) {
-    failures.push(`justfile ${recipeName}: ${message}`);
-  }
-};
-
-const hasExactRecipeCommands = (recipeName, expectedCommands, message) => {
-  const value = recipe(recipeName);
-  if (!value) {
-    return;
-  }
-
-  const hasExpectedBody =
-    value.commands.length === expectedCommands.length &&
-    expectedCommands.every((command, index) => value.commands[index] === command);
-
-  if (!hasExpectedBody) {
-    failures.push(`justfile ${recipeName}: ${message}; expected ${expectedCommands.join(" -> ")}`);
-  }
-};
-
-const hasRecipeDependency = (recipeName, expectedDependency, message) => {
-  const value = recipe(recipeName);
-  if (value && !value.dependencies.includes(expectedDependency)) {
-    failures.push(`justfile ${recipeName}: ${message}`);
-  }
-};
 
 const parsePnpmPackageManagerVersion = (value) => {
   const match = /^pnpm@(?<version>\d+\.\d+\.\d+)(?:\+sha512\.[0-9a-f]+)?$/iu.exec(value ?? "");

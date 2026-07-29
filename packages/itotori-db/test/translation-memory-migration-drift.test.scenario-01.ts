@@ -43,19 +43,10 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 const localActor: AuthorizationActor = { userId: localUserId };
 
 const SEGMENTS_TABLE_NAME = "itotori_translation_memory_segments";
-const REUSE_EVENTS_TABLE_NAME = "itotori_translation_memory_reuse_events";
 
 const EXPECTED_SEGMENT_CHECK_NAMES = [
   "itotori_tm_segments_status_check",
   "itotori_tm_segments_provenance_check",
-] as const;
-
-const EXPECTED_REUSE_EVENT_CHECK_NAMES = [
-  "itotori_tm_reuse_events_match_kind_check",
-  "itotori_tm_reuse_events_match_score_check",
-  "itotori_tm_reuse_events_reuse_status_check",
-  "itotori_tm_reuse_events_provenance_check",
-  "itotori_tm_reuse_events_cost_impact_check",
 ] as const;
 
 // --- Drizzle metadata introspection -----------------------------------------
@@ -205,15 +196,6 @@ type SegmentInsertColumns = {
   memorySegmentId?: string;
 };
 
-type ReuseEventInsertColumns = {
-  match_kind?: string;
-  match_score?: number;
-  reuse_status?: string;
-  provenance?: string;
-  cost_impact?: string;
-  reuseEventId?: string;
-};
-
 async function captureCheckViolation(
   context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
   rawSql: string,
@@ -270,63 +252,6 @@ function segmentInsert(columns: SegmentInsertColumns) {
   }
   return {
     sql: `insert into itotori_translation_memory_segments (${parts.join(", ")}) values (${values.join(", ")})`,
-    params: [] as unknown[],
-  };
-}
-
-function reuseEventInsert(columns: ReuseEventInsertColumns) {
-  // The not-null columns are pinned; the probe varies one CHECK column at a
-  // time so each assertion isolates a single guard.
-  const reuseEventId = columns.reuseEventId ?? "tm-drift-event";
-  const parts: string[] = [
-    "reuse_event_id",
-    "project_id",
-    "locale_branch_id",
-    "target_bridge_unit_id",
-    "source_revision_id",
-    "memory_segment_id",
-    "source_hash",
-    "candidate_source_hash",
-    "target_text",
-    "match_kind",
-    "match_score",
-    "reuse_status",
-    "provenance",
-    "cost_impact",
-  ];
-  const values: string[] = [
-    `'${reuseEventId}'`,
-    "'project-tm-drift-145'",
-    "'locale-en-us-drift-145'",
-    "'unit-tm-drift-145'",
-    "'bridge-tm-drift-145:bundle-revision'",
-    "'tm-drift-base'",
-    "'hash:drift-145'",
-    "'hash:drift-145'",
-    "'Good morning.'",
-    "'exact'",
-    "1000",
-    "'applied'",
-    "'{}'::jsonb",
-    "'{}'::jsonb",
-  ];
-  if (columns.match_kind !== undefined) {
-    values[parts.indexOf("match_kind")] = `'${columns.match_kind}'`;
-  }
-  if (columns.match_score !== undefined) {
-    values[parts.indexOf("match_score")] = String(columns.match_score);
-  }
-  if (columns.reuse_status !== undefined) {
-    values[parts.indexOf("reuse_status")] = `'${columns.reuse_status}'`;
-  }
-  if (columns.provenance !== undefined) {
-    values[parts.indexOf("provenance")] = `'${columns.provenance}'::jsonb`;
-  }
-  if (columns.cost_impact !== undefined) {
-    values[parts.indexOf("cost_impact")] = `'${columns.cost_impact}'::jsonb`;
-  }
-  return {
-    sql: `insert into itotori_translation_memory_reuse_events (${parts.join(", ")}) values (${values.join(", ")})`,
     params: [] as unknown[],
   };
 }

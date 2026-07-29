@@ -17,7 +17,6 @@ export const defaultWorkspaceName = "Local workspace";
 // Postgres permits at most 65,535 bind parameters in one statement.  A real
 // whole-game bridge can contain more source units than that, so ownership and
 // stable-key checks must not turn the full unit set into one `IN (...)` query.
-const POSTGRES_IN_ARRAY_BATCH_SIZE = 10_000;
 
 /** The adapter-owned extraction descriptor persisted with a project binding. */
 export type ProjectExtractProfile = Record<string, unknown>;

@@ -8,7 +8,7 @@ import {
   jobLeaseRevalidationReasons,
   type JobQueueInput,
 } from "../src/repositories/event-queue-repository.js";
-import { type ItotoriProjectRecord } from "../src/repositories/project-repository.js";
+
 import { ItotoriJobWorkerService } from "../src/services/event-queue-service.js";
 import {
   jobIdempotencyPolicyValues,
@@ -18,47 +18,6 @@ import {
 } from "../src/schema.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
-
-function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriProjectRecord {
-  const project: ItotoriProjectRecord = {
-    projectId: "project-test",
-    engineFamily: "synthetic_fixture",
-    sourceRoot: "/workspace/source",
-    buildRoot: "/workspace/build",
-    extractProfile: { adapter: "fixture" },
-    localeBranchId: "locale-en-us",
-    targetLocale: "en-US",
-    drafts: { "bridge-unit-test": "Hello, {player}." },
-    bridge: {
-      schemaVersion: "0.1.0",
-      bridgeId: "bridge-test",
-      sourceBundleHash: "hash-test",
-      sourceLocale: "ja-JP",
-      extractorName: "kaifuu-fixture",
-      extractorVersion: "0.0.0",
-      units: [
-        {
-          bridgeUnitId: "bridge-unit-test",
-          sourceUnitKey: "hello.scene.001.line.001",
-          occurrenceId: "occurrence-1",
-          sourceHash: "source-hash",
-          sourceLocale: "ja-JP",
-          sourceText: "こんにちは、{player}。",
-          textSurface: "dialogue",
-          protectedSpans: [
-            { kind: "placeholder", raw: "{player}", start: 18, end: 26, preserveMode: "exact" },
-          ],
-          patchRef: {
-            assetId: "source.json",
-            writeMode: "replace",
-            sourceUnitKey: "hello.scene.001.line.001",
-          },
-        },
-      ],
-    },
-  };
-  return { ...project, ...overrides };
-}
 
 function jobInput(overrides: Partial<JobQueueInput> = {}): JobQueueInput {
   return {

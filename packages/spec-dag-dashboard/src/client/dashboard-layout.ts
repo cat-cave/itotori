@@ -14,7 +14,6 @@ export function buildDashboardLayout(
   targetRank: Record<string, number>,
   required: <T>(value: T | undefined, label: string) => T,
 ): DashboardLayout {
-  const nodeWidth = 150;
   const columnX = 212;
   const rowY = 30;
   const padding = 40;

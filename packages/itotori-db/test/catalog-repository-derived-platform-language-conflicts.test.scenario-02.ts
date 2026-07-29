@@ -22,7 +22,6 @@ import {
 } from "../src/schema.js";
 
 const actor: AuthorizationActor = { userId: localUserId };
-const now = new Date("2026-06-18T13:00:00.000Z");
 
 const officialEvidence: CatalogPlatformLanguageConflictEvidence = {
   catalogSource: "igdb",

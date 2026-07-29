@@ -1,13 +1,9 @@
 import { expect } from "vitest";
-import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 
 import {
   type CatalogOpportunityFactorName,
   type CatalogOpportunityRankingReadModel,
 } from "../src/repositories/catalog-repository.js";
-
-const localActor: AuthorizationActor = { userId: localUserId };
-const fetchedAt = "2026-06-27T12:00:00.000Z";
 
 import { hash } from "./catalog-opportunity-ranking-read-model.test.shared-01.js";
 

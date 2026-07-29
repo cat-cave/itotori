@@ -1,5 +1,5 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { describe } from "vitest";
+import { createHash } from "node:crypto";
+
 import type { DatabaseContext } from "../src/connection.js";
 import { type LlmJsonValue } from "../src/llm-content-address.js";
 import { type AcceptLlmOutputInput } from "../src/repositories/llm-accepted-output-repository.js";
@@ -17,36 +17,6 @@ import {
   type LlmLocalizationSnapshot,
   type LlmLocalizationSnapshotInput,
 } from "../src/repositories/llm-snapshot-repository.js";
-
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
-
-class ProofCipher implements LlmMemoCipher {
-  readonly #keys = new Map<string, Buffer>();
-  #ordinal = 0;
-
-  async seal(plaintext: string): Promise<{ ciphertext: Uint8Array; keyRef: string }> {
-    const key = randomBytes(32);
-    const keyRef = `transcript-proof-key:${(this.#ordinal += 1)}`;
-    this.#keys.set(keyRef, key);
-    const nonce = randomBytes(12);
-    const cipher = createCipheriv("aes-256-gcm", key, nonce);
-    const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-    return { ciphertext: Buffer.concat([nonce, cipher.getAuthTag(), encrypted]), keyRef };
-  }
-
-  async open(ciphertext: Uint8Array, keyRef: string): Promise<string> {
-    const key = this.#keys.get(keyRef);
-    if (!key) throw new Error("proof envelope key does not exist");
-    const bytes = Buffer.from(ciphertext);
-    const decipher = createDecipheriv("aes-256-gcm", key, bytes.subarray(0, 12));
-    decipher.setAuthTag(bytes.subarray(12, 28));
-    return Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString("utf8");
-  }
-
-  async releaseKeyReference(keyRef: string): Promise<void> {
-    this.#keys.delete(keyRef);
-  }
-}
 
 export function conversationRepository(context: DatabaseContext, cipher: LlmMemoCipher) {
   return new ItotoriLlmConversationRepository(context.pool, cipher, {

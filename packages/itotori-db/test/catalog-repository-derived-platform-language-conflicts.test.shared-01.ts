@@ -1,19 +1,15 @@
 import { expect } from "vitest";
-import { localUserId, type AuthorizationActor } from "../src/authorization.js";
+
 import {
   type CatalogExternalIdRecord,
   type CatalogLanguageStatusRecord,
   type CatalogWorkSnapshot,
 } from "../src/repositories/catalog-repository.js";
 
-import { type CatalogPlatformLanguageConflictEvidence } from "../src/services/catalog-platform-language-conflicts.js";
-
 import { type CatalogRepositoryDerivedConflictReader } from "../src/services/catalog-repository-derived-platform-language-conflicts.js";
 import {
   catalogConfidenceValues,
-  catalogExternalIdKindValues,
   catalogLanguageStatusScopeValues,
-  catalogLanguageStatusValues,
   catalogRawContentRedactionClassValues,
   type CatalogExternalIdKind,
   type CatalogLanguageStatus,
@@ -21,19 +17,7 @@ import {
   type CatalogSource,
 } from "../src/schema.js";
 
-const actor: AuthorizationActor = { userId: localUserId };
 const now = new Date("2026-06-18T13:00:00.000Z");
-
-const officialEvidence: CatalogPlatformLanguageConflictEvidence = {
-  catalogSource: "igdb",
-  sourceId: "252001",
-  externalIdKind: catalogExternalIdKindValues.sourceRecord,
-  language: "en-US",
-  status: catalogLanguageStatusValues.officialFull,
-  statusScope: catalogLanguageStatusScopeValues.platform,
-  platform: "pc",
-  evidenceRef: "igdb.language_supports[1]",
-};
 
 export function externalIdIdentity(record: CatalogExternalIdRecord) {
   return {

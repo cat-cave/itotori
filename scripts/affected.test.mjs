@@ -42,29 +42,6 @@ function workspacePackagesByPrefix(prefix) {
     .map((member) => parsePackageName(readFileSync(`${member}/Cargo.toml`, "utf8")));
 }
 
-function parseJustRecipeBody(justfile, recipeName) {
-  const lines = justfile.split(/\r?\n/);
-  const recipeStart = lines.findIndex((line) => line.startsWith(`${recipeName}:`));
-  assert.notEqual(recipeStart, -1, `justfile must declare ${recipeName}`);
-
-  const body = [];
-  for (const line of lines.slice(recipeStart + 1)) {
-    if (/^[A-Za-z0-9_-][^:]*:/.test(line)) {
-      break;
-    }
-    body.push(line);
-  }
-  return body.join("\n");
-}
-
-function parseCargoTestPackages(recipeBody) {
-  return new Set(
-    [...recipeBody.matchAll(/^\s*cargo\s+test\b.*$/gm)].flatMap((line) =>
-      [...line[0].matchAll(/-p\s+([^\s]+)/g)].map((pkg) => pkg[1]),
-    ),
-  );
-}
-
 test("the parameterized test delegate covers every kaifuu and utsushi workspace crate", () => {
   const commandSurface = readFileSync("scripts/developer-command.mjs", "utf8");
   assert.match(commandSurface, /cargo test --workspace/u);

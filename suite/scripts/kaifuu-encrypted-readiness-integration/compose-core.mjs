@@ -95,7 +95,6 @@ const AGGREGATE_COUNT_KEYS = [
 ];
 
 const LOGICAL_ID_RE = /^[a-z0-9][a-z0-9._-]*$/u;
-const SHA256_RE = /^sha256:[0-9a-f]{64}$/u;
 
 // --- Secret scanners (identical policy to the private-local triage slices) ---
 const ABSOLUTE_PATH_RE =

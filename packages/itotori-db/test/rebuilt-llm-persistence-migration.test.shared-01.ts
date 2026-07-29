@@ -1,7 +1,4 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import type { DatabaseContext } from "../src/connection.js";
 import { conversationEventIdFromContentHash } from "../src/llm-content-address.js";
@@ -22,18 +19,6 @@ const rebuiltTables = [
   "itotori_llm_cas_heads",
   "itotori_llm_context_snapshots",
   "itotori_llm_localization_snapshots",
-] as const;
-
-const encryptedColumns = [
-  ["itotori_llm_accepted_outputs", "output_ciphertext"],
-  ["itotori_llm_call_memos", "outcome_ciphertext"],
-  ["itotori_llm_call_memos", "request_ciphertext"],
-  ["itotori_llm_call_memos", "response_ciphertext"],
-  ["itotori_llm_conversation_events", "event_body_ciphertext"],
-  ["itotori_llm_http_attempts", "request_ciphertext"],
-  ["itotori_llm_http_attempts", "response_ciphertext"],
-  ["itotori_llm_human_inputs", "human_input_ciphertext"],
-  ["itotori_llm_wiki_versions", "wiki_ciphertext"],
 ] as const;
 
 const expectedColumnsByTable = {
@@ -81,18 +66,6 @@ const expectedColumnsByTable = {
     ),
 } as const satisfies Record<(typeof rebuiltTables)[number], readonly string[]>;
 
-const here = dirname(fileURLToPath(import.meta.url));
-const migrationSql = [
-  "0101_rebuilt_llm_persistence.sql",
-  "0102_rebuilt_llm_history_truncate_guard.sql",
-  "0103_llm_attempt_admission_exposure.sql",
-  "0105_llm_served_pair_quarantine.sql",
-  "0106_llm_transcript_snapshots.sql",
-  "0108_llm_explicit_unknown_quarantine.sql",
-  "0109_wiki_snapshot_binding.sql",
-]
-  .map((file) => readFileSync(join(here, "..", "migrations", file), "utf8"))
-  .join("\n");
 const hash = (value: string) =>
   `sha256:${createHash("sha256").update(value).digest("hex")}` as const;
 

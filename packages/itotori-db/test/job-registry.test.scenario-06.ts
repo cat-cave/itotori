@@ -14,10 +14,7 @@ import {
   UnregisteredJobHandlerError,
   UnregisteredJobNameError,
 } from "../src/job-registry.js";
-import type {
-  ContextCorrectionRedraftPayload,
-  RegisteredJobInputBase,
-} from "../src/job-registry.js";
+import type { ContextCorrectionRedraftPayload } from "../src/job-registry.js";
 import type { JobQueueRecord } from "../src/repositories/event-queue-repository.js";
 import { jobIdempotencyPolicyValues, jobTaskTypeValues } from "../src/schema.js";
 
@@ -37,18 +34,6 @@ function contextCorrectionPayload(
     localeBranchId: "locale-en-us",
     sourceRevisionId: "source-revision-test",
     affectedUnitIds: ["bridge-unit-1"],
-    ...overrides,
-  };
-}
-
-function jobInputBase(overrides: Partial<RegisteredJobInputBase> = {}): RegisteredJobInputBase {
-  return {
-    projectId: "project-test",
-    localeBranchId: "locale-en-us",
-    idempotency: {
-      policy: jobIdempotencyPolicyValues.idempotent,
-      key: "job:test",
-    },
     ...overrides,
   };
 }

@@ -1,30 +1,11 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { localUserId, type AuthorizationActor } from "../src/authorization.js";
+
 import {
   catalogConflictOriginMetadataDropDiagnostic,
   catalogConflictOriginMetadataDropDiagnosticCode,
 } from "../src/repositories/catalog-repository.js";
 import { catalogPlatformLanguageConflictOriginValues } from "../src/services/catalog-platform-language-conflicts.js";
 import { catalogConflictKindValues } from "../src/schema.js";
-
-const localActor: AuthorizationActor = { userId: localUserId };
-const fixture = JSON.parse(
-  readFileSync(
-    new URL("../../../fixtures/catalog-conflict-review/conflicts.json", import.meta.url),
-    "utf8",
-  ),
-) as {
-  fetchedAt: string;
-  cases: {
-    caseId: string;
-    reasonCode: string;
-    severity: "error" | "warning" | "info";
-    status: string;
-    reviewerId?: string;
-    resolutionAction?: string;
-  }[];
-};
 
 describe("catalogConflictOriginMetadataDropDiagnostic", () => {
   const languageStatus = catalogConflictKindValues.languageStatus;
