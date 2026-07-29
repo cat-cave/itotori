@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import type { ItotoriDatabase } from "../connection.js";
+import { requiredString } from "../required-string.js";
 import {
   catalogCrawlerCheckpoints,
   catalogCrawlerJobs,
@@ -257,12 +258,6 @@ export function stepFromRow(
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
-}
-
-export function requiredString(input: string | undefined, name: string): string {
-  if (typeof input !== "string" || input.trim().length === 0)
-    throw new Error(`${name} is required`);
-  return input;
 }
 
 export function requiredRow<T>(rows: T[], id: string): T {

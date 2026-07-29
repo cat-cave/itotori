@@ -10,7 +10,7 @@
     "dev": "vite --host 0.0.0.0",
     "e2e": "playwright test --config e2e/playwright.config.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "pnpm --filter @itotori/localization-bridge-schema build && pnpm --filter @itotori/db build && pnpm --filter @itotori/ds build && vitest run",
     "emit:openapi": "UPDATE_OPENAPI_CONTRACT=1 vitest run test/openapi-contract.test.ts",
     "build": "tsc -p tsconfig.json && vite build --outDir web-dist"
   },

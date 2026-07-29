@@ -59,9 +59,9 @@ import {
   candidateMatchFromRow,
   requiredLocalScan,
   requiredRow,
-  requiredString,
   seedTargetFromRow,
 } from "./catalog-domain-22.js";
+import { requiredString } from "../../required-string.js";
 import { assertEnumValue } from "./catalog-domain-23.js";
 import { CatalogRepositoryWrites } from "./catalog-repository-writes.js";
 

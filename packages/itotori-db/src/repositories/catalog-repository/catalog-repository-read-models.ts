@@ -28,7 +28,7 @@ import {
   assertBenchmarkSeedFinderFilter,
   assertCatalogOpportunityRankingFilter,
 } from "./catalog-domain-09.js";
-import { requiredString } from "./catalog-domain-22.js";
+import { requiredString } from "../../required-string.js";
 import { CatalogRepositoryScans } from "./catalog-repository-scans.js";
 
 export class ItotoriCatalogRepository

@@ -56,13 +56,8 @@ import {
   NormalizedLocalScanInput,
   NormalizedSeedTargetInput,
 } from "./catalog-domain-20.js";
-import {
-  assertSha256,
-  dateInput,
-  jsonRecord,
-  optionalString,
-  requiredString,
-} from "./catalog-domain-22.js";
+import { assertSha256, dateInput, jsonRecord, optionalString } from "./catalog-domain-22.js";
+import { requiredString } from "../../required-string.js";
 import { assertEnumValue } from "./catalog-domain-23.js";
 
 export type NormalizedCandidateMatchInput = {

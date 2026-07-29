@@ -58,13 +58,8 @@ import {
   NormalizedDemandFactInput,
   NormalizedLanguageStatusInput,
 } from "./catalog-domain-18.js";
-import {
-  dateInput,
-  jsonRecord,
-  optionalString,
-  optionalYear,
-  requiredString,
-} from "./catalog-domain-22.js";
+import { dateInput, jsonRecord, optionalString, optionalYear } from "./catalog-domain-22.js";
+import { requiredString } from "../../required-string.js";
 import { assertEnumValue } from "./catalog-domain-23.js";
 
 export function assertExternalIdInput(input: CatalogExternalIdInput): NormalizedExternalIdInput {

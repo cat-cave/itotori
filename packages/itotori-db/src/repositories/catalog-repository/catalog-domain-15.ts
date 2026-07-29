@@ -38,7 +38,8 @@ import {
   uniqueSourceIds,
   uniqueStrings,
 } from "./catalog-domain-16.js";
-import { candidateMatchFromRow, dateInput, requiredString } from "./catalog-domain-22.js";
+import { candidateMatchFromRow, dateInput } from "./catalog-domain-22.js";
+import { requiredString } from "../../required-string.js";
 import { assertEnumValue } from "./catalog-domain-23.js";
 
 export function catalogConflictReviewRowFromCandidate(

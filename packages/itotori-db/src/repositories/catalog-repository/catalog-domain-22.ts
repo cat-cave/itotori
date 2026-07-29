@@ -29,6 +29,7 @@ import {
   catalogReleaseMappings,
   catalogSeedTargets,
 } from "./dependencies.js";
+import { requiredString } from "../../required-string.js";
 import {
   CatalogDateInput,
   CatalogDemandFactRecord,
@@ -279,13 +280,6 @@ export function requiredRow<T>(rows: T[], id: string): T {
     throw new Error(`record ${id} was not persisted`);
   }
   return row;
-}
-
-export function requiredString(value: string | undefined, fieldName: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error(`${fieldName} is required`);
-  }
-  return value;
 }
 
 export function optionalString(value: string | undefined, fieldName: string): string | null {

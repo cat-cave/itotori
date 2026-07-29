@@ -31,9 +31,9 @@ import {
   rateLimitFromRow,
   requiredActiveCrawlerJob,
   requiredRow,
-  requiredString,
   stepFromRow,
 } from "./catalog-crawler-repository-normalization.js";
+import { requiredString } from "../required-string.js";
 
 export async function commitStepImport(
   db: ItotoriDatabase,
