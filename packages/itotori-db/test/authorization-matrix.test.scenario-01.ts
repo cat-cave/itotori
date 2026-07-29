@@ -29,6 +29,43 @@ describe("repository permission gate matrix", () => {
     );
   });
 
+  it("finds gates in re-exported, delegated, and mixin repository modules", () => {
+    expect(sourcePermissionGates()).toEqual(
+      expect.arrayContaining([
+        {
+          repository: "ItotoriAuthMemberManagementRepository",
+          sourceFile: "auth-member-management-repository.ts",
+          mutation: "acceptInvitation",
+          permissionKey: "authMembersManage",
+        },
+        {
+          repository: "ItotoriCatalogCrawlerRepository",
+          sourceFile: "catalog-crawler-repository.ts",
+          mutation: "commitStepImport",
+          permissionKey: "catalogWrite",
+        },
+        {
+          repository: "ItotoriEventQueueRepository",
+          sourceFile: "event-queue-repository.ts",
+          mutation: "appendOutboxEvent",
+          permissionKey: "queueManage",
+        },
+        {
+          repository: "ItotoriProjectRepository",
+          sourceFile: "project-repository.ts",
+          mutation: "saveDrafts",
+          permissionKey: "draftWrite",
+        },
+        {
+          repository: "ItotoriCatalogRepository",
+          sourceFile: "catalog-repository.ts",
+          mutation: "upsertWork",
+          permissionKey: "catalogWrite",
+        },
+      ]),
+    );
+  });
+
   it("fails matrix coverage when a repository aliases requirePermission for an unregistered gate", () => {
     const sourceGates = sourcePermissionGatesFromSource(
       "probe-repository.ts",

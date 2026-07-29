@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import type { Node } from "@babel/types";
 
 import {
@@ -17,7 +17,7 @@ import { permissionValues, type Permission } from "../src/authorization.js";
 
 import type { DatabaseContext, ItotoriDatabase } from "../src/connection.js";
 
-import { repositoryPermissionGateMatrix } from "./authorization-matrix.test.core.js";
+import { sourcePermissionGatesFromRepositoryModuleGraphs } from "./authorization-matrix.test.source-graph.js";
 
 export type PermissionKey = keyof typeof permissionValues;
 
@@ -49,31 +49,7 @@ export function sourcePermissionGates(): Pick<
   RepositoryPermissionGateCase,
   "repository" | "sourceFile" | "mutation" | "permissionKey"
 >[] {
-  const gates: Pick<
-    RepositoryPermissionGateCase,
-    "repository" | "sourceFile" | "mutation" | "permissionKey"
-  >[] = [];
-  const repositorySourceDir = new URL("../src/repositories/", import.meta.url);
-  const activeSourceFiles = new Set(
-    repositoryPermissionGateMatrix.map(({ sourceFile }) => sourceFile),
-  );
-
-  for (const relativeSourceFile of readdirSync(repositorySourceDir, { recursive: true }).filter(
-    (file) => file.endsWith(".ts"),
-  )) {
-    const sourceFile = relativeSourceFile.replace(/\/.*$/u, ".ts");
-    if (!activeSourceFiles.has(sourceFile)) continue;
-    const sourceUrl = new URL(relativeSourceFile, repositorySourceDir);
-    gates.push(
-      ...sourcePermissionGatesFromSource(
-        sourceFile,
-        readFileSync(sourceUrl, "utf8"),
-        sourceUrl.pathname,
-      ),
-    );
-  }
-
-  return gates;
+  return sourcePermissionGatesFromRepositoryModuleGraphs();
 }
 
 export function sourcePermissionGatesFromSource(
@@ -257,6 +233,13 @@ export function enclosingRepositoryMethod(node: Node): RepositorySourceMethod | 
         classDecl.id !== undefined
       ) {
         return { repository: classDecl.id.name, method: methodName };
+      }
+      return undefined;
+    }
+    if (current.type === "FunctionDeclaration") {
+      const methodName = nameOf(current.id);
+      if (methodName !== undefined) {
+        return { repository: "", method: methodName };
       }
       return undefined;
     }
