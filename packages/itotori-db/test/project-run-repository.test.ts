@@ -1,18 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { LocalizeRunTracker } from "../../../apps/itotori/src/cli/localize-run-tracker.js";
-import { localUserId, type AuthorizationActor } from "../src/authorization.js";
-import { type DatabaseContext } from "../src/connection.js";
-import { ItotoriLlmSnapshotRepository } from "../src/repositories/llm-snapshot-repository.js";
-import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
+import {
+  listProjectRunDashboardRuns,
+  listProjectRunPortfolioProgress,
+  loadProjectRunLiveReadModel,
+} from "../src/index.js";
 import {
   ItotoriProjectRunRepository,
   ItotoriProjectRunRepositoryError,
-  type ProjectRunLease,
 } from "../src/repositories/project-run-repository.js";
-import { isolatedMigratedContext } from "./db-test-context.js";
-import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
-
-const actor: AuthorizationActor = { userId: localUserId };
+import {
+  actor,
+  addRunBranch,
+  leaseInput,
+  progressInput,
+  runFixture,
+  runInput,
+  type RunFixture,
+} from "./project-run-test-fixtures.js";
 
 describe("ItotoriProjectRunRepository", () => {
   it("isolates concurrent run costs, progress, caps, and leases across project branches", async () => {
@@ -362,6 +367,46 @@ describe("ItotoriProjectRunRepository", () => {
     }
   });
 
+  it("exposes live, dashboard, and portfolio read models from public package exports", async () => {
+    const fixture = await runFixture("public-read-model-exports");
+    try {
+      await fixture.runs.createRun(actor, runInput(fixture, "run-public-exports", 100));
+      const lease = await fixture.runs.acquireLease(
+        actor,
+        leaseInput(fixture, "run-public-exports", "public-export-driver"),
+      );
+      await fixture.runs.recordProgress(
+        actor,
+        progressInput(lease, "unit-public-export", "writer", "drafted", 11, 50, ["review"]),
+      );
+
+      const live = await loadProjectRunLiveReadModel(
+        fixture.context.db,
+        actor,
+        fixture.projectId,
+        "run-public-exports",
+      );
+      const dashboard = await listProjectRunDashboardRuns(fixture.context.db, actor, {
+        projectId: fixture.projectId,
+        localeBranchId: fixture.localeBranchId,
+        limit: 10,
+        offset: 0,
+      });
+      const portfolio = await listProjectRunPortfolioProgress(fixture.context.db, actor);
+
+      expect(live?.progress.units).toMatchObject([
+        { bridgeUnitId: "unit-public-export", blockers: ["review"] },
+      ]);
+      expect(dashboard.rows).toMatchObject([
+        { runId: "run-public-exports", attemptedUnitCount: 1 },
+      ]);
+      expect(portfolio).toMatchObject([
+        { projectId: fixture.projectId, runCount: 1, unitCounts: { drafted: 1 } },
+      ]);
+    } finally {
+      await fixture.context.close();
+    }
+  }, 20_000);
   it("terminally releases an unknown-cost reservation without inventing spend", async () => {
     const fixture = await runFixture("released-cost");
     try {
@@ -441,101 +486,6 @@ describe("ItotoriProjectRunRepository", () => {
     }
   });
 });
-
-type RunFixture = Awaited<ReturnType<typeof runFixture>>;
-type RunBranch = Pick<RunFixture, "localeBranchId" | "snapshots">;
-
-async function runFixture(suffix: string) {
-  const context = await isolatedMigratedContext();
-  const projectId = `project-run-${suffix}`;
-  const localeBranchId = `branch-run-${suffix}`;
-  const projects = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
-  await projects.ensureRunProjectScope(actor, {
-    projectId,
-    localeBranchId,
-    sourceRevisionId: `revision-run-${suffix}`,
-    targetLocale: "en-US",
-    sourceLocale: "ja-JP",
-    engineFamily: "synthetic_fixture",
-    sourceRoot: "/fixture/source",
-    buildRoot: "/fixture/build",
-    extractProfile: { fixture: suffix },
-  });
-  const snapshots = await snapshotPair(context, localeBranchId);
-  return {
-    context,
-    suffix,
-    projectId,
-    localeBranchId,
-    snapshots,
-    runs: new ItotoriProjectRunRepository(context.db),
-  };
-}
-
-async function addRunBranch(fixture: RunFixture, suffix: string): Promise<RunBranch> {
-  const localeBranchId = `branch-run-${suffix}`;
-  const projects = new ItotoriProjectRepository(
-    fixture.context.db,
-    testProjectEngineFamilyRegistry,
-  );
-  await projects.ensureRunProjectScope(actor, {
-    projectId: fixture.projectId,
-    localeBranchId,
-    sourceRevisionId: `revision-run-${fixture.suffix}`,
-    targetLocale: "fr-FR",
-    sourceLocale: "ja-JP",
-    engineFamily: "synthetic_fixture",
-    sourceRoot: "/fixture/source",
-    buildRoot: "/fixture/build",
-    extractProfile: { fixture: suffix },
-  });
-  return { localeBranchId, snapshots: await snapshotPair(fixture.context, localeBranchId) };
-}
-
-function runInput(
-  fixture: RunFixture,
-  runId: string,
-  capMicrosUsd: number,
-  branch: RunBranch = fixture,
-) {
-  return {
-    projectId: fixture.projectId,
-    runId,
-    localeBranchId: branch.localeBranchId,
-    contextSnapshotId: branch.snapshots.contextSnapshotId,
-    localizationSnapshotId: branch.snapshots.localizationSnapshotId,
-    capMicrosUsd,
-  };
-}
-
-function leaseInput(
-  fixture: Awaited<ReturnType<typeof runFixture>>,
-  runId: string,
-  leaseOwnerId: string,
-) {
-  return { projectId: fixture.projectId, runId, leaseOwnerId, leaseDurationSeconds: 60 };
-}
-
-function progressInput(
-  lease: ProjectRunLease,
-  bridgeUnitId: string,
-  role: string,
-  status: "decoded" | "drafted" | "QA" | "accepted" | "patched",
-  costMicrosUsd: number,
-  coveragePercent: number,
-  blockers?: string[],
-) {
-  return {
-    lease,
-    bridgeUnitId,
-    role,
-    status,
-    costMicrosUsd,
-    coveragePercent,
-    ...(blockers === undefined ? {} : { blockers }),
-  };
-}
-
 function runWorkflow(fixture: RunFixture) {
   return {
     createRun: async (input: Parameters<ItotoriProjectRunRepository["createRun"]>[1]) =>
@@ -564,7 +514,6 @@ function runWorkflow(fixture: RunFixture) {
     ) => await fixture.runs.loadLiveReadModel(actor, projectId, runId, options),
   };
 }
-
 async function snapshotPair(context: DatabaseContext, localeBranchId: string) {
   const snapshots = new ItotoriLlmSnapshotRepository(context.pool);
   const contextSnapshot = await snapshots.putContext({

@@ -322,8 +322,13 @@ export type {
 export {
   ItotoriProjectRunRepository,
   ItotoriProjectRunRepositoryError,
-  PROJECT_RUN_LIVE_READ_MODEL_SCHEMA_VERSION,
 } from "./repositories/project-run-repository.js";
+export { PROJECT_RUN_LIVE_READ_MODEL_SCHEMA_VERSION } from "./repositories/project-run-repository-types.js";
+export {
+  listProjectRunDashboardRuns,
+  listProjectRunPortfolioProgress,
+  loadProjectRunLiveReadModel,
+} from "./repositories/project-run-repository-read-model.js";
 export type {
   AcquireProjectRunLeaseInput,
   AdvanceProjectRunInput,
@@ -331,22 +336,26 @@ export type {
   ItotoriProjectRunRepositoryPort,
   ProjectRunCostAccountRecord,
   ProjectRunCostReservationRecord,
+  ProjectRunBlockerPage,
   ProjectRunDashboardPage,
   ProjectRunDashboardRow,
   ProjectRunLease,
   ProjectRunLeaseFence,
   ProjectRunLiveReadModel,
+  ProjectRunLiveReadModelOptions,
   ProjectRunPortfolioBlocker,
   ProjectRunPortfolioProgressSummary,
+  ProjectRunProgressPage,
   ProjectRunProgressRecord,
   ProjectRunProgressStatusCounts,
   ProjectRunRecord,
   ProjectRunStatusCounts,
   RecordProjectRunProgressInput,
+  RecordProjectRunProgressBatchInput,
   RenewProjectRunLeaseInput,
   ReserveProjectRunCostInput,
   SettleProjectRunCostInput,
-} from "./repositories/project-run-repository.js";
+} from "./repositories/project-run-repository-types.js";
 export {
   deriveFeedbackDedupeKey,
   feedbackContextStatusValues,
