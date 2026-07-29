@@ -324,7 +324,7 @@ export const flagReceipt = {
   duplicate: false,
 };
 
-export let capturedWrite: unknown = null;
+export const capturedWrite: { value: unknown } = { value: null };
 
 export const server = setupServer(
   http.get("*/api/auth/identity", () => HttpResponse.json(authIdentityFixture)),
@@ -339,7 +339,7 @@ export const server = setupServer(
       : HttpResponse.json(wikiShowBody(object));
   }),
   http.post("*/api/wiki/source-object/:objectId/:operation", async ({ params, request }) => {
-    capturedWrite = await request.json();
+    capturedWrite.value = await request.json();
     const object = sourceObjectFor(String(params.objectId));
     if (object === null) {
       return new HttpResponse(null, { status: 404 });

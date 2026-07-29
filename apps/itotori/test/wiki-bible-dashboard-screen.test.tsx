@@ -1,6 +1,6 @@
+// @vitest-environment jsdom
+
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { HttpResponse, http } from "msw";
-import { setupServer } from "msw/node";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import {
@@ -14,47 +14,39 @@ import { RedactionGovernor } from "../src/ui/redaction-governor.js";
 import { App } from "../src/ui/App.js";
 import { parseAddressableLocation } from "../src/ui/addressable-routing.js";
 import { parseReturnTo } from "../src/ui/screens/AddressableFocusScreen.js";
-import type {
-  WikiHistoryEntry,
-  WikiRenderingView,
-  WikiSourceObjectView,
-} from "../src/wiki/dashboard/read-model.js";
-import {
-  authIdentityFixture,
-  costReportFixture,
-  dashboardStatusFixture,
-  portfolioProjectsFixture,
-} from "./api-fixtures.js";
-
 import {
   PROJECT_ID,
   LOCALE_BRANCH_ID,
   SNAPSHOT_ID,
-  HASH,
   CANONICAL_STATEMENT,
   AKARI_STATEMENT,
   YUKI_STATEMENT,
-  badges,
-  sceneObject,
-  alternateSceneObject,
-  renderingFixture,
-  historyFixture,
-  wikiListBody,
-  wikiShowBody,
-  wikiWriteBody,
-  sourceObjectFor,
   flagReceipt,
   capturedWrite,
   server,
   renderScreen,
 } from "./wiki-bible-dashboard-screen.support.js";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function capturedInput(): Record<string, unknown> | undefined {
+  const write = capturedWrite.value;
+  return isRecord(write) && isRecord(write.input) ? write.input : undefined;
+}
+
+function capturedOperation(index: number): unknown {
+  const operations = capturedInput()?.operations;
+  return Array.isArray(operations) ? operations[index] : undefined;
+}
+
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 
 afterEach(() => {
   cleanup();
   server.resetHandlers();
-  capturedWrite = null;
+  capturedWrite.value = null;
 });
 
 afterAll(() => server.close());
@@ -200,10 +192,10 @@ describe("Wiki bible dashboard", () => {
     fireEvent.click(within(form).getByRole("button", { name: "Record feedback" }));
 
     await waitFor(() => {
-      expect((capturedWrite as { input?: { kind?: string } })?.input?.kind).toBe("feedback");
+      expect(capturedInput()?.kind).toBe("feedback");
     });
     // The assertion is part of the write contract.
-    expect(capturedWrite).toMatchObject({
+    expect(capturedWrite.value).toMatchObject({
       assertion: {
         category: "scene-summary",
         contextSnapshotId: SNAPSHOT_ID,
@@ -233,9 +225,8 @@ describe("Wiki bible dashboard", () => {
     fireEvent.click(within(form).getByRole("button", { name: "Save claim correction" }));
 
     await waitFor(() => {
-      const input = (capturedWrite as { input?: { kind?: string; operations?: unknown[] } })?.input;
-      expect(input?.kind).toBe("edit");
-      expect(input?.operations?.[0]).toMatchObject({
+      expect(capturedInput()?.kind).toBe("edit");
+      expect(capturedOperation(0)).toMatchObject({
         kind: "replace-text",
         fieldPath: ["claims", "0", "statement"],
         before: "The archive door stays locked until sunset.",
