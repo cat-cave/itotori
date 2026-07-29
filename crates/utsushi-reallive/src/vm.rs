@@ -47,9 +47,10 @@ mod substrate;
 #[cfg(test)]
 #[path = "vm_tests.rs"]
 mod tests;
-include!("vm_parts/001.rs");
-include!("vm_parts/nested-002/002.rs");
-include!("vm_parts/nested-002/003.rs");
-include!("vm_parts/nested-002/004.rs");
+// Physical sections follow VM concepts rather than source-file positions.
+include!("vm_parts/model.rs");
+include!("vm_parts/execution.rs");
+include!("vm_parts/dispatch.rs");
+include!("vm_parts/outcomes.rs");
 include!("vm_parts/frame_counter.rs");
-include!("vm_parts/005.rs");
+include!("vm_parts/control_flow.rs");
