@@ -1,14 +1,12 @@
 //! Narrative-structure export built from the replayed archive.
 //!
-//! The legacy v1 artifact remains available when no bridge is supplied. Passing
-//! the exact bridge used for localization enables the evidence-complete v2
-//! artifact and its stronger coverage checks.
+//! RealLive exports require the exact bridge used for localization, producing
+//! the evidence-complete v2 artifact and its stronger coverage checks.
 
 mod bridge;
 mod coverage;
 mod expanded;
 mod graph;
-mod legacy;
 mod output;
 mod reallive_extension;
 mod softpal;
@@ -105,9 +103,9 @@ fn structure_provider(engine: &str) -> Result<StructureProvider, Box<dyn Error>>
 }
 
 fn build_reallive_structure(input: StructureCommandInput) -> Result<Value, Box<dyn Error>> {
+    let bridge_path = input.bridge.as_deref().ok_or("missing --bridge")?;
     let gameexe_path = input.gameexe.as_deref().ok_or("missing --gameexe")?;
     let seen_path = input.seen.as_deref().ok_or("missing --seen")?;
-    let bridge_path = input.bridge.as_deref();
     let entry_scene = input.entry;
     let max_scenes = input.max_scenes;
     let seen_bytes = fs::read(seen_path)?;
@@ -149,51 +147,44 @@ fn build_reallive_structure(input: StructureCommandInput) -> Result<Value, Box<d
     }
 
     let engine = staged.engine.with_namae_resolver(resolver);
-    let structure = if let Some(path) = bridge_path {
-        let bridge = BridgeIndex::load(path, &seen_bytes)?;
-        if !bridge.asset_scene_ids.is_subset(&archive_scene_ids) {
-            return Err(format!(
-                "bridge scope names scenes outside archive: archive={} bridge={}",
-                archive_scene_ids.len(),
-                bridge.asset_scene_ids.len()
+    let bridge = BridgeIndex::load(bridge_path, &seen_bytes)?;
+    if !bridge.asset_scene_ids.is_subset(&archive_scene_ids) {
+        return Err(format!(
+            "bridge scope names scenes outside archive: archive={} bridge={}",
+            archive_scene_ids.len(),
+            bridge.asset_scene_ids.len()
+        )
+        .into());
+    }
+    let selected_scene_ids = &bridge.asset_scene_ids;
+    let entry_scene = entry_scene.unwrap_or_else(|| {
+        if bridge.source_scope["kind"] == "whole_archive" {
+            seen_start
+        } else {
+            u32::from(
+                *selected_scene_ids
+                    .first()
+                    .expect("scoped bridge has an asset"),
             )
-            .into());
         }
-        let selected_scene_ids = &bridge.asset_scene_ids;
-        let entry_scene = entry_scene.unwrap_or_else(|| {
-            if bridge.source_scope["kind"] == "whole_archive" {
-                seen_start
-            } else {
-                u32::from(
-                    *selected_scene_ids
-                        .first()
-                        .expect("scoped bridge has an asset"),
-                )
-            }
-        });
-        let entry_scene = u16::try_from(entry_scene)
-            .map_err(|err| format!("entry scene is outside the RealLive scene range: {err}"))?;
-        let selected_scenes = staged
-            .scenes
-            .iter()
-            .filter(|scene| selected_scene_ids.contains(&scene.scene_id))
-            .cloned()
-            .collect::<Vec<_>>();
-        expanded::build(ExpandedInput {
-            engine,
-            decoded_scenes: &selected_scenes,
-            loaded_scene_count: selected_scenes.len(),
-            archive_scene_ids: selected_scene_ids,
-            bridge: &bridge,
-            entry: entry_scene,
-        })
-        .map_err(|error| -> Box<dyn Error> { error.into() })
-    } else {
-        let entry_scene = u16::try_from(entry_scene.unwrap_or(seen_start))
-            .map_err(|err| format!("entry scene is outside the RealLive scene range: {err}"))?;
-        legacy::build(&engine, &staged.scenes, entry_scene)
-            .map_err(|error| -> Box<dyn Error> { error.into() })
-    }?;
+    });
+    let entry_scene = u16::try_from(entry_scene)
+        .map_err(|err| format!("entry scene is outside the RealLive scene range: {err}"))?;
+    let selected_scenes = staged
+        .scenes
+        .iter()
+        .filter(|scene| selected_scene_ids.contains(&scene.scene_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    let structure = expanded::build(ExpandedInput {
+        engine,
+        decoded_scenes: &selected_scenes,
+        loaded_scene_count: selected_scenes.len(),
+        archive_scene_ids: selected_scene_ids,
+        bridge: &bridge,
+        entry: entry_scene,
+    })
+    .map_err(|error| -> Box<dyn Error> { error.into() })?;
     reallive_extension::common_structure(structure).map_err(Into::into)
 }
 
@@ -201,4 +192,25 @@ fn build_siglus_structure(input: StructureCommandInput) -> Result<Value, Box<dyn
     let scene_path = input.scene.as_deref().ok_or("missing --scene")?;
     let gameexe_path = input.gameexe.as_deref().ok_or("missing --gameexe")?;
     utsushi_siglus::build_siglus_structure(scene_path, gameexe_path).map_err(Into::into)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reallive_structure_requires_a_bridge_before_reading_game_inputs() {
+        let error = build_reallive_structure(StructureCommandInput {
+            gameexe: None,
+            seen: None,
+            scene: None,
+            game_root: None,
+            bridge: None,
+            entry: None,
+            max_scenes: None,
+        })
+        .expect_err("the v2-only RealLive exporter must require --bridge");
+
+        assert_eq!(error.to_string(), "missing --bridge");
+    }
 }

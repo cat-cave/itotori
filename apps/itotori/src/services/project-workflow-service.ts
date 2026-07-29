@@ -297,7 +297,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     };
   }
 
-  async ingestPatchResult(_project: ProjectState, _patchResult: PatchResultV02): Promise<never> {
+  async ingestPatchResult(_project: ProjectState, _patchResult: PatchResultV02): Promise<void> {
     throw new ProjectWorkflowCapabilityError("patch-result persistence");
   }
 

@@ -93,6 +93,7 @@ export type ApiErrorResponse = {
     | "method_not_allowed"
     | "database_migrations_required"
     | "database_unreachable"
+    | "workflow_failed"
     | "internal_error";
 };
 
@@ -103,5 +104,6 @@ export const API_ERROR_RESPONSE_CODES = [
   "method_not_allowed",
   "database_migrations_required",
   "database_unreachable",
+  "workflow_failed",
   "internal_error",
 ] as const satisfies readonly ApiErrorResponse["code"][];

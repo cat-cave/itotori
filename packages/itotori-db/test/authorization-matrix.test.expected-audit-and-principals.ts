@@ -1,4 +1,4 @@
-export const permissionGateMatrixExpectedPart6 = [
+export const auditAndPrincipalsPermissionGateMatrixExpected = [
   {
     denialFixture: "missing permission actor user-without-required-permission",
     mutation: "ItotoriAssetLocalizationDecisionRepository.loadDecisionsByPolicy",

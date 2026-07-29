@@ -70,6 +70,48 @@ export function buildReadModel(input: BuildReadModelInput): ReadModel {
 
   const unitFactIds = new Set(factSnapshot.orderedUnits.map((unit) => unit.factId));
   const sceneIds = new Set(factSnapshot.scenes.map((scene) => scene.sceneId));
+  const assertKnownScene = (fact: string, sceneId: string): void => {
+    if (!sceneIds.has(sceneId)) {
+      throw new ReadToolError("snapshot-integrity", `${fact} cites unknown scene ${sceneId}`);
+    }
+  };
+
+  assertKnownScene("snapshot source", factSnapshot.source.entryScene);
+  for (const unit of factSnapshot.orderedUnits) {
+    assertKnownScene(`unit ${unit.factId}`, unit.sceneId);
+  }
+  for (const scene of factSnapshot.scenes) {
+    for (const sceneId of scene.dispatchTargetSceneIds) {
+      assertKnownScene(`scene ${scene.factId} dispatch`, sceneId);
+    }
+    for (const sceneId of scene.choiceTargetSceneIds) {
+      assertKnownScene(`scene ${scene.factId} choice`, sceneId);
+    }
+  }
+  assertKnownScene("route topology entry", factSnapshot.routeTopology.entryScene);
+  for (const sceneId of factSnapshot.routeTopology.sceneDispatchOrder) {
+    assertKnownScene("route topology dispatch order", sceneId);
+  }
+  for (const edge of factSnapshot.routeTopology.edges) {
+    assertKnownScene("route topology edge source", edge.fromSceneId);
+    assertKnownScene("route topology edge target", edge.toSceneId);
+  }
+  for (const sceneId of factSnapshot.routeTopology.reachableSceneIds) {
+    assertKnownScene("route topology reachable set", sceneId);
+  }
+  for (const sceneId of factSnapshot.routeTopology.unreachableSceneIds) {
+    assertKnownScene("route topology unreachable set", sceneId);
+  }
+  for (const character of factSnapshot.characters) {
+    assertKnownScene(`character ${character.characterId} first occurrence`, character.firstSceneId);
+    assertKnownScene(`character ${character.characterId} last occurrence`, character.lastSceneId);
+    for (const sceneId of character.sceneIds) {
+      assertKnownScene(`character ${character.characterId} occurrence`, sceneId);
+    }
+    for (const occurrence of character.linesByScene) {
+      assertKnownScene(`character ${character.characterId} line count`, occurrence.sceneId);
+    }
+  }
 
   const characterProfiles = input.characterProfiles ?? new Map<string, CharacterProfile>();
   for (const [characterId, profile] of characterProfiles) {
@@ -145,7 +187,6 @@ export function buildReadModel(input: BuildReadModelInput): ReadModel {
     }
   }
 
-  void sceneIds;
   return {
     snapshotId: contextSnapshot.snapshotId,
     sourceLanguage: contextSnapshot.sourceLanguage,

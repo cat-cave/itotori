@@ -1,17 +1,17 @@
-import { permissionGateMatrixExpectedPart1 } from "./authorization-matrix.test.expected-01.js";
-import { permissionGateMatrixExpectedPart2 } from "./authorization-matrix.test.expected-02.js";
-import { permissionGateMatrixExpectedPart3 } from "./authorization-matrix.test.expected-03.js";
-import { permissionGateMatrixExpectedPart4 } from "./authorization-matrix.test.expected-04.js";
-import { permissionGateMatrixExpectedPart5 } from "./authorization-matrix.test.expected-05.js";
-import { permissionGateMatrixExpectedPart6 } from "./authorization-matrix.test.expected-06.js";
-import { permissionGateMatrixExpectedPart7 } from "./authorization-matrix.test.expected-07.js";
+import { auditAndPrincipalsPermissionGateMatrixExpected } from "./authorization-matrix.test.expected-audit-and-principals.js";
+import { catalogDiscoveryPermissionGateMatrixExpected } from "./authorization-matrix.test.expected-catalog-discovery.js";
+import { crawlerAndLanguageAssetsPermissionGateMatrixExpected } from "./authorization-matrix.test.expected-crawler-and-language-assets.js";
+import { identityAndSettingsPermissionGateMatrixExpected } from "./authorization-matrix.test.expected-identity-and-settings.js";
+import { localizationWorkflowPermissionGateMatrixExpected } from "./authorization-matrix.test.expected-localization-workflow.js";
+import { projectFeedbackLedgerPermissionGateMatrixExpected } from "./authorization-matrix.test.expected-project-feedback-ledger.js";
+import { queueAndCatalogSeedsPermissionGateMatrixExpected } from "./authorization-matrix.test.expected-queue-and-catalog-seeds.js";
 
 export const permissionGateMatrixExpected = [
-  ...permissionGateMatrixExpectedPart1,
-  ...permissionGateMatrixExpectedPart2,
-  ...permissionGateMatrixExpectedPart3,
-  ...permissionGateMatrixExpectedPart4,
-  ...permissionGateMatrixExpectedPart5,
-  ...permissionGateMatrixExpectedPart6,
-  ...permissionGateMatrixExpectedPart7,
+  ...projectFeedbackLedgerPermissionGateMatrixExpected,
+  ...queueAndCatalogSeedsPermissionGateMatrixExpected,
+  ...catalogDiscoveryPermissionGateMatrixExpected,
+  ...crawlerAndLanguageAssetsPermissionGateMatrixExpected,
+  ...localizationWorkflowPermissionGateMatrixExpected,
+  ...auditAndPrincipalsPermissionGateMatrixExpected,
+  ...identityAndSettingsPermissionGateMatrixExpected,
 ];

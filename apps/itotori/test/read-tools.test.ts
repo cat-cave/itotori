@@ -154,6 +154,24 @@ describe("read tools — content-address binding", () => {
       }),
     ).toThrowError(ReadToolError);
   });
+
+  it("rejects a fact snapshot whose unit cites a scene outside the snapshot", () => {
+    const snapshot = buildFactSnapshot(structure(), loadBundle());
+    const malformed = {
+      ...snapshot,
+      orderedUnits: snapshot.orderedUnits.map((unit, index) =>
+        index === 0 ? { ...unit, sceneId: "scene:missing" } : unit,
+      ),
+    };
+
+    expect(() =>
+      buildReadModel({
+        contextSnapshot: makeContext(snapshot, { kind: "complete" }),
+        factSnapshot: malformed,
+        bundle: loadBundle(),
+      }),
+    ).toThrowError(/unit .* cites unknown scene scene:missing/u);
+  });
 });
 
 describe("read tools — access control", () => {

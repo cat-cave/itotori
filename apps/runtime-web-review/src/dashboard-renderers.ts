@@ -6,6 +6,16 @@ import type {
   RuntimeTraceRow,
   RuntimeUnsupportedCapability,
 } from "./dashboard-types.js";
+import {
+  definitionGridStyle,
+  escapeHtml,
+  headingStyle,
+  itemStyle,
+  pageStyle,
+  panelStyle,
+} from "./html-rendering.js";
+
+export { escapeHtml, pageStyle };
 
 export function renderRuntimeEvidence(
   status: RuntimeStatus,
@@ -360,24 +370,8 @@ function preview(value: string | null): string {
   return `${value.slice(0, 93)}...`;
 }
 
-export function pageStyle(): string {
-  return "font-family: system-ui, sans-serif; margin: 2rem; color: #111827; max-width: 1280px";
-}
-
-function panelStyle(): string {
-  return "border: 1px solid #d1d5db; border-radius: 8px; padding: 1rem; margin-bottom: 1rem";
-}
-
-function headingStyle(): string {
-  return "margin: 0 0 .75rem; font-size: 1.25rem";
-}
-
 function subheadingStyle(): string {
   return "margin: 1rem 0 .5rem; font-size: 1rem";
-}
-
-function definitionGridStyle(): string {
-  return "display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .35rem .75rem; margin: 0";
 }
 
 function compactDefinitionStyle(): string {
@@ -386,16 +380,4 @@ function compactDefinitionStyle(): string {
 
 function tableStyle(): string {
   return "border-collapse: collapse; width: 100%; font-size: .875rem";
-}
-
-function itemStyle(): string {
-  return "border-top: 1px solid #e5e7eb; padding: .75rem 0";
-}
-
-export function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }

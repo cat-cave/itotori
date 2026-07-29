@@ -8,11 +8,6 @@ use crate::{
     write_validated_stable_profile,
 };
 
-/// Emitted on stderr when the legacy `kaifuu profile <game-dir>` spelling is
-/// used. Compatibility-only: same write gate as `profile init`, but the
-/// explicit form is preferred.
-pub(crate) const LEGACY_PROFILE_COMPAT_WARNING: &str = "warning: `kaifuu profile <game-dir>` is a compatibility spelling; prefer `kaifuu profile init <game-dir>`";
-
 pub(crate) fn run_golden_command(
     args: &[String],
     registry: &AdapterRegistry,
@@ -98,28 +93,11 @@ pub(crate) fn run_profile_command(
                 &validate_profile_value(&profile).redacted_for_report(),
             )?;
         }
-        _ => {
-            // Compatibility spelling: same validate/redact/write gate as
-            // `profile init`, but operators should migrate to the explicit form.
-            eprintln!("{LEGACY_PROFILE_COMPAT_WARNING}");
-            let game_dir = PathBuf::from(positional(args, 1)?);
-            let output = PathBuf::from(flag(args, "--output")?);
-            match detect_or_partial(registry, &game_dir, true)? {
-                DetectOutcome::FullDetect(adapter) | DetectOutcome::Diagnostic(adapter) => {
-                    let profile = adapter.profile(ProfileRequest {
-                        game_dir: &game_dir,
-                    })?;
-                    write_validated_stable_profile(&output, &profile)?;
-                }
-                DetectOutcome::Partial(detection) => {
-                    let report = build_partial_adapter_report(
-                        &detection,
-                        &game_dir,
-                        PartialAdapterCommand::Profile,
-                    );
-                    write_partial_adapter_report(&output, &report)?;
-                }
-            }
+        subcommand => {
+            return Err(format!(
+                "unknown profile subcommand `{subcommand}`; expected `init` or `validate`"
+            )
+            .into());
         }
     }
     Ok(())

@@ -63,7 +63,10 @@ mod select_choice;
 #[cfg(test)]
 #[path = "bytecode_element_stream_tests.rs"]
 mod stream_tests;
-include!("bytecode_element_parts/001.rs");
-include!("bytecode_element_parts/002.rs");
-include!("bytecode_element_parts/003.rs");
-include!("bytecode_element_parts/004.rs");
+// The decoder's type model, expression walker, and stream invariant are split
+// at their semantic boundaries. They remain one Rust module so the private
+// lexer helpers can share the same narrowly-scoped implementation surface.
+include!("bytecode_element_parts/element_lexing.rs");
+include!("bytecode_element_parts/expression_lexing.rs");
+include!("bytecode_element_parts/expression_data.rs");
+include!("bytecode_element_parts/stream.rs");

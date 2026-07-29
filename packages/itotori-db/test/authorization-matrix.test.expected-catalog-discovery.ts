@@ -1,4 +1,4 @@
-export const permissionGateMatrixExpectedPart3 = [
+export const catalogDiscoveryPermissionGateMatrixExpected = [
   {
     denialFixture: "missing permission actor user-without-required-permission",
     mutation: "ItotoriCatalogRepository.recordLocalScan",

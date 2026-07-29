@@ -94,7 +94,7 @@ export type ItotoriProjectWorkflowPort = {
     project: ProjectState,
     runtimeReport: RuntimeVerificationReport | RuntimeEvidenceReportV02,
   ): Promise<{ project: ProjectState; result: RuntimeIngestResult }>;
-  ingestPatchResult(project: ProjectState, patchResult: PatchResultV02): Promise<never>;
+  ingestPatchResult(project: ProjectState, patchResult: PatchResultV02): Promise<void>;
   ingestConformanceReport(
     project: ProjectState,
     input: { manifest?: ConformanceManifestV01; results: ConformanceResultV01[] },

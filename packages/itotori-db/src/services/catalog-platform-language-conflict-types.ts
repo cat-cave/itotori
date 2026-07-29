@@ -5,10 +5,7 @@ import type {
 import {
   catalogConflictKindValues,
   catalogConflictStatusValues,
-  catalogExternalIdKindValues,
-  catalogLanguageStatusScopeValues,
   catalogLanguageStatusValues,
-  catalogSourceValues,
   type CatalogConflictKind,
   type CatalogConflictStatus,
   type CatalogExternalIdKind,
@@ -16,6 +13,18 @@ import {
   type CatalogLanguageStatusScope,
   type CatalogSource,
 } from "../schema.js";
+import {
+  catalogExternalIdKinds as externalIdKinds,
+  catalogLanguageStatusScopes as languageStatusScopes,
+  catalogLanguageStatuses as languageStatuses,
+  catalogSources,
+} from "../repositories/catalog-repository/catalog-enum-values.js";
+export {
+  catalogExternalIdKinds as externalIdKinds,
+  catalogLanguageStatusScopes as languageStatusScopes,
+  catalogLanguageStatuses as languageStatuses,
+  catalogSources,
+} from "../repositories/catalog-repository/catalog-enum-values.js";
 
 import {
   candidateCompatibilityBasis,
@@ -162,17 +171,6 @@ export type CatalogPlatformLanguageConflictResult = {
   conflicts: CatalogPlatformLanguageConflictFact[];
   diagnostics: CatalogPlatformLanguageConflictDiagnostic[];
 };
-
-export const catalogSources = Object.values(catalogSourceValues) as CatalogSource[];
-export const languageStatuses = Object.values(
-  catalogLanguageStatusValues,
-) as CatalogLanguageStatus[];
-export const languageStatusScopes = Object.values(
-  catalogLanguageStatusScopeValues,
-) as CatalogLanguageStatusScope[];
-export const externalIdKinds = Object.values(
-  catalogExternalIdKindValues,
-) as CatalogExternalIdKind[];
 
 export const conflictGapStatuses = new Set<CatalogLanguageStatus>([
   catalogLanguageStatusValues.none,

@@ -27,8 +27,8 @@ use utsushi_core::{
     EnginePort, EnginePortError, EvidenceTier, FidelityTier, FrameArtifact, FrameArtifactSink,
     Inspectable, LifecycleStage, ObservationArtifactRef, ObservationBridgeRef, PortCapability,
     PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, RuntimeArtifactKind,
-    RuntimeArtifactRoot, SinkCapability, SinkError, SinkKind, SinkResult, SinkSet, SnapshotError,
-    StatePath, StateTree, StateValue, TextLine, TextSurfaceSink,
+    SinkCapability, SinkError, SinkKind, SinkResult, SinkSet, SnapshotError, StatePath, StateTree,
+    StateValue, TextLine, TextSurfaceSink,
 };
 
 /// Schema-version literal advertised on the legacy
@@ -481,15 +481,4 @@ fn deterministic_bridge_unit_id(game_id: &str, index: usize) -> String {
         (hash & 0xffff_ffff) as u32,
         index as u16
     )
-}
-
-/// Manually-silenced helper so `RuntimeArtifactRoot` import remains in
-/// scope without an unused-import diagnostic. The capture path uses the
-/// `write_bytes` method on the runner-provided root reference; this
-/// shim only exists so a downstream rename of `RuntimeArtifactRoot`
-/// surfaces a compile error here too.
-// reason: compile-time reference shim so a downstream RuntimeArtifactRoot rename fails here too.
-#[allow(dead_code)]
-fn _runtime_artifact_root_reference(root: &RuntimeArtifactRoot) -> &std::path::Path {
-    root.path()
 }

@@ -5,6 +5,8 @@
 // Does NOT load a WASM bundle in this slice; the JSON wire form is the
 // stable contract and the Rust `EmbedState::to_json_value` is the producer.
 
+import { escapeHtml, headingStyle, itemStyle, pageStyle, panelStyle } from "./html-rendering.js";
+
 export const EMBED_SCHEMA_VERSION = "0.1.0-alpha";
 export const RUNTIME_ARTIFACT_URI_ROOT = "artifacts/utsushi/runtime/";
 
@@ -358,28 +360,4 @@ function isManagedRuntimeUri(uri: string): boolean {
     !/^[A-Za-z][A-Za-z0-9+.-]*:/u.test(uri) &&
     !uri.split("/").some((segment) => segment === "." || segment === "..")
   );
-}
-
-function pageStyle(): string {
-  return "font-family: system-ui, sans-serif; margin: 2rem; color: #111827; max-width: 1280px";
-}
-
-function panelStyle(): string {
-  return "border: 1px solid #d1d5db; border-radius: 8px; padding: 1rem; margin-bottom: 1rem";
-}
-
-function headingStyle(): string {
-  return "margin: 0 0 .75rem; font-size: 1.25rem";
-}
-
-function itemStyle(): string {
-  return "border-top: 1px solid #e5e7eb; padding: .75rem 0";
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }
