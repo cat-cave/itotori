@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import type { ItotoriDatabase } from "../connection.js";
 import { verifyLocalizationArtifactManifest } from "../localization-artifact-integrity.js";
@@ -10,162 +10,45 @@ import {
   playTestFeedbackBatches,
   playTestFeedbackEvents,
 } from "../schema.js";
+import {
+  LocalizationResultRevisionRepositoryError,
+  type ApplyPlayTesterTargetEditInput,
+  type ApplyPlayTesterTargetEditResult,
+  type ApplyPlayTesterTargetEditWithFeedbackInput,
+  type ApplyPlayTesterTargetEditWithFeedbackResult,
+  type ItotoriLocalizationResultRevisionRepositoryPort,
+  type MaterializedPlayTesterPatchArtifact,
+  type PlayablePatchExport,
+  type PlayTesterPatchArtifactMaterializer,
+  type SelectedPatchExport,
+} from "./localization-result-revision-repository-contracts.js";
+import {
+  childResult,
+  loadPatch,
+  loadSelectedByScope,
+  requireText,
+  selectedExport,
+  selectPatch,
+} from "./localization-result-revision-repository-persistence.js";
 
-export type PlayTesterResultRevisionRecord = {
-  resultRevisionId: string;
-  journalOutcomeId: string;
-  runId: string;
-  bridgeUnitId: string;
-  selectedCandidateId: string;
-  targetBody: string;
-  origin: "play_tester_edit";
-  parentRevisionId: string;
-  actorUserId: string;
-  createdForPatchVersionId: string;
-  createdAt: Date;
-};
-
-export type PlayTesterChildPatchVersionRecord = {
-  patchVersionId: string;
-  runId: string;
-  parentPatchVersionId: string;
-  status: "playable";
-  origin: "play_tester_edit";
-  actorUserId: string;
-  artifactHashes: Record<string, string>;
-  artifactRefs: Record<string, string>;
-  playableAt: Date;
-  selectedAt: Date;
-  createdAt: Date;
-  updatedAt: Date;
-  units: SelectedPatchExportUnit[];
-};
-
-export type ApplyPlayTesterTargetEditInput = {
-  parentPatchVersionId: string;
-  bridgeUnitId: string;
-  targetBody: string;
-};
-
-export type RecordPlayTestFeedbackEventInput = {
-  feedbackBatchId?: string;
-  body?: string;
-  metadata: Record<string, unknown>;
-};
-
-export type ApplyPlayTesterTargetEditWithFeedbackInput = ApplyPlayTesterTargetEditInput & {
-  feedback: RecordPlayTestFeedbackEventInput;
-};
-
-export type PlayTestFeedbackEventRecord = {
-  feedbackEventId: string;
-  feedbackBatchId: string;
-  observedPatchVersionId: string;
-  resultRevisionId: string;
-  createdAt: Date;
-};
-
-export type ApplyPlayTesterTargetEditResult = {
-  resultRevision: PlayTesterResultRevisionRecord;
-  patchVersion: PlayTesterChildPatchVersionRecord;
-  idempotentReplay: boolean;
-};
-
-export type ApplyPlayTesterTargetEditWithFeedbackResult = {
-  edit: ApplyPlayTesterTargetEditResult;
-  feedback: PlayTestFeedbackEventRecord;
-};
-
-export type PlayTesterPatchArtifactMaterializationInput = {
-  childPatchVersionId: string;
-  parentPatchVersionId: string;
-  runId: string;
-  bridgeUnitId: string;
-  targetBody: string;
-  parentArtifactRefs: Record<string, string>;
-  parentArtifactHashes: Record<string, string>;
-};
-
-export type MaterializedPlayTesterPatchArtifact = {
-  artifactRefs: Record<string, string>;
-  artifactHashes: Record<string, string>;
-  cleanup(): Promise<void> | void;
-};
-
-export interface PlayTesterPatchArtifactMaterializer {
-  materialize(
-    input: PlayTesterPatchArtifactMaterializationInput,
-  ): Promise<MaterializedPlayTesterPatchArtifact>;
-}
-
-export type SelectedPatchExportUnit = {
-  bridgeUnitId: string;
-  sourceRunId: string;
-  journalOutcomeId: string;
-  resultRevisionId: string;
-  memberOrigin: string;
-  reusedFromPatchVersionId: string | null;
-  unitOrdinal: number;
-  targetBody: string;
-  origin: string;
-  actorUserId: string | null;
-  selectedCandidateId: string;
-};
-
-export type SelectedPatchExport = {
-  patchVersionId: string;
-  runId: string;
-  parentPatchVersionId: string | null;
-  origin: string;
-  actorUserId: string | null;
-  status: string;
-  selectedAt: Date;
-  playableAt: Date | null;
-  artifactHashes: Record<string, string>;
-  artifactRefs: Record<string, string>;
-  units: SelectedPatchExportUnit[];
-};
-
-export type PlayablePatchExport = Omit<SelectedPatchExport, "selectedAt"> & {
-  selectedAt: Date | null;
-};
-
-export class LocalizationResultRevisionRepositoryError extends Error {
-  constructor(
-    readonly code:
-      | "invalid_input"
-      | "patch_not_found"
-      | "unit_not_in_patch"
-      | "patch_not_playable"
-      | "blank_target"
-      | "artifact_fault",
-    message: string,
-  ) {
-    super(message);
-    this.name = "LocalizationResultRevisionRepositoryError";
-  }
-}
-
-export interface ItotoriLocalizationResultRevisionRepositoryPort {
-  applyPlayTesterTargetEdit(
-    actor: AuthorizationActor,
-    input: ApplyPlayTesterTargetEditInput,
-  ): Promise<ApplyPlayTesterTargetEditResult>;
-  applyPlayTesterTargetEditWithFeedback(
-    actor: AuthorizationActor,
-    input: ApplyPlayTesterTargetEditWithFeedbackInput,
-  ): Promise<ApplyPlayTesterTargetEditWithFeedbackResult>;
-  loadSelectedPatchExport(
-    actor: AuthorizationActor,
-    input: { runId?: string; patchVersionId?: string },
-  ): Promise<SelectedPatchExport | null>;
-  loadPlayablePatchExport(
-    actor: AuthorizationActor,
-    input: { patchVersionId: string },
-  ): Promise<PlayablePatchExport | null>;
-}
-
-type Tx = Parameters<Parameters<ItotoriDatabase["transaction"]>[0]>[0];
+export { LocalizationResultRevisionRepositoryError };
+export type {
+  ApplyPlayTesterTargetEditInput,
+  ApplyPlayTesterTargetEditResult,
+  ApplyPlayTesterTargetEditWithFeedbackInput,
+  ApplyPlayTesterTargetEditWithFeedbackResult,
+  ItotoriLocalizationResultRevisionRepositoryPort,
+  MaterializedPlayTesterPatchArtifact,
+  PlayablePatchExport,
+  PlayTestFeedbackEventRecord,
+  PlayTesterChildPatchVersionRecord,
+  PlayTesterPatchArtifactMaterializationInput,
+  PlayTesterPatchArtifactMaterializer,
+  PlayTesterResultRevisionRecord,
+  RecordPlayTestFeedbackEventInput,
+  SelectedPatchExport,
+  SelectedPatchExportUnit,
+} from "./localization-result-revision-repository-contracts.js";
 
 /**
  * The retained delivery reader/editor is intentionally independent of the
@@ -387,204 +270,6 @@ export class ItotoriLocalizationResultRevisionRepository implements ItotoriLocal
       if (!committed && artifact !== undefined) await artifact.cleanup();
     }
   }
-}
-
-type LoadedPatch = {
-  patchVersionId: string;
-  projectId: string;
-  localeBranchId: string;
-  sourceRevisionId: string;
-  deliveryScopeId: string;
-  status: string;
-  origin: string;
-  actorUserId: string | null;
-  parentPatchVersionId: string | null;
-  artifactHashes: Record<string, string>;
-  artifactRefs: Record<string, string>;
-  playableAt: Date | null;
-  selectedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-  units: SelectedPatchExportUnit[];
-};
-
-async function loadPatch(
-  db: Pick<ItotoriDatabase, "select"> | Tx,
-  patchVersionId: string,
-): Promise<LoadedPatch | null> {
-  const [patch] = await db
-    .select()
-    .from(localizationPatchVersions)
-    .where(eq(localizationPatchVersions.patchVersionId, patchVersionId))
-    .limit(1);
-  if (patch === undefined) return null;
-  const rows = await db
-    .select({
-      bridgeUnitId: localizationPatchVersionUnits.bridgeUnitId,
-      resultRevisionId: patchOutputRevisions.outputRevisionId,
-      memberOrigin: localizationPatchVersionUnits.memberOrigin,
-      reusedFromPatchVersionId: localizationPatchVersionUnits.reusedFromPatchVersionId,
-      unitOrdinal: localizationPatchVersionUnits.unitOrdinal,
-      targetBody: patchOutputRevisions.targetBody,
-      origin: patchOutputRevisions.origin,
-      actorUserId: patchOutputRevisions.actorUserId,
-    })
-    .from(localizationPatchVersionUnits)
-    .innerJoin(
-      patchOutputRevisions,
-      eq(localizationPatchVersionUnits.outputRevisionId, patchOutputRevisions.outputRevisionId),
-    )
-    .where(eq(localizationPatchVersionUnits.patchVersionId, patchVersionId))
-    .orderBy(asc(localizationPatchVersionUnits.unitOrdinal));
-  return {
-    patchVersionId: patch.patchVersionId,
-    projectId: patch.projectId,
-    localeBranchId: patch.localeBranchId,
-    sourceRevisionId: patch.sourceRevisionId,
-    deliveryScopeId: patch.deliveryScopeId,
-    status: patch.status,
-    origin: patch.origin,
-    actorUserId: patch.actorUserId ?? null,
-    parentPatchVersionId: patch.parentPatchVersionId ?? null,
-    artifactHashes: { ...patch.artifactHashes },
-    artifactRefs: { ...patch.artifactRefs },
-    playableAt: patch.playableAt,
-    selectedAt: patch.selectedAt,
-    createdAt: patch.createdAt,
-    updatedAt: patch.updatedAt,
-    units: rows.map((row) => ({
-      bridgeUnitId: row.bridgeUnitId,
-      sourceRunId: patch.deliveryScopeId,
-      journalOutcomeId: row.resultRevisionId,
-      resultRevisionId: row.resultRevisionId,
-      selectedCandidateId: row.resultRevisionId,
-      memberOrigin: row.memberOrigin,
-      reusedFromPatchVersionId: row.reusedFromPatchVersionId ?? null,
-      unitOrdinal: row.unitOrdinal,
-      targetBody: row.targetBody,
-      origin: row.origin,
-      actorUserId: row.actorUserId ?? null,
-    })),
-  };
-}
-
-async function loadSelectedByScope(
-  db: Pick<ItotoriDatabase, "select"> | Tx,
-  deliveryScopeId: string,
-) {
-  const [row] = await db
-    .select()
-    .from(localizationPatchVersions)
-    .where(
-      and(
-        eq(localizationPatchVersions.deliveryScopeId, deliveryScopeId),
-        isNotNull(localizationPatchVersions.selectedAt),
-      ),
-    )
-    .limit(1);
-  return row === undefined ? null : loadPatch(db, row.patchVersionId);
-}
-
-async function selectPatch(
-  tx: Tx,
-  deliveryScopeId: string,
-  patchVersionId: string,
-  now = new Date(),
-) {
-  await tx
-    .update(localizationPatchVersions)
-    .set({ selectedAt: null, updatedAt: now })
-    .where(
-      and(
-        eq(localizationPatchVersions.deliveryScopeId, deliveryScopeId),
-        isNotNull(localizationPatchVersions.selectedAt),
-      ),
-    );
-  await tx
-    .update(localizationPatchVersions)
-    .set({ status: "playable", playableAt: now, selectedAt: now, updatedAt: now })
-    .where(eq(localizationPatchVersions.patchVersionId, patchVersionId));
-}
-
-function selectedExport(patch: LoadedPatch): SelectedPatchExport {
-  if (patch.selectedAt === null)
-    throw new LocalizationResultRevisionRepositoryError(
-      "artifact_fault",
-      "selected patch has no selectedAt",
-    );
-  return {
-    patchVersionId: patch.patchVersionId,
-    runId: patch.deliveryScopeId,
-    parentPatchVersionId: patch.parentPatchVersionId,
-    origin: patch.origin,
-    actorUserId: patch.actorUserId,
-    status: patch.status,
-    selectedAt: patch.selectedAt,
-    playableAt: patch.playableAt,
-    artifactHashes: patch.artifactHashes,
-    artifactRefs: patch.artifactRefs,
-    units: patch.units,
-  };
-}
-
-function childResult(
-  patch: LoadedPatch,
-  outputRevisionId: string,
-  actorUserId: string,
-  idempotentReplay: boolean,
-): ApplyPlayTesterTargetEditResult {
-  const revision = patch.units.find((unit) => unit.resultRevisionId === outputRevisionId);
-  if (
-    revision === undefined ||
-    patch.playableAt === null ||
-    patch.selectedAt === null ||
-    patch.parentPatchVersionId === null
-  ) {
-    throw new LocalizationResultRevisionRepositoryError(
-      "artifact_fault",
-      "child patch is incomplete",
-    );
-  }
-  return {
-    resultRevision: {
-      resultRevisionId: outputRevisionId,
-      journalOutcomeId: outputRevisionId,
-      runId: patch.deliveryScopeId,
-      bridgeUnitId: revision.bridgeUnitId,
-      selectedCandidateId: outputRevisionId,
-      targetBody: revision.targetBody,
-      origin: "play_tester_edit",
-      parentRevisionId: revision.reusedFromPatchVersionId ?? outputRevisionId,
-      actorUserId,
-      createdForPatchVersionId: patch.patchVersionId,
-      createdAt: patch.createdAt,
-    },
-    patchVersion: {
-      patchVersionId: patch.patchVersionId,
-      runId: patch.deliveryScopeId,
-      parentPatchVersionId: patch.parentPatchVersionId,
-      status: "playable",
-      origin: "play_tester_edit",
-      actorUserId,
-      artifactHashes: patch.artifactHashes,
-      artifactRefs: patch.artifactRefs,
-      playableAt: patch.playableAt,
-      selectedAt: patch.selectedAt,
-      createdAt: patch.createdAt,
-      updatedAt: patch.updatedAt,
-      units: patch.units,
-    },
-    idempotentReplay,
-  };
-}
-
-function requireText(value: string | undefined, field: string): string {
-  if (value === undefined || value.trim().length === 0)
-    throw new LocalizationResultRevisionRepositoryError(
-      "invalid_input",
-      `${field} must be non-blank`,
-    );
-  return value;
 }
 
 export function playTesterChildPatchVersionId(
