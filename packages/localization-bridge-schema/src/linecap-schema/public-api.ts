@@ -30,7 +30,7 @@ export {
   TRIAGE_SEVERITIES,
   adapterMatrixSupports,
   adapterMatrixSupportsAtLeast,
-} from "./schema-domain-01.js";
+} from "./bridge-core-types.js";
 export type {
   AdapterCapabilityMatrixV02,
   AssetKindV02,
@@ -77,7 +77,7 @@ export type {
   TextSurface,
   TriageSeverityV02,
   Uuid7,
-} from "./schema-domain-01.js";
+} from "./bridge-core-types.js";
 export {
   ALPHA_VERTICAL_PROOF_ARTIFACT_KINDS_V02,
   ALPHA_VERTICAL_PROOF_HASH_SCOPES_V02,
@@ -122,7 +122,7 @@ export {
   TRIAGE_SUBJECT_KINDS,
   TRIAGE_TASK_KINDS,
   UI_AREAS,
-} from "./schema-domain-02.js";
+} from "./schema-enums.js";
 export type {
   AlphaVerticalProofArtifactKindV02,
   AlphaVerticalProofHashScopeV02,
@@ -161,14 +161,14 @@ export type {
   TriageEventKindV02,
   TriageSubjectKindV02,
   TriageTaskKindV02,
-} from "./schema-domain-02.js";
+} from "./schema-enums.js";
 export {
   DATABASE_KINDS,
   IMAGE_REPLACEMENT_MODES,
   METADATA_SCOPES,
   METADATA_VISIBILITIES,
   SPEAKER_NAME_DISPLAY_CONTEXTS,
-} from "./schema-domain-03.js";
+} from "./bridge-context-types.js";
 export type {
   AssetPolicyPatchRefV02,
   AssetRefV02,
@@ -213,7 +213,7 @@ export type {
   TutorialContextV02,
   UiAreaV02,
   UiContextV02,
-} from "./schema-domain-03.js";
+} from "./bridge-context-types.js";
 export type {
   AssetPolicyBundleV02,
   AssetPolicyDecisionV02,
@@ -249,7 +249,7 @@ export type {
   TriageEventV02,
   TriageSubjectRefV02,
   TriageTaskV02,
-} from "./schema-domain-04.js";
+} from "./localization-triage-types.js";
 export {
   BENCHMARK_QUALITY_RUBRIC_ID,
   BENCHMARK_QUALITY_RUBRIC_VERSION,
@@ -259,7 +259,7 @@ export {
   BENCHMARK_RUBRIC_MAPPING_SOURCES,
   BENCHMARK_RUBRIC_SCORES,
   computeBenchmarkCostLedgerV02,
-} from "./schema-domain-05.js";
+} from "./benchmark-types.js";
 export type {
   BenchmarkCountBucketV02,
   BenchmarkFindingRecordV02,
@@ -278,15 +278,18 @@ export type {
   HumanEvaluationResultV02,
   QaAgentEvaluationV02,
   QaAgentMetricsV02,
-} from "./schema-domain-05.js";
+} from "./benchmark-types.js";
 export {
   BENCHMARK_QUALITY_RUBRIC,
   assertBenchmarkQualityRubric,
   benchmarkRubricMqmBandForScore,
   benchmarkRubricQualitySeverityForScore,
   benchmarkRubricTaxonomyTargetForDimension,
-} from "./schema-domain-06.js";
-export type { BenchmarkRubricTaxonomyTarget, BridgeBundleV02 } from "./schema-domain-06.js";
+} from "./benchmark-rubric-and-bundle-types.js";
+export type {
+  BenchmarkRubricTaxonomyTarget,
+  BridgeBundleV02,
+} from "./benchmark-rubric-and-bundle-types.js";
 export type {
   AlphaVerticalProofArtifactRefV02,
   AlphaVerticalProofArtifactRefsV02,
@@ -329,30 +332,30 @@ export type {
   RuntimeEvidenceReportV02,
   RuntimeFeatureSupportV02,
   UnitSourceCompatibilityV02,
-} from "./schema-domain-07.js";
+} from "./patch-and-runtime-types.js";
 export {
   assertAssetPolicyBundleV02,
   assertBridgeBundle,
   assertBridgeBundleV02,
   assertTriageBundleV02,
-} from "./schema-domain-08.js";
+} from "./bridge-bundle-validation.js";
 export type {
   ContractCompatibilityCoverageV02,
   ContractCompatibilityCrossRefV02,
   ContractCompatibilityReportV02,
-} from "./schema-domain-08.js";
+} from "./bridge-bundle-validation.js";
 export {
   assertBenchmarkReportV02,
   assertPatchExport,
   assertPatchExportV02,
   computePatchResultOutputHashRollupV02,
-} from "./schema-domain-09.js";
+} from "./benchmark-and-patch-validation.js";
 export {
   assertDeltaPackageMetadataV02,
   assertFindingRecordFixtureV02,
   assertPatchResultV02,
   assertPermissionLocalUserFixtureV02,
-} from "./schema-domain-10.js";
+} from "./patch-and-fixture-validation.js";
 export {
   assertAdapterCapabilityMatrixV02,
   assertAlphaVerticalProofManifestV02,
@@ -360,20 +363,23 @@ export {
   assertContractCompatibilityReportV02,
   assertContractFixtureManifestV02,
   assertContractFixtureV02,
-} from "./schema-domain-11.js";
+} from "./fixture-and-capability-validation.js";
 export {
   assertRuntimeVerificationReport,
   evaluatePatchExportCompatibilityV02,
-} from "./schema-domain-12.js";
+} from "./patch-compatibility-validation.js";
 export {
   assertRuntimeEvidenceReportV02,
   assertRuntimeReport,
   isUuid7,
-} from "./schema-domain-13.js";
-export { assertFindingRecordV02 } from "./schema-domain-18.js";
+} from "./runtime-evidence-validation.js";
+export { assertFindingRecordV02 } from "./triage-reference-validation.js";
 export {
   assertBenchmarkComparedSystemV02,
   assertBenchmarkProviderRunV02,
-} from "./schema-domain-19.js";
-export { assertDeterministicQaResultV02, assertQaAgentEvaluationV02 } from "./schema-domain-20.js";
-export { assertRfc3339Instant } from "./schema-domain-21.js";
+} from "./benchmark-provenance-validation.js";
+export {
+  assertDeterministicQaResultV02,
+  assertQaAgentEvaluationV02,
+} from "./benchmark-quality-validation.js";
+export { assertRfc3339Instant } from "./fixture-utility-validation.js";

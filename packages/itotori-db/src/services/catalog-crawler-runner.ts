@@ -21,8 +21,8 @@ export {
   type CatalogCrawlerRunResult,
   type CatalogCrawlerReplayValidationRecord,
   ItotoriCatalogCrawlerRunner,
-} from "./catalog-crawler-runner-01.js";
+} from "./catalog-crawler-contract-types.js";
 export {
   type RecordedCatalogCrawlerFixture,
   createRecordedCatalogCrawlerAdapter,
-} from "./catalog-crawler-runner-02.js";
+} from "./catalog-crawler-recorded-fixture.js";

@@ -13,8 +13,8 @@ export {
   type CatalogResolverFixtureArtifact,
   type CatalogResolverFixtureReviewReadModel,
   createCatalogResolverFixtureArtifact,
-} from "./catalog-resolver-fixture-01.js";
+} from "./catalog-resolver-fixture-types.js";
 export {
   catalogResolverFixtureReviewReadModel,
   assertCatalogResolverFixtureArtifact,
-} from "./catalog-resolver-fixture-02.js";
+} from "./catalog-resolver-fixture-normalization.js";

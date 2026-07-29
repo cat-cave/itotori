@@ -14,7 +14,7 @@ export {
   type CatalogRecordedPlatformDiagnosticCode,
   type CatalogRecordedSourceFactKind,
   createDlsiteRecordedStorefrontAdapter,
-} from "./catalog-recorded-importers-01.js";
+} from "./catalog-recorded-importer-types.js";
 export {
   createSteamRecordedStorefrontAdapter,
   createIgdbRecordedPlatformAdapter,
@@ -25,17 +25,17 @@ export {
   type CatalogRecordedLanguageStatusFact,
   type CatalogRecordedSeedTargetFact,
   type CatalogRecordedDemandFact,
-} from "./catalog-recorded-importers-02.js";
+} from "./catalog-recorded-importer-adapters-and-facts.js";
 export {
   type CatalogRecordedConflictEvidenceFact,
   type CatalogRecordedConflictFact,
   type CatalogRecordedImporterFact,
   mapDlsiteDemandFactsForRecordedResponse,
   mapDlsiteReleaseMappingsForRecordedResponse,
-} from "./catalog-recorded-importers-03.js";
-export { catalogRecordedConfidenceForSourceFact } from "./catalog-recorded-importers-10.js";
+} from "./catalog-recorded-importer-dlsite.js";
+export { catalogRecordedConfidenceForSourceFact } from "./catalog-recorded-importer-payload-parsing.js";
 export {
   type CatalogRecordedImporterOptions,
   createCatalogRecordedImporterIngestStep,
   createCatalogRecordedImporterVerifier,
-} from "./catalog-recorded-importers-12.js";
+} from "./catalog-recorded-importer-platform-parsing.js";
