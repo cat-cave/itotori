@@ -121,6 +121,6 @@ export function interpolateRoutePath(
     if (value === undefined) {
       throw new Error(`route ${routeId} requires path param "${name}"`);
     }
-    return value;
+    return encodeURIComponent(value);
   });
 }

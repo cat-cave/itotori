@@ -59,6 +59,14 @@ export type GenerationLookup = (
   signal?: AbortSignal,
 ) => Promise<GenerationMetadata>;
 
+/** A post-hoc lookup failed, distinct from a generation that does not exist yet. */
+export class GenerationMetadataLookupError extends Error {
+  constructor(generationId: string, cause: unknown) {
+    super(`generation metadata lookup failed for ${generationId}`, { cause });
+    this.name = "GenerationMetadataLookupError";
+  }
+}
+
 /** Post-hoc reconciliation is the authority for the served pair; it never
  * influences the pre-request provider policy. */
 export const generationReconciliation = {
@@ -90,7 +98,10 @@ export function createOpenRouterGenerationLookup(input: {
         },
         ...(signal ? { signal } : {}),
       });
-      if (!response.ok) return unknownGenerationMetadata(generationId);
+      if (response.status === 404) return unknownGenerationMetadata(generationId);
+      if (!response.ok) {
+        throw new Error(`generation metadata endpoint returned HTTP ${response.status}`);
+      }
       const data = asRecord(asRecord(await response.json()).data);
       // Refuse a mismatched response: a provider pair is useful only when it
       // is bound to the exact generation our request produced.
@@ -106,11 +117,11 @@ export function createOpenRouterGenerationLookup(input: {
         billing: lookupBilling(data.total_cost ?? data.totalCost),
         reportedCostUsd: decimalCost(data.total_cost ?? data.totalCost),
       };
-    } catch {
-      // A delayed/failed lookup must not turn a completed model response into
-      // a fabricated route or expose provider error content. The durable
-      // record remains explicitly unknown and can be reconciled later.
-      return unknownGenerationMetadata(generationId);
+    } catch (error) {
+      if (error instanceof GenerationMetadataLookupError) throw error;
+      // Absence is represented above only by a 404. Transport, storage, and
+      // response-decoding failures retain their cause for the caller to handle.
+      throw new GenerationMetadataLookupError(generationId, error);
     }
   };
 }

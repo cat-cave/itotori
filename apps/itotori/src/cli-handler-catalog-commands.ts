@@ -1,4 +1,13 @@
-import { capabilityLevelValues, createCatalogResolverFixtureArtifact } from "@itotori/db";
+import {
+  capabilityLevelValues,
+  catalogExactExternalIdLinkSchemaVersion,
+  catalogExternalIdKindValues,
+  catalogFuzzyCandidateGeneratorVersion,
+  catalogFuzzyCandidateSchemaVersion,
+  catalogResolverFixtureSchemaVersion,
+  catalogSourceValues,
+  createCatalogResolverFixtureArtifact,
+} from "@itotori/db";
 import type {
   AdapterCapabilityMatrixRecord,
   CapabilityLevel,
@@ -21,7 +30,8 @@ export async function runCatalogLinkExact(
 ): Promise<void> {
   const requestPath = requiredFlag(args, "--request");
   const outputPath = requiredFlag(args, "--output");
-  const request = dependencies.io.readJson(requestPath) as CatalogExactExternalIdLinkRequest;
+  const request = dependencies.io.readJson(requestPath);
+  assertCatalogExactExternalIdLinkRequest(request);
   const result = await dependencies.withServices((services) =>
     services.catalogExactExternalIdLinker.linkExactExternalIds(request),
   );
@@ -34,7 +44,8 @@ export async function runCatalogFuzzyCandidates(
 ): Promise<void> {
   const requestPath = requiredFlag(args, "--request");
   const outputPath = requiredFlag(args, "--output");
-  const request = dependencies.io.readJson(requestPath) as CatalogFuzzyCandidateRequest;
+  const request = dependencies.io.readJson(requestPath);
+  assertCatalogFuzzyCandidateRequest(request);
   const result = await dependencies.withServices((services) =>
     services.catalogFuzzyCandidateGenerator.generateFuzzyCandidates(request),
   );
@@ -48,7 +59,8 @@ export async function runCatalogResolveFixture(
   const fixturePath = optionalFlag(args, "--fixture") ?? "fixtures/catalog-resolver/fixture.json";
   const outputPath =
     optionalFlag(args, "--output") ?? "artifacts/catalog/resolver-integration.json";
-  const fixture = dependencies.io.readJson(fixturePath) as CatalogResolverFixtureInput;
+  const fixture = dependencies.io.readJson(fixturePath);
+  assertCatalogResolverFixtureInput(fixture);
   const artifact = createCatalogResolverFixtureArtifact(fixture);
   dependencies.io.writeJson(outputPath, artifact);
 }
@@ -166,6 +178,155 @@ function assertCapabilityLevelStatus(value: unknown, label: string): void {
     default:
       throw new Error(`${label}.kind must be supported, partial, or unsupported`);
   }
+}
+
+function assertCatalogExactExternalIdLinkRequest(
+  value: unknown,
+): asserts value is CatalogExactExternalIdLinkRequest {
+  const record = requiredRecord(value, "CatalogExactExternalIdLinkRequest");
+  assertOptionalLiteral(
+    record.schemaVersion,
+    catalogExactExternalIdLinkSchemaVersion,
+    "CatalogExactExternalIdLinkRequest.schemaVersion",
+  );
+  if (record.subject !== undefined) {
+    const subject = requiredRecord(record.subject, "CatalogExactExternalIdLinkRequest.subject");
+    if (
+      !isStringMember(subject.kind, [
+        "catalog_source_record",
+        "local_scan_entry",
+        "manual_request",
+        "fixture",
+      ])
+    ) {
+      throw new Error("CatalogExactExternalIdLinkRequest.subject.kind is invalid");
+    }
+    assertString(subject.id, "CatalogExactExternalIdLinkRequest.subject.id");
+  }
+  if (!Array.isArray(record.externalIds)) {
+    throw new Error("CatalogExactExternalIdLinkRequest.externalIds must be an array");
+  }
+  for (const [index, candidate] of record.externalIds.entries()) {
+    const externalId = requiredRecord(
+      candidate,
+      `CatalogExactExternalIdLinkRequest.externalIds[${index}]`,
+    );
+    assertCatalogExternalId(externalId, `CatalogExactExternalIdLinkRequest.externalIds[${index}]`);
+    assertOptionalString(
+      externalId.evidenceRef,
+      `CatalogExactExternalIdLinkRequest.externalIds[${index}].evidenceRef`,
+    );
+  }
+}
+
+function assertCatalogFuzzyCandidateRequest(
+  value: unknown,
+): asserts value is CatalogFuzzyCandidateRequest {
+  const record = requiredRecord(value, "CatalogFuzzyCandidateRequest");
+  assertOptionalLiteral(
+    record.schemaVersion,
+    catalogFuzzyCandidateSchemaVersion,
+    "CatalogFuzzyCandidateRequest.schemaVersion",
+  );
+  assertOptionalLiteral(
+    record.generatorVersion,
+    catalogFuzzyCandidateGeneratorVersion,
+    "CatalogFuzzyCandidateRequest.generatorVersion",
+  );
+  assertOptionalNumber(record.minScore, "CatalogFuzzyCandidateRequest.minScore");
+  assertOptionalNumber(
+    record.maxCandidatesPerSource,
+    "CatalogFuzzyCandidateRequest.maxCandidatesPerSource",
+  );
+  if (!Array.isArray(record.sourceFacts)) {
+    throw new Error("CatalogFuzzyCandidateRequest.sourceFacts must be an array");
+  }
+  for (const [index, candidate] of record.sourceFacts.entries()) {
+    const sourceFact = requiredRecord(
+      candidate,
+      `CatalogFuzzyCandidateRequest.sourceFacts[${index}]`,
+    );
+    const label = `CatalogFuzzyCandidateRequest.sourceFacts[${index}]`;
+    assertCatalogExternalId(sourceFact, label);
+    assertString(sourceFact.title, `${label}.title`);
+    assertOptionalNumber(sourceFact.releaseYear, `${label}.releaseYear`);
+    assertOptionalString(sourceFact.sourceProvenanceId, `${label}.sourceProvenanceId`);
+    if (sourceFact.externalIds === undefined) continue;
+    if (!Array.isArray(sourceFact.externalIds))
+      throw new Error(`${label}.externalIds must be an array`);
+    for (const [externalIdIndex, externalIdCandidate] of sourceFact.externalIds.entries()) {
+      assertCatalogExternalId(
+        requiredRecord(externalIdCandidate, `${label}.externalIds[${externalIdIndex}]`),
+        `${label}.externalIds[${externalIdIndex}]`,
+      );
+    }
+  }
+}
+
+function assertCatalogResolverFixtureInput(
+  value: unknown,
+): asserts value is CatalogResolverFixtureInput {
+  const record = requiredRecord(value, "CatalogResolverFixtureInput");
+  assertOptionalLiteral(
+    record.schemaVersion,
+    catalogResolverFixtureSchemaVersion,
+    "CatalogResolverFixtureInput.schemaVersion",
+  );
+  assertString(record.artifactId, "CatalogResolverFixtureInput.artifactId");
+  assertString(record.generatedAt, "CatalogResolverFixtureInput.generatedAt");
+  if (!Array.isArray(record.sourceRegistry)) {
+    throw new Error("CatalogResolverFixtureInput.sourceRegistry must be an array");
+  }
+  if (!Array.isArray(record.exactLinks)) {
+    throw new Error("CatalogResolverFixtureInput.exactLinks must be an array");
+  }
+  if (record.fuzzyCandidates === undefined) {
+    throw new Error("CatalogResolverFixtureInput.fuzzyCandidates is required");
+  }
+  if (record.conflicts === undefined) {
+    throw new Error("CatalogResolverFixtureInput.conflicts is required");
+  }
+}
+
+function assertCatalogExternalId(record: Record<string, unknown>, label: string): void {
+  if (!isStringMember(record.catalogSource, Object.values(catalogSourceValues))) {
+    throw new Error(`${label}.catalogSource is invalid`);
+  }
+  assertString(record.sourceId, `${label}.sourceId`);
+  if (
+    record.externalIdKind !== undefined &&
+    !isStringMember(record.externalIdKind, Object.values(catalogExternalIdKindValues))
+  ) {
+    throw new Error(`${label}.externalIdKind is invalid`);
+  }
+}
+
+function requiredRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} payload must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function assertString(value: unknown, label: string): asserts value is string {
+  if (typeof value !== "string") throw new Error(`${label} must be a string`);
+}
+
+function assertOptionalString(value: unknown, label: string): void {
+  if (value !== undefined) assertString(value, label);
+}
+
+function assertOptionalNumber(value: unknown, label: string): void {
+  if (value !== undefined && typeof value !== "number")
+    throw new Error(`${label} must be a number`);
+}
+
+function assertOptionalLiteral(value: unknown, expected: string, label: string): void {
+  if (value !== undefined && value !== expected) throw new Error(`${label} is invalid`);
+}
+
+function isStringMember(value: unknown, values: readonly string[]): value is string {
+  return typeof value === "string" && values.includes(value);
 }
 
 export async function runAssetDecisionsListHandler(
