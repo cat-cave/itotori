@@ -220,18 +220,22 @@ postgresDescribe("localize run progress over Postgres", () => {
           const failedLive = await workflow.loadLiveReadModel(
             projectId,
             "localize-progress-run-failed",
+            { blockerPage: { limit: 500, offset: 0 } },
           );
           expect(failedLive?.run).toMatchObject({
             status: "failed",
             cost: { spentMicrosUsd: 0, reservedMicrosUsd: 0 },
           });
-          expect(failedLive?.progress.blockers).toEqual(
-            expect.arrayContaining([
+          expect(failedLive?.blockerPage).toMatchObject({
+            total: 3,
+            limit: 500,
+            offset: 0,
+            items: expect.arrayContaining([
               expect.objectContaining({
                 blockers: ["draft-failed:deadline:http-status:unknown:billing-unknown"],
               }),
             ]),
-          );
+          });
           const reservations = await context.pool.query<{
             state: string;
             settled_micros_usd: number | null;

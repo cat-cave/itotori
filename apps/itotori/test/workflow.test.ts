@@ -6,9 +6,10 @@ import type { ReviewVerdict } from "../src/contracts/index.js";
 import { FULL_ROSTER, type RunPolicyRequest } from "../src/run-policy/index.js";
 import {
   applyCorrections,
-  BoundedConcurrency,
   classifyStratum,
   coherenceSchedule,
+  DEFAULT_PROVIDER_CONCURRENCY,
+  DEFAULT_SCENE_CONCURRENCY,
   FinalizeBatchError,
   finalizeUnit,
   finalizeUnits,
@@ -372,8 +373,7 @@ const TEST_DEV_NARROWED: RunPolicyRequest = {
 };
 
 describe("workflow scale bounds", () => {
-  it("caps each run's scenes and all three runs' provider drafts", async () => {
-    const providerConcurrency = new BoundedConcurrency(5);
+  it("caps each of three runs at 8 scenes and the portfolio at 24 provider operations", async () => {
     let providerInFlight = 0;
     let providerPeak = 0;
     const providerProbe = async (): Promise<void> => {
@@ -393,19 +393,24 @@ describe("workflow scale bounds", () => {
         ports: buildPorts(new FakeStore(), recorder, { draftProbe: providerProbe }),
       };
     });
+    const saturationRecorder = newRecorder();
+    const saturationRun = {
+      scenes: [scene("saturation", ["saturation-unit"])],
+      ports: buildPorts(new FakeStore(), saturationRecorder, { draftProbe: providerProbe }),
+    };
 
     await Promise.all(
-      runs.map(
-        async ({ scenes, ports }) =>
-          await runLocalizationWorkflow(PRODUCTION, scenes, ports, {
-            sceneConcurrency: 4,
-            providerConcurrency,
-          }),
+      [...runs, saturationRun].map(
+        async ({ scenes, ports }) => await runLocalizationWorkflow(PRODUCTION, scenes, ports),
       ),
     );
 
-    expect(providerPeak).toBe(5);
-    expect(runs.map((run) => run.recorder.maxDraftInFlight)).toEqual([4, 4, 4]);
+    expect(providerPeak).toBe(DEFAULT_PROVIDER_CONCURRENCY);
+    expect(runs.map((run) => run.recorder.maxDraftInFlight)).toEqual([
+      DEFAULT_SCENE_CONCURRENCY,
+      DEFAULT_SCENE_CONCURRENCY,
+      DEFAULT_SCENE_CONCURRENCY,
+    ]);
   });
 });
 

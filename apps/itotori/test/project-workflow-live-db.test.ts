@@ -83,7 +83,9 @@ postgresDescribe("database project workflow", () => {
           blockers: ["review-needed"],
         });
 
-        const live = await workflow.loadLiveReadModel(projectId, runId);
+        const live = await workflow.loadLiveReadModel(projectId, runId, {
+          blockerPage: { limit: 500, offset: 0 },
+        });
         expect(live).toMatchObject({
           run: {
             projectId,
@@ -95,7 +97,12 @@ postgresDescribe("database project workflow", () => {
             totalCostMicrosUsd: 13,
             averageCoveragePercent: 75,
             statusCounts: { drafted: 1 },
-            blockers: [{ bridgeUnitId: "unit-live", role: "writer", blockers: ["review-needed"] }],
+          },
+          blockerPage: {
+            total: 1,
+            limit: 500,
+            offset: 0,
+            items: [{ bridgeUnitId: "unit-live", role: "writer", blockers: ["review-needed"] }],
           },
         });
 
