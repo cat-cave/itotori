@@ -1,4 +1,3 @@
-import { writeFileSync } from "node:fs";
 import { ItotoriLlmCallMemoRepository } from "@itotori/db";
 import { expect, it } from "vitest";
 import { createDispatchRuntime } from "../src/composition/live/dispatch-runtime.js";
@@ -30,8 +29,12 @@ import {
   toolLoopSpec,
 } from "./llm-step-test-support.js";
 
+// Live conformance is an explicit test-run request, not a deployment setting.
+// The real credentials and database endpoint remain the only environmental
+// prerequisites; `--live-model-profile` makes the expensive, billable probe an
+// intentional harness action.
 const liveEnabled =
-  process.env.ITOTORI_LIVE_MODEL_PROFILE === "1" &&
+  process.argv.includes("--live-model-profile") &&
   Boolean(process.env.OPENROUTER_API_KEY) &&
   Boolean(process.env.DATABASE_URL);
 
@@ -128,33 +131,35 @@ const liveEnabled =
           generationLookupAttempts,
         });
       } catch (error: unknown) {
-        writeProbeOutput({
-          probeStatus: "failed",
-          probedAt,
-          failure: error instanceof Error ? error.message : "unknown conformance failure",
-          result: {
-            status: result.status,
-            ...(result.status === "failure" ? { failureKind: result.failureKind } : {}),
-            verification: result.verification,
-            generationId: result.generationId,
-            served: result.served,
-            usage: result.usage,
-            billing: result.billing,
-            events: result.events,
-          },
-          steps,
-          attempts,
-          attributions,
-          providerError,
-          toolExecutionCount,
-          reasoning,
-          generationLookupAttempts,
-        });
+        console.error(
+          JSON.stringify({
+            probeStatus: "failed",
+            probedAt,
+            failure: error instanceof Error ? error.message : "unknown conformance failure",
+            result: {
+              status: result.status,
+              ...(result.status === "failure" ? { failureKind: result.failureKind } : {}),
+              verification: result.verification,
+              generationId: result.generationId,
+              served: result.served,
+              usage: result.usage,
+              billing: result.billing,
+              events: result.events,
+            },
+            steps,
+            attempts,
+            attributions,
+            providerError,
+            toolExecutionCount,
+            reasoning,
+            generationLookupAttempts,
+          }),
+        );
         throw error;
       }
 
       expect(certificate.certificateStatus).toBe("valid");
-      writeProbeOutput(certificate);
+      console.error(JSON.stringify(certificate));
     } finally {
       await context.close();
     }
@@ -253,11 +258,6 @@ function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-}
-
-function writeProbeOutput(value: unknown): void {
-  const outputPath = process.env.ITOTORI_MODEL_PROFILE_PROBE_OUTPUT;
-  if (outputPath) writeFileSync(outputPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
 async function readStepObservations(

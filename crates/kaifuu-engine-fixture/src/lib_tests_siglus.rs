@@ -316,47 +316,47 @@ fn siglus_real_signature_does_not_false_positive() {
     let _ = fs::remove_dir_all(text_dir);
 }
 
-// Real-corpus validation (≥2 titles). Ignored by default because it needs
-// owned, uncommitted Siglus game trees; point `KAIFUU_SIGLUS_REAL_DIRS` at
-// a `:`-separated list of directories each holding a real `Scene.pck` +
-// `Gameexe.dat` from materialized real-corpus titles and run with
-// `--ignored`. Reads only the header signature; commits no game bytes.
+// Real-corpus validation (≥2 titles). The operator supplies one vault mount;
+// the private inventory selects the two Siglus libraries beneath it. This test
+// reads only their header signatures and commits no game bytes.
 #[test]
-#[ignore = "requires owned Siglus corpus via KAIFUU_SIGLUS_REAL_DIRS"]
+#[ignore = "requires the private inventory's two Siglus corpus entries"]
 fn siglus_detects_real_corpus_titles() {
-    // Visible SKIP (not a panic) when the owned Siglus corpus is not wired.
-    // This `#[ignore]`d test is selected by the broad `-p kaifuu-engine-fixture
-    // -- --ignored` real-bytes invocation; the Siglus corpus is provisioned
-    // separately (vault-materialized), so a `panic!` here false-FAILED that
-    // lane whenever KAIFUU_SIGLUS_REAL_DIRS was absent. Skipping matches the
-    // Softpal detector proofs in this crate: no corpus -> no assertion, no red.
-    let Ok(dirs) = std::env::var("KAIFUU_SIGLUS_REAL_DIRS") else {
-        eprintln!(
-            "skipping: set KAIFUU_SIGLUS_REAL_DIRS to a :-separated list of Siglus game dirs"
-        );
+    let dirs = ["siglus/1/encrypted", "siglus/2/encrypted"]
+        .into_iter()
+        .filter_map(
+            |identity| match corpus_registry::resolve_identity(identity) {
+                Ok(path) => Some((identity, path)),
+                Err(error) => {
+                    eprintln!("skipping: {identity} unavailable: {error}");
+                    None
+                }
+            },
+        )
+        .collect::<Vec<_>>();
+    if dirs.len() < 2 {
         return;
-    };
+    }
     let adapter = SiglusProfileDetectorAdapter;
     let mut recognized = 0usize;
-    for dir in dirs.split(':').filter(|d| !d.is_empty()) {
-        let game_dir = PathBuf::from(dir);
+    for (identity, game_dir) in dirs {
         let detection = adapter
             .detect(DetectRequest {
                 game_dir: &game_dir,
             })
             .unwrap();
         eprintln!(
-            "[siglus-real-corpus] {dir} detected={} variant={:?}",
+            "[siglus-real-corpus] {identity} detected={} variant={:?}",
             detection.detected, detection.detected_variant
         );
         assert!(
             detection.detected,
-            "real Siglus title must be detected: {dir}"
+            "real Siglus title must be detected: {identity}"
         );
         assert_eq!(
             detection.detected_variant.as_deref(),
             Some("scene-pck-gameexe-dat-real"),
-            "real Siglus title must report the real variant: {dir}"
+            "real Siglus title must report the real variant: {identity}"
         );
         recognized += 1;
     }

@@ -61,6 +61,7 @@ function check(scope, forwarded) {
   if (scope === "meta")
     return shell(`
 node --test scripts/itotori-db-compose-config.test.mjs
+node --test scripts/developer-command.test.mjs
 node --test scripts/env-registry-guard.test.mjs
 node scripts/env-registry-guard.mjs
 node --test scripts/developer-command-db.test.mjs
@@ -290,13 +291,14 @@ function ci(lane, forwarded) {
     return shell(
       "pnpm exec vp run ts:build\npnpm --filter @itotori/spec-dag-dashboard test\npnpm --filter @itotori/db test\npnpm --filter @itotori/app exec vitest run --shard=2/2 --exclude '**/.direnv/**'",
     );
-  if (lane.startsWith("tier1-rust-"))
+  const rustPartition = /^tier1-rust-([1-3])of3$/u.exec(lane)?.[1];
+  if (rustPartition !== undefined)
     return run("cargo", [
       "nextest",
       "run",
       "--workspace",
       "--partition",
-      `hash:${lane.at(-1)}/3`,
+      `hash:${rustPartition}/3`,
       ...forwarded,
     ]);
   if (lane === "tier1-db")

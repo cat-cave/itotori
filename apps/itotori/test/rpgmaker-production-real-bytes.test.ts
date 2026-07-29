@@ -35,11 +35,9 @@ const realCorpora: readonly RealCorpus[] = [
   { label: "real-corpus-1", root: resolvePrivateCorpus("rpg-maker-mv-mz", 1, "plain") },
   { label: "real-corpus-2", root: resolvePrivateCorpus("rpg-maker-mv-mz", 2, "plain") },
 ];
-const nativeBin = process.env.ITOTORI_KAIFUU_BIN;
-const enabled =
-  typeof nativeBin === "string" &&
-  existsSync(nativeBin) &&
-  realCorpora.every((corpus) => typeof corpus.root === "string" && existsSync(corpus.root));
+const enabled = realCorpora.every(
+  (corpus) => typeof corpus.root === "string" && existsSync(corpus.root),
+);
 
 /** Resolve an engine `www/` directory from a direct path or a bounded mounted
  * parent. `data/System.json` is the generic engine marker. */

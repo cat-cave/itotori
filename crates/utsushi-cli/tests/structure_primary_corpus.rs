@@ -200,15 +200,17 @@ fn utsushi_structure_primary_corpus_rejects_truncation_without_an_artifact() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row and ITOTORI_REAL_BRIDGE_PATH"]
+#[ignore = "real-bytes; requires the private inventory and its generated bridge artifact"]
 fn utsushi_structure_primary_corpus_v2_matches_bridge_and_graph() {
     let (Some(gameexe), Some(seen), Some(bridge_path)) = (
         real_corpus::gameexe_ini_path(),
         real_corpus::seen_txt_path(),
-        std::env::var_os("ITOTORI_REAL_BRIDGE_PATH").map(PathBuf::from),
+        real_corpus::game_root()
+            .map(|root| root.join("bridge.json"))
+            .filter(|path| path.is_file()),
     ) else {
         eprintln!(
-            "set reallive/1/encrypted and ITOTORI_REAL_BRIDGE_PATH for expanded structure proof"
+            "reallive/1/encrypted or its generated bridge artifact is unavailable for expanded structure proof"
         );
         return;
     };

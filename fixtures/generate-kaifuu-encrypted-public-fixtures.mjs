@@ -878,7 +878,7 @@ function cargoRunner() {
 
 function writeCommandExpectedOutput(relativePath, args) {
   if (
-    process.env.KAIFUU_FIXTURE_GENERATOR_TEST_FAIL_FIRST_SIGLUS_COMMAND === "1" &&
+    process.argv.includes("--fail-first-siglus-command") &&
     relativePath === "expected/siglus-detection-report-v0.1.json"
   ) {
     throw new Error("test-only injected failure before the first Siglus fixture command");

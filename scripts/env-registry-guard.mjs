@@ -2,7 +2,7 @@
 // Static ratchet for literal project-environment reads. It intentionally does
 // not claim to find dynamically constructed names or untracked files.
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -90,6 +90,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const failures = [];
   const exemptions = [];
   for (const file of files) {
+    // `git ls-files` includes a tracked path deleted in the working tree. The
+    // zero-budget transition deletes its own budget file, so scan only files
+    // that exist in the tree being checked.
+    if (!existsSync(path.join(root, file))) continue;
     const exemption = exemptPaths.get(file);
     if (exemption !== undefined) {
       exemptions.push(`${file}: ${exemption}`);
@@ -100,7 +104,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       for (const name of undeclaredReads(line)) failures.push(`${file}:${index + 1}: ${name}`);
     });
   }
-  const budgetError = checkBudget(failures.length, loadBudget());
+  const budget = loadBudget();
+  const budgetError = checkBudget(failures.length, budget);
   if (budgetError !== undefined) {
     process.stderr.write(
       `environment registry guard: FAILED (${failures.length} undeclared literal reads)\n`,
@@ -114,7 +119,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exitCode = 1;
   } else {
     process.stdout.write(
-      `environment registry guard: passed (${failures.length} undeclared literal reads; ratchet budget matched).` +
+      `environment registry guard: passed (${failures.length} undeclared literal reads; ${
+        budget === undefined ? "absolute check" : "ratchet budget matched"
+      }).` +
         `${exemptions.length > 0 ? ` exemptions: ${exemptions.join("; ")}.` : ""}` +
         " limits: scans tracked literal read forms only; dynamic names and untracked files are invisible.\n",
     );

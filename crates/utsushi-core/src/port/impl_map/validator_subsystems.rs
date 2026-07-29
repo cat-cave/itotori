@@ -197,6 +197,15 @@ fn is_forward_sentinel(value: &str) -> bool {
 }
 
 fn is_node_id(value: &str) -> bool {
+    let capability_alias = value
+        .strip_prefix("capability_")
+        .and_then(|alias| alias.split_once('_'));
+    if let Some((project, digits)) = capability_alias {
+        let projects = ["utsushi", "kaifuu", "itotori", "alpha", "shared"];
+        return projects.contains(&project)
+            && digits.len() == 3
+            && digits.chars().all(|c| c.is_ascii_digit());
+    }
     let Some((project, digits)) = value.split_once('-') else {
         return false;
     };

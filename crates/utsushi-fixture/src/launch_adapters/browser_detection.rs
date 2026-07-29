@@ -161,12 +161,8 @@ impl BrowserUnavailabilityReason {
                      update the adapter configuration or install Chromium."
                         .to_string()
                 }
-                BrowserDetectionLabel::EnvironmentUnavailable => {
-                    "UTSUSHI_BROWSER_BIN is set but does not resolve to a launchable Chromium-compatible executable."
-                        .to_string()
-                }
                 _ => "No Chromium-compatible browser executable detected; \
-                      install Chromium/Chrome or set UTSUSHI_BROWSER_BIN."
+                      install Chromium/Chrome and place it on PATH."
                     .to_string(),
             },
             Self::VersionMismatch {
@@ -211,8 +207,6 @@ impl DisplayProbeOutcome {
 pub(super) enum BrowserDetectionLabel {
     Configured,
     ConfiguredUnavailable,
-    Environment,
-    EnvironmentUnavailable,
     Path,
     PlatformPath,
     Unavailable,
@@ -224,8 +218,6 @@ impl BrowserDetectionLabel {
         match self {
             Self::Configured => "configured",
             Self::ConfiguredUnavailable => "configured_unavailable",
-            Self::Environment => "environment",
-            Self::EnvironmentUnavailable => "environment_unavailable",
             Self::Path => "path",
             Self::PlatformPath => "platform_path",
             Self::Unavailable => "unavailable",
@@ -241,18 +233,14 @@ pub(super) fn probe_chromium(
     configured: Option<&Path>,
     version_override: Option<ChromiumVersion>,
 ) -> Result<ChromiumProbeOutcome, BrowserUnavailabilityReason> {
-    // 1. Resolve a binary candidate against the configured/env/PATH/platform
+    // 1. Resolve a binary candidate against the configured/PATH/platform
     //    order documented in the descriptor limitation list.
     let Some((program, source)) = resolve_binary_candidate(configured) else {
-        // candidates_tried = configured + env probe + PATH candidates
+        // candidates_tried = configured + PATH candidates
         // platform paths (all attempted unsuccessfully)
-        let tried = 1 // env (if absent it still counts as one slot inspected)
-            + BROWSER_CANDIDATES.len()
-            + BROWSER_PLATFORM_PATHS.len();
+        let tried = BROWSER_CANDIDATES.len() + BROWSER_PLATFORM_PATHS.len();
         let source = if configured.is_some() {
             BrowserDetectionLabel::ConfiguredUnavailable
-        } else if env::var_os("UTSUSHI_BROWSER_BIN").is_some() {
-            BrowserDetectionLabel::EnvironmentUnavailable
         } else {
             BrowserDetectionLabel::Unavailable
         };
@@ -328,10 +316,6 @@ fn resolve_binary_candidate(configured: Option<&Path>) -> Option<(PathBuf, Brows
             return Some((path.to_path_buf(), BrowserDetectionLabel::Configured));
         }
         return None;
-    }
-    if let Ok(program) = env::var("UTSUSHI_BROWSER_BIN") {
-        return resolve_program_candidate(&program)
-            .map(|path| (path, BrowserDetectionLabel::Environment));
     }
     for candidate in BROWSER_CANDIDATES {
         if let Some(path) = resolve_program_candidate(candidate) {
