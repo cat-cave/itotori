@@ -39,7 +39,7 @@ import {
   platformString,
 } from "./catalog-recorded-importers-12.js";
 import { compactJson } from "./catalog-recorded-importers-15.js";
-import { requiredString } from "./catalog-recorded-importers-16.js";
+import { requiredString } from "../required-string.js";
 
 export function parseWikidataPlatformResponse(
   fixture: CatalogRecordedPlatformFixture,

@@ -61,9 +61,9 @@ import {
   optionalString,
   releaseInstallStateFromRow,
   releaseMappingFromRow,
-  requiredString,
   seedTargetFromRow,
 } from "./catalog-domain-22.js";
+import { requiredString } from "../../required-string.js";
 import { assertEnumValue } from "./catalog-domain-23.js";
 
 export async function readWorkSnapshot(

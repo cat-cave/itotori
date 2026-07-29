@@ -29,7 +29,8 @@ import {
   assertReleaseInstallStateInput,
   assertReleaseMappingInput,
 } from "./catalog-domain-20.js";
-import { jsonRecord, optionalString, optionalYear, requiredString } from "./catalog-domain-22.js";
+import { jsonRecord, optionalString, optionalYear } from "./catalog-domain-22.js";
+import { requiredString } from "../../required-string.js";
 import { assertEnumValue } from "./catalog-domain-23.js";
 
 export type NormalizedLanguageStatusInput = {

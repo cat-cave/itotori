@@ -45,7 +45,7 @@ import {
   NormalizedBenchmarkSeedFinderFilter,
   NormalizedCatalogOpportunityRankingFilter,
 } from "./catalog-domain-21.js";
-import { requiredString } from "./catalog-domain-22.js";
+import { requiredString } from "../../required-string.js";
 import { assertEnumValue } from "./catalog-domain-23.js";
 
 export function assertBenchmarkSeedFinderFilter(

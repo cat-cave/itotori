@@ -25,10 +25,10 @@ import {
   normalizeCrawlerKey,
   normalizeCrawlerStepInput,
   requiredRow,
-  requiredString,
   stableId,
   stepFromRow,
 } from "./catalog-crawler-repository-normalization.js";
+import { requiredString } from "../required-string.js";
 
 export async function getCheckpoint(
   db: ItotoriDatabase,

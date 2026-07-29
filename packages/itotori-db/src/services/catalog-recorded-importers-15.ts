@@ -17,11 +17,11 @@ import {
   type CatalogCrawlerFactImportProof,
   type CatalogCrawlerIngestContext,
 } from "./catalog-crawler-runner.js";
+import { requiredString } from "../required-string.js";
 
 import { catalogRecordedImporterVersion } from "./catalog-recorded-importers-01.js";
 import { type CatalogRecordedImporterFact } from "./catalog-recorded-importers-03.js";
 import { optionalString } from "./catalog-recorded-importers-10.js";
-import { requiredString } from "./catalog-recorded-importers-16.js";
 
 export type CrossSourceEvidenceAttribution = {
   provenanceId: string | null;

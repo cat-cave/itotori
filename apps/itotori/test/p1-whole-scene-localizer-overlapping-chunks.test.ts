@@ -19,6 +19,7 @@ import {
   SCHEMA,
   chunkBatch,
   draftBatchResponse,
+  installedBibleForUnits,
   pad,
   recordedRuntime,
   unitFact,
@@ -91,7 +92,14 @@ describe("P1 whole-scene localizer — overlapping-chunk mode", () => {
     );
     const captured: Captured[] = [];
     const result = await localizeScene(
-      { ...BASE, units, bibleRenderingIds: BIBLE, budgetBytes: 40, overlapUnits: 1 },
+      {
+        ...BASE,
+        units,
+        bibleRenderingIds: BIBLE,
+        unitBible: installedBibleForUnits(units),
+        budgetBytes: 40,
+        overlapUnits: 1,
+      },
       recordedRuntime(responses, captured),
     );
 

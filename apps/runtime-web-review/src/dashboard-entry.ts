@@ -1,4 +1,8 @@
-import { DEFAULT_RUNTIME_STATUS_ENDPOINT, type RuntimeStatus } from "./dashboard-types.js";
+import {
+  DEFAULT_RUNTIME_STATUS_ENDPOINT,
+  parseRuntimeStatus,
+  type RuntimeStatus,
+} from "./dashboard-types.js";
 import { escapeHtml, pageStyle, renderRuntimeEvidence } from "./dashboard-renderers.js";
 
 export async function fetchRuntimeStatus(
@@ -11,7 +15,7 @@ export async function fetchRuntimeStatus(
   if (!response.ok) {
     throw new Error(`failed to load runtime status: ${response.status}`);
   }
-  return (await response.json()) as RuntimeStatus;
+  return parseRuntimeStatus(await response.json());
 }
 
 export async function renderRuntimeDashboard(

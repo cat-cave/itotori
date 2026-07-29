@@ -60,12 +60,10 @@ export interface LocalizeSceneInput {
   readonly units: readonly UnitFact[];
   /** Localized-bible rendering ids the drafts must cite (wiki-first basis). */
   readonly bibleRenderingIds: readonly string[];
-  /** Policy-selected draft basis. Omitted only by older direct role callers,
-   * where wiki-first remains the conservative default. */
-  readonly bibleBasis?: Draft["basis"]["kind"];
+  /** Policy-selected draft basis. */
+  readonly bibleBasis: Draft["basis"]["kind"];
   /** Exact installed bodies behind the unit-level citations. The live workflow
-   * supplies this from ground-truth readiness; the id-only field remains for
-   * direct role proofs that do not construct a localized bible. */
+   * supplies this from ground-truth readiness and wiki-first calls require it. */
   readonly unitBible?: readonly P1UnitBible[];
   /** Accepted target of earlier scenes/batches (from the accepted-output store),
    * continuing the thread. Trusted substrate — a plain typed value. */
@@ -123,8 +121,8 @@ function unitBibleById(
 function assertExactBibleBasis(
   drafts: readonly Draft[],
   bibleBasis: Draft["basis"]["kind"],
-  unitBible: ReadonlyMap<string, readonly LocalizedRendering[]> | undefined,
-  fallback: readonly string[],
+  unitBible: ReadonlyMap<string, readonly LocalizedRendering[]>,
+  sceneBibleRenderingIds: readonly string[],
 ): void {
   for (const draft of drafts) {
     if (draft.basis.kind !== bibleBasis) {
@@ -140,14 +138,14 @@ function assertExactBibleBasis(
       continue;
     }
     const actual = draft.basis.bibleRenderingIds;
-    const expected = unitBible?.get(draft.unitId)?.map((rendering) => rendering.renderingId);
+    const expected = unitBible.get(draft.unitId)?.map((rendering) => rendering.renderingId);
     // `bibleRenderingIds` in the seed is the scene-wide union, so the model may
     // echo it. A grounded draft must cite every entry resolved for *its* unit,
     // while any extra citation must still be an id advertised for this scene.
-    // Without a per-unit bible, retain the legacy exact whole-scene contract.
-    const valid = expected
-      ? expected.every((id) => actual.includes(id)) && actual.every((id) => fallback.includes(id))
-      : actual.length === fallback.length && actual.every((id, index) => id === fallback[index]);
+    const valid =
+      expected !== undefined &&
+      expected.every((id) => actual.includes(id)) &&
+      actual.every((id) => sceneBibleRenderingIds.includes(id));
     if (!valid) {
       throw new LocalizeError(
         "bible-context",
@@ -176,13 +174,18 @@ export async function localizeScene(
   runtime: LocalizerRuntimeBase,
 ): Promise<SceneLocalization> {
   const specialist = input.specialist ?? specialistFor("P1");
-  const bibleBasis = input.bibleBasis ?? "wiki-first";
+  const bibleBasis = input.bibleBasis;
   if (bibleBasis === "pure-mtl-ablation") {
     if (input.bibleRenderingIds.length !== 0 || input.unitBible !== undefined) {
       throw new LocalizeError("bible-context", "direct translation must receive a null Wiki");
     }
   } else if (input.bibleRenderingIds.length === 0) {
     throw new LocalizeError("bible-context", "wiki-first translation needs bible rendering ids");
+  } else if (input.unitBible === undefined) {
+    throw new LocalizeError(
+      "bible-context",
+      "wiki-first translation needs a per-unit installed bible",
+    );
   }
   const scene = normalizeScene(input.units);
   const plan = planSceneLocalization(scene, {
@@ -219,7 +222,12 @@ export async function localizeScene(
     const result = await dispatchLocalizerCall(call, runtime);
     results.push(result);
     const batch = requireBatch(result);
-    assertExactBibleBasis(batch.drafts, bibleBasis, resolvedBible, input.bibleRenderingIds);
+    if (bibleBasis === "wiki-first") {
+      if (resolvedBible === undefined) {
+        throw new LocalizeError("bible-context", "wiki-first translation lost its installed bible");
+      }
+      assertExactBibleBasis(batch.drafts, bibleBasis, resolvedBible, input.bibleRenderingIds);
+    }
     // VALIDATE against the plan segment + verified source BEFORE folding into the
     // thread — an invalid batch fails the run without tainting a later dispatch.
     const validated = validateSegmentBatch(segment, batch, unitsById);

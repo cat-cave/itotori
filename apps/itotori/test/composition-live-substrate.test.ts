@@ -44,6 +44,13 @@ const REV_D = `sha256:${"d".repeat(64)}` as const;
 // RUN_FINISHED chunk. This structured-output fixture has none, so it must stay
 // explicit-unknown rather than inventing the removed lookup result.
 const unknownGenerationMetadata = captureGenerationMetadata([]);
+// Recorded provider responses contain no reconciliation payload. Bind the
+// post-request lookup explicitly to OpenRouter's documented 404 outcome rather
+// than letting the test transport accidentally service a second request.
+const explicitUnknownGenerationLookup = async (generationId: string) => ({
+  ...unknownGenerationMetadata,
+  generationId,
+});
 
 // An in-memory `LlmCallMemoStore` — the recorded-transport single-flight, no DB.
 class MemoryMemoStore implements LlmCallMemoStore {
@@ -117,6 +124,7 @@ function recordedDispatchRuntime(captured: Captured[], response: Response): Loca
     env: {
       OPENROUTER_API_KEY: "test-key",
     },
+    generationLookup: explicitUnknownGenerationLookup,
     fetcher: async (input, init) => {
       const request = new Request(input, init);
       captured.push({ body: (await request.clone().json()) as Record<string, unknown> });

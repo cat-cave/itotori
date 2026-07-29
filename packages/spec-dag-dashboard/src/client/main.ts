@@ -268,13 +268,18 @@ declare const DATA: DashboardData;
     const when = relativeTime(provenance.generatedAt);
     const behind = (provenance.commitsBehind || 0) > 0;
     banner.className = provenanceBannerClassName(provenance);
-    if (!provenance.originMainKnown) {
+    if (
+      !provenance.originMainKnown ||
+      provenance.commitsBehind === null ||
+      provenance.dirty === null
+    ) {
+      const reason = !provenance.originMainKnown
+        ? "origin/main unknown locally — run git fetch"
+        : provenance.commitsBehind === null
+          ? "commit distance unavailable"
+          : "working-tree status unavailable";
       banner.textContent =
-        "⚠ " +
-        sha +
-        " · generated " +
-        when +
-        " — staleness unverifiable: origin/main unknown locally — run git fetch";
+        "⚠ " + sha + " · generated " + when + " — provenance unverifiable: " + reason;
       return;
     }
     if (behind || provenance.dirty) {

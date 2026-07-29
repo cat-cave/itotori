@@ -1,5 +1,4 @@
 import {
-  bootstrapLocalUser,
   databaseUrlFromEnv,
   ItotoriCatalogRepository,
   ItotoriConformanceRepository,
@@ -73,11 +72,6 @@ export type ItotoriApplicationServices = ItotoriCliServices & ItotoriApiServices
 
 export type ItotoriServiceFactoryOptions = {
   sessionId?: string;
-  /**
-   * GET requests must not depend on a write succeeding before their read can
-   * run. `migrate()` seeds the local user and grants as part of setup.
-   */
-  bootstrapLocalUser?: boolean;
 };
 
 export type ItotoriServiceFactory = <T>(
@@ -102,11 +96,10 @@ export async function withDatabaseItotoriServices<T>(
   callback: (services: ItotoriApplicationServices) => Promise<T>,
 ): Promise<T> {
   return await withDatabase(async ({ db, pool }) => {
-    // Migration owns setup-time seeding. A read-only request must never make
-    // every panel depend on this write, while mutation flows retain their
-    // compatibility bootstrap for installations that have not run setup yet.
-    const actor =
-      options.bootstrapLocalUser === false ? { userId: localUserId } : await bootstrapLocalUser(db);
+    // Migration owns setup-time seeding. Request handling never writes a
+    // fallback authorization substrate: an unmigrated installation fails
+    // explicitly through its normal database error boundary.
+    const actor = { userId: localUserId };
     const cipher = createFieldMemoCipher(process.env);
     let config: ReturnType<typeof productionLocalizationConfig> | undefined;
     const localizationConfig = () => (config ??= productionLocalizationConfig(process.env));
@@ -467,7 +460,6 @@ export function toReadOnlyServiceFactory(
   return async (callback, options) =>
     await factory(async (services) => await callback(services), {
       ...options,
-      bootstrapLocalUser: false,
     });
 }
 

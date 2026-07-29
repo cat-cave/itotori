@@ -14,8 +14,7 @@ import { WorkflowReadinessError, type WorkflowScene } from "./types.js";
  * draft must cite, keyed by unit id. */
 export interface SceneReadiness {
   readonly bibleRenderingIdsByUnit: ReadonlyMap<string, readonly string[]>;
-  /** The real resolver's bindings. Optional legacy/fake ports remain usable for
-   * workflow-only tests, but the composed production port always supplies one. */
+  /** The exact resolved binding behind each unit's citations. */
   readonly bibleBindingsByUnit: ReadonlyMap<string, UnitBibleBinding>;
 }
 
@@ -41,9 +40,7 @@ export async function resolveSceneReadiness(
       throw new WorkflowReadinessError(unit.unitId, readiness.missing);
     }
     bibleRenderingIdsByUnit.set(unit.unitId, readiness.bibleRenderingIds);
-    if (readiness.bibleBinding !== undefined) {
-      bibleBindingsByUnit.set(unit.unitId, readiness.bibleBinding);
-    }
+    bibleBindingsByUnit.set(unit.unitId, readiness.bibleBinding);
   }
   return { bibleRenderingIdsByUnit, bibleBindingsByUnit };
 }

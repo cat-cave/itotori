@@ -1,10 +1,7 @@
 // fnd-spa-shell — the single React app shell served by `src/server.ts`.
 //
-// ONE SPA, client-routed off `window.location`, that REPLACES the deleted
-// HTML-string dashboard renderer with React screens consuming `/api/*` through
-// the typed client. Routes this node does not port (asset-decisions) are
-// bridged to their existing renderers via `LegacyRoute` — a tracked,
-// temporary mount, not a dual path for a replaced view.
+// ONE SPA, client-routed off `window.location`, with React screens consuming
+// `/api/*` through the typed client.
 //
 // fnd-addressable-routing — entity deep-links (unit/scene/route/character/
 // term/run/finding) resolve BEFORE surface roots so a stable URL focuses
@@ -15,7 +12,7 @@
 // parse the route → render a screen that reads its data through
 // `useApiQuery` and paints with `@itotori/ds`.
 
-import { useEffect, useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { parseAddressableLocation } from "./addressable-routing.js";
 import {
   CapsProvider,
@@ -59,7 +56,12 @@ import {
   WikiBibleDashboardScreen,
   parseWikiBibleRoute,
 } from "./screens/WikiBibleDashboardScreen.js";
-import { matchLegacyRoute, type LegacyRouteRenderer } from "./legacy-routes.js";
+import {
+  AssetDecisionsScreen,
+  CatalogContextScreen,
+  parseAssetDecisionsRoute,
+  parseCatalogContextRoute,
+} from "./screens/ProjectRouteScreens.js";
 import { RedactionGovernor } from "./redaction-governor.js";
 import { ShellFrame, defaultNavigate } from "./shell-frame.js";
 import { ToastProvider } from "./toast-host.js";
@@ -144,11 +146,14 @@ function RoutedScreen({
   location: AppLocation;
   navigate: (path: string) => void;
 }): ReactNode {
-  // Legacy routes are checked first so their renderer owns the path before a
-  // SPA surface claims it.
-  const legacy = matchLegacyRoute(location.pathname, location.search);
-  if (legacy !== null) {
-    return <LegacyRoute render={legacy} />;
+  const assetDecisionsRoute = parseAssetDecisionsRoute(location.pathname);
+  if (assetDecisionsRoute !== null) {
+    return <AssetDecisionsScreen route={assetDecisionsRoute} />;
+  }
+
+  const catalogContextRoute = parseCatalogContextRoute(location.pathname);
+  if (catalogContextRoute !== null) {
+    return <CatalogContextScreen route={catalogContextRoute} />;
   }
 
   // fnd-addressable-routing — entity deep-links resolve next so a stable
@@ -259,16 +264,4 @@ function RoutedScreen({
   }
 
   return <DashboardScreen />;
-}
-
-function LegacyRoute({ render }: { render: LegacyRouteRenderer }): ReactNode {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const element = ref.current;
-    if (element === null) {
-      return;
-    }
-    void render(element);
-  }, [render]);
-  return <div ref={ref} data-legacy-route="true" />;
 }
