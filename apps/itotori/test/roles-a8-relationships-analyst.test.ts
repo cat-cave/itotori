@@ -1,18 +1,3 @@
-// A8 Relationships and Background Analyst — mutation-falsifiable proofs over REAL
-// decoded bytes. Every clause fails if its guarantee is removed:
-//   Clause 1 — ONE cited character-background per indexed character, with REAL
-//              counterpart ids + claim-level scope; consumed upstream bio + story
-//              evidence come through the LOCAL tools; A8 holds NO web_search grant.
-//   Clause 2 — every relationship cites an ESTABLISHING same-game scene; a
-//              fabricated or unreachable scene is rejected.
-//   Clause 3 — route REACHABILITY validates the relationship's scope; an out-of-
-//              route or unreachable scope is rejected.
-//   Clause 4 — the provenance of every caller-supplied input is verified; a
-//              fabricated bio or an unknown counterpart is rejected.
-//
-// The model boundary is a RECORDED responder (no network, no DB): the assembly is
-// deterministic and the guarantees are the module's, not the model's.
-
 import { describe, expect, it, vi } from "vitest";
 
 const localToolCalls = vi.hoisted(
@@ -35,7 +20,6 @@ vi.mock("../src/read-tools/index.js", async (importOriginal) => {
     },
   };
 });
-
 import { validateWikiObjectClaims } from "../src/wiki/claim-validation.js";
 import { assertRoleAllowed, ReadToolError } from "../src/read-tools/index.js";
 import {
@@ -73,111 +57,21 @@ import {
 } from "../src/roles/a8/index.js";
 import { buildClaimFixture, type FixtureCharacterSpec } from "./support/claim-fixture.js";
 
-const CONTEXT: A8Context = {
-  runMode: "test-dev",
-  contextScope: "whole-game",
-  routeVisibility: { kind: "global" },
-  localeBranchId: null,
-};
-
-const A7_CONTEXT: A7Context = {
-  runMode: "test-dev",
-  contextScope: "whole-game",
-  routeVisibility: { kind: "global" },
-  localeBranchId: null,
-};
-
-const SCENE_1 = "scene:0001";
-const SCENE_2 = "scene:0002";
-const SCENE_3 = "scene:0003";
-const SCENE_999 = "scene:0999";
-
-/** Two canonical characters seeded into the deterministic index, each bound to a
- * real scene-1 ordered unit as its whole-game evidence. */
-const CHARACTERS: readonly FixtureCharacterSpec[] = [
-  { characterId: "nam-11", decodedLabel: "アイ", lines: 2, boundUnitPlayOrder: 0 },
-  { characterId: "nam-22", decodedLabel: "ケイ", lines: 1, boundUnitPlayOrder: 1 },
-];
-
-/** Scene 2 is placed on route-a (reachable); scene 1 is global (reachable);
- * scene 3 is global but unreachable — the falsifiable topology. */
-function fixture() {
-  return buildClaimFixture({ characters: CHARACTERS, scene2Routes: ["route-a"] });
-}
-
-const portraits: A7PortraitProvider = (characterId) => ({
-  status: "available",
-  facts: {
-    artifactUri: `artifacts/utsushi/runtime/test-run/screenshots/portrait-${characterId}.png`,
-    contentHash: `sha256:${(characterId === "nam-11" ? "a" : "b").repeat(64)}`,
-    mediaType: "image/png",
-    dimensions: { width: 256, height: 256 },
-    access: { redaction: "default-redacted", permission: "project-member" },
-  },
-});
-
-/** Build a genuine upstream A7 bio for one character — the authoritative artifact
- * A8's provenance gate binds against. */
-function bioFor(model: ReturnType<typeof fixture>["model"], characterId: string): WikiObject {
-  const character = a7CharacterIndex(model).find((c) => c.characterId === characterId)!;
-  const evidence = a7ReadEvidence(model, A7_CONTEXT, character);
-  const draft: A7BioDraft = {
-    storyRole: `${evidence.decodedLabel} は物語を動かす。`,
-    definingTraits: ["まっすぐ"],
-    notableMomentEvidenceIds: [evidence.notableUnitIds[0]!],
-    claims: [],
-  };
-  return assembleCharacterBio(
-    model,
-    A7_CONTEXT,
-    evidence,
-    draft,
-    buildCharacterPortrait(characterId, portraits(characterId)),
-  );
-}
-
-function bioProvider(model: ReturnType<typeof fixture>["model"]) {
-  const bios = new Map(CHARACTERS.map((c) => [c.characterId, bioFor(model, c.characterId)]));
-  return (characterId: string): WikiObject => bios.get(characterId)!;
-}
-
-/** A recorded responder that relates each character to the OTHER one, globally,
- * established by the reachable global scene 1. */
-function recordedCaller(): A8ModelCaller {
-  return async (request) => {
-    const other = request.counterpartIds.find((id) => id !== request.character.characterId)!;
-    const relationships: A8RelationshipDraft[] = [
-      {
-        counterpartId: other,
-        relationship: "幼なじみ。",
-        confidence: "high",
-        scope: { kind: "global" },
-        establishingSceneIds: [sceneEvidenceId(SCENE_1)],
-      },
-    ];
-    return { background: `${request.character.decodedLabel} の生い立ち。`, relationships };
-  };
-}
-
-/** Assemble one background directly for a single character with a caller-authored
- * relationship draft, so a single guarantee can be falsified in isolation. */
-function assembleOne(
-  model: ReturnType<typeof fixture>["model"],
-  characterId: string,
-  relationships: readonly A8RelationshipDraft[],
-  bio?: WikiObject,
-): WikiObject {
-  const character = characterIndex(model).find((c) => c.characterId === characterId)!;
-  const evidence = readCharacterEvidence(model, CONTEXT, character);
-  const request: A8BackgroundRequest = {
-    character: evidence,
-    bio: bio ?? bioFor(model, characterId),
-    counterpartIds: counterpartIds(model),
-    sourceLanguage: model.sourceLanguage,
-  };
-  const draft: A8BackgroundDraft = { background: "生い立ち。", relationships };
-  return assembleCharacterBackground(model, CONTEXT, evidence, request, draft);
-}
+import {
+  CONTEXT,
+  A7_CONTEXT,
+  SCENE_1,
+  SCENE_2,
+  SCENE_3,
+  SCENE_999,
+  CHARACTERS,
+  fixture,
+  portraits,
+  bioFor,
+  bioProvider,
+  recordedCaller,
+  assembleOne,
+} from "./roles-a8-relationships-analyst.support.js";
 
 describe("clause 1 — one cited character-background per indexed character; local-only; no web grant", () => {
   it("PROOF: coverage equals the deterministic index exactly; none skipped", async () => {

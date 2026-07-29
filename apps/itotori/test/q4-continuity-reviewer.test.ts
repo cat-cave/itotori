@@ -1,24 +1,4 @@
-// Continuity Reviewer proofs — every clause fails if its guarantee is removed.
-//
-// Clause 1: the rubric is CONTINUITY only (callback / foreshadow / relationship
-//           / route-arc); a FAIL outside that set is an invalid verdict, the tool
-//           grant excludes every render/egress surface, and meaning/voice/engine
-//           are named out of scope in the system contract.
-// Clause 2: a contradiction cites BOTH real endpoints and the DETERMINISTIC play
-//           order proves the origin plays BEFORE the use — an origin that does not
-//           precede the use is invalid, derived from the ledger not the model.
-// Clause 3: a claim NEVER crosses route scope — an endpoint off the route the
-//           review is bound to is rejected.
-// Clause 4: the verdict is strict PASS/FAIL/CANNOT_ASSESS; a phantom endpoint or a
-//           malformed verdict cannot finalize.
-// Clause 5: a CANNOT_ASSESS can NEVER pass — it escalates, and the ONLY
-//           disposition that finalizes is a clean PASS.
-// Clause 6: the call routes through the ZDR boundary on the certified reviewer
-//           profile, route-bound in every run mode, proven offline via a recorded
-//           dispatch over REAL decoded bytes.
-
 import { describe, expect, it } from "vitest";
-
 import {
   REVIEW_VERDICT_SCHEMA_VERSION,
   type CallResult,
@@ -48,130 +28,22 @@ import {
 } from "../src/roles/q4/index.js";
 import { buildClaimFixture, unitFactIdAt } from "./support/claim-fixture.js";
 
-const SNAP = `sha256:${"a".repeat(64)}` as const;
-const HASH = `sha256:${"b".repeat(64)}` as const;
+import {
+  SNAP,
+  HASH,
+  ROUTE_A,
+  ROUTE_B,
+  GLOBAL,
+  synthLedger,
+  baseInput,
+  facts,
+  passVerdict,
+  failVerdict,
+  cannotAssessVerdict,
+  refs,
+  recordedDispatch,
+} from "./q4-continuity-reviewer.support.js";
 
-const ROUTE_A: RouteScope = { kind: "route", routeId: "route-a" };
-const ROUTE_B: RouteScope = { kind: "route", routeId: "route-b" };
-const GLOBAL: RouteScope = { kind: "global" };
-
-// A synthetic ledger for the isolated shape proofs: an origin at play order 0 and
-// a use at play order 5, both on route-a.
-const synthLedger: ContinuityLedger = continuityLedgerFrom([
-  { unitId: "u-origin", playOrderIndex: 0, routeScope: { kind: "route", routeId: "route-a" } },
-  { unitId: "u-use", playOrderIndex: 5, routeScope: { kind: "route", routeId: "route-a" } },
-]);
-
-const baseInput: Q4ReviewInput = {
-  unitId: "u-use",
-  localizationSnapshotId: SNAP,
-  reviewScope: ROUTE_A,
-  currentTarget: "As you promised me back at the shrine, you finally came.",
-  bibleRenderingIds: ["rendering:1"],
-  originTranslations: [{ unitId: "u-origin", acceptedTarget: "I promise I'll come find you." }],
-};
-
-function facts(over: Partial<Q4ContinuityFacts> = {}): Q4ContinuityFacts {
-  return {
-    useUnitId: "u-use",
-    reviewScope: ROUTE_A,
-    acceptedOriginUnitIds: ["u-origin"],
-    ledger: synthLedger,
-    ...over,
-  };
-}
-
-function passVerdict(over: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
-    schemaVersion: REVIEW_VERDICT_SCHEMA_VERSION,
-    reviewId: "review:1",
-    localizationSnapshotId: SNAP,
-    roleId: "Q4",
-    rubric: "continuity",
-    unitId: "u-use",
-    basis: { kind: "wiki-first", bibleRenderingIds: ["rendering:1"] },
-    verdict: "PASS",
-    severity: "none",
-    span: null,
-    category: null,
-    evidenceIds: ["u-origin"],
-    repairConstraint: null,
-    ...over,
-  };
-}
-
-function failVerdict(over: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
-    schemaVersion: REVIEW_VERDICT_SCHEMA_VERSION,
-    reviewId: "review:2",
-    localizationSnapshotId: SNAP,
-    roleId: "Q4",
-    rubric: "continuity",
-    unitId: "u-use",
-    basis: { kind: "wiki-first", bibleRenderingIds: ["rendering:1"] },
-    verdict: "FAIL",
-    severity: "major",
-    span: { spanId: "span:1", surface: "target", text: "at the shrine" },
-    category: "callback",
-    // A contradiction carries BOTH real endpoint citations. `u-origin` is the
-    // accepted prior translation; `u-use` is the candidate under review.
-    evidenceIds: ["u-origin", "u-use"],
-    repairConstraint: "Match the callback to the origin promise at the origin location.",
-    ...over,
-  };
-}
-
-function cannotAssessVerdict(over: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
-    schemaVersion: REVIEW_VERDICT_SCHEMA_VERSION,
-    reviewId: "review:3",
-    localizationSnapshotId: SNAP,
-    roleId: "Q4",
-    rubric: "continuity",
-    unitId: "u-use",
-    basis: { kind: "wiki-first", bibleRenderingIds: ["rendering:1"] },
-    verdict: "CANNOT_ASSESS",
-    severity: "none",
-    span: null,
-    category: "insufficient-evidence",
-    evidenceIds: [],
-    repairConstraint: null,
-    requestedEvidence: ["Need the accepted origin translation for the shrine scene."],
-    ...over,
-  };
-}
-
-const refs: Q4DispatchRefs = {
-  parentEventId: HASH,
-  contextSnapshotId: HASH,
-  localizationSnapshotId: SNAP,
-  sealPayload: (plaintext): EncryptedPayloadRef => ({
-    storageRef: `encrypted:q4:${plaintext.length}`,
-    contentHash: HASH,
-    encryption: "operator-managed",
-  }),
-};
-
-function recordedDispatch(value: Record<string, unknown>): (spec: CallSpec) => Promise<CallResult> {
-  return async () =>
-    ({
-      schemaVersion: "itotori.call-result.v2",
-      memoKey: HASH,
-      requested: { model: "deepseek/deepseek-v4-flash" },
-      memoHit: true,
-      status: "success",
-      value,
-      responseEventId: HASH,
-      served: { status: "confirmed", model: "deepseek/deepseek-v4-flash", provider: "provider:x" },
-      generationId: "generation:1",
-      verification: "verified",
-      usage: { promptTokens: 10, completionTokens: 20, reasoningTokens: 5, cachedTokens: 0 },
-      billing: { status: "confirmed", costUsd: "0.001" },
-      events: [{ kind: "run-started", iteration: 0 }],
-    }) as unknown as CallResult;
-}
-
-// ── Clause 1: continuity-only rubric ─────────────────────────────────────────
 describe("Clause 1 — continuity rubric only", () => {
   it("the continuity categories are exactly callback/foreshadow/relationship/route-arc", () => {
     expect(Q4_CONTINUITY_CATEGORIES).toStrictEqual([
@@ -221,7 +93,6 @@ describe("Clause 1 — continuity rubric only", () => {
   });
 });
 
-// ── Clause 2: origin precedes use, deterministically ─────────────────────────
 describe("Clause 2 — contradiction cites both endpoints; play order proves origin<use", () => {
   it("PROOF (origin-precedes-use): a FAIL whose origin plays before the use is valid; swapping the endpoints (origin after use) is INVALID — decided by the decode ledger, not the model", () => {
     // REAL decoded bytes: scene-1 units at play order 0 and 2 (global). The ledger
@@ -303,7 +174,6 @@ describe("Clause 2 — contradiction cites both endpoints; play order proves ori
   });
 });
 
-// ── Clause 3: claims never cross route scope ─────────────────────────────────
 describe("Clause 3 — a continuity claim never crosses route scope", () => {
   it("PROOF (claims-never-cross-route): the SAME finding over the SAME real endpoints is valid when the review is bound to their route and INVALID when bound to another route — only the route scope changes", () => {
     // REAL decoded bytes: scene-2 units at play order 3 and 5 live on route-a.
@@ -354,7 +224,6 @@ describe("Clause 3 — a continuity claim never crosses route scope", () => {
   });
 });
 
-// ── Clause 4: strict verdict shape + real endpoints ──────────────────────────
 describe("Clause 4 — strict verdict shape", () => {
   it("a schema-invalid model blob throws (not a silent pass)", () => {
     expect(() => interpretQ4Verdict({}, facts())).toThrow();
@@ -376,7 +245,6 @@ describe("Clause 4 — strict verdict shape", () => {
   });
 });
 
-// ── Clause 5: CANNOT_ASSESS never passes ─────────────────────────────────────
 describe("Clause 5 — CANNOT_ASSESS never passes", () => {
   it("a valid CANNOT_ASSESS escalates and never finalizes", () => {
     const interpretation = interpretQ4Verdict(cannotAssessVerdict(), facts());
@@ -415,7 +283,6 @@ describe("Clause 5 — CANNOT_ASSESS never passes", () => {
   });
 });
 
-// ── Clause 6: ZDR dispatch, certified profile, route-bound every mode ─────────
 describe("Clause 6 — ZDR dispatch on the certified reviewer profile, route-bound", () => {
   it("is immutable reviewer-profile data in the validated 19-role manifest", () => {
     const manifest = validateRosterManifest(ROSTER_SPECIALISTS);

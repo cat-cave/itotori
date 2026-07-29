@@ -1,15 +1,3 @@
-// itotori-cli-extract-command (P1, user-shaped CLI) — tests.
-//
-// Proves the user-shaped `itotori extract` command produces a bridge:
-//
-//   1. FAST (no kaifuu-cli, no real bytes) — the invocation shape mirrors the
-//      suite runner's Phase 1 (`kaifuu extract --engine reallive --game-root
-//      ... --game-id ... --scene <N> --bundle-output ...`) for BOTH per-scene
-//      AND --whole-seen, plus the validation / failure paths. A faked
-//      `runProcess` captures the argv so CI touches NO real bytes.
-//   2. Native-output redaction — a simulated protected-span drift cannot put
-//      source dialogue in an error. The generic corpus-manifest suite owns the
-//      opt-in real-corpus proof.
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -28,17 +16,7 @@ import {
   type KaifuuProcessResult,
 } from "../src/extract/kaifuu-extract-seam.js";
 
-const IDENTITY = {
-  engine: "reallive",
-  gameId: "sample-game",
-  gameVersion: "1.0",
-  sourceProfileId: "profile-1",
-  sourceLocale: "ja-JP",
-} as const;
-
-// ---------------------------------------------------------------------------
-// (1) FAST unit tests — invocation shape + validation (no real bytes)
-// ---------------------------------------------------------------------------
+import { IDENTITY, RPG_IDENTITY } from "./kaifuu-extract-seam.support.js";
 
 describe("buildExtractArgs (argv shape)", () => {
   it("per-scene: mirrors run.mjs Phase 1 ordering", () => {
@@ -274,10 +252,6 @@ describe("runKaifuuExtract (invocation shape mirrors run.mjs Phase 1)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Softpal engine — the SAME seam, dispatched through `--engine softpal`.
-// ---------------------------------------------------------------------------
-
 describe("buildExtractArgs (softpal argv shape)", () => {
   it("passes the game root positionally + --bundle-output (matches the CLI arm)", () => {
     const a = buildExtractArgs({
@@ -371,18 +345,6 @@ describe("runKaifuuExtract (softpal dispatch)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// RPG Maker MV/MZ engine — the SAME seam, dispatched through `--engine rpg-maker`.
-// (The kaifuu-cli RPG Maker bundle extract path is now selectable from the app.)
-// ---------------------------------------------------------------------------
-
-const RPG_IDENTITY = {
-  gameId: "sample-rpg",
-  gameVersion: "1.0",
-  sourceProfileId: "profile-1",
-  sourceLocale: "ja-JP",
-} as const;
-
 describe("buildExtractArgs (rpg-maker argv shape)", () => {
   it("emits --game-dir + identity flags + --bundle-output (matches the CLI arm)", () => {
     const a = buildExtractArgs({
@@ -462,123 +424,5 @@ describe("runKaifuuExtract (rpg-maker dispatch)", () => {
         runProcess: () => ({ status: 0, stdout: "", stderr: "" }),
       }),
     ).toThrow(/rpg-maker.*sourcing requires/u);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Registry — engine discrimination, no default, boundary rejection, CLI parse.
-// ---------------------------------------------------------------------------
-
-describe("extract-adapter registry", () => {
-  it("registers reallive, softpal, rpg-maker, and siglus adapters", () => {
-    expect(registeredExtractEngines()).toEqual(["reallive", "softpal", "rpg-maker", "siglus"]);
-    expect(extractCapabilities().map((capability) => capability.engine)).toEqual([
-      "reallive",
-      "softpal",
-      "rpg-maker",
-      "siglus",
-    ]);
-  });
-
-  it("rejects an unregistered engine at the boundary (no reallive default)", () => {
-    // A caller that bypasses the type union (e.g. a raw CLI string) is refused,
-    // NOT silently routed to RealLive.
-    const rogue = { engine: "kirikiri", bundleOutputPath: "/run/bridge.json" };
-    expect(() => runKaifuuExtract(rogue as unknown as KaifuuExtractArgs)).toThrow(
-      /is not a registered extract adapter/u,
-    );
-    expect(() => resolveExtractAdapter("kirikiri")).toThrow(
-      /registered: reallive, softpal, rpg-maker, siglus/u,
-    );
-  });
-
-  it("each adapter parses ONLY its own engine's CLI flags into a typed source", () => {
-    const rpg = resolveExtractAdapter("rpg-maker").parseCli([
-      "extract",
-      "--engine",
-      "rpg-maker",
-      "--game-dir",
-      "/games/rpg/www",
-      "--game-id",
-      "g",
-      "--game-version",
-      "1",
-      "--source-profile-id",
-      "p",
-      "--source-locale",
-      "ja-JP",
-      "--bundle-output",
-      "/run/bridge.json",
-    ]);
-    expect(rpg).toEqual({
-      engine: "rpg-maker",
-      gameId: "g",
-      gameVersion: "1",
-      sourceProfileId: "p",
-      sourceLocale: "ja-JP",
-      gameDir: "/games/rpg/www",
-    });
-    // RealLive-only mode flags are refused on the whole-game rpg-maker arm.
-    expect(() =>
-      resolveExtractAdapter("rpg-maker").parseCli(["--engine", "rpg-maker", "--scene", "1"]),
-    ).toThrow(/rpg-maker is whole-game/u);
-
-    const siglus = resolveExtractAdapter("siglus").parseCli([
-      "extract",
-      "--engine",
-      "siglus",
-      "--game-root",
-      "/games/siglus",
-      "--game-id",
-      "g",
-      "--game-version",
-      "1",
-      "--source-profile-id",
-      "p",
-      "--source-locale",
-      "ja-JP",
-      "--cipher-method",
-      "exe_angou_xor_lzss",
-      "--bundle-output",
-      "/run/bridge.json",
-    ]);
-    expect(siglus).toMatchObject({ engine: "siglus", cipherMethod: "exe_angou_xor_lzss" });
-    expect(() =>
-      resolveExtractAdapter("siglus").parseCli([
-        "extract",
-        "--engine",
-        "siglus",
-        "--cipher-method",
-        "not-declared",
-      ]),
-    ).toThrow(/out_of_profile_cipher_method/u);
-  });
-});
-
-// Env-gated REAL-byte proof: spawns the REAL `kaifuu-cli extract --engine
-// softpal <root>` through the production seam (no faked runProcess) and asserts
-// the real bridge it wrote. Runs only on an operator machine with the built
-// binary + private inventory row exported to a real Softpal root.
-describe("runKaifuuExtract (env-gated real Softpal byte oracle)", () => {
-  const softpalRoot = resolvePrivateCorpus("softpal", 1, "plain");
-  const gated = softpalRoot === undefined || softpalRoot.length === 0 || !existsSync(softpalRoot);
-  it.skipIf(gated)("drives the real softpal extract seam and writes a real bridge bundle", () => {
-    const workDir = mkdtempSync(join(tmpdir(), "itotori-softpal-real-"));
-    const bridgePath = join(workDir, "bridge.json");
-    try {
-      const res = runKaifuuExtract({
-        engine: "softpal",
-        gameRoot: softpalRoot!,
-        bundleOutputPath: bridgePath,
-      });
-      expect(res.engine).toBe("softpal");
-      expect(res.mode).toBe("whole-game");
-      expect(res.status).toBe(0);
-      const bridge = JSON.parse(readFileSync(bridgePath, "utf8")) as { units?: unknown[] };
-      expect(Array.isArray(bridge.units)).toBe(true);
-      expect(bridge.units!.length).toBeGreaterThan(0);
-    } finally {
-      rmSync(workDir, { recursive: true, force: true });
-    }
   });
 });
