@@ -1,577 +1,127 @@
-# Testing Standard
-
-> **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
-> of [`project-readiness.md`](../project-readiness.md).
-> "Alpha proof" mentions below refer to the `ALPHA-009` workflow and the
-> SHARED-025 manifest contract — mechanisms that support the redefined
-> dogfood point, not the alpha gate itself. Per the multi-game and
-> no-legacy-compat standing rules, real-bytes assertions on at least two
-> games of the same engine family supersede synthetic author-fixture smokes
-> wherever both exist; the kaifuu-reallive 47-byte synthetic smokes are
-> scheduled to be replaced by real-bytes assertions gated on the documented
-> env vars.
-
-This standard defines how Itotori, Kaifuu, and Utsushi tests describe behavior,
-use fixtures, and keep CI deterministic. It applies to TypeScript packages run
-through Vitest/Vite+, Rust crates run through Cargo, Drizzle/Postgres repository
-tests, MSW-backed app tests, and shared fixture contracts.
-
-## Goals
-
-- Test observable behavior before implementation details.
-- Make fixture provenance, hashes, and update intent reviewable.
-- Keep public CI offline, deterministic, and free of live provider calls.
-- Use property and mutation testing for high-risk invariants without making
-  every package slower by default.
-- Avoid test pyramid drift: many fast contract/unit tests, focused repository
-  and adapter integration tests, and a small number of end-to-end fixture loops.
-
-## Behavior-First Principle
-
-Prefer BLACK-BOX tests that assert OBSERVABLE behavior through a PUBLIC
-boundary over WHITE-BOX / mocked / implementation-coupled tests that assert on
-internal call shape, private helper order, or stubbed return values. This is a
-BIAS, not a ban.
-
-A test is **behavior** (black-box) when its assertion point is one of:
-
-- a real HTTP response (a started server, a real `fetch`, a status code / body
-  a client observes) — e.g. `apps/itotori/test/server.test.ts`;
-- a row persisted to and read back from a real Postgres — e.g. the
-  `packages/itotori-db/test/*.repository.test.ts` suites;
-- bytes a real decoder/patcher produced (the real-bytes oracle lanes
-  `crates/**/tests/*_real_bytes.rs`);
-- a rendered DOM node (a `jsdom` suite asserting on visible text or accessible
-  state), e.g. `apps/itotori/test/asset-decisions-dashboard-view.test.ts`.
-
-A test is **white-box** when it bypasses the public boundary to assert on an
-internal seam: a direct handler/module invocation (e.g.
-`handleItotoriApiRequest(…)`-direct in `api-handlers.test.ts`), a `vi.fn` /
-MSW stub asserting on mock call shape, or a private-helper call order. These
-couple the test to today's implementation and silently pass when the
-implementation rots beneath the contract.
-
-### When a white-box unit test is acceptable
-
-A white-box test is the RIGHT choice when the code under test has no public
-boundary to observe — i.e. **pure model logic**: index math, hash functions,
-encoding rules, schema validation, delta apply/reverse math, protected-span
-preservation. A pure-logic `#[test]` or vitest unit on a total function is
-fine and expected (the Rust `internal` seam and the TS `internal`/`mocked`
-seams exist for exactly this). The standing rule targets BEHAVIOR code —
-HTTP handlers, repository methods, dashboard components, engine ports — that
-DOES have a public boundary. For that code, reach for the boundary first and
-fall back to an internal seam only when the boundary is genuinely out of reach
-(and note why in the test).
-
-### Naming follows the behavior
-
-The grammar in **Behavior Naming** below is the expression of this principle:
-`<subject> rejects <invalid input> when <contract rule broken>` reads as a
-falsifiable behavior claim through the public boundary. A name like `calls
-helper` or `works` is the smell of a white-box test asserting on internal
-mechanics — rewrite it as the observable outcome a reviewer can falsify.
-
-### Making drift visible
-
-Because this is a bias and not a ban, drift is the risk: behavior code slowly
-accumulates internal-seam tests because they are faster to write. The
-classifier `scripts/classify-test-seams.mjs` (`just test ratio`) scans the
-tracked test suites and prints the by-seam ratio (behavior vs internal) so the
-drift is visible. It is a REPORT, not a gate: it always exits 0 and anchors a
-baseline ratio the team diffs against by eye. See **Test-Seam Classifier**
-near the end of this document.
-
-## Command Surface
-
-The root `justfile` is the shared command surface:
-
-| Command                                            | Purpose                                                                                                                                                                            |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `just check`                                       | Fast local gate: Vite+ metadata, roadmap validation, public fixture manifest validation, toolchain policy, TypeScript typecheck, Rust format check, and Cargo check.               |
-| `just test`                                        | Runs TypeScript Vitest suites through Vite+ and Rust `cargo test --workspace`.                                                                                                     |
-| `just ci`                                          | Full CI gate: check, build, DB migration, tests, clippy, and cargo-deny.                                                                                                           |
-| `just test browser`                                | STRICT/PERIODIC browser lane: runs the runtime-web review Playwright e2e in the nix-provided Chromium. OUTSIDE per-gate CI. Fails LOUD if no runnable Chromium. See `ci-lanes.md`. |
-| `just test browser && just test real-bytes-oracle` | Periodic/strict lane entry point: `browser-e2e` + `real-bytes-oracle`. OUTSIDE per-gate CI (nightly cron + on-demand). See `ci-lanes.md`.                                          |
-| `just check fixtures`                              | Validates committed public fixture manifests and hashes.                                                                                                                           |
-| `just check roadmap`                               | Validates the machine-readable spec DAG and audit report examples.                                                                                                                 |
-| `just test ratio`                                  | Prints the test-seam classifier report: behavior-vs-internal ratio by seam (real-bytes / real-http / dom / real-db vs internal-handler / mocked / internal). Report, not a gate.   |
-
-Package-level commands are allowed for tight loops, but PR verification should
-name the root command that protects the changed behavior.
-
-CI is split into two lanes — a fast, deterministic, browser-free per-gate lane
-(`just ci` / `qd-full-ci`: synthetic + real-HTTP `/api` contract tests + the
-OpenAPI drift test + the jsdom UI unit lane) and a periodic/strict lane
-(`just test browser && just test real-bytes-oracle`: the real-browser Playwright e2e + the real-bytes
-oracle). `ci-lanes.md` is the canonical map of which tests run where and
-why; the browser/real-bytes proofs are deliberately kept OUT of the per-gate
-lane so it stays fast and deterministic.
-
-`just test alpha` and the GitHub Alpha Proof workflow are the required
-integration checks (`ALPHA-009` retired the literal Hello World workflow). The
-gate validates bridge, patch, provider proof, benchmark, runtime evidence,
-dashboard/read-model, and SHARED-025 manifest linkage for the same fixture
-identity, source revision, and locale branch; it is not a success-string smoke.
-`just hello` remains only as a compatibility alias that delegates to
-`just test alpha` for roadmap nodes that still declare it, and cannot diverge.
-
-## Behavior Naming
-
-Prefer test names that read like a behavior claim a reviewer can falsify:
-
-- TypeScript: `it("renders DB-backed hello-world status from the API", ...)`.
-- Rust: `fn extracts_bridge_units_from_public_fixture()`.
-- DB: `it("persists and reads hello-world status against Postgres", ...)`.
-- API/UI with MSW: `it("renders runtime evidence returned by the status API", ...)`.
-- Round-trip: `fn patches_then_verifies_the_public_fixture_without_losing_spans()`.
-
-Use this grammar when it fits:
-
-```txt
-<observable result> when <meaningful condition>
-rejects <invalid input> when <contract rule is broken>
-preserves <domain invariant> across <operation>
-```
-
-Avoid names such as `works`, `calls helper`, `sets state`, `handles data`, or
-names that only restate the function name. A test name should mention the user,
-contract, fixture, repository, adapter, or API behavior that matters.
-
-Given/When/Then language is useful as structure, not ceremony. Use comments or
-local variable names when they clarify a larger test:
-
-```ts
-it("renders DB-backed hello-world status from the API", async () => {
-  const givenApiUrl = "http://itotori.test/api/hello/status";
-  const root = document.createElement("div");
-
-  await renderDashboard(root, givenApiUrl);
-
-  expect(root.textContent).toContain("hello_world_passed");
-});
-```
-
-Do not require Gherkin feature files unless a future runner consumes them. For
-most code, Arrange/Act/Assert with behavior names is enough.
-
-## Test Shape
-
-Each test should have one primary behavior and a small set of contract-level
-assertions. It may assert several fields when those fields define the same
-observable result, such as a dashboard status card or a persisted read model.
-
-Use public APIs, CLI boundaries, repository methods, adapter traits, schema
-guards, or rendered DOM output as assertion points. Avoid assertions on private
-helper call order, incidental SQL text, CSS implementation details, generated
-timestamps, or exact serialized whitespace unless that is the contract.
-
-Negative tests are required when a contract can fail in a meaningful way:
-invalid schema payloads, stale patch hashes, missing protected spans, unknown
-engine capabilities, rejected repository inputs, permission failures, and API
-error responses.
-
-## Fixture Layers
-
-Fixtures should be layered by reuse and legal risk:
-
-| Layer                 | Use                                                                                             | Rules                                                                                                                                                                               |
-| --------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Inline literals       | Tiny behavior examples inside a single test.                                                    | Keep them readable and synthetic. Do not paste real game text.                                                                                                                      |
-| Test builders         | Repeated valid bridge, patch, runtime, or DB objects.                                           | Put shared TypeScript builders in a dedicated workspace package when duplication crosses packages. Rust builders should live in the crate test module or a dedicated fixture crate. |
-| Public fixtures       | Cross-package, cross-language, or golden behavior.                                              | Raw files must be synthetic, public domain, or redistributable, and have a manifest under `fixtures/public/` that passes `just check fixtures`.                                     |
-| Golden artifacts      | Expected bridge bundles, patch exports, runtime reports, deltas, or normalized UI/API payloads. | Store only stable, reviewed artifacts with schema versions and fixture hashes. Prefer semantic JSON comparison over broad snapshots.                                                |
-| Private local corpora | Purchased games, licensed sets, and benchmark evidence that cannot be redistributed.            | Keep them under `fixtures/private-local/`, ignored by git. CI must pass when the directory is absent.                                                                               |
-
-Public CI may depend only on committed source, committed public fixtures, and
-their public manifests. Private local corpora can support local benchmark work,
-but committed tests, manifests, and package metadata must not point at them.
-
-## Golden Fixture Policy
-
-Golden fixtures are contract evidence, not a shortcut around assertions. Add or
-update a golden only when the exact artifact matters to compatibility, review,
-or cross-language parity.
-
-Golden tests must:
-
-- Cite the public fixture id or input file.
-- Include or derive the schema version and input hash.
-- Normalize volatile fields such as timestamps, absolute paths, generated temp
-  roots, host names, and nondeterministic IDs unless those fields are the
-  behavior being tested.
-- Assert the semantic payload before or while comparing the golden.
-- Have review text explaining whether the update is caused by a schema change,
-  adapter behavior change, fixture correction, or expected formatting change.
-
-Avoid brittle snapshots of whole DOM trees, large logs, or provider output.
-Prefer targeted DOM assertions, schema validation, stable JSON fixtures, and
-hash comparisons for binary or large artifacts.
-
-## TypeScript And Vite+
-
-TypeScript tests use Vitest. Vite+ is the workspace task runner for package
-typecheck, tests, and builds. Use package-local tests for package behavior and
-root `just` recipes for verification.
-
-TypeScript app tests should:
-
-- Use `jsdom` only for browser-facing behavior.
-- Render through exported app functions or components rather than private
-  helpers.
-- Assert visible text, accessible state, emitted API calls, or schema-validated
-  payloads.
-- Keep provider/model behavior behind fake providers, recorded fixtures, or MSW.
-
-### Targeted single-file app verification (CATALOG-087)
-
-To verify one app suite in isolation — for a roadmap `verification` command or a
-tight local loop — name the exact test file, not a substring filter:
-
-```sh
-just test dlsite-demand
-# or, equivalently, the concrete command it wraps:
-pnpm exec vitest run apps/itotori/test/dlsite-demand.test.ts --exclude '**/.direnv/**'
-```
-
-Do NOT use `pnpm --filter @itotori/app test -- <name>` to scope a run. The
-trailing `-- <name>` is dropped rather than forwarded as a Vitest file filter,
-so it runs the ENTIRE `@itotori/app` suite (~130 files, incl. Postgres/API
-repository tests that fail without a live database) instead of the intended
-file. Pass the file path directly to `vitest run`. The `--exclude '**/.direnv/**'`
-guard drops the local `.direnv` nix flake-source snapshot (a duplicate of the
-repo tree that would otherwise match the path substring twice); it is a harmless
-no-op in public CI, where `.direnv` does not exist. The command is fixture-only:
-no `DATABASE_URL`, no network, no providers, so it runs identically in the local
-sandbox and public CI.
-
-Example app behavior:
-
-```ts
-describe("Itotori dashboard", () => {
-  it("renders DB-backed hello-world status from the API", async () => {
-    await renderDashboard(root, "http://itotori.test/api/hello/status");
-
-    expect(root.textContent).toContain("hello_world_passed");
-    expect(root.textContent).toContain("1/1 translated");
-  });
-});
-```
-
-## MSW API Tests
-
-Browser and dashboard tests must not call a live local or remote API. Use MSW to
-serve API responses in Vitest:
-
-```ts
-const server = setupServer(
-  http.get("http://itotori.test/api/hello/status", () =>
-    HttpResponse.json({ finalStatus: "hello_world_passed" }),
-  ),
-);
-
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
-```
-
-MSW handlers should mirror real API shapes and, when schemas exist, validate the
-same request and response contracts as the server. Configure new suites with
-`onUnhandledRequest: "error"` so unmocked network calls fail immediately.
-
-## DB Repository Tests
-
-Drizzle/Postgres repository tests verify persistence behavior that pure unit
-tests cannot cover: migrations, foreign keys, inserts, updates, reads, and read
-models. They should stay focused on repository contracts rather than app flows.
-
-Repository tests must:
-
-- Require `DATABASE_URL` and make the absence explicit.
-- Run migrations or depend on a migration fixture created by the test command.
-- Reset only the tables or project IDs owned by the test.
-- Use deterministic IDs and synthetic bridge/runtime payloads.
-- Close database connections in `finally`.
-- Assert repository output and important persisted state, not Drizzle internals.
-
-The current `@itotori/db` repository test is the model: migrate, create a
-database context, reset test state, save an imported project, save drafts and
-runtime evidence, then assert the hello-world status read model.
-
-### Optional local skip vs. required DB validation (the relevant capability)
-
-A missing-`DATABASE_URL` run must never be mistaken for actual DB validation.
-The `@itotori/db` test runner (`packages/itotori-db/scripts/run-tests.mjs`)
-supports two explicitly-distinct modes:
-
-- **Fast-local skip** — `pnpm --filter @itotori/db test`. When `DATABASE_URL`
-  is unset it intentionally SKIPS the Postgres-backed suites so a quick check
-  stays fast. The skip is not silent: it prints a prominent banner, emits a
-  one-line grep-able marker (`ITOTORI_DB_TEST_SKIP {json}`), and writes a
-  machine-readable report to `.tmp/itotori-db/no-database-skipped.json`
-  carrying the package name, required env var, skipped-suite count + names, and
-  the remediation command. A green run in this mode did NOT validate the DB.
-- **Required DB validation** — `just test db` (or the `--require-
-database` script path used by `pnpm --filter @itotori/db test:db`). This is
-  the honesty gate: it runs the DB-backed suites and FAILS (non-zero) when
-  `DATABASE_URL` is missing/empty or a skip marker was recorded, so a skipped
-  run cannot masquerade as DB validation. Point it at a reachable Postgres
-  (`just dev db-up`). Use `scripts/assert-db-tests-not-skipped.mjs` to add the same
-  no-skip assertion to any lane.
-
-CI runs the required-validation path (`just ci public` brings up Postgres and
-runs `test:db` + the no-skip assertion), so CI DB coverage is never weakened by
-the local fast-skip affordance.
-
-### Scoped DB-backed proof gates (per-suite honesty)
-
-Some individual DB-classified suites are important enough to have their own
-scoped proof gate that PROVES the suite ran against a database rather than
-relying only on the aggregate `test-db-strict` lane. Each mirrors the same
-skip-visibility contract: no `DATABASE_URL` → a machine-readable skipped
-artifact plus a hard failure (never green-on-skip); with a reachable Postgres →
-run ONLY that suite and assert it executed persistence tests (per-suite count
-
-> 0, zero skipped, zero failed) into a deterministic proof artifact. They are
-> public-fixture-only (no private providers, no real bytes) and each ships a
-> regression test wired into `just check`.
-
-- **Catalog replay/idempotency (CATALOG-072)** —
-  `just test catalog-replay-db` (`scripts/catalog-replay-db-gate.mjs`).
-  Skip artifact `.tmp/itotori-db/catalog-replay-skipped.json`; marker
-  `CATALOG_REPLAY_DB_SKIP`; regression `scripts/catalog-replay-db-gate.test.mjs`.
-- **Repository permission-denial matrix (SHARED-027)** —
-  `just test permission-denial-db`
-  (`scripts/permission-denial-db-gate.mjs`). This runs only
-  `packages/itotori-db/test/authorization-matrix.test.ts` through the
-  `--require-database` runner path, then asserts the `repository permission
-denial fixtures` tests executed exactly one DB-backed denial assertion for
-  every `repositoryPermissionGateMatrix` entry (all passed, 0 skipped). Skip
-  artifact `.tmp/itotori-db/permission-denial-skipped.json`; proof artifact
-  `.tmp/itotori-db/permission-denial-proof.json`; one-line marker
-  `PERMISSION_DENIAL_DB_SKIP`; regression
-  `scripts/permission-denial-db-gate.test.mjs` (wired into `just check`). Bring
-  up a disposable Postgres first (`just dev db-up && just dev db-migrate`); the recipe
-  does not itself manage docker. The full up/migrate/run/down flow:
-
-  ```sh
-  just dev db-up
-  just dev db-migrate
-  DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" \
-    just test permission-denial-db
-  just dev db-down
-  ```
-
-  Run `DATABASE_URL= just test permission-denial-db` to see the missing-
-  `DATABASE_URL` hard failure.
-
-## Rust Adapter Tests
-
-Rust tests run through Cargo and should use normal `#[test]` functions unless a
-future crate needs an async or property-test harness. Name tests in snake case
-with the behavior first:
-
-```rust
-#[test]
-fn extracts_bridge_units_from_public_fixture() {
-    let extraction = FixtureAdapter
-        .extract(ExtractRequest {
-            game_dir: Path::new("fixtures/hello-game"),
-        })
-        .unwrap();
-
-    assert_eq!(extraction.bridge.extractor_name, "kaifuu-fixture");
-}
-```
-
-Adapter tests should cover:
-
-- Extraction from a public fixture into the shared bridge contract.
-- Patching from a schema-valid patch export into a temp output directory.
-- Verification of the patched output.
-- Negative cases for malformed source files, stale patch inputs, unsupported
-  assets, encoding errors, and protected-span corruption.
-- Round-trip behavior: extract, patch unchanged or translated text, verify, and
-  compare stable hashes or normalized payloads.
-
-Use temp output directories for generated files. Do not write back into
-`fixtures/hello-game` or `fixtures/public`.
-
-## Fixture Round-Trips
-
-Round-trip tests are the highest-value integration tests for the suite. A public
-fixture round-trip should prove the contract across at least these boundaries:
-
-1. Kaifuu extracts a public fixture into a bridge bundle.
-2. Itotori imports or validates the bridge and creates deterministic draft or
-   patch data.
-3. Kaifuu applies the patch into a temp output directory.
-4. Kaifuu verifies the patched output and records stable hashes.
-5. Utsushi fixture adapters produce trace or frame evidence when the spec needs
-   runtime coverage.
-
-Round-trips should assert stable domain facts: unit counts, source and target
-locales, protected span preservation, patch entry identity, status values, schema
-versions, and hashes. Do not compare unrelated formatting, temp paths, or
-machine-local runtime details.
-
-## Localization Quality Benchmarks
-
-Localization quality tests and benchmark fixtures use the `itotori-lqa-1`
-taxonomy from
-[ADR 0003](../adrs/0003-localization-quality-taxonomy.md) and
-[localization-quality-taxonomy.json](../localization-quality-taxonomy.json).
-
-Do not use DAG or audit `P0`-`P3` values as translation quality severities.
-Tests that create localization findings must use `qualitySeverity` values
-`critical`, `major`, `minor`, or `neutral`, and must keep the orchestration
-`severity` field separate when a triage or audit contract also needs one.
-
-Seeded-defect fixtures should be small, explicit, and oracle-backed. Each seed
-record should name:
-
-- fixture or corpus id and target locale;
-- affected bridge unit, span, asset, or runtime evidence id;
-- seed kind from the taxonomy;
-- category, subcategory, quality severity, and expected root cause;
-- expected detector families, such as deterministic QA, LLM QA, patch verify,
-  runtime probe, or human review;
-- expected evidence fields and accepted near-match rules;
-- whether the seed is public or private-local.
-
-QA-agent tests must score findings against adjudicated or seeded truth, not
-against model confidence. Required aggregate metrics are seeded recall, seeded
-precision, human-confirmed precision when human review is present, category
-accuracy, quality-severity accuracy, root-cause accuracy, critical recall, and
-unscorable rate.
-
-A finding is unscorable when it lacks any required taxonomy field, concrete
-evidence, affected subject reference, or adjudication state. Tests should fail
-on unscorable findings before computing precision or recall.
-
-Benchmark reports should aggregate counts by quality severity, category, root
-cause, detector kind, and adjudication state. A single quality score is allowed
-only as a dashboard trend field; tests must still assert the structured
-distribution because it is the repairable evidence.
-
-## Property Testing
-
-Property tests are for invariants that are easy to under-sample with examples.
-They are especially useful for:
-
-- Protected span preservation and index math.
-- Source hash and stale patch rejection rules.
-- Delta apply/reverse/apply-idempotence behavior.
-- Schema round-trips where field ordering or optional fields should not change
-  meaning.
-- Encoding and path normalization rules.
-
-Property tests should start small and deterministic, with fixed seeds or printed
-seeds on failure. They belong in normal CI only when they are fast and stable.
-Larger generators, broad corpus sweeps, and stress properties should be opt-in
-until a dedicated quality-gate node adds thresholds and scheduling.
-
-## Mutation Testing
-
-Mutation testing checks whether the assertions would catch plausible bugs. It is
-not a replacement for behavior tests and should not be applied uniformly.
-
-Use mutation testing for high-risk, compact logic:
-
-- Schema guards and negative validation.
-- Protected span mapping.
-- Patch eligibility and stale-hash checks.
-- Permission gates and policy decisions.
-- Delta package apply logic.
-
-Mutation testing is a targeted quality audit until a dedicated gate exists. Do
-not add broad mutation thresholds to `just check` or `just ci` without measuring
-runtime and false-positive cost. A mutation report should name surviving mutants,
-the missing behavior assertion, and whether the fix is a test, clearer code, or
-a deliberate equivalent mutant.
-
-## No-Live-API CI Rule
-
-Public CI, `just check`, `just test`, `just ci`, unit tests, repository tests,
-dashboard tests, roadmap validation, and fixture validation must not require or
-perform live calls to model providers, paid APIs, local developer services, or
-remote game services.
-
-Allowed in CI:
-
-- Fake providers.
-- MSW handlers.
-- Local Postgres started by the CI job.
-- Public fixtures and committed manifests.
-- Recorded, sanitized, redistributable response fixtures.
-
-Not allowed in CI:
-
-- Reading provider credentials from `.env` or local secret files.
-- Failing because a provider key is absent.
-- Calling OpenRouter, OpenAI, Anthropic, Google, model routers, storefronts, or
-  other remote APIs.
-- Reaching `fixtures/private-local/`.
-- Writing raw provider logs, raw private corpus text, screenshots, or paid API
-  payloads into committed paths.
-
-Live provider experiments are opt-in local work under the provider policy in
-`orchestration-operating-model.md`. They may use credentials already loaded
-by the user or explicitly loaded from approved local-only env sources, record
-provider/model/cost metadata in ignored artifacts, and commit only sanitized
-summaries or public fixtures.
-
-## Test-Seam Classifier
-
-`scripts/classify-test-seams.mjs` (invoked as `just test ratio`) is the
-behavior-first drift detector. It scans the tracked test suites
-(`apps/*/test`, `packages/*/test`, `crates/`) and classifies each test FILE
-into exactly one PRIMARY seam by the strongest signal it emits, then prints a
-by-seam count and the behavior-vs-internal ratio. Dev-harness suites under
-`scripts/` and `suite/scripts/` are excluded (they test the tooling, not the
-product).
-
-Seams (highest precedence first; a file maps to its strongest signal):
-
-| Seam               | Signal                                                                       | Kind      |
-| ------------------ | ---------------------------------------------------------------------------- | --------- |
-| `real-bytes`       | Rust `*_real_bytes.rs` or `#[ignore]` naming a live corpus env.              | behavior  |
-| `real-http`        | TS that starts the real Itotori HTTP server (`startItotoriServer`).          | behavior  |
-| `internal-handler` | TS that calls `handleItotoriApiRequest(…)` directly (bypasses HTTP).         | white-box |
-| `dom`              | TS with `@vitest-environment jsdom` (renders real DOM).                      | behavior  |
-| `real-db`          | TS that drives a real Postgres (`isolatedMigratedContext` / `DATABASE_URL`). | behavior  |
-| `mocked`           | TS whose only signal is `setupServer` / `vi.fn` / `vi.mock` (no boundary).   | white-box |
-| `internal`         | default (pure model logic; acceptable white-box).                            | white-box |
-
-The precedence encodes the principle: the strongest PUBLIC-BOUNDARY signal
-wins (`real-bytes` > `real-http` > `dom` > `real-db`), and a file that opts
-OUT of the boundary (`internal-handler`) is white-box even when it ALSO does
-real-db work — bypassing HTTP is the defining choice. Notably `server.test.ts`
-stubs every service with `vi.fn` but goes through real HTTP, so it correctly
-counts as `real-http` (behavior); `api-handlers.test.ts` calls the handler
-directly AND uses a real Postgres, and counts as `internal-handler`
-(white-box) — which is why a ratio exists to watch.
-
-The classifier is a REPORT, not a gate: it always exits 0 and prints the
-baseline ratio. Run it on the current tree to anchor the baseline; diff
-against it by eye when reviewing a change that adds tests. Promoting it to a
-hard fail (e.g. a `--check` mode against a committed baseline file) is a
-later decision — the first step is making the bias and the drift visible.
-
-## Review Checklist
-
-Before merging testing changes:
-
-1. Test names describe observable behavior.
-2. New behavior code (handlers, repositories, components, engine ports) is
-   covered through a PUBLIC boundary first (real HTTP / real DB / real DOM /
-   real bytes), not only through an internal seam or a mock. Pure model-logic
-   unit tests are fine.
-3. Fixtures are at the lowest suitable layer and public fixtures have manifests.
-4. MSW/browser suites fail on unhandled network requests.
-5. DB tests isolate state and close connections.
-6. Golden updates are stable, normalized, and justified.
-7. Property or mutation tests target real invariants instead of blanket quotas.
-8. `just check roadmap` and `just check` pass.
-9. No committed test requires live providers, private corpora, or local-only
-   credentials.
+# Testing standard
+
+Tests prove observable behavior. Prefer a public boundary—HTTP, persisted data,
+rendered DOM, or bytes produced by a decoder or patcher—over assertions about
+private helper calls. Pure model logic may use direct unit tests when no public
+boundary exists. A test name should say what a user or caller can observe.
+
+Public CI must be deterministic. It may use public fixtures, fake providers,
+MSW, and a local disposable database, but it must not need provider credentials,
+private corpora, or a live remote service. Real-byte and browser evidence are
+separate named lanes; a green static or public lane does not prove either.
+
+## Command surface
+
+The root `justfile` is deliberately thin. It exposes six delegates:
+`worktree-setup`, `dev`, `doctor`, `check`, `test`, and `ci`. A selector is data
+validated by `scripts/developer-command.mjs`; do not invent a recipe name for a
+new selector. Run `just --summary` for the delegates and inspect that dispatcher
+for the complete, executable selector lists.
+
+| Command                   | What it runs                                                                                                         |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `just worktree-setup`     | Offline, frozen pnpm install for a fresh worktree.                                                                   |
+| `just doctor core`        | Native-dependency probe for the core profile.                                                                        |
+| `just doctor render`      | Native-dependency probe for the render profile.                                                                      |
+| `just doctor full`        | Native-dependency probe for the full profile.                                                                        |
+| `just check`              | All static checks: metadata/policy guards, TypeScript checks, and Rust format, check, clippy, and dependency checks. |
+| `just check meta`         | Repository metadata, guard, generated-artifact, and dispatcher checks.                                               |
+| `just check ts`           | TypeScript formatting and typecheck.                                                                                 |
+| `just check rust`         | Rust formatting, workspace check, clippy, and dependency audit.                                                      |
+| `just check fixtures`     | Public fixture-manifest validation.                                                                                  |
+| `just check roadmap`      | Spec-DAG validation.                                                                                                 |
+| `just test`               | TypeScript test tasks and `cargo test --workspace`.                                                                  |
+| `just test dlsite-demand` | The supported scoped app-suite selector.                                                                             |
+| `just test ratio`         | A report-only classification of tracked test files by seam.                                                          |
+| `just ci public`          | The public integration sequence: all checks, build, database migration, all tests, and mutation differential.        |
+| `just ci affected`        | qd’s affected runner; it owns its disposable database lifecycle.                                                     |
+
+Use the smallest command that exercises the changed behavior during a tight
+loop, then run the lane required by the change. Package-level commands are fine
+when a package documents one, but a handoff must name the root command or
+concrete package command that was actually run.
+
+The three `doctor` profile selectors are passed to the native-dependency
+checker as `--profile core`, `--profile render`, and `--profile full`.
+They are valid dispatcher commands, not an `unknown argument` limitation. A
+profile still exits nonzero when one of its required native dependencies is
+unavailable; its report names the missing dependency and a remediation.
+
+## CI lanes and their limits
+
+`ci-lanes.md` is the complete lane map. In short:
+
+- `just ci tier0` runs the static meta, TypeScript, Rust, and manifest lanes.
+- Tier-1 selectors split public TypeScript, Rust, database, browser, and
+  mutation work. `just ci private-real-bytes` preflights the private proof lane.
+- `just test browser` requires a runnable browser binary. `just test
+real-bytes` and the oracle selectors require their private inputs. Missing
+  required inputs must fail rather than turn into an implied pass.
+
+The test-seam classifier is useful for drift, but it is not a quality gate: it
+classifies a file’s strongest detectable seam and exits successfully. Likewise,
+unit and integration tests cannot establish performance, privacy, or
+real-corpus fidelity unless they exercise and measure those properties.
+
+## Fixture and database discipline
+
+Use the lowest suitable fixture layer:
+
+| Layer                | Use                                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------------ |
+| Inline values        | A small, readable behavior example.                                                        |
+| Builders             | Repeated valid test objects within a package or crate.                                     |
+| Public fixture       | Cross-package or golden behavior; it needs a committed manifest.                           |
+| Private local corpus | Licensed or non-redistributable evidence; ignored by Git and never a public-CI dependency. |
+
+Database tests require a real database when they claim persistence behavior.
+`just test db` is the required database selector; it fails if the required
+database is unavailable. A package test that explicitly reports its database
+skip has not tested persistence and must not be reported as a database pass.
+
+When `DATABASE_URL` is unset, `pnpm --filter @itotori/db test` deliberately
+skips all 69 database suites and says that it did not validate the DB layer.
+The DB Vitest configuration has `fileParallelism: false`: every suite migrates
+an isolated schema under one Postgres advisory lock, so parallel file execution
+queues migrations and can hit the 90-second hook timeout. This skip proves
+neither database behavior nor test success; use `just test db` for that.
+
+## Guard boundaries
+
+The repository’s structural guards are intentionally narrow claims:
+
+- The line-cap guard enforces a 500-line maximum for tracked `.js`, `.mjs`,
+  `.rs`, `.ts`, and `.tsx` source files; on this tree it scans 3,134 files and
+  all are at or below the cap. It counts newline characters and prints both its
+  extension counts and limits. It cannot inspect untracked or ignored files,
+  untracked generated output, or source files with other extensions.
+- The test-collection guard compares conventional `*.test.*` files on disk
+  under `packages/` and `apps/` with every configured Vitest project plus the
+  DB Node-runner manifest. It currently reports `296 on disk, 296 collected,
+0 uncollected`. It verifies configured discovery only: a collected suite can
+  still fail when its test bodies run.
+- The game-name guard scans tracked UTF-8 text using structural identity shapes,
+  not a title list, and checks a limited Shift-JIS byte-literal form. It cannot
+  reliably identify arbitrary prose names, opaque bytes, non-UTF-8 files, or
+  a form outside those shapes.
+- The node-id guard scans all tracked files, including binary data, for its
+  structural identifier and prose-reference patterns. Generated fixtures,
+  the planning export, and applied migrations are scoped exemptions; untracked
+  and ignored files are outside its view.
+- The environment-registry guard allows only literals declared in
+  `config/environment-registry.json` and verifies that `.env.example` matches.
+  It has a zero-undeclared-read budget. It sees tracked literal read forms, not
+  dynamically assembled names or untracked files.
+
+Environment variables are deployment inputs for the person hosting the
+application. Anything a translator might want to set differently is application
+configuration, not an environment variable.
+
+## Review checklist
+
+1. The behavior has a test through the strongest practical public boundary.
+2. A scoped test or relevant lane was run after the final edit.
+3. Fixtures are redistributable and have a manifest when they cross packages.
+4. A database, browser, private-corpus, or provider claim names the input that
+   was actually exercised; an absent input is reported as absent, not passed.
+5. Generated artifacts and the structural guards are clean.

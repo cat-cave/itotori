@@ -246,7 +246,7 @@ execution.
    catalog entry and adapter implementation; any required central source edit
    fails.
 3. `audit-engine-dispatch.mjs` follows the existing game-name guard's
-   shrink-only, AST-based style ([`audit-no-game-names.mjs`](../../scripts/audit-no-game-names.mjs#L28-L53)).
+   structural, tracked-file scanning style ([`audit-no-game-names.mjs`](../../scripts/audit-no-game-names.mjs#L28-L53)).
    It obtains ids from the catalog and rejects comparisons, switches, or
    membership branches on an engine id outside adapter modules, generated
    registries, and the registry test fixture.

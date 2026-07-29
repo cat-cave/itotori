@@ -155,5 +155,5 @@ lane is periodic-only (`just test real-bytes-oracle`), never per-gate.
   a crate change now runs the family's synthetic rust gate + this guardrail, NOT
   `ci-real-bytes`. The real corpora are re-run only in the periodic oracle.
 
-The cargo driver defaults to `cargo`; override with `ITOTORI_MUTATION_CARGO`
-(e.g. `direnv exec . cargo`) outside the devshell.
+The mutation driver uses the active `cargo`. Run it inside the approved dev
+shell so the pinned toolchain and per-worktree target directory apply.

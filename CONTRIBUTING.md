@@ -16,37 +16,41 @@ surface: dev setup, internal architecture, the qd DAG workflow, worktree
 lifecycle, testing standard, CI policy, and the audit playbook. Start there
 when you are going to change code.
 
-## Where to start as a contributor
+## How to work in this repository
 
-1. **Read [`AGENTS.md`](AGENTS.md) at the repo root.** It is the short agent /
-   contributor conventions file (fresh-worktree provisioning, per-worktree
-   `CARGO_TARGET_DIR`, env-path guard).
-2. **Skim [`docs/dev/README.md`](docs/dev/README.md).** It indexes every doc
-   under `docs/dev/` so you can jump to the one your task needs.
-3. **For "what is this repo laid out like"**, read
-   [`docs/dev/architecture.md`](docs/dev/architecture.md) and the
-   [`docs/dev/spec-dag.md`](docs/dev/spec-dag.md) /
-   [`docs/dev/orchestration-operating-model.md`](docs/dev/orchestration-operating-model.md)
-   pair if you are picking up a qd-driven work item. **Orchestrators** start
-   at [`docs/orchestration.md`](docs/orchestration.md) (the playbook
-   `qd method show` points at).
-4. **For "how do I run a single test or a single gate"**, read
-   [`docs/dev/testing-standard.md`](docs/dev/testing-standard.md) and
-   [`docs/dev/ci-lanes.md`](docs/dev/ci-lanes.md).
-5. **For dev-toolchain questions** (Nix flakes, pnpm, Rust versions, upgrades),
-   read [`docs/dev/toolchain-policy.md`](docs/dev/toolchain-policy.md).
+1. Read [`AGENTS.md`](AGENTS.md), then the index at
+   [`docs/dev/README.md`](docs/dev/README.md).
+2. In a fresh worktree, approve the checked-in dev shell once and provision
+   dependencies from the offline store:
+
+   ```sh
+   direnv allow
+   direnv exec . just worktree-setup
+   ```
+
+3. Use the six stable `just` delegates. `just --summary` lists them; selectors
+   are validated by `scripts/developer-command.mjs`, not added as new recipes.
+4. Start with `just check` for the complete static gate. Use a scoped command
+   when it matches the change, for example `just check fixtures`,
+   `just check roadmap`, or `just test dlsite-demand`. See
+   [`docs/dev/testing-standard.md`](docs/dev/testing-standard.md) for the
+   available scopes and selectors.
+5. Use [`docs/dev/ci-lanes.md`](docs/dev/ci-lanes.md) to choose a CI lane.
+   `just ci public` is the local public integration lane; `just ci affected`
+   is the qd-owned affected runner. Orchestrators start at
+   [`docs/orchestration.md`](docs/orchestration.md).
 
 ## Workflow at a glance
 
 - Worktrees live under `/scratch/worktrees/` (not inside the repo) and have a
   per-worktree `CARGO_TARGET_DIR` — see
   [`docs/dev/worktree-lifecycle.md`](docs/dev/worktree-lifecycle.md).
-- A fresh worktree has no `node_modules`; run `just worktree-setup` once
-  before `pnpm exec vp check` or `just check fixtures`.
+- A fresh worktree has no `node_modules`; run `direnv exec . just
+worktree-setup` once before TypeScript checks or fixture validation.
 - Orchestration goes through qd; see
   [`docs/orchestration.md`](docs/orchestration.md) (playbook),
   [`docs/dev/orchestration-operating-model.md`](docs/dev/orchestration-operating-model.md)
   (itotori-only rules), and [`docs/dev/spec-dag.md`](docs/dev/spec-dag.md).
-- Before opening a PR, run `just check`; the full lane is `just ci`. Lanes
-  and which tests run where are mapped in
+- Before opening a PR, run the lane appropriate to the change. The available
+  lanes and their contents are mapped in
   [`docs/dev/ci-lanes.md`](docs/dev/ci-lanes.md).

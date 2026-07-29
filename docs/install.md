@@ -38,13 +38,15 @@ sole host requirement is a Node runtime matching the `.node-version` pin (a
 ### Set up with `itotori init`
 
 ```sh
-itotori init                      # guided: OpenRouter key + database + config
-itotori db-migrate                # apply the DB schema migrations (needs DATABASE_URL)
+itotori init                      # guided application and deployment setup
+itotori db-migrate                # apply the DB schema migrations
 ```
 
 `itotori init` writes `~/.config/itotori/config.env` (mode `0600`) and walks you
-through the OpenRouter key and the database footprint. Your API key is never
-printed or logged. Every live request carries the ZDR routing posture; see
+through application configuration and the database footprint. Deployment
+inputs are limited to the environment registry; application choices do not
+become environment variables. Secrets are never printed or logged. Every live
+request carries the ZDR routing posture; see
 [security-and-limitations.md](security-and-limitations.md).
 
 ### Native runtime dependencies (not bundled)
@@ -54,17 +56,18 @@ dependencies the pipeline drives — the kaifuu/utsushi Rust bins, Postgres, and
 Chromium — are **not** bundled (they are third-party runtime tooling). Provision
 them via the deterministic path in
 [`native-deps-provisioning.md`](native-deps-provisioning.md), then run
-`itotori db-migrate` (needs `DATABASE_URL`) before a live `itotori localize`.
+`itotori db-migrate` before a live `itotori localize`.
 
-| Dep                        | Provisioned via                                                                             |
-| -------------------------- | ------------------------------------------------------------------------------------------- |
-| kaifuu / utsushi Rust bins | `ITOTORI_LIBEXEC_DIR` (shipped prebuilt) or a `cargo build --release`                       |
-| Postgres                   | `DATABASE_URL` (system / container / portable `ITOTORI_POSTGRES_BIN_DIR`)                   |
-| Chromium (render/e2e)      | `UTSUSHI_BROWSER_BIN` / `PLAYWRIGHT_CHROMIUM_BIN` / `pnpm exec playwright install chromium` |
+| Dep                        | Provisioned via                                                                           |
+| -------------------------- | ----------------------------------------------------------------------------------------- |
+| kaifuu / utsushi Rust bins | Installed release artifacts or a local release build, selected through application setup. |
+| Postgres                   | A database configured through the application setup.                                      |
+| Chromium (render/e2e)      | Installed browser selected through application setup.                                     |
 
-From a clone, `just doctor` verifies every native dep resolves + runs (it fails
-loud with a per-dep fix-it) and `just doctor provision` obtains the
-missing ones; an installed machine follows the provisioning doc above.
+The current `just doctor <profile>` delegate has a dispatcher/parser mismatch
+and exits before performing its check; see the provisioning document. Do not
+use it as evidence until that behavior is repaired. An installed machine
+follows the provisioning document above.
 
 ## Developer / fresh-clone setup
 
@@ -139,9 +142,9 @@ patched-output runtime proof is grounded.
 
 ### Live runs (opt-in only — see security docs first)
 
-Live localization runs need explicit corpus + credential environment and are
+Live localization runs need explicit corpus and configured credentials and are
 **never** the default. Requirements, ZDR posture, and the copyright boundary are
 documented in [`security-and-limitations.md`](security-and-limitations.md). In
 short: a live `itotori localize --run-mode production` run requires a real corpus
-root and an exported `OPENROUTER_API_KEY`; every provider request carries the
+root and approved deployment inputs; every provider request carries the
 required ZDR routing posture.

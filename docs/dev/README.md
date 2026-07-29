@@ -11,6 +11,12 @@ If you are a new contributor, start with [`CONTRIBUTING.md`](../../CONTRIBUTING.
 at the repo root; it routes you to the right doc below for each contributor
 concern.
 
+The short path is: enter the approved dev shell, run `just worktree-setup` in a
+fresh worktree, use `just check` for the complete static gate, then select the
+smallest relevant test or CI lane. The root `justfile` intentionally has only
+six delegates; its selector vocabulary lives in
+[`scripts/developer-command.mjs`](../../scripts/developer-command.mjs).
+
 ## Index
 
 ### Dev setup
@@ -58,8 +64,8 @@ concern.
 
 ### CI / dependency policy
 
-- [`ci-lanes.md`](ci-lanes.md) — per-gate lane vs periodic/strict lane, what
-  runs where, why.
+- [`ci-lanes.md`](ci-lanes.md) — the supported CI selectors, what runs where,
+  and the limits of each lane.
 - [`ci-cache-and-affected.md`](ci-cache-and-affected.md) — `just check affected`,
   Vite+ task cache, Cargo cache, and the affected-vs-required-CI rule.
 - [`dependency-policy.md`](dependency-policy.md) — `cargo-deny` strictness,

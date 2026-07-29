@@ -189,6 +189,6 @@ implemented the vertical command and `ALPHA-009` promoted it into CI and retired
 the literal "Hello World" workflow. The first real-engine vertical is `ALPHA-006`
 (the configured alpha target corpus on RealLive, sourced from the corpus vault
 per the vault-source adapter contract). There is no second,
-weaker Hello World source of truth: `just hello` survives only as a compatibility
-alias that delegates to `just test alpha` and cannot diverge. See
+weaker Hello World source of truth. Use the supported `just test alpha`
+selector when that integration check is required. See
 [alpha-proof.md](../alpha-proof.md).

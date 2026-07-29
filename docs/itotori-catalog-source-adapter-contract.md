@@ -156,7 +156,7 @@ durable evidence of CATALOG-065 replay conformance, rather than pointing only at
 
 The replay and idempotency tests that prove this contract are DB-classified: they drive an isolated
 migrated Postgres via `packages/itotori-db/test/db-test-context.ts`, so the fast-local
-`pnpm --filter @itotori/db test` (and any run without `DATABASE_URL`) **skips** them with a
+`pnpm --filter @itotori/db test` without configured database access **skips** them with a
 prominent, machine-readable marker. A skipped suite is _not_ replay coverage — a green fast-local run
 proves nothing about the CATALOG-065 replay path.
 
@@ -179,7 +179,7 @@ source-adapter replay + idempotency repository suites against the database:
 
 The gate is **fail-loud, never green-on-skip**:
 
-- With no `DATABASE_URL` it writes a machine-readable skipped artifact
+- Without configured database access it writes a machine-readable skipped artifact
   (`.tmp/itotori-db/catalog-replay-skipped.json`, `replayCovered: false`) and **exits non-zero**, so
   a skip can never be mistaken for full persisted replay verification.
 - With a reachable database it asserts each named suite executed replayed tests (per-suite test
