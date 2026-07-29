@@ -20,9 +20,9 @@ export class ProjectRuntimeDashboardRepository extends ProjectRepositoryBase {
     await deps.requirePermission(this.db, actor, deps.permissionValues.catalogRead);
     const requestedRuntimeRunId = runtimeRunId ?? null;
     // An explicit project scope constrains BOTH selection paths: a requested
-    // run must belong to the scope, deps.and the unscoped-run fallback may only
+    // run must belong to the scope, and the unscoped-run fallback may only
     // choose the requested project. A run outside the scope therefore reads as
-    // "deps.not found" rather than silently returning another project's evidence.
+    // "not found" rather than silently returning another project's evidence.
     const requestedProjectId =
       projectId === undefined ? null : await this.requireProjectScopeForRuntimeStatus(projectId);
     const result = await this.db.execute(deps.sql`
@@ -32,9 +32,9 @@ export class ProjectRuntimeDashboardRepository extends ProjectRepositoryBase {
           project_id,
           created_at
         from ${deps.runtimeEvidenceRuns}
-        where ${requestedRuntimeRunId}::text is deps.not null
-          deps.and runtime_run_id = ${requestedRuntimeRunId}
-          deps.and (${requestedProjectId}::text is null or project_id = ${requestedProjectId})
+        where ${requestedRuntimeRunId}::text is not null
+          and runtime_run_id = ${requestedRuntimeRunId}
+          and (${requestedProjectId}::text is null or project_id = ${requestedProjectId})
         limit 1
       ),
       latest_project as (
@@ -46,7 +46,7 @@ export class ProjectRuntimeDashboardRepository extends ProjectRepositoryBase {
           select project_id, 1 as priority, updated_at as selected_at
           from ${deps.projects}
           where ${requestedRuntimeRunId}::text is null
-            deps.and (${requestedProjectId}::text is null or project_id = ${requestedProjectId})
+            and (${requestedProjectId}::text is null or project_id = ${requestedProjectId})
         ) project_candidates
         order by priority, selected_at desc
         limit 1
@@ -69,11 +69,11 @@ export class ProjectRuntimeDashboardRepository extends ProjectRepositoryBase {
           created_at
         from ${deps.runtimeEvidenceRuns}
         where (
-          ${requestedRuntimeRunId}::text is deps.not null
-          deps.and runtime_run_id in (select runtime_run_id from requested_runtime_run)
+          ${requestedRuntimeRunId}::text is not null
+          and runtime_run_id in (select runtime_run_id from requested_runtime_run)
         ) or (
           ${requestedRuntimeRunId}::text is null
-          deps.and project_id in (select project_id from latest_project)
+          and project_id in (select project_id from latest_project)
         )
         order by report_created_at desc, created_at desc
         limit 1
@@ -85,10 +85,10 @@ export class ProjectRuntimeDashboardRepository extends ProjectRepositoryBase {
           created_at
         from ${deps.artifacts}
         where project_id in (select project_id from latest_project)
-          deps.and artifact_kind = 'runtime_report'
-          deps.and (
+          and artifact_kind = 'runtime_report'
+          and (
             artifact_id in (select runtime_report_artifact_id from selected_runtime_run)
-            or deps.not exists (select 1 from selected_runtime_run)
+            or not exists (select 1 from selected_runtime_run)
           )
         order by created_at desc
         limit 1
@@ -100,10 +100,10 @@ export class ProjectRuntimeDashboardRepository extends ProjectRepositoryBase {
           created_at
         from ${deps.artifacts}
         where project_id in (select project_id from latest_project)
-          deps.and artifact_kind = 'patch_result'
-          deps.and (
+          and artifact_kind = 'patch_result'
+          and (
             artifact_id in (select patch_result_artifact_id from selected_runtime_run)
-            or deps.not exists (select 1 from selected_runtime_run)
+            or not exists (select 1 from selected_runtime_run)
           )
         order by created_at desc
         limit 1
@@ -111,11 +111,11 @@ export class ProjectRuntimeDashboardRepository extends ProjectRepositoryBase {
       runtime_capture_kind_counts as (
         -- DAG-node-runtime-status-double-counted-capture-scalars-on-wire:
         -- The frame-capture vs screenshot API scalars are the REAL distinct
-        -- per-artifactKind counts of the persisted runtime deps.artifacts (each
+        -- per-artifactKind counts of the persisted runtime artifacts (each
         -- capture produces exactly one row, keyed either as the
         -- frame_capture artifact_kind for legacy deps.RuntimeVerificationReport
         -- frame captures or as the screenshot artifact_kind for
-        -- deps.RuntimeEvidenceReportV02 captures). Counting from the deps.artifacts
+        -- RuntimeEvidenceReportV02 captures). Counting from the artifacts
         -- table avoids double-counting that arose when the single
         -- capture_count column on itotori_runtime_evidence_runs was reused
         -- for both scalars.
@@ -127,7 +127,7 @@ export class ProjectRuntimeDashboardRepository extends ProjectRepositoryBase {
             as screenshot_kind_count
         from ${deps.artifacts} a
         where a.artifact_kind in ('frame_capture', 'screenshot')
-          deps.and a.metadata->>'runtimeReportId' is deps.not null
+          and a.metadata->>'runtimeReportId' is not null
         group by a.metadata->>'runtimeReportId'
       )
       select
@@ -264,7 +264,7 @@ export class ProjectRuntimeDashboardRepository extends ProjectRepositoryBase {
       ) refs on true
       left join ${deps.sourceUnits} su on su.bridge_unit_id = rei.bridge_unit_id
       where rei.runtime_run_id = ${runtimeRunId}
-        deps.and rei.evidence_kind in ('trace_event', 'branch_event')
+        and rei.evidence_kind in ('trace_event', 'branch_event')
       order by rei.frame nulls last, rei.runtime_evidence_id
     `);
 
@@ -347,7 +347,7 @@ export class ProjectRuntimeDashboardRepository extends ProjectRepositoryBase {
       from ${deps.artifacts} a
       left join ${deps.sourceUnits} su on su.bridge_unit_id = a.bridge_unit_id
       where a.metadata->>'runtimeReportId' = ${runtimeRunId}
-        deps.and a.artifact_kind in (
+        and a.artifact_kind in (
           'screenshot',
           'recording',
           'trace_log',
@@ -391,14 +391,14 @@ export class ProjectRuntimeDashboardRepository extends ProjectRepositoryBase {
           rei.evidence_tier
         ) as evidence_tier_ceiling,
         coalesce(
-          jsonb_agg(distinct ref.bridge_unit_id) filter (where ref.bridge_unit_id is deps.not null),
+          jsonb_agg(distinct ref.bridge_unit_id) filter (where ref.bridge_unit_id is not null),
           '[]'::jsonb
         ) as bridge_unit_ids
       from ${deps.runtimeEvidenceItems} rei
       left join ${deps.runtimeEvidenceBridgeUnitRefs} ref
         on ref.runtime_evidence_id = rei.runtime_evidence_id
       where rei.runtime_run_id = ${runtimeRunId}
-        deps.and rei.evidence_kind = 'approximation'
+        and rei.evidence_kind = 'approximation'
       group by rei.runtime_evidence_id, rei.metadata, rei.evidence_tier
       order by rei.runtime_evidence_id
     `);

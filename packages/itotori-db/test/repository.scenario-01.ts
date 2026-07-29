@@ -371,4 +371,19 @@ describe("ItotoriProjectRepository", () => {
       await context.close();
     }
   });
+  it("persists legacy bundle revisions without a module qualifier", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
+      await repo.reset(localActor);
+      const project = projectFixture();
+
+      const imported = await repo.importSourceBundle(localActor, project);
+
+      expect(imported.sourceBundleRevisionId).toBe(`${project.bridge.bridgeId}:bundle-revision`);
+      expect(imported.sourceBundleRevisionId).not.toContain("helpers.");
+    } finally {
+      await context.close();
+    }
+  });
 });

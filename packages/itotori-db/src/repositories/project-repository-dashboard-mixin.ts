@@ -8,7 +8,7 @@ export class ProjectDashboardRepository extends ProjectRepositoryBase {
     // Scope the "which project" CTE to the requested project when supplied.
     // Composed read models pass an explicit projectId so the status they embed
     // (progress + locale-branch set) belongs to the SAME project as the rest of
-    // the composition; a bad/foreign projectId selects no project deps.and the read
+    // the composition; a bad/foreign projectId selects no project and the read
     // fails closed ("no Itotori project state found") rather than falling back
     // to another project's data.
     const projectScope =
@@ -62,7 +62,7 @@ export class ProjectDashboardRepository extends ProjectRepositoryBase {
         from ${deps.bridgeImports} li
         join ${deps.sourceBundles} sb
           on sb.source_bundle_id = li.source_bundle_id
-          deps.and sb.source_bundle_revision_id = li.source_bundle_revision_id
+          and sb.source_bundle_revision_id = li.source_bundle_revision_id
         where li.project_id in (select project_id from latest_project)
         order by li.imported_at desc
         limit 1
@@ -81,7 +81,7 @@ export class ProjectDashboardRepository extends ProjectRepositoryBase {
           imported_at
         from ${deps.sourceBundles}
         where project_id in (select project_id from latest_project)
-          deps.and deps.not exists (select 1 from latest_import_bundle)
+          and not exists (select 1 from latest_import_bundle)
         order by imported_at desc
         limit 1
       ),
@@ -173,11 +173,11 @@ export class ProjectDashboardRepository extends ProjectRepositoryBase {
         b.status as branch_status,
         sg.latest_version_id as current_style_guide_policy_version_id,
         count(distinct su.bridge_unit_id)::int as unit_count,
-        count(distinct lbu.bridge_unit_id) filter (where lbu.target_text is deps.not null)::int as translated_unit_count,
+        count(distinct lbu.bridge_unit_id) filter (where lbu.target_text is not null)::int as translated_unit_count,
         totals.finding_count::int as finding_count,
         count(distinct f_branch.finding_id) filter (
           where f_branch.status = 'open'
-            deps.and rvf_branch.finding_id is null
+            and rvf_branch.finding_id is null
         )::int as open_finding_count,
         totals.artifact_count::int as artifact_count,
         count(distinct a_branch.artifact_id)::int as branch_artifact_count,
@@ -190,17 +190,17 @@ export class ProjectDashboardRepository extends ProjectRepositoryBase {
       left join ${deps.sourceUnits} su on su.source_bundle_id = sb.source_bundle_id
       left join ${deps.localeBranchUnits} lbu
         on lbu.locale_branch_id = b.locale_branch_id
-        deps.and lbu.bridge_unit_id = su.bridge_unit_id
+        and lbu.bridge_unit_id = su.bridge_unit_id
       left join ${deps.styleGuides} sg
         on sg.locale_branch_id = b.locale_branch_id
       left join itotori_findings f_branch
         on f_branch.project_id = p.project_id
-        deps.and f_branch.locale_branch_id = b.locale_branch_id
+        and f_branch.locale_branch_id = b.locale_branch_id
       left join ${deps.runtimeValidationFindings} rvf_branch
         on rvf_branch.finding_id = f_branch.finding_id
       left join itotori_artifacts a_branch
         on a_branch.project_id = p.project_id
-        deps.and a_branch.locale_branch_id = b.locale_branch_id
+        and a_branch.locale_branch_id = b.locale_branch_id
       left join lateral (
         select
           count(distinct f.finding_id) as finding_count,
@@ -273,9 +273,9 @@ export class ProjectDashboardRepository extends ProjectRepositoryBase {
     const rows = result.rows as Array<Record<string, unknown>>;
     const first = rows[0];
     if (!first) {
-      // An EXPLICIT scope that selected nothing is a deps.not-found scope, deps.not an
+      // An EXPLICIT scope that selected nothing is a not-found scope, not an
       // empty workspace: report it as such so the HTTP boundary answers 404
-      // instead of a 500, deps.and never so it can be mistaken for a fallback.
+      // instead of a 500, and never so it can be mistaken for a fallback.
       if (targetProjectId !== undefined) {
         throw new api.ProjectScopeNotFoundError(targetProjectId);
       }
@@ -300,7 +300,7 @@ export class ProjectDashboardRepository extends ProjectRepositoryBase {
       );
 
     const projectId = String(first.project_id);
-    // gate-project-status-deps.and-cost-reads — the dashboard status embeds the
+    // gate-project-status-and-cost-reads — the dashboard status embeds the
     // full cost report via the unchecked same-package assembler. The
     // dashboard summary is available to unprivileged callers, so its cost
     // sub-object is NOT gated here; the privileged internals (recentRuns +
@@ -358,7 +358,7 @@ export class ProjectDashboardRepository extends ProjectRepositoryBase {
         rvf.runtime_run_id,
         rr.status as runtime_status,
         case
-          when rvf.finding_id is deps.not null then 'runtime_validation'
+          when rvf.finding_id is not null then 'runtime_validation'
           when f.locale_branch_id is null then 'project_finding'
           else 'locale_branch_finding'
         end as decision_kind
@@ -367,7 +367,7 @@ export class ProjectDashboardRepository extends ProjectRepositoryBase {
       left join ${deps.runtimeValidationFindings} rvf on rvf.finding_id = f.finding_id
       left join ${deps.runtimeEvidenceRuns} rr on rr.runtime_run_id = rvf.runtime_run_id
       where f.project_id = ${selectedProjectId}
-        deps.and f.status = 'open'
+        and f.status = 'open'
       order by f.created_at asc, f.finding_id asc
     `);
 
@@ -412,9 +412,9 @@ export class ProjectDashboardRepository extends ProjectRepositoryBase {
   }
 
   /**
-   * gate-runtime-status-reads-deps.and-redact-evidence-previews — actor-checked
+   * gate-runtime-status-reads-and-redact-evidence-previews — actor-checked
    * HERE (repository layer, where the data is read) so an internal caller
-   * running as an unprivileged actor cannot bypass the gate deps.and read the
+   * running as an unprivileged actor cannot bypass the gate and read the
    * evidence-text previews, finding free text, or artifact URIs/hashes.
    * The API boundary additionally redacts the report for unprivileged HTTP
    * callers; this check is the defense-in-depth backstop.

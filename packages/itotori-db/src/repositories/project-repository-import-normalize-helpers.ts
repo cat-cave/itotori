@@ -135,7 +135,7 @@ export function normalizeSourceBundle(
   }
 
   const sourceBundleRevision = helpers.revision(
-    `${project.bridge.bridgeId}:bundle-helpers.revision`,
+    `${project.bridge.bridgeId}:bundle-revision`,
     project.bridge.sourceBundleHash,
   );
   const assetById = new Map<string, deps.BridgeAssetV02>();
@@ -250,7 +250,7 @@ export function uniqueRevisions(revisions: deps.SourceRevisionV02[]): deps.Sourc
         existing.value !== revisionRecord.value)
     ) {
       throw new Error(
-        `source helpers.revision ${revisionRecord.revisionId} appears multiple times with different content`,
+        `source revision ${revisionRecord.revisionId} appears multiple times with different content`,
       );
     }
     byId.set(revisionRecord.revisionId, revisionRecord);

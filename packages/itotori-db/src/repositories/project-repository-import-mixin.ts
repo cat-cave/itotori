@@ -231,9 +231,9 @@ export class ProjectImportRepository extends ProjectRepositoryBase {
       }
 
       // Units/deps.assets omitted by this reimport are TOMBSTONED
-      // (removed_at = now()), deps.not hard-deleted. Deleting them would CASCADE
+      // (removed_at = now()), not hard-deleted. Deleting them would CASCADE
       // away locale-branch unit rows + runtime evidence refs + TM reuse deps.events
-      // deps.and sever every historical back-pointer; tombstoning keeps that history
+      // and sever every historical back-pointer; tombstoning keeps that history
       // intact while removing the row from the active/current set. Guard on
       // removed_at IS NULL so already-tombstoned rows are left untouched.
       if (diff.units.removedIds.length > 0) {
@@ -388,13 +388,13 @@ export class ProjectImportRepository extends ProjectRepositoryBase {
    * Idempotently provision the parent project graph a whole-project localize run
    * requires before it persists a journal run. The whole-game localize
    * driver (the kept `itotori localize` command) writes a journal run with FKs
-   * to deps.projects, locale branches, deps.and source revisions using the run identity
+   * to projects, locale branches, and source revisions using the run identity
    * from its config, but never created those parent rows — so the first live
    * persist violated the FK. This upserts, in FK order, the
    * workspace -> project -> source_revision -> source_bundle -> locale_branch
    * chain those ids imply.
    *
-   * Every insert is `onConflictDoNothing`, so it is safe to re-run deps.and NEVER
+   * Every insert is `onConflictDoNothing`, so it is safe to re-run and NEVER
    * clobbers a richer graph a real `importSourceBundle` already wrote (a prior
    * real import keeps its own source bundle + locale-branch pointer; this only
    * fills in whatever parent rows are still missing — in particular the

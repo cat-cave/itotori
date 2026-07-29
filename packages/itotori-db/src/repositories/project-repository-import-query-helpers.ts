@@ -116,7 +116,7 @@ export async function assertImportOwnership(
       for (const row of revisionRows) {
         if (row.projectId !== projectId) {
           throw new Error(
-            `source helpers.revision ${row.sourceRevisionId} already belongs to project ${row.projectId}`,
+            `source revision ${row.sourceRevisionId} already belongs to project ${row.projectId}`,
           );
         }
       }

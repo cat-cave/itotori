@@ -78,7 +78,7 @@ export async function resolveSourceBundlePersistenceTarget(
       .limit(1);
     if (sourceBundle === undefined) {
       throw new Error(
-        `source bundle ${project.importStatus.sourceBundleId} has deps.not been imported for project ${project.projectId}`,
+        `source bundle ${project.importStatus.sourceBundleId} has not been imported for project ${project.projectId}`,
       );
     }
     if (sourceBundle.projectId !== project.projectId) {
@@ -171,7 +171,7 @@ export function diffSourceRevisions(
       existingRevision.value !== revisionRecord.value
     ) {
       throw new Error(
-        `source helpers.revision ${revisionRecord.revisionId} already exists with different content`,
+        `source revision ${revisionRecord.revisionId} already exists with different content`,
       );
     }
     existing += 1;
@@ -201,7 +201,7 @@ export function diffAssets(
   }
 
   // Only currently-active (non-tombstoned) rows can be newly removed by this
-  // reimport. Already-tombstoned rows that stay omitted are deps.not re-counted
+  // reimport. Already-tombstoned rows that stay omitted are not re-counted
   // or re-touched.
   const removedIds = existingAssets
     .filter((asset) => asset.removedAt === null && !incomingIds.has(asset.assetId))
@@ -231,7 +231,7 @@ export function diffUnits(
   }
 
   // Only currently-active (non-tombstoned) rows can be newly removed by this
-  // reimport. Already-tombstoned rows that stay omitted are deps.not re-counted
+  // reimport. Already-tombstoned rows that stay omitted are not re-counted
   // or re-touched.
   const removedIds = existingUnits
     .filter((unit) => unit.removedAt === null && !incomingIds.has(unit.bridgeUnitId))

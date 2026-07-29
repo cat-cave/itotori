@@ -146,11 +146,11 @@ export function runtimeFrameCaptureCount(report: helpers.RuntimeReportInput): nu
   if (!helpers.isRuntimeEvidenceReportV02(report)) {
     return report.frameCaptures.length;
   }
-  // V02 captures are persisted as `screenshot` deps.artifacts (see
+  // V02 captures are persisted as `screenshot` artifacts (see
   // localization-bridge-schema assertRuntimeArtifactRefV02(capture.artifactRef,
   // ..., "screenshot")), so a V02 run contributes ZERO frame_capture
-  // deps.artifacts — its captures are screenshots. Legacy runtime verification
-  // reports persist their frameCaptures as `frame_capture` deps.artifacts only.
+  // artifacts — its captures are screenshots. Legacy runtime verification
+  // reports persist their frameCaptures as `frame_capture` artifacts only.
   return 0;
 }
 
@@ -248,7 +248,7 @@ export function runtimeArtifactLinks(
         artifactKind: "frame_capture",
         uri: frame.artifactPath,
         hash: undefined,
-        // Legacy v0.1 frame captures carry no hash deps.and no repository-generated
+        // Legacy v0.1 frame captures carry no hash and no repository-generated
         // fallback (the managed-hash contract is v0.2-only), so provenance is
         // unknown. The dashboard surfaces this as a missing-hash diagnostic
         // exactly as before.

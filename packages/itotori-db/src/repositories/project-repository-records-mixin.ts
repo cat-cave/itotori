@@ -148,7 +148,7 @@ export class ProjectRecordsRepository extends ProjectRepositoryBase {
         a.created_at
       from ${deps.artifacts} a
       where a.project_id = ${projectId}
-        deps.and a.artifact_kind = 'benchmark_report'
+        and a.artifact_kind = 'benchmark_report'
       order by a.created_at desc, a.artifact_id desc
     `);
     return (result.rows as Array<Record<string, unknown>>).map(

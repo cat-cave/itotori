@@ -38,7 +38,7 @@ export function runtimeArtifactRefForDb(
 
 export function runtimeChildIdFor(runtimeReportId: string, adapterLocalId: string): string {
   // Runtime adapter child ids are only unique within a report. Repository-owned child
-  // evidence rows deps.and derived child deps.artifacts use run-qualified ids to prevent cross-run moves.
+  // evidence rows and derived child artifacts use run-qualified ids to prevent cross-run moves.
   return `${runtimeReportId}:${adapterLocalId}`;
 }
 
@@ -52,7 +52,7 @@ export function runtimeManagedArtifactHash(ref: {
   return `sha256:${deps.createHash("sha256").update(helpers.stableJsonStringify(ref)).digest("hex")}`;
 }
 
-export const RUNTIME_MANAGED_ARTIFACT_URI_ROOT = "deps.artifacts/utsushi/runtime";
+export const RUNTIME_MANAGED_ARTIFACT_URI_ROOT = "artifacts/utsushi/runtime";
 
 export const RUNTIME_MANAGED_ARTIFACT_KINDS = new Set<string>(deps.RUNTIME_ARTIFACT_KINDS_V02);
 
@@ -337,12 +337,12 @@ export function validatePatchExportContract(
   if (patchExport.schemaVersion === deps.BRIDGE_SCHEMA_VERSION_V02) {
     deps.assertPatchExportV02(patchExport);
     if (bridge.schemaVersion !== deps.BRIDGE_SCHEMA_VERSION_V02) {
-      throw new Error("deps.PatchExportV02 requires a v0.2 source bridge");
+      throw new Error("PatchExportV02 requires a v0.2 source bridge");
     }
     const report = deps.evaluatePatchExportCompatibilityV02(patchExport, bridge);
     if (report.status !== "compatible") {
       const reasons = report.incompatibleUnits.map((unit) => unit.reason ?? "unknown").join(", ");
-      throw new Error(`deps.PatchExportV02 source compatibility failed: ${reasons}`);
+      throw new Error(`PatchExportV02 source compatibility failed: ${reasons}`);
     }
     return;
   }
@@ -393,7 +393,7 @@ export function runtimeArtifactDiagnostic(
 /**
  * Coerces a raw `metadata->>'hashProvenance'` cell back into the exported
  * discriminator. Rows written before the provenance field existed (legacy
- * v0.1 frame captures, older projections) deps.and redacted/missing cells surface
+ * v0.1 frame captures, older projections) and redacted/missing cells surface
  * as `null` so the dashboard can render them as unknown rather than mistaking
  * them for content-backed or fallback hashes.
  */
