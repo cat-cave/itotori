@@ -1,17 +1,10 @@
 # Itotori Translation-Benchmark Methodology
 
-**Status:** design / alignment reference (not yet fully built).
-**Role:** this document records our INTENTIONS for the translation benchmark.
-It is the alignment reference that every benchmark build-out node must conform
-to. Build-out proceeds without per-node review **so long as each component
-aligns with the intentions documented here.** If a builder needs to deviate
-from this doc, that is a methodology change and must be raised, not silently
-implemented.
-
-**Source of truth for intent:** Trevor's 2026-07-05 direction (the
-"car-testing-facility" pivot and the diagnostic-instrument refinement). This
-doc is downstream of that; where they disagree, the direction wins and this
-doc is wrong and must be fixed.
+**Status:** benchmark methodology contract (not yet fully built).
+**Role:** this document specifies measurement mechanics, schemas, and evidence
+handling for benchmark capabilities in
+[`action-plan.md`](action-plan.md). It does not add benchmark scope, priority,
+or acceptance authority; the action plan is the sole source of product intent.
 
 **Copyright boundary (governs the whole facility):** all copyrighted tiers
 (official-EN, fan-TL, JP prose) are held PRIVATELY for evaluation only,

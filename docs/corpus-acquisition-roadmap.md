@@ -1,5 +1,10 @@
 # Corpus acquisition roadmap (engine-family validation)
 
+> **Historical planning record.** The tier labels and intended-family set below
+> do not define current product scope. [`action-plan.md`](action-plan.md) is the
+> sole intent authority; this file is retained for its corpus-validation method
+> and signature evidence.
+
 Planning artifact for the **multi-game validation law**: engine-family behavior
 must be proven against **real owned titles**, never synthetic-only. This doc is
 **metadata and method only** — no copyrighted bytes or text. Actual acquisition

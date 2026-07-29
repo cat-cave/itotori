@@ -1,5 +1,10 @@
 # Spec DAG
 
+[`../action-plan.md`](../action-plan.md) is the sole product-intent authority.
+This document defines the roadmap ledger's schema, export, validation, and
+orchestration mechanics; the currently committed ledger is retained evidence
+until its replacement is derived from that plan.
+
 We use **qdcli** for the implementation roadmap. The DAG concepts (node shape,
 edges, status/priority, the qd export JSON schema, claim/check/ci/merge
 lifecycle, finding promotion) are documented in the orchestrator playbook
@@ -8,14 +13,14 @@ contract and itotori's DAG quality bars live in
 [`orchestration-operating-model.md`](orchestration-operating-model.md). This
 page keeps only the itotori-specific roadmap facts.
 
-> **Alpha definition.** The redefined alpha gates live at the top of
-> [`project-readiness.md`](../project-readiness.md). The alpha gate is that 6-item
-> list, not the totality of nodes labelled `ALPHA-*` in the DAG.
+> **Legacy milestone metadata.** Alpha/beta labels and acceptance text in the
+> current export are preserved as rebuild inputs. They do not override the
+> action plan's state model or dependency waves.
 
 ## Committed Export And Validation
 
-- The canonical committed roadmap is `roadmap/spec-dag.json` in **qd export
-  shape** (`schema_version`, `registries`, `nodes`, `edges`, `findings`, `runs`,
+- The committed ledger export is `roadmap/spec-dag.json` in **qd export shape**
+  (`schema_version`, `registries`, `nodes`, `edges`, `findings`, `runs`,
   `node_notes`). qd owns live orchestration state; this file is the generated,
   reviewable export. Do not hand-edit it for lifecycle state, claims, completion,
   or follow-up planning — make DAG changes through qd, then regenerate it:

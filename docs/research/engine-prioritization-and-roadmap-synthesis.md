@@ -1,10 +1,8 @@
 # Engine Prioritization & Roadmap Synthesis
 
-**Status:** Historical evidence and proposal source. The canonical executable
-plan is `roadmap/spec-dag.json`; where this document uses older milestone
-framing or proposes nodes, use
-[`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md) for the current
-live DAG mapping.
+**Status:** Historical evidence and proposal source. The current intent
+authority is [`../action-plan.md`](../action-plan.md); the crosswalk maps this
+document's old proposals into the legacy DAG export.
 
 **Written:** 2026-06-17 (interim — enrichment crawl still running; market/VNDB/EGS data is final)
 

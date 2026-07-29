@@ -1,14 +1,9 @@
 # Itotori Docs
 
-> **Alpha definition (2026-06-24).** The **live cold-start orientation** for
-> the monorepo lives in [`docs/dev/spec-dag.md`](dev/spec-dag.md) (the
-> committed `roadmap/spec-dag.json` is the source of truth — it is what the
-> `qd` CLI and the readiness checklists query). The redefined alpha gates live at the
-> top of [`project-readiness.md`](project-readiness.md);
-> alpha-ready means the architecture-proven dogfood point, not the full
-> `detect → extract → decrypt → decompile → patch → verify → delta-apply`
-> chain. The alpha proof and its manifest contract describe the **post-alpha
-> dogfood project**, not the alpha gate.
+[`action-plan.md`](action-plan.md) is the sole product-intent authority.
+Readiness, research, design, subproject, and roadmap-ledger documents preserve
+point-in-time evidence, contracts, or operating mechanics; they do not add,
+defer, or reinterpret its scope.
 
 These docs describe the monorepo as a three-project suite:
 
@@ -78,7 +73,8 @@ vault-source adapter. Its generic public-fixture workflow supersedes the former
 fixture gate.
 Affected detection and CI cache rules live in the dev doc
 [`docs/dev/ci-cache-and-affected.md`](dev/ci-cache-and-affected.md).
-The implementation roadmap lives in
+The action plan defines intended capability and dependency waves. The roadmap
+ledger format and its currently committed export are documented in
 [`docs/dev/spec-dag.md`](dev/spec-dag.md) and `roadmap/spec-dag.json`.
 Agent-led implementation should also follow the dev doc
 [`docs/dev/orchestration-operating-model.md`](dev/orchestration-operating-model.md)

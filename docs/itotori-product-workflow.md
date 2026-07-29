@@ -1,5 +1,10 @@
 # Itotori Product Workflow
 
+> **Operating contract, not a scope authority.**
+> [`action-plan.md`](action-plan.md) governs product intent and the human/agent
+> boundary. This document describes the durable records and transitions used to
+> implement that boundary; it cannot add product guarantees or human controls.
+
 This document defines the operating model for a localization project. Itotori
 ships complete, scoped patch versions, then improves them through play and
 iteration:

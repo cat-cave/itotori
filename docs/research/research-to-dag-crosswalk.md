@@ -1,9 +1,9 @@
 # Research-to-DAG Crosswalk
 
-**Status:** Current planning input. The executable source of truth remains
-[`roadmap/spec-dag.json`](../../roadmap/spec-dag.json); this document only maps
-historical research recommendations to live DAG node ids or marks them as not
-adopted. It does not create product scope, reorder nodes, or replace the DAG.
+**Status:** Historical mapping evidence. This document maps research
+recommendations to the legacy DAG export or marks them as not adopted. It does
+not create product scope, status, or sequence. The sole current intent authority
+is [`../action-plan.md`](../action-plan.md).
 
 **Last reviewed:** 2026-06-17 for `UNIV-015`.
 

@@ -1,10 +1,8 @@
 # Japanese VN/RPG Engine & Untranslated-Game Opportunity Analysis
 
-**Status:** Historical evidence. The canonical executable plan is
-`roadmap/spec-dag.json`; older milestone wording here is preserved only as
-research context. Use
-[`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md) for current
-live DAG mappings.
+**Status:** Historical evidence. The current intent authority is
+[`../action-plan.md`](../action-plan.md); older milestone wording and the
+crosswalk's legacy DAG mappings are preserved only as research context.
 
 **Purpose:** Reframe Kaifuu adapter priorities using real catalog data rather than
 reputation. The point of this analysis is _opportunity discovery_. At original

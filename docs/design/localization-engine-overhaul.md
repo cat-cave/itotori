@@ -1,8 +1,9 @@
 # Localization Engine Overhaul — Foundation Design
 
-Status: **canonical foundation** (governing product model for the localization
-loop). Supersedes the cosplay orchestration loop. Consolidates architecture and
-philosophy audits as corrected by the product decisions in §2.
+Status: **superseded product-model record**. The architecture and audit
+rationale below are preserved as design evidence, but
+[`../action-plan.md`](../action-plan.md) is the sole current product-intent
+authority and overrides its promises, scope, and resolved decisions.
 
 ## 2. The product model (RESOLVED decisions)
 

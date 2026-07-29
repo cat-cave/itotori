@@ -1,5 +1,9 @@
 # Kaifuu Encrypted Engine Research Brief
 
+> **Historical research input.** Recommendations and alpha labels below are
+> evidence that informed planning, not current scope or sequence.
+> [`action-plan.md`](action-plan.md) is the sole intent authority.
+
 This brief records the current research basis for treating decryption and key
 discovery as an alpha readiness lane. It complements
 [kaifuu-key-discovery.md](kaifuu-key-discovery.md) and the roadmap nodes

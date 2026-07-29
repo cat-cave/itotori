@@ -1,9 +1,8 @@
 # Alpha Proof (Public-Fixture Vertical)
 
-> **Milestone framework (2026-06-24).** The four-tier framework
-> (real-game-testing-ready → alpha → beta → full release) and per-tier
-> acceptance criteria live in [`project-readiness.md`](project-readiness.md)
-> (renamed on 2026-06-24).
+> **Legacy milestone vocabulary (2026-06-24).** The historical four-tier
+> framework is preserved in [`project-readiness.md`](project-readiness.md);
+> [`action-plan.md`](action-plan.md) now governs scope, state, and waves.
 > "Alpha proof" in this document refers to the public-fixture manifest contract
 > and its workflow. Those mechanisms support the **real-game-testing-ready**
 > tier, not the new (stricter) alpha tier.
