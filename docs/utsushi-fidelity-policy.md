@@ -1,5 +1,9 @@
 # Utsushi Fidelity Policy
 
+> **Evidence policy, not product intent.** [`action-plan.md`](action-plan.md)
+> alone governs current scope, state, and dependency waves; legacy tier labels
+> below are historical context.
+>
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
 > of [`project-readiness.md`](project-readiness.md).
 > Where this policy names the first real-engine alpha proof or a specific

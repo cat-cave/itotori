@@ -1,5 +1,9 @@
 # RealLive Engine Port — DAG Decomposition Proposal
 
+> **Historical proposal.** This decomposition is retained as implementation
+> evidence only. It does not create current scope or sequencing;
+> [`../action-plan.md`](../action-plan.md) is the sole intent authority.
+
 > Replaces the single the relevant capability ("RealLive runtime port — VFS handoff, Scene/SEEN replay,
 > headless render sink, deterministic clock/input, snapshot primitives") with 22 honest
 > sub-nodes anchored in observable Sweetie HD bytes.

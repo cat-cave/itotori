@@ -1,5 +1,9 @@
 # Architecture
 
+> **Architecture, not product intent.**
+> [`../action-plan.md`](../action-plan.md) alone governs current scope, state,
+> and dependency waves; legacy tier labels below are historical context.
+>
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
 > of [`project-readiness.md`](../project-readiness.md).
 > References below to "alpha proof" describe the SHARED-025 manifest contract

@@ -1,5 +1,10 @@
 # Project Readiness
 
+> **Superseded milestone framework.** This file preserves legacy tier
+> vocabulary and acceptance criteria for historical references and checked
+> artifacts. It does not define current scope, status, or sequencing;
+> [`action-plan.md`](action-plan.md) is the sole product-intent authority.
+
 > **Rename note (2026-06-24).** The current filename replaced the
 > prior `alpha-localization-` filename on 2026-06-24, when the milestone
 > framework was redefined from a two-level ("alpha" + "continuous") split

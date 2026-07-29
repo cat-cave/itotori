@@ -1,5 +1,9 @@
 # Utsushi Subproject
 
+> **Ownership and mechanism, not product intent.**
+> [`action-plan.md`](action-plan.md) alone governs scope, state, and sequence;
+> legacy tier labels and future slices below are historical context.
+
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
 > of [`project-readiness.md`](project-readiness.md).
 > Alpha-ready means the architecture-proven dogfood point — substrate

@@ -1,20 +1,20 @@
 # Research Docs
 
-**Status:** Current planning index. The executable plan remains
-[`roadmap/spec-dag.json`](../../roadmap/spec-dag.json); the current mapping from
-historical research recommendations to live DAG nodes lives in
+**Status:** Historical research index. The sole current intent authority is
+[`../action-plan.md`](../action-plan.md). The mapping from historical research
+recommendations to the legacy DAG export lives in
 [`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md).
 
 The other markdown files in this directory are historical evidence. They preserve
 dated analysis, prototype design, and recommendation language from 2026-06-17.
 When those files mention proposed nodes, older release-stage framing, or claims
-that a capability was absent from the roadmap, use the crosswalk and live DAG for
-current planning.
+that a capability was absent from the roadmap, treat them as evidence for the
+rebuild rather than current planning.
 
-## Current Planning Reference
+## Historical mapping reference
 
-- [`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md) - canonical
-  mapping from major adopted research recommendations to live DAG node ids, plus
+- [`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md) - mapping
+  from major adopted research recommendations to legacy DAG node ids, plus
   deferred and superseded items.
 
 ## Historical Evidence

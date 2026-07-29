@@ -1,5 +1,10 @@
 # Alpha Readiness
 
+> **Point-in-time evidence, not product intent.** This checked readiness report
+> preserves the legacy alpha vocabulary and generated capability projection.
+> [`action-plan.md`](action-plan.md) is the sole authority for current scope,
+> state admission, and dependency waves.
+
 This document is the **alpha readiness README**: the checked statement of what
 the suite can do at the alpha milestone and how a new user proves it from a
 fresh clone. It is the human-facing companion to the machine gate
@@ -11,7 +16,7 @@ fresh clone. It is the human-facing companion to the machine gate
 > It means the whole pipeline fires end-to-end on a single real game and that
 > every stage is swappable — "let's try a different QA strategy" is a tractable
 > change rather than a rewrite. Output quality is explicitly **not** the bar at
-> alpha (worse-than-MTL is acceptable). The tiered definition lives in
+> alpha (worse-than-MTL is acceptable). The legacy tiered definition lives in
 > [`project-readiness.md`](project-readiness.md); beta (≥2 games per engine,
 > encrypted variants) and full release come later.
 

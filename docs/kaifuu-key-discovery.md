@@ -1,5 +1,10 @@
 # Kaifuu Key Discovery And Encrypted Corpus Policy
 
+> **Policy and historical gate record.** The architecture and safety mechanisms
+> below remain useful, but their alpha/future-work labels do not set current
+> scope or sequence. [`action-plan.md`](action-plan.md) is the sole intent
+> authority.
+
 Kaifuu must be useful on owned and licensed Japanese games, so encrypted-input
 readiness is an alpha requirement. The alpha readiness milestone does not claim
 universal decryption or production support for every protected commercial

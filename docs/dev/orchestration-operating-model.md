@@ -1,9 +1,11 @@
 # Orchestration Operating Model
 
 We use **qdcli** (`https://github.com/cat-cave/qdcli`, executable `qd`) for all
-orchestration. qd is the live orchestration ledger and quality gate; the
-committed source of truth is `roadmap/spec-dag.json` (qd export shape, must pass
-`just check roadmap`).
+orchestration. qd is the live execution ledger and quality gate; its committed
+export is `roadmap/spec-dag.json` (qd export shape, must pass `just check
+roadmap`). It records execution state but does not create product intent;
+[`../action-plan.md`](../action-plan.md) alone governs scope and dependency
+waves.
 
 **For how to run the orchestrator + qd loop, read the in-repo playbook — do
 not duplicate those mechanics here:**
@@ -19,20 +21,13 @@ gate and policy evaluation) live in that playbook and are authoritative. This
 document keeps ONLY the itotori-specific operating rules that the playbook
 does not encode.
 
-## Milestone Framework
+## Dependency waves
 
-Authoritative tier definitions and per-tier acceptance criteria live in
-[`docs/project-readiness.md`](../project-readiness.md). This project has **no
-external timeline**; eng-month/week/year cost framing is off-shape and must not
-appear in orchestrator outputs.
-
-The one itotori fact the orchestrator must hold: **alpha = the configured
-alpha target corpus localized end-to-end on this Linux machine** — real-bytes
-extraction, a live LLM call via OpenRouter with an explicit (model, provider)
-pair, the FULL agentic loop, real patchback, `utsushi-reallive` Linux replay,
-and verifiable patch evidence. The alpha target is one configured real RealLive
-corpus (a specific game is config/input, never a built-in rule). Single-game by
-definition; beta requires ≥2 games per engine.
+The action plan defines the authoritative dependency waves and their acceptance
+observations. Legacy alpha/beta labels in `project-readiness.md` and the
+committed ledger are historical metadata, not scheduling or scope authority.
+This project has **no external timeline**; eng-month/week/year cost framing is
+off-shape and must not appear in orchestrator outputs.
 
 ## Provider And Model Policy
 

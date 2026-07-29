@@ -1,10 +1,8 @@
 # Cross-Source Localization Research Engine — Design & Roadmap Mapping
 
-**Status:** Historical evidence and prototype design. The canonical executable
-plan is `roadmap/spec-dag.json`; older milestone wording and `RESEARCH-*`
-proposal ids here are preserved only as research context. Use
-[`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md) for current
-live DAG mappings.
+**Status:** Historical evidence and prototype design. The current intent
+authority is [`../action-plan.md`](../action-plan.md); older milestone wording,
+proposal ids, and legacy DAG mappings are preserved only as research context.
 
 **Goal.** Build one unified, entity-resolved catalog of Japanese games across VNDB, EGS,
 DLsite, and Steam (extensible), with a precise per-language **completeness** model, so we
