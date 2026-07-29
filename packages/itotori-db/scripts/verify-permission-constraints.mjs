@@ -44,9 +44,10 @@ export function verifyPermissionConstraintDrift(options = {}) {
 
 function permissionVerifierPaths({ authorizationPath, migrationsDir, migrationsSourcePath }) {
   return {
-    authorizationPath: authorizationPath ?? path.join(packageRoot, "src/authorization.ts"),
+    authorizationPath: authorizationPath ?? path.join(packageRoot, "src/authorization-01.ts"),
     migrationsDir: migrationsDir ?? path.join(packageRoot, "migrations"),
-    migrationsSourcePath: migrationsSourcePath ?? path.join(packageRoot, "src/migrations.ts"),
+    migrationsSourcePath:
+      migrationsSourcePath ?? path.join(packageRoot, "src/migrations-registry.ts"),
   };
 }
 
@@ -138,8 +139,7 @@ function latestMigrationPermissionConstraint(paths) {
 
 function registeredMigrationFiles(migrationsSourcePath) {
   const source = readFileSync(migrationsSourcePath, "utf8");
-  const body = requiredConstArrayBody(source, "migrations", migrationsSourcePath);
-  const entries = migrationEntryBodies(body, migrationsSourcePath);
+  const entries = migrationRegistryEntries(source, migrationsSourcePath);
 
   if (entries.length === 0) {
     throw new Error(
@@ -178,6 +178,34 @@ function registeredMigrationFiles(migrationsSourcePath) {
   }
 
   return files;
+}
+
+function migrationRegistryEntries(source, migrationsSourcePath) {
+  const body = requiredConstArrayBody(source, "migrations", migrationsSourcePath);
+  if (!body.includes("...")) {
+    return migrationEntryBodies(body, migrationsSourcePath);
+  }
+
+  const importedEntryLists = [
+    ...source.matchAll(
+      /import\s+\{\s*(migrations_entries_\d+)\s*\}\s+from\s+"(\.\/migrations-entries-\d+\.js)";/gu,
+    ),
+  ];
+  if (importedEntryLists.length === 0) {
+    return migrationEntryBodies(body, migrationsSourcePath);
+  }
+
+  return importedEntryLists.flatMap(([, exportName, modulePath]) => {
+    const entryPath = path.join(
+      path.dirname(migrationsSourcePath),
+      modulePath.replace(/\.js$/u, ".ts"),
+    );
+    const entrySource = readFileSync(entryPath, "utf8");
+    return migrationEntryBodies(
+      requiredConstArrayBody(entrySource, exportName, entryPath),
+      entryPath,
+    );
+  });
 }
 
 function requiredConstArrayBody(source, variableName, migrationsSourcePath) {
