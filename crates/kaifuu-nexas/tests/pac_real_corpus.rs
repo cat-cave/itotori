@@ -73,8 +73,7 @@ fn require_corpus_root() -> Option<PathBuf> {
 #[ignore = "requires private inventory row with extracted Majikoi PACs"]
 fn extracts_majikoi_pacs_byte_exact() {
     let Some(root) = require_corpus_root() else {
-        eprintln!("{RESEARCH_ROOT_ENV} not set / not a dir; skipping real-bytes NeXAS validation");
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
 
     for expected in &ARCHIVES {

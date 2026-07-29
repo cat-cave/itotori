@@ -125,14 +125,13 @@ fn replay_emits_deterministic_bridge_linked_e0_e1_trace_for_manifest_corpus() {
 }
 
 #[test]
+#[ignore = "real-bytes; requires a private corpus"]
 fn configured_corpus_replay_skips_when_root_is_not_staged() {
     let Some(root) = corpus_registry::resolve_identity(STAGED_CORPUS_ROOT_ENV).ok() else {
-        eprintln!("SKIP: {STAGED_CORPUS_ROOT_ENV} not staged");
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
     if !root.is_dir() {
-        eprintln!("SKIP: {} not staged", root.display());
-        return;
+        panic!("real-bytes proof not established: required corpus directory is unavailable");
     }
     let corpus = load_corpus(&root);
     assert_trace_bridge_links(&corpus, &emit(&corpus));

@@ -5,8 +5,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import type { WorkflowRunReport } from "../src/workflow/index.js";
 import * as apiDependencies from "../src/api-handler-dependencies.js";
+import type { ItotoriCliDependencies, ItotoriCliServices } from "../src/cli-handler-contracts.js";
+import { errorResponse, parseNewPipelineDraftFields } from "../src/api-handler-responses.js";
 import { routeDraftBranchMutation } from "../src/api-handler-mutation-project.js";
-import { runIngestPatchResult } from "../src/cli-handler-core-commands.js";
+import {
+  runIngestConformance,
+  runIngestPatchResult,
+  runIngestRuntime,
+} from "../src/cli-handler-core-commands.js";
 import { resolveRunPolicy, FULL_ROSTER } from "../src/run-policy/index.js";
 import { dashboardStatusFixture } from "./api-fixtures-dashboard.js";
 import { projectFixture } from "./api-fixtures-project.js";
@@ -76,6 +82,94 @@ describe("audited command outcomes", () => {
       outcome: "ingested",
       patchResultId: "019ed001-0000-7000-8000-000000000950",
     });
+  });
+
+  it("rejects malformed project JSON before runtime, patch, and conformance ingestion", async () => {
+    const serviceReached = vi.fn();
+    const projectPath = "project.json";
+    const dependencies: ItotoriCliDependencies = {
+      io: {
+        readJson: (path: string): unknown => (path === projectPath ? {} : undefined),
+        writeJson: vi.fn(),
+      },
+      withServices: async <T>(
+        _callback: (services: ItotoriCliServices) => Promise<T>,
+      ): Promise<T> => {
+        serviceReached();
+        throw new Error("project ingestion service should not be reached");
+      },
+      migrateDatabase: async () => undefined,
+      resetDatabase: async () => undefined,
+    };
+
+    await expect(
+      runIngestRuntime(
+        [
+          "ingest-runtime",
+          "--project",
+          projectPath,
+          "--runtime-report",
+          "report.json",
+          "--output",
+          "output.json",
+        ],
+        dependencies,
+      ),
+    ).rejects.toThrow(/ProjectState\.projectId/u);
+    await expect(
+      runIngestPatchResult(
+        [
+          "ingest-patch-result",
+          "--project",
+          projectPath,
+          "--patch-result",
+          "patch-result.json",
+          "--output",
+          "output.json",
+        ],
+        dependencies,
+      ),
+    ).rejects.toThrow(/ProjectState\.projectId/u);
+    await expect(
+      runIngestConformance(
+        [
+          "ingest-conformance",
+          "--project",
+          projectPath,
+          "--report-file",
+          "report.json",
+          "--output",
+          "output.json",
+        ],
+        dependencies,
+      ),
+    ).rejects.toThrow(/ProjectState\.projectId/u);
+    expect(serviceReached).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["contextScope", "outside-the-contract"],
+    ["outputScope", "outside-the-contract"],
+  ])("maps an invalid optional draft %s to a client error", (field, value) => {
+    const bridge = readJson(
+      new URL(
+        "../../../packages/localization-bridge-schema/test/examples/bridge-v0.2.json",
+        import.meta.url,
+      ).pathname,
+    );
+    let error: unknown;
+    try {
+      parseNewPipelineDraftFields({
+        runMode: "production",
+        structure: {},
+        bridge,
+        [field]: value,
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(errorResponse(error)).toMatchObject({ statusCode: 400, body: { code: "bad_request" } });
   });
 
   it("returns a failing API response when the workflow report has no patch output", async () => {

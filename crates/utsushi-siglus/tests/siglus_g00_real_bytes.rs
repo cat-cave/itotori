@@ -2,7 +2,7 @@
 //!
 //! The two roots are intentionally explicit rather than checked into a test
 //! fixture: copyrighted title bytes stay outside this repository. When either
-//! root is absent the test reports a skip and succeeds; when both are present
+//! root is absent the proof is not established; when both are present
 //! it drives the real `EnginePort` + `Runner` lifecycle for one compressed
 //! type-0 and one layered type-2 asset from each title.
 
@@ -23,22 +23,18 @@ const FIRST_TITLE_ENV: &str = "siglus/1/encrypted";
 const SECOND_TITLE_ENV: &str = "siglus/2/encrypted";
 
 #[test]
+#[ignore = "real-bytes; requires private corpora"]
 fn two_real_siglus_titles_decode_layered_g00_and_capture_redacted_pngs() {
-    let Some(first) = corpus_root(FIRST_TITLE_ENV) else {
-        return;
-    };
-    let Some(second) = corpus_root(SECOND_TITLE_ENV) else {
-        return;
-    };
+    let first = corpus_root(FIRST_TITLE_ENV);
+    let second = corpus_root(SECOND_TITLE_ENV);
     exercise_title(&first, "siglus-title-one");
     exercise_title(&second, "siglus-title-two");
 }
 
 #[test]
+#[ignore = "real-bytes; requires a private corpus"]
 fn second_real_siglus_title_decodes_type3_encrypted_jpeg_into_visible_background() {
-    let Some(root) = corpus_root(SECOND_TITLE_ENV) else {
-        return;
-    };
+    let root = corpus_root(SECOND_TITLE_ENV);
     let logical_path = find_type3_asset(&root)
         .expect("second real Siglus title must contain a type-3 encrypted-JPEG G00 asset");
     let bytes = fs::read(root.join(&logical_path)).expect("read selected type-3 G00 asset");
@@ -60,17 +56,14 @@ fn second_real_siglus_title_decodes_type3_encrypted_jpeg_into_visible_background
     );
 }
 
-fn corpus_root(variable: &str) -> Option<PathBuf> {
-    let Some(value) = corpus_registry::resolve_identity(variable).ok() else {
-        eprintln!("SKIP siglus real bytes: {variable} is unset");
-        return None;
-    };
-    let path = value;
+fn corpus_root(variable: &str) -> PathBuf {
+    let path = corpus_registry::resolve_identity(variable).unwrap_or_else(|_| {
+        panic!("real-bytes proof not established: required corpus is unavailable");
+    });
     if !path.is_dir() {
-        eprintln!("SKIP siglus real bytes: {variable} is not a directory");
-        return None;
+        panic!("real-bytes proof not established: required corpus directory is unavailable");
     }
-    Some(path)
+    path
 }
 
 fn exercise_title(root: &Path, label: &str) {

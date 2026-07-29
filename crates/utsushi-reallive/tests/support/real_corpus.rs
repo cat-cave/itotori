@@ -14,17 +14,12 @@ pub const SECONDARY: Need<'static> = Need {
     variant: "plain",
 };
 
-// Legacy callers outside the migrated RealLive slice still name their local
-// corpus roots directly. Keep this compatibility surface until that follow-up.
-pub const REAL_GAME_ROOT_ENV: &str = "reallive/1/encrypted";
-pub const REAL_GAME_ROOT_2_ENV: &str = "reallive/2/plain";
-
 /// Fails loudly when required registry-identified real bytes are unavailable.
 /// Returns `()` (not `!`) so call sites retain `return` without an
 /// `unreachable_code` lint.
 pub fn require_real_bytes(test_name: &str) {
     panic!(
-        "real-bytes coverage is STRICT: reallive/1/encrypted is unavailable; \
+        "real-bytes coverage is STRICT: required corpus is unavailable; \
          {test_name} did not exercise real bytes; configure it in the private platform inventory."
     );
 }
@@ -142,12 +137,6 @@ pub fn g00_dir_for(need: Need<'_>) -> Option<PathBuf> {
     find_g00_dir(&root, 4)
 }
 
-/// Legacy accessor retained for the unmigrated RealLive tests.
-pub fn g00_dir_for_env(env_var: &str) -> Option<PathBuf> {
-    let root = corpus_registry::resolve_identity(env_var).ok()?;
-    find_g00_dir(&root, 4)
-}
-
 /// Breadth-first search from `root` (bounded to `max_depth`) for a
 /// directory whose ASCII-case-folded name is `g00` that contains at
 /// least one `*.g00` file.
@@ -206,10 +195,6 @@ pub fn reallivedata_subdir(name: &str) -> Option<PathBuf> {
 pub fn save_file_path(file_name: &str) -> Option<PathBuf> {
     let path = game_root()?.join("SAVEDATA").join(file_name);
     path.is_file().then_some(path)
-}
-
-pub fn skip_message(test_name: &str) -> String {
-    format!("reallive/1/encrypted is unavailable or malformed; skipping {test_name}")
 }
 
 fn file_in_reallivedata(name: &str) -> Option<PathBuf> {

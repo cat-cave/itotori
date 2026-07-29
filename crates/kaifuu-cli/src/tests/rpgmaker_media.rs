@@ -210,21 +210,19 @@ fn encrypted_media_proof_command_unknown_key_profile_routes_to_unsupported() {
 /// is unset; the synthetic fixtures above are the load-bearing
 /// correctness coverage.
 #[test]
+#[ignore = "real-bytes; requires a private corpus"]
 fn encrypted_media_proof_command_real_bytes_rpgmaker_corpus_when_available() {
     let Some(real_root) = corpus_registry::resolve_identity("rpg-maker-mv-mz/1/plain").ok() else {
-        println!("encrypted-media real-bytes corpus root unset; skipping");
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
     if !real_root.is_dir() {
-        eprintln!("SKIP: RPG Maker MV/MZ corpus is not staged");
-        return;
+        panic!("real-bytes proof not established: required corpus directory is unavailable");
     }
     let title_asset = real_root.join("img/sv_actors/Actor1_1.rpgmvp");
     let theme_asset = real_root.join("audio/bgm/Battle1.rpgmvo");
     let system_json = real_root.join("data/System.json");
     if !(title_asset.is_file() && theme_asset.is_file() && system_json.is_file()) {
-        eprintln!("SKIP: RPG Maker MV/MZ corpus misses required media anchors");
-        return;
+        panic!("real-bytes proof not established: required corpus anchors are unavailable");
     }
 
     let root = temp_dir("encrypted-media-real-bytes");

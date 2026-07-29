@@ -1,4 +1,4 @@
-export { repositoryGate } from "./authorization-matrix.test.factory-00.js";
+export { repositoryGate } from "./authorization-matrix.test.repository-gate.js";
 export {
   projectGate,
   feedbackGate,
@@ -9,7 +9,7 @@ export {
   branchReferenceGate,
   styleGuideGate,
   terminologyGate,
-} from "./authorization-matrix.test.factory-01.js";
+} from "./authorization-matrix.test.core-repository-gates.js";
 export {
   translationMemoryGate,
   exactSearchGate,
@@ -20,7 +20,7 @@ export {
   draftJobGate,
   assetLocalizationDecisionGate,
   auditFindingGate,
-} from "./authorization-matrix.test.factory-02.js";
+} from "./authorization-matrix.test.localization-repository-gates.js";
 export {
   principalGate,
   principalExportGate,
@@ -31,4 +31,4 @@ export {
   translationScopeSettingsGate,
   localizationPassRunConfigGate,
   authSessionServiceGate,
-} from "./authorization-matrix.test.factory-03.js";
+} from "./authorization-matrix.test.identity-and-settings-gates.js";

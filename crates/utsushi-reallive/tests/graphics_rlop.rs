@@ -280,11 +280,7 @@ fn grp_openbg_bg01a1_registers_bg_plane() {
     };
     let bg01a1_path = g00_dir.join(BG01A1_FILENAME);
     if !bg01a1_path.exists() {
-        eprintln!(
-            "BG01A1.g00 not present at {}; skipping",
-            bg01a1_path.display()
-        );
-        return;
+        panic!("real-bytes proof not established: required corpus asset is unavailable");
     }
     let runtime = Arc::new(GraphicsRuntime::new());
     let package: Arc<dyn AssetPackage> = Arc::new(OnDiskG00Package::new(g00_dir));

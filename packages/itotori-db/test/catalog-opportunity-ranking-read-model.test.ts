@@ -1,2 +1,2 @@
 // Database-backed scenarios remain registered through this façade.
-import "./catalog-opportunity-ranking-read-model.test.scenario-01.js";
+import "./catalog-opportunity-ranking-read-model.test.aggregate-ranking.js";

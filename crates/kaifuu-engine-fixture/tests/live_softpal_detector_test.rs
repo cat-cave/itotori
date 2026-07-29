@@ -162,8 +162,7 @@ fn confirm_softpal(label: &str, title_root: &Path) {
 #[ignore = "requires private inventory row=/scratch/softpal-research (read-only owned Softpal corpus)"]
 fn first_staged_install_detects_softpal() {
     let Some(root) = require_corpus_root() else {
-        eprintln!("skipping: set softpal/1/plain to run this proof");
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
     confirm_staged_install(&root, 0);
 }
@@ -172,8 +171,7 @@ fn first_staged_install_detects_softpal() {
 #[ignore = "requires private inventory row=/scratch/softpal-research (read-only owned Softpal corpus)"]
 fn second_staged_install_detects_softpal() {
     let Some(root) = require_corpus_root() else {
-        eprintln!("skipping: set softpal/1/plain to run this proof");
-        return;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
     confirm_staged_install(&root, 1);
 }

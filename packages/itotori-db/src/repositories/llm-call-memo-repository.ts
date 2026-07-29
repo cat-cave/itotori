@@ -188,31 +188,7 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
       const ordinal = await this.#attempts.nextOrdinal(input.memoKey, client);
       const startedAt = new Date().toISOString();
       await this.#attempts.admitAndStart(client, input, { ordinal, startedAt });
-      let execution: LlmStepExecution;
-      try {
-        execution = await input.execute({ ordinal, startedAt });
-      } catch {
-        execution = {
-          kind: "incomplete",
-          responseJson: null,
-          attemptStatus: "transport-error",
-          httpStatus: null,
-          generationId: null,
-          served: { status: "unknown" },
-          routerAttempts: [],
-          usage: null,
-          billing: { status: "billing_unknown" },
-          reportedCostUsd: null,
-          failure: {
-            // Retry only failures positively classified at the transport boundary.
-            classification: "permanent",
-            kind: "transport",
-            httpStatus: null,
-            retryAfterMs: null,
-          },
-          completedAt: new Date().toISOString(),
-        };
-      }
+      const execution = await input.execute({ ordinal, startedAt });
 
       if (execution.kind === "incomplete") {
         await this.#attempts.finish(client, input, { ordinal, execution });

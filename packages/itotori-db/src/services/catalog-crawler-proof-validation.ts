@@ -168,24 +168,6 @@ export function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }
 
-export function stableJsonStringify(input: unknown): string {
-  if (input === undefined) {
-    return "undefined";
-  }
-  if (input === null || typeof input !== "object") {
-    return JSON.stringify(input) ?? "undefined";
-  }
-  if (Array.isArray(input)) {
-    return `[${input.map((value) => stableJsonStringify(value)).join(",")}]`;
-  }
-  const entries = Object.entries(input as Record<string, unknown>).sort(([left], [right]) =>
-    left.localeCompare(right),
-  );
-  return `{${entries
-    .map(([key, value]) => `${JSON.stringify(key)}:${stableJsonStringify(value)}`)
-    .join(",")}}`;
-}
-
 export function validateAdapterReadinessContract<TFact>(
   adapter: Pick<
     CatalogCrawlerSourceAdapter<TFact>,

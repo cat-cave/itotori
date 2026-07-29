@@ -172,6 +172,49 @@ describe("read tools — content-address binding", () => {
       }),
     ).toThrowError(/unit .* cites unknown scene scene:missing/u);
   });
+
+  it.each([
+    [
+      "route topology reachable units",
+      (snapshot: FactSnapshot): FactSnapshot => ({
+        ...snapshot,
+        routeTopology: { ...snapshot.routeTopology, reachableUnitKeys: ["unit:missing"] },
+      }),
+    ],
+    [
+      "terminology occurrences",
+      (snapshot: FactSnapshot): FactSnapshot => ({
+        ...snapshot,
+        terminology: [
+          {
+            factId: "term:missing",
+            termKey: "missing",
+            policyAction: "translate",
+            aliases: [],
+            occurrenceCount: 1,
+            occurrenceUnitKeys: ["unit:missing"],
+          },
+        ],
+      }),
+    ],
+    [
+      "choice-label occurrences",
+      (snapshot: FactSnapshot): FactSnapshot => ({
+        ...snapshot,
+        choiceLabels: { ...snapshot.choiceLabels, unitKeys: ["unit:missing"] },
+      }),
+    ],
+  ])("rejects a fact snapshot with unknown %s", (_label, malformedSnapshot) => {
+    const snapshot = buildFactSnapshot(structure(), loadBundle());
+
+    expect(() =>
+      buildReadModel({
+        contextSnapshot: makeContext(snapshot, { kind: "complete" }),
+        factSnapshot: malformedSnapshot(snapshot),
+        bundle: loadBundle(),
+      }),
+    ).toThrowError(/cites unbound unit unit:missing/u);
+  });
 });
 
 describe("read tools — access control", () => {

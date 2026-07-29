@@ -19,9 +19,9 @@ import {
   identityFieldValue,
   sameStringList,
   sha256,
-  stableJsonStringify,
   validateAdapterReadinessContract,
 } from "./catalog-crawler-proof-validation.js";
+import { stableJsonStringify } from "../stable-json.js";
 import {
   requiredFixtureString,
   validateRecordedCatalogCrawlerStep,

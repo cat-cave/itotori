@@ -84,14 +84,13 @@ fn configured_corpora() -> Option<Vec<CorpusRoot>> {
 }
 
 #[test]
+#[ignore = "real-bytes; requires configured private corpora"]
 fn detects_configured_real_corpora_with_redacted_signal_evidence() {
     let Some(corpora) = configured_corpora() else {
-        eprintln!("SKIP: {CORPORA_ENV} is unset or malformed");
-        return;
+        panic!("real-bytes proof not established: configured corpus input is unavailable");
     };
     if corpora.iter().any(|corpus| !corpus.path.is_dir()) {
-        eprintln!("SKIP: a configured RealLive corpus directory is unavailable");
-        return;
+        panic!("real-bytes proof not established: configured corpus directory is unavailable");
     }
 
     let adapter = RealLiveProfileDetectorAdapter;

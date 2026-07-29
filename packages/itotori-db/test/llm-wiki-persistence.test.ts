@@ -1,2 +1,2 @@
 // Database-backed scenarios remain registered through this façade.
-import "./llm-wiki-persistence.test.scenario-01.js";
+import "./llm-wiki-persistence.test.object-persistence.js";

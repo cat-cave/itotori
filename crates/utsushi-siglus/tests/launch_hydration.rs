@@ -238,6 +238,7 @@ fn observe_surfaces_linked_selbtn_options_with_their_branch_targets() {
 }
 
 #[test]
+#[ignore = "real-bytes; requires private corpora"]
 fn two_real_siglus_titles_launch_through_vfs_when_available() {
     let Some(first) = corpus_root(FIRST_TITLE_ENV) else {
         return;
@@ -256,8 +257,7 @@ fn two_real_siglus_titles_launch_through_vfs_when_available() {
 
 fn corpus_root(variable: &str) -> Option<PathBuf> {
     let Some(value) = corpus_registry::resolve_identity(variable).ok() else {
-        eprintln!("SKIP Siglus launch real bytes: {variable} is unset");
-        return None;
+        panic!("real-bytes proof not established: required corpus is unavailable");
     };
     let candidate = value;
     let root = if candidate.is_dir() {
@@ -267,8 +267,7 @@ fn corpus_root(variable: &str) -> Option<PathBuf> {
     };
     for logical in ["Scene.pck", "Gameexe.dat", "SiglusEngine.exe"] {
         if !root.join(logical).is_file() {
-            eprintln!("SKIP Siglus launch real bytes: {variable} lacks required assets");
-            return None;
+            panic!("real-bytes proof not established: required corpus asset is unavailable");
         }
     }
     Some(root)
