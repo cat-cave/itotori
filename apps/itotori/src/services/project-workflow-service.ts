@@ -115,6 +115,12 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     return await this.deps.runs.recordProgress(this.deps.actor, input);
   }
 
+  async recordProgressBatch(
+    input: Parameters<ItotoriProjectRunRepositoryPort["recordProgressBatch"]>[1],
+  ) {
+    return await this.deps.runs.recordProgressBatch(this.deps.actor, input);
+  }
+
   async reserveCost(input: Parameters<ItotoriProjectRunRepositoryPort["reserveCost"]>[1]) {
     return await this.deps.runs.reserveCost(this.deps.actor, input);
   }
@@ -139,8 +145,12 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     return await this.deps.runs.releaseLease(this.deps.actor, input);
   }
 
-  async loadLiveReadModel(projectId: string, runId: string) {
-    return await this.deps.runs.loadLiveReadModel(this.deps.actor, projectId, runId);
+  async loadLiveReadModel(
+    projectId: string,
+    runId: string,
+    options?: Parameters<ItotoriProjectRunRepositoryPort["loadLiveReadModel"]>[3],
+  ) {
+    return await this.deps.runs.loadLiveReadModel(this.deps.actor, projectId, runId, options);
   }
 
   async listLocaleBranchIdentities(projectId: string): Promise<LocaleBranchIdentity[]> {

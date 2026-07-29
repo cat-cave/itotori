@@ -12,6 +12,7 @@ import type { WorkflowPorts } from "../workflow/index.js";
 const PROGRESS_ROLE = "localize";
 const LEASE_DURATION_SECONDS = 90;
 const LEASE_RENEWAL_INTERVAL_MS = 30_000;
+export const STARTUP_PROGRESS_BATCH_SIZE = 500;
 
 type RunWorkflow = Pick<
   ItotoriProjectWorkflowPort,
@@ -25,7 +26,8 @@ type RunWorkflow = Pick<
   | "settleCost"
   | "releaseCost"
   | "loadLiveReadModel"
->;
+> &
+  Partial<Pick<ItotoriProjectWorkflowPort, "recordProgressBatch">>;
 
 type CostScope = {
   readonly unitIds: readonly string[];
@@ -89,7 +91,12 @@ export class LocalizeRunTracker {
     });
     await this.workflow.advanceRun({ lease: this.lease(), status: "running" });
     this.startLeaseRenewal();
-    await Promise.all([...new Set(unitIds)].map((unitId) => this.record(unitId, "decoded")));
+    const uniqueUnitIds = [...new Set(unitIds)];
+    for (let start = 0; start < uniqueUnitIds.length; start += STARTUP_PROGRESS_BATCH_SIZE) {
+      await this.recordStartupBatch(
+        uniqueUnitIds.slice(start, start + STARTUP_PROGRESS_BATCH_SIZE),
+      );
+    }
   }
 
   /** The observer reaches the exact physical-attempt boundary; memo hits do not
@@ -318,6 +325,29 @@ export class LocalizeRunTracker {
       });
     });
     this.#statusByUnit.set(unitId, nextStatus);
+  }
+
+  /** Startup uses bounded transactional inserts. The fallback retains that hard
+   * cap for narrow test doubles which have not adopted the batch port yet. */
+  private async recordStartupBatch(unitIds: readonly string[]): Promise<void> {
+    if (this.workflow.recordProgressBatch !== undefined) {
+      await this.trackWrite(async () => {
+        await this.workflow.recordProgressBatch?.({
+          lease: this.lease(),
+          progress: unitIds.map((bridgeUnitId) => ({
+            bridgeUnitId,
+            role: PROGRESS_ROLE,
+            status: "decoded",
+            costMicrosUsd: 0,
+            coveragePercent: 0,
+            blockers: [],
+          })),
+        });
+      });
+      for (const unitId of unitIds) this.#statusByUnit.set(unitId, "decoded");
+      return;
+    }
+    await Promise.all(unitIds.map(async (unitId) => await this.record(unitId, "decoded")));
   }
 
   private async finish(status: "completed" | "failed"): Promise<ProjectRunLiveReadModel | null> {

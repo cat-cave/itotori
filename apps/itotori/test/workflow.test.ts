@@ -8,6 +8,8 @@ import {
   applyCorrections,
   classifyStratum,
   coherenceSchedule,
+  DEFAULT_PROVIDER_CONCURRENCY,
+  DEFAULT_SCENE_CONCURRENCY,
   FinalizeBatchError,
   finalizeUnit,
   finalizeUnits,
@@ -266,6 +268,7 @@ interface FakeOptions {
   readonly lineEdit?: CorrectionOutcome;
   readonly semanticRepair?: CorrectionOutcome;
   readonly draftTransientFailures?: number;
+  readonly draftProbe?: () => Promise<void>;
 }
 
 function buildPorts(store: FakeStore, rec: Recorder, opts: FakeOptions = {}): WorkflowPorts {
@@ -287,6 +290,7 @@ function buildPorts(store: FakeStore, rec: Recorder, opts: FakeOptions = {}): Wo
         }
         inFlight += 1;
         rec.maxDraftInFlight = Math.max(rec.maxDraftInFlight, inFlight);
+        await opts.draftProbe?.();
         await new Promise((resolve) => setTimeout(resolve, 5));
         inFlight -= 1;
         const unitIds = input.scene.units.map((unit) => unit.unitId);
@@ -367,6 +371,48 @@ const TEST_DEV_NARROWED: RunPolicyRequest = {
   outputScope: "dialogue-only",
   roster: FULL_ROSTER,
 };
+
+describe("workflow scale bounds", () => {
+  it("caps each of three runs at 8 scenes and the portfolio at 24 provider operations", async () => {
+    let providerInFlight = 0;
+    let providerPeak = 0;
+    const providerProbe = async (): Promise<void> => {
+      providerInFlight += 1;
+      providerPeak = Math.max(providerPeak, providerInFlight);
+      await new Promise((resolve) => setTimeout(resolve, 4));
+      providerInFlight -= 1;
+    };
+    const runs = Array.from({ length: 3 }, (_, runIndex) => {
+      const recorder = newRecorder();
+      const scenes = Array.from({ length: 12 }, (_, sceneIndex) =>
+        scene(`scale-${runIndex}-${sceneIndex}`, [`unit-${runIndex}-${sceneIndex}`]),
+      );
+      return {
+        recorder,
+        scenes,
+        ports: buildPorts(new FakeStore(), recorder, { draftProbe: providerProbe }),
+      };
+    });
+    const saturationRecorder = newRecorder();
+    const saturationRun = {
+      scenes: [scene("saturation", ["saturation-unit"])],
+      ports: buildPorts(new FakeStore(), saturationRecorder, { draftProbe: providerProbe }),
+    };
+
+    await Promise.all(
+      [...runs, saturationRun].map(
+        async ({ scenes, ports }) => await runLocalizationWorkflow(PRODUCTION, scenes, ports),
+      ),
+    );
+
+    expect(providerPeak).toBe(DEFAULT_PROVIDER_CONCURRENCY);
+    expect(runs.map((run) => run.recorder.maxDraftInFlight)).toEqual([
+      DEFAULT_SCENE_CONCURRENCY,
+      DEFAULT_SCENE_CONCURRENCY,
+      DEFAULT_SCENE_CONCURRENCY,
+    ]);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Clause tests.

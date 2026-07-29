@@ -147,15 +147,7 @@ postgresDescribe("localize run progress over Postgres", () => {
             });
             expect(live?.progress.totalCostMicrosUsd).toBe(state.providerCallCount * 7);
             expect(live?.progress.statusCounts.patched).toBeGreaterThan(0);
-            expect(live?.progress.units).toEqual(
-              expect.arrayContaining([
-                expect.objectContaining({
-                  role: "localize",
-                  status: "patched",
-                  coveragePercent: 100,
-                }),
-              ]),
-            );
+            expect(live?.progress.unitCount).toBeGreaterThan(0);
           }
 
           const portfolio = await handleReadOnlyItotoriApiRequest(
@@ -228,18 +220,22 @@ postgresDescribe("localize run progress over Postgres", () => {
           const failedLive = await workflow.loadLiveReadModel(
             projectId,
             "localize-progress-run-failed",
+            { blockerPage: { limit: 500, offset: 0 } },
           );
           expect(failedLive?.run).toMatchObject({
             status: "failed",
             cost: { spentMicrosUsd: 0, reservedMicrosUsd: 0 },
           });
-          expect(failedLive?.progress.blockers).toEqual(
-            expect.arrayContaining([
+          expect(failedLive?.blockerPage).toMatchObject({
+            total: 3,
+            limit: 500,
+            offset: 0,
+            items: expect.arrayContaining([
               expect.objectContaining({
                 blockers: ["draft-failed:deadline:http-status:unknown:billing-unknown"],
               }),
             ]),
-          );
+          });
           const reservations = await context.pool.query<{
             state: string;
             settled_micros_usd: number | null;

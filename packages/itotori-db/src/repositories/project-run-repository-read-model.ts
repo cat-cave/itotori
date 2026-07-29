@@ -11,6 +11,7 @@ import {
 import {
   emptyStatusCounts,
   loadRunOrNull,
+  normalizeBlockers,
   progressFromRow,
   requiredText,
   rowsOf,
@@ -21,6 +22,7 @@ import {
   type ProjectRunDashboardPage,
   type ProjectRunDashboardRow,
   type ProjectRunLiveReadModel,
+  type ProjectRunLiveReadModelOptions,
   type ProjectRunPortfolioBlocker,
   type ProjectRunPortfolioProgressSummary,
   type ProjectRunProgressStatusCounts,
@@ -32,6 +34,7 @@ export async function loadProjectRunLiveReadModel(
   actor: AuthorizationActor,
   projectId: string,
   runId: string,
+  options: ProjectRunLiveReadModelOptions = {},
 ): Promise<ProjectRunLiveReadModel | null> {
   await requirePermission(db, actor, permissionValues.catalogRead);
   const project = requiredText(projectId, "projectId");
@@ -39,36 +42,82 @@ export async function loadProjectRunLiveReadModel(
   const executor = db as unknown as SqlExecutor;
   const runRecord = await loadRunOrNull(executor, project, run);
   if (runRecord === null) return null;
-  const units = (
+  const aggregate = (
     await rowsOf(
       executor,
       sql`
-    select * from ${projectRunProgress}
-    where run_id = ${run} and project_id = ${project}
-    order by bridge_unit_id asc, role asc
-  `,
+          select
+            count(*)::int as unit_count,
+            count(*) filter (where jsonb_array_length(blockers) > 0)::int as blocker_count,
+            coalesce(sum(cost_micros_usd), 0)::bigint as total_cost_micros_usd,
+            coalesce(avg(coverage_percent), 0) as average_coverage_percent,
+            count(*) filter (where status = 'decoded')::int as decoded_count,
+            count(*) filter (where status = 'drafted')::int as drafted_count,
+            count(*) filter (where status = 'QA')::int as qa_count,
+            count(*) filter (where status = 'accepted')::int as accepted_count,
+            count(*) filter (where status = 'patched')::int as patched_count
+          from ${projectRunProgress}
+          where run_id = ${run} and project_id = ${project}
+        `,
     )
-  ).map(progressFromRow);
+  )[0];
+  if (aggregate === undefined) throw new Error("live read-model aggregate did not return a row");
   const statusCounts = emptyStatusCounts();
-  for (const unit of units) statusCounts[unit.status] += 1;
-  const totalCostMicrosUsd = units.reduce((sum, unit) => sum + unit.costMicrosUsd, 0);
-  const averageCoveragePercent =
-    units.length === 0
-      ? 0
-      : units.reduce((sum, unit) => sum + unit.coveragePercent, 0) / units.length;
-  return {
+  statusCounts.decoded = portfolioCount(aggregate.decoded_count, "decoded_count");
+  statusCounts.drafted = portfolioCount(aggregate.drafted_count, "drafted_count");
+  statusCounts.QA = portfolioCount(aggregate.qa_count, "qa_count");
+  statusCounts.accepted = portfolioCount(aggregate.accepted_count, "accepted_count");
+  statusCounts.patched = portfolioCount(aggregate.patched_count, "patched_count");
+  const live: ProjectRunLiveReadModel = {
     schemaVersion: PROJECT_RUN_LIVE_READ_MODEL_SCHEMA_VERSION,
     run: runRecord,
     progress: {
       statusCounts,
-      totalCostMicrosUsd,
-      averageCoveragePercent,
-      blockers: units
-        .filter((unit) => unit.blockers.length > 0)
-        .map(({ bridgeUnitId, role, blockers }) => ({ bridgeUnitId, role, blockers })),
-      units,
+      unitCount: portfolioCount(aggregate.unit_count, "unit_count"),
+      blockerCount: portfolioCount(aggregate.blocker_count, "blocker_count"),
+      totalCostMicrosUsd: portfolioCount(aggregate.total_cost_micros_usd, "total_cost_micros_usd"),
+      averageCoveragePercent: portfolioCoverage(aggregate.average_coverage_percent),
     },
   };
+  const unitPage = options.unitPage === undefined ? undefined : normalizeReadPage(options.unitPage);
+  if (unitPage !== undefined) {
+    const rows = await rowsOf(
+      executor,
+      sql`
+          select * from ${projectRunProgress}
+          where run_id = ${run} and project_id = ${project}
+          order by bridge_unit_id asc, role asc limit ${unitPage.limit} offset ${unitPage.offset}
+        `,
+    );
+    live.unitPage = {
+      ...unitPage,
+      total: live.progress.unitCount,
+      items: rows.map(progressFromRow),
+    };
+  }
+  const blockerPage =
+    options.blockerPage === undefined ? undefined : normalizeReadPage(options.blockerPage);
+  if (blockerPage !== undefined) {
+    const rows = await rowsOf(
+      executor,
+      sql`
+          select bridge_unit_id, role, blockers from ${projectRunProgress}
+          where run_id = ${run} and project_id = ${project}
+            and jsonb_array_length(blockers) > 0
+          order by bridge_unit_id asc, role asc limit ${blockerPage.limit} offset ${blockerPage.offset}
+        `,
+    );
+    live.blockerPage = {
+      ...blockerPage,
+      total: live.progress.blockerCount,
+      items: rows.map((row) => ({
+        bridgeUnitId: requiredText(String(row.bridge_unit_id), "bridgeUnitId"),
+        role: requiredText(String(row.role), "role"),
+        blockers: normalizeBlockers(Array.isArray(row.blockers) ? row.blockers.map(String) : []),
+      })),
+    };
+  }
+  return live;
 }
 
 export async function listProjectRunDashboardRuns(
@@ -262,6 +311,19 @@ function portfolioProgressFromRow(
     averageCoveragePercent: portfolioCoverage(row.average_coverage_percent),
     blockers: portfolioBlockersFromRow(row.blockers),
   };
+}
+
+function normalizeReadPage(input: { limit: number; offset: number }): {
+  limit: number;
+  offset: number;
+} {
+  if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 500) {
+    throw new Error("read-model page limit must be an integer from 1 through 500");
+  }
+  if (!Number.isInteger(input.offset) || input.offset < 0) {
+    throw new Error("read-model page offset must be a non-negative integer");
+  }
+  return { limit: input.limit, offset: input.offset };
 }
 
 function projectRunDashboardRowFromRow(row: Record<string, unknown>): ProjectRunDashboardRow {

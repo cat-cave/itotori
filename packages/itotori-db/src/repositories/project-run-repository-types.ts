@@ -74,6 +74,12 @@ export type RecordProjectRunProgressInput = {
   blockers?: readonly string[];
 };
 
+/** One lease-checked transaction. The repository refuses more than 500 rows. */
+export type RecordProjectRunProgressBatchInput = {
+  lease: ProjectRunLeaseFence;
+  progress: readonly Omit<RecordProjectRunProgressInput, "lease">[];
+};
+
 export type ReserveProjectRunCostInput = {
   lease: ProjectRunLeaseFence;
   reservationId: string;
@@ -108,11 +114,32 @@ export type ProjectRunLiveReadModel = {
   run: ProjectRunRecord;
   progress: {
     statusCounts: Record<ProjectRunProgressStatus, number>;
+    unitCount: number;
+    blockerCount: number;
     totalCostMicrosUsd: number;
     averageCoveragePercent: number;
-    blockers: Array<{ bridgeUnitId: string; role: string; blockers: string[] }>;
-    units: ProjectRunProgressRecord[];
   };
+  unitPage?: ProjectRunProgressPage;
+  blockerPage?: ProjectRunBlockerPage;
+};
+
+export type ProjectRunProgressPage = {
+  total: number;
+  limit: number;
+  offset: number;
+  items: ProjectRunProgressRecord[];
+};
+
+export type ProjectRunBlockerPage = {
+  total: number;
+  limit: number;
+  offset: number;
+  items: Array<{ bridgeUnitId: string; role: string; blockers: string[] }>;
+};
+
+export type ProjectRunLiveReadModelOptions = {
+  unitPage?: { limit: number; offset: number };
+  blockerPage?: { limit: number; offset: number };
 };
 
 /**
@@ -184,6 +211,10 @@ export interface ItotoriProjectRunRepositoryPort {
     actor: AuthorizationActor,
     input: RecordProjectRunProgressInput,
   ): Promise<ProjectRunProgressRecord>;
+  recordProgressBatch(
+    actor: AuthorizationActor,
+    input: RecordProjectRunProgressBatchInput,
+  ): Promise<ProjectRunProgressRecord[]>;
   reserveCost(
     actor: AuthorizationActor,
     input: ReserveProjectRunCostInput,
@@ -206,6 +237,7 @@ export interface ItotoriProjectRunRepositoryPort {
     actor: AuthorizationActor,
     projectId: string,
     runId: string,
+    options?: ProjectRunLiveReadModelOptions,
   ): Promise<ProjectRunLiveReadModel | null>;
   listDashboardRuns(
     actor: AuthorizationActor,
