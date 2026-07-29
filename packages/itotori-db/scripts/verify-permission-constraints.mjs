@@ -48,7 +48,9 @@ export function verifyPermissionConstraintDrift(options = {}) {
 
 function permissionVerifierPaths({ authorizationPath, migrationsDir, migrationsSourcePath }) {
   return {
-    authorizationPath: authorizationPath ?? path.join(packageRoot, "src/authorization-01.ts"),
+    authorizationPath:
+      authorizationPath ??
+      path.join(packageRoot, "src/authorization-permissions-and-local-user.ts"),
     migrationsDir: migrationsDir ?? path.join(packageRoot, "migrations"),
     migrationsSourcePath:
       migrationsSourcePath ?? path.join(packageRoot, "src/migrations-registry.ts"),

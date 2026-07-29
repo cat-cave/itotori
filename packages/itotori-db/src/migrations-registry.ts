@@ -1,4 +1,4 @@
-import { migrations_entries_01 } from "./migrations-entries-01.js";
-import { migrations_entries_02 } from "./migrations-entries-02.js";
+import { foundationMigrationEntries } from "./migration-entries-foundation.js";
+import { productMigrationEntries } from "./migration-entries-product.js";
 
-export const migrations = [...migrations_entries_01, ...migrations_entries_02] as const;
+export const migrations = [...foundationMigrationEntries, ...productMigrationEntries] as const;

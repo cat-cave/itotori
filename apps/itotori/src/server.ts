@@ -321,19 +321,42 @@ function contentType(path: string): string {
   }
 }
 
-async function readFirstExistingStaticFile(path: string, roots: URL[]): Promise<Buffer | null> {
+export class StaticFileReadError extends Error {
+  constructor(
+    readonly path: string,
+    cause: unknown,
+  ) {
+    super(`failed to read static file ${path}`, { cause });
+    this.name = "StaticFileReadError";
+  }
+}
+
+export async function readFirstExistingStaticFile(
+  path: string,
+  roots: URL[],
+): Promise<Buffer | null> {
   for (const root of roots) {
     const safePath = safeStaticPath(path);
     if (safePath === null) {
       return null;
     }
+    const staticPath = join(fileURLToPath(root), safePath);
     try {
-      return await readFile(join(fileURLToPath(root), safePath));
-    } catch {
-      continue;
+      return await readFile(staticPath);
+    } catch (error) {
+      if (isMissingStaticFile(error)) continue;
+      throw new StaticFileReadError(staticPath, error);
     }
   }
   return null;
+}
+
+function isMissingStaticFile(error: unknown): boolean {
+  return isRecord(error) && error.code === "ENOENT";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function safeStaticPath(path: string): string | null {

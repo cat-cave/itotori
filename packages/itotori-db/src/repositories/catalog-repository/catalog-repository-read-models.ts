@@ -8,26 +8,26 @@ import {
   CatalogCompletenessPoolFilter,
   CatalogContextPanelCatalogReadModel,
   CatalogOpportunityRankingFilter,
-} from "./catalog-domain-03.js";
+} from "./catalog-read-model-types.js";
 import {
   CatalogOpportunityRankingReadModel,
   ItotoriCatalogRepositoryPort,
-} from "./catalog-domain-04.js";
-import { readCatalogCompletenessBenchmarkPools } from "./catalog-domain-05.js";
+} from "./catalog-repository-port-and-enums.js";
+import { readCatalogCompletenessBenchmarkPools } from "./catalog-conflict-completeness-read.js";
 import {
   readCatalogAlphaBenchmarkOpportunityRanking,
   readCatalogBenchmarkSeedFinder,
-} from "./catalog-domain-06.js";
-import { readCatalogContextPanelCatalogReadModel } from "./catalog-domain-07.js";
+} from "./catalog-benchmark-read.js";
+import { readCatalogContextPanelCatalogReadModel } from "./catalog-completeness-helpers.js";
 import {
   assertAlphaBenchmarkOpportunityRankingFilter,
   assertCompletenessPoolFilter,
   readCatalogOpportunityRanking,
-} from "./catalog-domain-08.js";
+} from "./catalog-completeness-filters.js";
 import {
   assertBenchmarkSeedFinderFilter,
   assertCatalogOpportunityRankingFilter,
-} from "./catalog-domain-09.js";
+} from "./catalog-benchmark-ranking.js";
 import { requiredString } from "../../required-string.js";
 import { CatalogRepositoryScans } from "./catalog-repository-scans.js";
 

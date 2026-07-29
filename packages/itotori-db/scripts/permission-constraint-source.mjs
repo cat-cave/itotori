@@ -151,7 +151,7 @@ function migrationRegistryEntries(source, migrationsSourcePath, relativePath) {
 
   const importedEntryLists = [
     ...source.matchAll(
-      /import\s+\{\s*(migrations_entries_\d+)\s*\}\s+from\s+"(\.\/migrations-entries-\d+\.js)";/gu,
+      /import\s+\{\s*(\w+MigrationEntries)\s*\}\s+from\s+"(\.\/migration-entries-[\w-]+\.js)";/gu,
     ),
   ];
   if (importedEntryLists.length === 0) {

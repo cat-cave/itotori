@@ -30,11 +30,11 @@ import {
   CatalogSeedTargetInput,
   CatalogSeedTargetRecord,
   CatalogWorkSnapshot,
-} from "./catalog-domain-02.js";
+} from "./catalog-work-scan-types.js";
 import {
   CatalogConflictReviewFilter,
   CatalogConflictReviewReadModel,
-} from "./catalog-domain-03.js";
+} from "./catalog-read-model-types.js";
 import {
   catalogBenchmarkSelectableSeedStatuses,
   catalogCandidateMatchStatuses,
@@ -42,27 +42,27 @@ import {
   catalogSeedStatuses,
   catalogSources,
   seedTargetIsBenchmarkSelectable,
-} from "./catalog-domain-04.js";
-import { readCatalogConflictReview } from "./catalog-domain-05.js";
+} from "./catalog-repository-port-and-enums.js";
+import { readCatalogConflictReview } from "./catalog-conflict-completeness-read.js";
 import {
   assertCatalogConflictReviewFilter,
   catalogConflictReviewRowMatches,
-} from "./catalog-domain-15.js";
-import { recordSeedTargetUnchecked } from "./catalog-domain-16.js";
-import { readLocalScan, readWorkSnapshot } from "./catalog-domain-17.js";
+} from "./catalog-conflict-review.js";
+import { recordSeedTargetUnchecked } from "./catalog-conflict-utils.js";
+import { readLocalScan, readWorkSnapshot } from "./catalog-input-normalization.js";
 import {
   assertCandidateMatchInput,
   assertLocalScanInput,
   assertSeedTargetInput,
-} from "./catalog-domain-21.js";
+} from "./catalog-scan-input-validation.js";
 import {
   candidateMatchFromRow,
   requiredLocalScan,
   requiredRow,
   seedTargetFromRow,
-} from "./catalog-domain-22.js";
+} from "./catalog-row-mapping.js";
 import { requiredString } from "../../required-string.js";
-import { assertEnumValue } from "./catalog-domain-23.js";
+import { assertEnumValue } from "./catalog-enum-validation.js";
 import { CatalogRepositoryWrites } from "./catalog-repository-writes.js";
 
 export class CatalogRepositoryScans extends CatalogRepositoryWrites {

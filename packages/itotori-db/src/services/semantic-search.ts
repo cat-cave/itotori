@@ -14,10 +14,10 @@ export {
   type SemanticGlossarySearchMatch,
   type SemanticGlossarySearchReadiness,
   type SemanticGlossarySearchReadModel,
-} from "./semantic-search-01.js";
-export { ItotoriSemanticGlossarySearchService } from "./semantic-search-02.js";
+} from "./semantic-search-types-and-fixtures.js";
+export { ItotoriSemanticGlossarySearchService } from "./semantic-search-service.js";
 export {
   normalizeSemanticSearchText,
   semanticSearchTextHash,
   compareSemanticMatches,
-} from "./semantic-search-03.js";
+} from "./semantic-search-matching.js";

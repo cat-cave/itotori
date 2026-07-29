@@ -1,7 +1,7 @@
 export {
   CatalogArtifactMappingError,
   catalogArtifactMappingErrorCodes,
-} from "./catalog-domain-01.js";
+} from "./catalog-record-types.js";
 export type {
   CatalogArtifactMappingErrorCode,
   CatalogDateInput,
@@ -21,7 +21,7 @@ export type {
   CatalogReleaseRecord,
   CatalogSourceProvenanceInput,
   CatalogSourceProvenanceRecord,
-} from "./catalog-domain-01.js";
+} from "./catalog-record-types.js";
 export type {
   CatalogCandidateMatchInput,
   CatalogCandidateMatchRecord,
@@ -48,8 +48,8 @@ export type {
   CatalogWorkInput,
   CatalogWorkRecord,
   CatalogWorkSnapshot,
-} from "./catalog-domain-02.js";
-export { catalogCompletenessPoolValues } from "./catalog-domain-03.js";
+} from "./catalog-work-scan-types.js";
+export { catalogCompletenessPoolValues } from "./catalog-read-model-types.js";
 export type {
   CatalogAlphaBenchmarkOpportunity,
   CatalogAlphaBenchmarkOpportunityDecision,
@@ -84,17 +84,17 @@ export type {
   CatalogOpportunityDemandFacts,
   CatalogOpportunityRankingFilter,
   CatalogOpportunityRuntimeEvidenceReadiness,
-} from "./catalog-domain-03.js";
-export { catalogSeedReadinessExplanationMetadataKey } from "./catalog-domain-04.js";
+} from "./catalog-read-model-types.js";
+export { catalogSeedReadinessExplanationMetadataKey } from "./catalog-repository-port-and-enums.js";
 export type {
   CatalogOpportunityDemotion,
   CatalogOpportunityRankingReadModel,
   CatalogOpportunityRow,
   ItotoriCatalogRepositoryPort,
-} from "./catalog-domain-04.js";
+} from "./catalog-repository-port-and-enums.js";
 export {
   catalogConflictOriginMetadataDropDiagnostic,
   catalogConflictOriginMetadataDropDiagnosticCode,
-} from "./catalog-domain-14.js";
-export type { CatalogConflictOriginMetadataDropDiagnostic } from "./catalog-domain-14.js";
+} from "./catalog-conflict-projection.js";
+export type { CatalogConflictOriginMetadataDropDiagnostic } from "./catalog-conflict-projection.js";
 export { ItotoriCatalogRepository } from "./catalog-repository-read-models.js";

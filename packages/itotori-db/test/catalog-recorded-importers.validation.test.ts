@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { assertFact } from "../src/services/catalog-recorded-importers-15.js";
+import { assertFact } from "../src/services/catalog-recorded-importer-utils.js";
 
 describe("catalog recorded importer fact validation", () => {
   it.each([

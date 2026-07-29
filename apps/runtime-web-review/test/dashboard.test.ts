@@ -15,7 +15,6 @@ let currentFixture = runtimeFixture("passed-e2-capture");
 const server = setupServer(
   http.get("http://localhost/api/runtime/v0.2/status", () => apiRuntimeStatus(currentFixture)),
   http.get("http://itotori.test/api/runtime/v0.2/status", () => apiRuntimeStatus(currentFixture)),
-  http.get("http://itotori.test/api/hello/status", () => apiRuntimeStatus(currentFixture)),
 );
 
 beforeAll(() => server.listen());
@@ -37,6 +36,42 @@ describe("Utsushi runtime dashboard", () => {
 
     await expect(fetchRuntimeStatus("http://itotori.test/api/runtime/v0.2/status")).rejects.toThrow(
       "invalid runtime status response",
+    );
+  });
+
+  it.each([
+    ["textEventCount", (fixture: typeof currentFixture) => ({ ...fixture, textEventCount: -0.5 })],
+    [
+      "recordingArtifactCount",
+      (fixture: typeof currentFixture) => ({ ...fixture, recordingArtifactCount: -1 }),
+    ],
+    [
+      "validationFindingCount",
+      (fixture: typeof currentFixture) => ({ ...fixture, validationFindingCount: 1.5 }),
+    ],
+    [
+      "traceEvents[0].frame",
+      (fixture: typeof currentFixture) => ({
+        ...fixture,
+        traceEvents: [{ ...fixture.traceEvents[0], frame: -1 }],
+      }),
+    ],
+    [
+      "artifacts[0].byteSize",
+      (fixture: typeof currentFixture) => ({
+        ...fixture,
+        artifacts: [{ ...fixture.artifacts[0], byteSize: -1 }],
+      }),
+    ],
+  ])("rejects semantically invalid %s with its field name", async (field, invalidFixture) => {
+    server.use(
+      http.get("http://itotori.test/api/runtime/v0.2/status", () =>
+        HttpResponse.json(invalidFixture(runtimeFixture("passed-e2-capture"))),
+      ),
+    );
+
+    await expect(fetchRuntimeStatus("http://itotori.test/api/runtime/v0.2/status")).rejects.toThrow(
+      field,
     );
   });
 
@@ -254,17 +289,5 @@ describe("Utsushi runtime dashboard", () => {
 
     expect(root.querySelector('[data-metric="frame-captures"]')?.textContent).toBe("0");
     expect(root.querySelector('[data-metric="screenshots"]')?.textContent).toBe("1");
-  });
-
-  it("keeps explicit hello status endpoint compatibility through the same schema", async () => {
-    currentFixture = runtimeFixture("passed-e2-capture");
-    const root = document.createElement("div");
-    document.body.append(root);
-
-    await renderRuntimeDashboard(root, "http://itotori.test/api/hello/status");
-
-    expect(root.textContent).toContain("run-passed-e2-capture");
-    expect(root.textContent).toContain("layout_probe");
-    expect(root.textContent).toContain("1");
   });
 });

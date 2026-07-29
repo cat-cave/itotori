@@ -13,6 +13,7 @@ import {
   ItotoriProjectRepository,
   ItotoriProjectRunRepository,
   ItotoriSourceUnitRepository,
+  bootstrapDefaultAccountPrincipal,
   localUserId,
   migrate,
   permissionBasedLlmContentRead,
@@ -27,6 +28,7 @@ import {
 } from "../contracts/index.js";
 
 import type { ItotoriApiServices, ItotoriReadOnlyApiServices } from "../api-handlers.js";
+import { readOnlyApiServices } from "../api-handler-contracts.js";
 import type { ItotoriCliServices } from "../cli-handlers.js";
 import {
   createFieldMemoCipher,
@@ -91,14 +93,26 @@ export class ItotoriInvalidAuthSessionError extends Error {
   }
 }
 
+/** Raised at the service boundary before a caller can dereference an unbound port. */
+export class ItotoriMissingServiceError extends Error {
+  readonly serviceName: string;
+
+  constructor(serviceName: string) {
+    super(`retired service port '${serviceName}' has no installed binding`);
+    this.name = "ItotoriMissingServiceError";
+    this.serviceName = serviceName;
+  }
+}
+
 export async function withDatabaseItotoriServices<T>(
   options: { databaseUrl?: string } & ItotoriServiceFactoryOptions,
   callback: (services: ItotoriApplicationServices) => Promise<T>,
 ): Promise<T> {
   return await withDatabase(async ({ db, pool }) => {
-    // Migration owns setup-time seeding. Request handling never writes a
-    // fallback authorization substrate: an unmigrated installation fails
-    // explicitly through its normal database error boundary.
+    // The application owns the idempotent default account bootstrap. Migrations
+    // establish schema only, so principal-backed identity reads are populated
+    // before this service graph is exposed.
+    await bootstrapDefaultAccountPrincipal(db);
     const actor = { userId: localUserId };
     const cipher = createFieldMemoCipher(process.env);
     let config: ReturnType<typeof productionLocalizationConfig> | undefined;
@@ -341,16 +355,14 @@ export function retiredServiceSurface(
   >,
 ): ItotoriApplicationServices {
   return new Proxy(installed, {
-    // Presence checks must use the Proxy's `has` capability rather than `get`:
-    // `get` deliberately supplies a loud retired-surface stub for unbound ports.
+    // Presence checks use the Proxy's `has` capability rather than `get`,
+    // because `get` fails immediately for every unbound port.
     has(target, property) {
       return Reflect.has(target, property);
     },
     get(target, property, receiver) {
       if (Reflect.has(target, property)) return Reflect.get(target, property, receiver);
-      return () => {
-        throw new Error(`retired service port '${String(property)}' has no installed binding`);
-      };
+      throw new ItotoriMissingServiceError(String(property));
     },
   }) as ItotoriApplicationServices;
 }
@@ -458,7 +470,7 @@ export function toReadOnlyServiceFactory(
   factory: ItotoriServiceFactory,
 ): ItotoriReadOnlyServiceFactory {
   return async (callback, options) =>
-    await factory(async (services) => await callback(services), {
+    await factory(async (services) => await callback(readOnlyApiServices(services)), {
       ...options,
     });
 }

@@ -86,160 +86,154 @@ const ADMIN_VIEW: MediaRevealGrant = {
 
 describe("real-primary_corpus media ref resolution through the sanitized server", () => {
   const corpus = realCorpus();
-  const maybe = corpus ? it : it.skip;
   if (!corpus) {
-    it("SKIP: real corpus not staged in the private inventory", () => {
-      console.warn(
-        "[wiki-media-index-real-bytes] private inventory has no selected corpus — skipping the real-frame resolution oracle.",
-      );
-      expect(true).toBe(true);
-    });
+    console.warn(
+      "[wiki-media-index-real-bytes] private inventory has no selected corpus — skipping the real-frame resolution oracle.",
+    );
+    it.skip("real corpus not staged in the private inventory");
+    return;
   }
 
-  maybe(
-    "PROOF: a real rendered frame resolves redacted-by-default; reveal/tamper/missing fail loud",
-    async () => {
-      const c = corpus!;
-      const workDir = mkdtempSync(join(tmpdir(), "itotori-media-real-"));
-      const structurePath = join(workDir, "structure.json");
-      const managedDir = join(workDir, "managed");
-      const privateDir = join(workDir, "private");
-      const reportPath = join(workDir, "render-report.json");
-      mkdirSync(managedDir, { recursive: true });
-      mkdirSync(privateDir, { recursive: true });
+  it("PROOF: a real rendered frame resolves redacted-by-default; reveal/tamper/missing fail loud", async () => {
+    const c = corpus;
+    const workDir = mkdtempSync(join(tmpdir(), "itotori-media-real-"));
+    const structurePath = join(workDir, "structure.json");
+    const managedDir = join(workDir, "managed");
+    const privateDir = join(workDir, "private");
+    const reportPath = join(workDir, "render-report.json");
+    mkdirSync(managedDir, { recursive: true });
+    mkdirSync(privateDir, { recursive: true });
 
-      // 1. Entry scene from the real structure export.
-      runUtsushiStructureExport({
-        engine: "reallive",
-        gameexePath: c.gameexe,
-        seenPath: c.seen,
-        outputPath: structurePath,
-      });
-      const structure = JSON.parse(readFileSync(structurePath, "utf8")) as { entryScene?: number };
-      const sceneId = structure.entryScene;
-      expect(typeof sceneId).toBe("number");
+    // 1. Entry scene from the real structure export.
+    runUtsushiStructureExport({
+      engine: "reallive",
+      gameexePath: c.gameexe,
+      seenPath: c.seen,
+      outputPath: structurePath,
+    });
+    const structure = JSON.parse(readFileSync(structurePath, "utf8")) as { entryScene?: number };
+    const sceneId = structure.entryScene;
+    expect(typeof sceneId).toBe("number");
 
-      // 2. Render a real E2 screenshot into the managed artifact root.
-      const runId = "media-index-real";
-      const render = runNativeCli("utsushi-cli", [
-        "render-validate",
-        "--engine",
-        "reallive",
-        "--seen",
-        c.seen,
-        "--source-seen",
-        c.seen,
-        "--scene",
-        String(sceneId),
-        "--gameexe",
-        c.gameexe,
-        "--game-dir",
-        c.gameRoot,
-        "--artifact-root",
-        managedDir,
-        "--private-artifact-root",
-        privateDir,
-        "--redaction",
-        "on",
-        "--run-id",
-        runId,
-        "--output",
-        reportPath,
-      ]);
-      expect(render.status, render.stderr || render.stdout).toBe(0);
+    // 2. Render a real E2 screenshot into the managed artifact root.
+    const runId = "media-index-real";
+    const render = runNativeCli("utsushi-cli", [
+      "render-validate",
+      "--engine",
+      "reallive",
+      "--seen",
+      c.seen,
+      "--source-seen",
+      c.seen,
+      "--scene",
+      String(sceneId),
+      "--gameexe",
+      c.gameexe,
+      "--game-dir",
+      c.gameRoot,
+      "--artifact-root",
+      managedDir,
+      "--private-artifact-root",
+      privateDir,
+      "--redaction",
+      "on",
+      "--run-id",
+      runId,
+      "--output",
+      reportPath,
+    ]);
+    expect(render.status, render.stderr || render.stdout).toBe(0);
 
-      const report = JSON.parse(readFileSync(reportPath, "utf8")) as {
-        artifactUri: string;
-        artifactPath: string;
-        width: number;
-        height: number;
+    const report = JSON.parse(readFileSync(reportPath, "utf8")) as {
+      artifactUri: string;
+      artifactPath: string;
+      width: number;
+      height: number;
+    };
+
+    // 3. Content-address the PUBLIC (redacted) frame the server will serve.
+    const publicBytes = readFileSync(report.artifactPath);
+    const contentHash = `sha256:${createHash("sha256").update(publicBytes).digest("hex")}`;
+
+    // 4. Stand up the REAL sanitized artifact server over the managed root.
+    const server = createItotoriServer({
+      managedArtifactRoot: pathToFileURL(`${managedDir}/`),
+      readOnlyServiceFactory: allowReveal,
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    const port = (server.address() as AddressInfo).port;
+    const baseUrl = `http://127.0.0.1:${port}`;
+    try {
+      const facts = {
+        artifactUri: report.artifactUri,
+        contentHash,
+        mediaType: "image/png" as const,
+        dimensions: { width: report.width, height: report.height },
+        access: { redaction: "default-redacted" as const, permission: "project-member" as const },
       };
+      const ref = buildMediaRef(
+        { kind: "screenshot", mediaId: "real-frame-1", sceneId: String(sceneId) },
+        facts,
+      );
 
-      // 3. Content-address the PUBLIC (redacted) frame the server will serve.
-      const publicBytes = readFileSync(report.artifactPath);
-      const contentHash = `sha256:${createHash("sha256").update(publicBytes).digest("hex")}`;
+      // Reference-only: the ref carries no bytes.
+      expect(JSON.stringify(ref)).not.toContain("data:");
+      const index = buildMediaIndex([ref]);
+      expect(mediaForSubject(index, { kind: "scene", id: String(sceneId) })).toHaveLength(1);
 
-      // 4. Stand up the REAL sanitized artifact server over the managed root.
-      const server = createItotoriServer({
-        managedArtifactRoot: pathToFileURL(`${managedDir}/`),
-        readOnlyServiceFactory: allowReveal,
+      // (a) default: resolves through the server, REDACTED (copyrighted frame
+      //     stays behind the default-on toggle).
+      const resolved = await resolveMediaRef(ref, {
+        fetchArtifactBytes: sanitizedArtifactFetcher(baseUrl),
+        grant: ADMIN_VIEW,
       });
-      await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
-      const port = (server.address() as AddressInfo).port;
-      const baseUrl = `http://127.0.0.1:${port}`;
-      try {
-        const facts = {
-          artifactUri: report.artifactUri,
-          contentHash,
-          mediaType: "image/png" as const,
-          dimensions: { width: report.width, height: report.height },
-          access: { redaction: "default-redacted" as const, permission: "project-member" as const },
-        };
-        const ref = buildMediaRef(
-          { kind: "screenshot", mediaId: "real-frame-1", sceneId: String(sceneId) },
-          facts,
-        );
+      expect(resolved.redacted).toBe(true);
+      expect(resolved.dimensions).toEqual({ width: report.width, height: report.height });
 
-        // Reference-only: the ref carries no bytes.
-        expect(JSON.stringify(ref)).not.toContain("data:");
-        const index = buildMediaIndex([ref]);
-        expect(mediaForSubject(index, { kind: "scene", id: String(sceneId) })).toHaveLength(1);
+      // (b) reveal without the cap -> explicit unauthorized-reveal (never serves clear).
+      await expect(
+        resolveMediaRef(ref, {
+          fetchArtifactBytes: sanitizedArtifactFetcher(baseUrl),
+          grant: {
+            heldPermission: "project-member",
+            revealSensitive: false,
+            revealIntent: true,
+            shareRedaction: false,
+          },
+        }),
+      ).rejects.toMatchObject({ code: "unauthorized-reveal" });
 
-        // (a) default: resolves through the server, REDACTED (copyrighted frame
-        //     stays behind the default-on toggle).
-        const resolved = await resolveMediaRef(ref, {
+      // (c) tampered hash -> explicit hash-mismatch.
+      const tampered = buildMediaRef(
+        { kind: "screenshot", mediaId: "real-frame-tampered", sceneId: String(sceneId) },
+        {
+          ...facts,
+          contentHash: `sha256:${createHash("sha256").update("planted").digest("hex")}`,
+        },
+      );
+      await expect(
+        resolveMediaRef(tampered, {
           fetchArtifactBytes: sanitizedArtifactFetcher(baseUrl),
           grant: ADMIN_VIEW,
-        });
-        expect(resolved.redacted).toBe(true);
-        expect(resolved.dimensions).toEqual({ width: report.width, height: report.height });
+        }),
+      ).rejects.toMatchObject({ name: "MediaResolutionError", code: "hash-mismatch" });
 
-        // (b) reveal without the cap -> explicit unauthorized-reveal (never serves clear).
-        await expect(
-          resolveMediaRef(ref, {
-            fetchArtifactBytes: sanitizedArtifactFetcher(baseUrl),
-            grant: {
-              heldPermission: "project-member",
-              revealSensitive: false,
-              revealIntent: true,
-              shareRedaction: false,
-            },
-          }),
-        ).rejects.toMatchObject({ code: "unauthorized-reveal" });
-
-        // (c) tampered hash -> explicit hash-mismatch.
-        const tampered = buildMediaRef(
-          { kind: "screenshot", mediaId: "real-frame-tampered", sceneId: String(sceneId) },
-          {
-            ...facts,
-            contentHash: `sha256:${createHash("sha256").update("planted").digest("hex")}`,
-          },
-        );
-        await expect(
-          resolveMediaRef(tampered, {
-            fetchArtifactBytes: sanitizedArtifactFetcher(baseUrl),
-            grant: ADMIN_VIEW,
-          }),
-        ).rejects.toMatchObject({ name: "MediaResolutionError", code: "hash-mismatch" });
-
-        // (d) missing artifact -> explicit missing.
-        const missing = buildMediaRef(
-          { kind: "screenshot", mediaId: "real-frame-missing", sceneId: String(sceneId) },
-          {
-            ...facts,
-            artifactUri: `artifacts/utsushi/runtime/${runId}/screenshots/absent.png`,
-          },
-        );
-        await expect(
-          resolveMediaRef(missing, {
-            fetchArtifactBytes: sanitizedArtifactFetcher(baseUrl),
-            grant: ADMIN_VIEW,
-          }),
-        ).rejects.toBeInstanceOf(MediaResolutionError);
-      } finally {
-        await new Promise<void>((r) => server.close(() => r()));
-      }
-    },
-    600_000,
-  );
+      // (d) missing artifact -> explicit missing.
+      const missing = buildMediaRef(
+        { kind: "screenshot", mediaId: "real-frame-missing", sceneId: String(sceneId) },
+        {
+          ...facts,
+          artifactUri: `artifacts/utsushi/runtime/${runId}/screenshots/absent.png`,
+        },
+      );
+      await expect(
+        resolveMediaRef(missing, {
+          fetchArtifactBytes: sanitizedArtifactFetcher(baseUrl),
+          grant: ADMIN_VIEW,
+        }),
+      ).rejects.toBeInstanceOf(MediaResolutionError);
+    } finally {
+      await new Promise<void>((r) => server.close(() => r()));
+    }
+  }, 600_000);
 });

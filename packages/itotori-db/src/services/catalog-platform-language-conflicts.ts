@@ -15,4 +15,4 @@ export {
   type CatalogPlatformLanguageConflictDiagnostic,
   type CatalogPlatformLanguageConflictResult,
   augmentCatalogPlatformLanguageConflicts,
-} from "./catalog-platform-language-conflicts-01.js";
+} from "./catalog-platform-language-conflict-types.js";

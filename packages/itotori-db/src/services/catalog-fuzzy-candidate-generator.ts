@@ -12,4 +12,4 @@ export {
   type CatalogFuzzyCandidateResult,
   type ItotoriCatalogFuzzyCandidateGeneratorPort,
   ItotoriCatalogFuzzyCandidateGeneratorService,
-} from "./catalog-fuzzy-candidate-generator-01.js";
+} from "./catalog-fuzzy-candidate-types.js";

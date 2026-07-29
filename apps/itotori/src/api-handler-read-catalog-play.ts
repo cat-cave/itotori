@@ -277,7 +277,6 @@ export async function routeCatalogAndPlayReads(
     request.pathname === "/api/auth/permission-sets" ||
     request.pathname === "/api/auth/identity" ||
     request.pathname === "/api/auth/capabilities" ||
-    request.pathname === "/api/hello/status" ||
     request.pathname === "/api/runtime/v0.2/status" ||
     request.pathname === "/api/catalog/conflicts" ||
     request.pathname === "/api/catalog/completeness" ||

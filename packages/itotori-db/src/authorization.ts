@@ -22,15 +22,18 @@ export {
   AuthorizationError,
   ProviderClaimQuarantineError,
   type ExternalIdentityProviderClaim,
-} from "./authorization-01.js";
+} from "./authorization-permissions-and-local-user.js";
 export {
   resolvePrincipalEffectivePermissions,
   quarantineExternalIdentityProviderClaims,
   applyMappedProviderClaimGrants,
-} from "./authorization-02.js";
+} from "./authorization-effective-permissions.js";
 export {
   requirePermission,
   bootstrapLocalUser,
   defaultPermissionSetSeeds,
-} from "./authorization-03.js";
-export { seedDefaultPermissionSets, bootstrapDefaultAccountPrincipal } from "./authorization-04.js";
+} from "./authorization-provider-claims-and-seeds.js";
+export {
+  seedDefaultPermissionSets,
+  bootstrapDefaultAccountPrincipal,
+} from "./authorization-bootstrap.js";

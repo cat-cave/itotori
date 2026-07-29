@@ -17,13 +17,16 @@ import {
 import {
   CatalogSourceProvenanceInput,
   CatalogSourceProvenanceRecord,
-} from "./catalog-domain-01.js";
-import { CatalogWorkInput, CatalogWorkSnapshot } from "./catalog-domain-02.js";
-import { recordSourceProvenanceUnchecked } from "./catalog-domain-16.js";
-import { assertSourceProvenanceInput, readWorkSnapshot } from "./catalog-domain-17.js";
-import { assertCatalogWorkInput, assertWorkScopedArtifactReferences } from "./catalog-domain-18.js";
-import { assertConflictEvidenceSubjectReferences } from "./catalog-domain-19.js";
-import { requiredSnapshot } from "./catalog-domain-22.js";
+} from "./catalog-record-types.js";
+import { CatalogWorkInput, CatalogWorkSnapshot } from "./catalog-work-scan-types.js";
+import { recordSourceProvenanceUnchecked } from "./catalog-conflict-utils.js";
+import { assertSourceProvenanceInput, readWorkSnapshot } from "./catalog-input-normalization.js";
+import {
+  assertCatalogWorkInput,
+  assertWorkScopedArtifactReferences,
+} from "./catalog-work-input-validation.js";
+import { assertConflictEvidenceSubjectReferences } from "./catalog-identity-validation.js";
+import { requiredSnapshot } from "./catalog-row-mapping.js";
 export class CatalogRepositoryWrites {
   constructor(protected readonly db: ItotoriDatabase) {}
 

@@ -45,7 +45,7 @@ import type { AppLocation } from "./App.js";
 // Shell nav — the primary surface switcher. The active pill is derived from
 // the current location; selecting a pill navigates (a full load, the same
 // window.location the shell reads on mount — there is no client router). The
-// ids are the SPA's primary surfaces; legacy routes match no pill.
+// ids are the SPA's primary surfaces; unlisted paths match no pill.
 // ---------------------------------------------------------------------------
 
 /** The nav pill id active for a pathname, or "" when no pill matches. */
