@@ -125,3 +125,49 @@ export function projectFixture(): ItotoriProjectRecord {
     },
   };
 }
+
+export async function seedDrilldownRuns(
+  context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
+): Promise<void> {
+  const ledger = new ItotoriModelLedgerRepository(context.db);
+  // Earliest → latest so `started_at desc` orders [a, b, c, d].
+  await ledger.recordProviderRun(
+    localActor,
+    runInput("run-d-unknown", "billed", 300, {
+      systemId: "system-a",
+      startedAt: "2026-06-17T00:00:00.000Z",
+      completedAt: "2026-06-17T00:00:10.000Z",
+    }),
+  );
+  await ledger.recordProviderRun(
+    localActor,
+    runInput("run-c-billed", "billed", 500, {
+      systemId: "system-b",
+      startedAt: "2026-06-17T00:01:00.000Z",
+      completedAt: "2026-06-17T00:01:10.000Z",
+    }),
+  );
+  await ledger.recordProviderRun(
+    localActor,
+    runInput("run-b-zero", "zero", 0, {
+      systemId: "system-a",
+      startedAt: "2026-06-17T00:02:00.000Z",
+      completedAt: "2026-06-17T00:02:10.000Z",
+    }),
+  );
+  await ledger.recordProviderRun(
+    localActor,
+    runInput("run-a-billed", "billed", 1200, {
+      systemId: "system-a",
+      startedAt: "2026-06-17T00:03:00.000Z",
+      completedAt: "2026-06-17T00:03:10.000Z",
+      adapterMetadata: {
+        providerRouting: { order: ["fixture-upstream"], allowFallbacks: false },
+        rawResponse: { choices: [{ message: { content: "leaked body" } }] },
+      },
+    }),
+  );
+  await context.db.execute(
+    sql`delete from ${costLedgerEntries} where provider_run_id = 'run-d-unknown'`,
+  );
+}

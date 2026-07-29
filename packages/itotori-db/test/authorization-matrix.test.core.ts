@@ -1,4 +1,5 @@
 export { deniedActor } from "./authorization-matrix.test.constants.js";
+import type { ItotoriPrincipalRepositoryPort } from "../src/repositories/principal-repository.js";
 import { repositoryPermissionGateMatrixPart1 } from "./authorization-matrix.test.matrix-01.js";
 import { repositoryPermissionGateMatrixPart2 } from "./authorization-matrix.test.matrix-02.js";
 import { repositoryPermissionGateMatrixPart3 } from "./authorization-matrix.test.matrix-03.js";

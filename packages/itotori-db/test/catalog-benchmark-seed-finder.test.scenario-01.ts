@@ -53,24 +53,8 @@ import {
   demandFact,
   uuid,
   hash,
-  requiredTestRow,
-  normalizeBenchmarkSeedReadModel,
 } from "./catalog-benchmark-seed-finder.test.shared-01.js";
 import {
-  recordCapabilityMatrices,
-  recordAmbiguousAdapterWork,
-  recordPatchOnlyCapabilityBait,
-  recordSeedFinderCatalog,
-  recordSeedFinderProvenance,
-  provenance,
-  externalId,
-  release,
-  languageStatus,
-} from "./catalog-benchmark-seed-finder.test.shared-01.js";
-import {
-  demandFact,
-  uuid,
-  hash,
   requiredTestRow,
   normalizeBenchmarkSeedReadModel,
 } from "./catalog-benchmark-seed-finder.test.shared-02.js";

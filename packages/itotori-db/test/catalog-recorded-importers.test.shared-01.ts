@@ -58,6 +58,13 @@ const steamFixture = readStorefrontFixture("steam-storefront-replay.json");
 
 const DLSITE_FIXTURE_ID = "catalog-recorded-importer-dlsite-storefront-v0.1";
 const DLSITE_SOURCE_REVISION = "dlsite-storefront-synthetic-2026-06-18";
+
+export function record(value: unknown, label: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be a record`);
+  }
+  return value as Record<string, unknown>;
+}
 const STEAM_FIXTURE_ID = "catalog-recorded-importer-steam-storefront-v0.1";
 const STEAM_SOURCE_REVISION = "steam-storefront-synthetic-2026-06-18";
 

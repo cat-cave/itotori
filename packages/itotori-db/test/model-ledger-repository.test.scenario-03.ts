@@ -23,7 +23,11 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
-import { runInput, projectFixture } from "./model-ledger-repository.test.shared-01.js";
+import {
+  projectFixture,
+  runInput,
+  seedDrilldownRuns,
+} from "./model-ledger-repository.test.shared-01.js";
 
 describe("ItotoriModelLedgerRepository", () => {
   it("sanitizeAdapterMetadata projects only known-safe fields; raw-payload synonyms AND nested raw bodies never surface (default-deny)", async () => {

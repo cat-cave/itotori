@@ -51,15 +51,9 @@ import {
   languageStatus,
   demandFact,
   localScanEntry,
+  hash,
+  uuid,
 } from "./catalog-opportunity-ranking-read-model.test.shared-01.js";
-
-export function uuid(id: number): string {
-  return `019ed104-0000-7000-8000-${String(id).padStart(12, "0")}`;
-}
-
-export function hash(input: string): string {
-  return `sha256:${createHash("sha256").update(input).digest("hex")}`;
-}
 
 export function requiredTestRow(
   rows: CatalogOpportunityRankingReadModel["rows"],

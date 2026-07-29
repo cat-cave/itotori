@@ -37,6 +37,14 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 const localActor: AuthorizationActor = { userId: localUserId };
 const fetchedAt = "2026-06-27T12:00:00.000Z";
 
+export function uuid(id: number): string {
+  return `019ed104-0000-7000-8000-${String(id).padStart(12, "0")}`;
+}
+
+export function hash(input: string): string {
+  return `sha256:${createHash("sha256").update(input).digest("hex")}`;
+}
+
 export async function recordOpportunityCapability(
   repo: EngineCapabilityReportRepository,
 ): Promise<void> {

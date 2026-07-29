@@ -53,28 +53,8 @@ import {
   localScanEntry,
   uuid,
   hash,
-  requiredTestRow,
-  factorScore,
-  expectSerializedSafe,
 } from "./catalog-opportunity-ranking-read-model.test.shared-01.js";
 import {
-  recordOpportunityCapability,
-  recordRuntimeEvidenceCapability,
-  recordExtractAdapterMatrixCapability,
-  recordOpportunityCatalog,
-  opportunityWorkInput,
-  opportunityWorkInputWithEngine,
-  recordOpportunityProvenance,
-  provenance,
-  externalId,
-  release,
-  languageStatus,
-  demandFact,
-  localScanEntry,
-} from "./catalog-opportunity-ranking-read-model.test.shared-01.js";
-import {
-  uuid,
-  hash,
   requiredTestRow,
   factorScore,
   expectSerializedSafe,

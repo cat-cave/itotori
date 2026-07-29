@@ -9,6 +9,8 @@ import {
   ItotoriProjectRunRepository,
   ItotoriProjectRunRepositoryError,
 } from "../src/repositories/project-run-repository.js";
+import { ItotoriLlmSnapshotRepository } from "../src/repositories/llm-snapshot-repository.js";
+import type { DatabaseContext } from "../src/connection.js";
 import {
   actor,
   addRunBranch,
@@ -385,6 +387,7 @@ describe("ItotoriProjectRunRepository", () => {
         actor,
         fixture.projectId,
         "run-public-exports",
+        { unitPage: { limit: 10, offset: 0 } },
       );
       const dashboard = await listProjectRunDashboardRuns(fixture.context.db, actor, {
         projectId: fixture.projectId,
@@ -394,7 +397,7 @@ describe("ItotoriProjectRunRepository", () => {
       });
       const portfolio = await listProjectRunPortfolioProgress(fixture.context.db, actor);
 
-      expect(live?.progress.units).toMatchObject([
+      expect(live?.unitPage?.items).toMatchObject([
         { bridgeUnitId: "unit-public-export", blockers: ["review"] },
       ]);
       expect(dashboard.rows).toMatchObject([

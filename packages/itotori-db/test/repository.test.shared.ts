@@ -6,8 +6,11 @@ import { fileURLToPath } from "node:url";
 import { eq, sql } from "drizzle-orm";
 import pg from "pg";
 import { describe, expect, it } from "vitest";
-import type { RuntimeEvidenceReportV02 } from "@itotori/localization-bridge-schema";
-import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
+import type {
+  BridgeBundleV02,
+  PatchExportV02,
+  RuntimeEvidenceReportV02,
+} from "@itotori/localization-bridge-schema";
 import {
   allPermissions,
   localUserId,

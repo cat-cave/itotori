@@ -23,7 +23,11 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
-import { runInput, projectFixture } from "./model-ledger-repository.test.shared-01.js";
+import {
+  projectFixture,
+  runInput,
+  seedDrilldownRuns,
+} from "./model-ledger-repository.test.shared-01.js";
 
 describe("ItotoriModelLedgerRepository", () => {
   it("rolls back benchmark artifacts and ledger rows when provider ledger ingestion conflicts", async () => {
@@ -254,55 +258,6 @@ describe("ItotoriModelLedgerRepository", () => {
       await context.close();
     }
   });
-
-  async function seedDrilldownRuns(
-    context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
-  ): Promise<void> {
-    const ledger = new ItotoriModelLedgerRepository(context.db);
-    // Earliest → latest so `started_at desc` orders [a, b, c, d].
-    await ledger.recordProviderRun(
-      localActor,
-      runInput("run-d-unknown", "billed", 300, {
-        systemId: "system-a",
-        startedAt: "2026-06-17T00:00:00.000Z",
-        completedAt: "2026-06-17T00:00:10.000Z",
-      }),
-    );
-    await ledger.recordProviderRun(
-      localActor,
-      runInput("run-c-billed", "billed", 500, {
-        systemId: "system-b",
-        startedAt: "2026-06-17T00:01:00.000Z",
-        completedAt: "2026-06-17T00:01:10.000Z",
-      }),
-    );
-    await ledger.recordProviderRun(
-      localActor,
-      runInput("run-b-zero", "zero", 0, {
-        systemId: "system-a",
-        startedAt: "2026-06-17T00:02:00.000Z",
-        completedAt: "2026-06-17T00:02:10.000Z",
-      }),
-    );
-    await ledger.recordProviderRun(
-      localActor,
-      runInput("run-a-billed", "billed", 1200, {
-        systemId: "system-a",
-        startedAt: "2026-06-17T00:03:00.000Z",
-        completedAt: "2026-06-17T00:03:10.000Z",
-        adapterMetadata: {
-          providerRouting: { order: ["fixture-upstream"], allowFallbacks: false },
-          // A raw provider payload that MUST be stripped from the drilldown.
-          rawResponse: { choices: [{ message: { content: "leaked body" } }] },
-        },
-      }),
-    );
-    // Turn run-d into an UNRECORDED-cost row by removing its cost ledger entry
-    // (no cost row => unknown; distinct from an explicit zero-billed record).
-    await context.db.execute(
-      sql`delete from ${costLedgerEntries} where provider_run_id = 'run-d-unknown'`,
-    );
-  }
 
   it("filters the cost drilldown by project with deterministic ordering + pagination metadata", async () => {
     const context = await isolatedMigratedContext();

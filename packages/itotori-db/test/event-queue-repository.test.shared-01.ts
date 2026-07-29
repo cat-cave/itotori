@@ -101,3 +101,15 @@ export async function seedProject(db: ItotoriDatabase): Promise<void> {
   await repo.reset(localActor);
   await repo.importSourceBundle(localActor, projectFixture());
 }
+
+export async function seedOutboxEvent(queue: ItotoriEventQueueRepository): Promise<void> {
+  await queue.appendOutboxEvent(localActor, {
+    outboxEventId: "outbox-agent-task",
+    projectId: "project-test",
+    localeBranchId: "locale-en-us",
+    eventType: outboxEventTypeValues.agentTaskRequested,
+    idempotencyKey: "outbox:agent-task",
+    payload: { agentTask: "context-summary" },
+    maxAttempts: 3,
+  });
+}

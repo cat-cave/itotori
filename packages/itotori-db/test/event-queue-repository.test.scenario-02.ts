@@ -92,7 +92,11 @@ function jobInput(overrides: Partial<JobQueueInput> = {}): JobQueueInput {
   };
 }
 
-import { migratedContext, seedProject } from "./event-queue-repository.test.shared-01.js";
+import {
+  migratedContext,
+  seedOutboxEvent,
+  seedProject,
+} from "./event-queue-repository.test.shared-01.js";
 
 describe("ItotoriEventQueueRepository", () => {
   it("rejects a duplicate outbox publish mark without re-publishing the event", async () => {

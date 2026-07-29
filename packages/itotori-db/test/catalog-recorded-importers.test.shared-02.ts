@@ -51,6 +51,9 @@ import {
   catalogTranslationPortabilityValues,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
+import { record } from "./catalog-recorded-importers.test.shared-01.js";
+
+export { record } from "./catalog-recorded-importers.test.shared-01.js";
 
 const actor: AuthorizationActor = { userId: localUserId };
 
@@ -441,13 +444,6 @@ export function withUpdatedFact(
     release.releaseTitle = update.releaseTitle;
   }
   return copy;
-}
-
-export function record(value: unknown, label: string): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} must be a record`);
-  }
-  return value as Record<string, unknown>;
 }
 
 export function requiredArray(value: unknown, label: string): unknown[] {

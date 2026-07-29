@@ -92,7 +92,11 @@ function jobInput(overrides: Partial<JobQueueInput> = {}): JobQueueInput {
   };
 }
 
-import { migratedContext, seedProject } from "./event-queue-repository.test.shared-01.js";
+import {
+  migratedContext,
+  seedOutboxEvent,
+  seedProject,
+} from "./event-queue-repository.test.shared-01.js";
 
 describe("ItotoriEventQueueRepository", () => {
   it("atomically appends outbox events with typed follow-up jobs and idempotent dedupe", async () => {
@@ -317,18 +321,6 @@ describe("ItotoriEventQueueRepository", () => {
       await context.close();
     }
   });
-
-  async function seedOutboxEvent(queue: ItotoriEventQueueRepository): Promise<void> {
-    await queue.appendOutboxEvent(localActor, {
-      outboxEventId: "outbox-agent-task",
-      projectId: "project-test",
-      localeBranchId: "locale-en-us",
-      eventType: outboxEventTypeValues.agentTaskRequested,
-      idempotencyKey: "outbox:agent-task",
-      payload: { agentTask: "context-summary" },
-      maxAttempts: 3,
-    });
-  }
 
   it("rejects an outbox publish mark from an expired-but-unrecovered lease and stays deterministic", async () => {
     const context = await migratedContext();

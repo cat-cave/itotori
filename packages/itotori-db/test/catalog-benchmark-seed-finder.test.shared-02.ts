@@ -50,35 +50,10 @@ import {
   externalId,
   release,
   languageStatus,
+  demandFact,
+  hash,
+  uuid,
 } from "./catalog-benchmark-seed-finder.test.shared-01.js";
-
-export function demandFact(
-  id: number,
-  provenanceRecord: CatalogSourceProvenanceRecord,
-  sourceId: string,
-  factKind: (typeof catalogDemandFactKindValues)[keyof typeof catalogDemandFactKindValues],
-  factValue: Record<string, unknown>,
-): NonNullable<Parameters<ItotoriCatalogRepository["upsertWork"]>[1]["demandFacts"]>[number] {
-  return {
-    demandFactId: uuid(id),
-    catalogSource: provenanceRecord.catalogSource,
-    sourceId,
-    factKind,
-    factValue,
-    sourceProvenanceId: provenanceRecord.sourceProvenanceId,
-    observedAt: fetchedAt,
-    parserVersion: "catalog-benchmark-seed-test.v0.1",
-    metadata: { sourceField: factKind },
-  };
-}
-
-export function uuid(id: number): string {
-  return `019ed104-0000-7000-8000-${String(id).padStart(12, "0")}`;
-}
-
-export function hash(input: string): string {
-  return `sha256:${createHash("sha256").update(input).digest("hex")}`;
-}
 
 export function requiredTestRow<T>(rows: T[], label: string): T {
   const row = rows[0];
