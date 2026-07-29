@@ -25,9 +25,15 @@
 // The check is a byte-for-byte + structured (missing/extra component) diff
 // between the committed manifest and the freshly re-derived one.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { run } from "./synthetic-coverage-cli.mjs";
+import { group } from "./synthetic-coverage-group.mjs";
+
+export { buildArtifact } from "./synthetic-coverage-artifact.mjs";
+export { diffManifests } from "./synthetic-coverage-diff.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const repoRoot = resolve(here, "..");
@@ -405,16 +411,6 @@ function sliceBalanced(text, from, open, close) {
 // Manifest assembly
 // ---------------------------------------------------------------------------
 
-function group(sourceId, derivation, components) {
-  const spec = SOURCE_FILES[sourceId];
-  return {
-    source: `${spec.path}${spec.symbols?.length ? `#${spec.symbols.join("+")}` : ""}`,
-    derivation,
-    count: components.length,
-    components,
-  };
-}
-
 export function buildManifest(sources) {
   const familyOf = extractFamilyFor(sources.realliveCatalog);
   const opcodeTuples = extractRealliveCatalogTuples(sources.realliveCatalog).map((t) => ({
@@ -487,123 +483,6 @@ export function buildManifest(sources) {
       },
     },
   };
-}
-
-// ---------------------------------------------------------------------------
-// Drift diff — structured missing/extra component report between the
-// committed manifest and a freshly re-derived one.
-// ---------------------------------------------------------------------------
-
-function componentSet(manifest) {
-  // A SET of `family/group :: <canonical component>` keys, so coverage is
-  // compared by component VALUE and is order-independent (inserting or
-  // reordering a component does not spuriously shift every entry).
-  const set = new Set();
-  for (const [family, fam] of Object.entries(manifest.engineFamilies ?? {})) {
-    for (const [groupName, g] of Object.entries(fam.componentGroups ?? {})) {
-      for (const component of g.components ?? []) {
-        set.add(`${family}/${groupName} :: ${JSON.stringify(component)}`);
-      }
-    }
-  }
-  return set;
-}
-
-// Returns { missing, extra } where `missing` are components the DERIVED
-// manifest exercises that the COMMITTED manifest does NOT catalogue (real
-// coverage dropped below what the sources exercise — the drift failure), and
-// `extra` are components the committed manifest lists that the sources no
-// longer produce (invented / stale).
-export function diffManifests(committed, derived) {
-  const committedSet = componentSet(committed);
-  const derivedSet = componentSet(derived);
-  const missing = [];
-  const extra = [];
-  for (const key of derivedSet) {
-    if (!committedSet.has(key)) missing.push(key);
-  }
-  for (const key of committedSet) {
-    if (!derivedSet.has(key)) extra.push(key);
-  }
-  return { missing, extra };
-}
-
-// ---------------------------------------------------------------------------
-// CLI
-// ---------------------------------------------------------------------------
-
-function serializeJson(manifest) {
-  return `${JSON.stringify(manifest, null, 2)}\n`;
-}
-
-export function buildArtifact(root = repoRoot) {
-  const manifest = buildManifest(loadSources(root));
-  return { manifest, json: serializeJson(manifest) };
-}
-
-function readOrNull(absolute) {
-  try {
-    return readFileSync(absolute, "utf8");
-  } catch {
-    return null;
-  }
-}
-
-function run(argv) {
-  const check = argv.includes("--check");
-  const { manifest, json } = buildArtifact(repoRoot);
-  const jsonPath = resolve(repoRoot, OUTPUT_JSON_PATH);
-
-  if (check) {
-    const committedRaw = readOrNull(jsonPath);
-    if (committedRaw === null) {
-      console.error(
-        `coverage manifest missing at ${OUTPUT_JSON_PATH}; generate it with \`node ${GENERATOR_PATH}\``,
-      );
-      process.exit(1);
-    }
-    let committed;
-    try {
-      committed = JSON.parse(committedRaw);
-    } catch (error) {
-      console.error(`committed coverage manifest is not valid JSON: ${error?.message}`);
-      process.exit(1);
-    }
-    const { missing, extra } = diffManifests(committed, manifest);
-    const problems = [];
-    if (missing.length > 0) {
-      problems.push(
-        `MANIFEST DROPPED BELOW REAL COVERAGE — ${missing.length} real-bytes-exercised component(s) not catalogued:\n    ${missing.join(
-          "\n    ",
-        )}`,
-      );
-    }
-    if (extra.length > 0) {
-      problems.push(
-        `stale/invented component(s) no longer produced by the sources:\n    ${extra.join("\n    ")}`,
-      );
-    }
-    // Also byte-compare so formatting/metadata drift is caught.
-    if (committedRaw !== json && problems.length === 0) {
-      problems.push(
-        "committed manifest differs from the re-derived manifest (metadata/formatting drift)",
-      );
-    }
-    if (problems.length > 0) {
-      console.error(
-        `synthetic coverage manifest is stale; regenerate with \`node ${GENERATOR_PATH}\`:\n  ${problems.join(
-          "\n  ",
-        )}`,
-      );
-      process.exit(1);
-    }
-    console.log("synthetic coverage manifest covers 100% of the real-bytes-exercised components");
-    return;
-  }
-
-  mkdirSync(dirname(jsonPath), { recursive: true });
-  writeFileSync(jsonPath, json);
-  console.log(`wrote ${OUTPUT_JSON_PATH}`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
