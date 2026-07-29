@@ -36,7 +36,11 @@ export function groupBy<T>(values: T[], key: (value: T) => string): Map<string, 
   return grouped;
 }
 
-export function enumValue<T extends string>(value: string, allowed: readonly T[], label: string): T {
+export function enumValue<T extends string>(
+  value: string,
+  allowed: readonly T[],
+  label: string,
+): T {
   if (!allowed.includes(value as T)) {
     throw new Error(`${label} must be one of ${allowed.join(", ")}`);
   }

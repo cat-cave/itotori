@@ -79,13 +79,7 @@ export type {
   RuntimeEvidenceToolOutput,
   WrongBranchToolInput,
 };
-export {
-  collectOcrHints,
-  detectLayout,
-  detectMismatch,
-  detectMissingText,
-  detectWrongBranch,
-};
+export { collectOcrHints, detectLayout, detectMismatch, detectMissingText, detectWrongBranch };
 
 function resolveReport(
   store: RuntimeEvidenceArtifactStore,

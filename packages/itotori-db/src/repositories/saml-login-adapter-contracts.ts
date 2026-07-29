@@ -1,7 +1,4 @@
-import type {
-  ExternalIdentityProviderClaim,
-  Permission,
-} from "../authorization.js";
+import type { ExternalIdentityProviderClaim, Permission } from "../authorization.js";
 import type { AuthSessionRecord } from "./auth-session-service.js";
 
 export type SamlHttpPostLoginInput = {

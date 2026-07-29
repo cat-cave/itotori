@@ -71,7 +71,9 @@ export function deriveFeedbackDedupeKey(input: ManualFeedbackImportInput): strin
   })}`;
 }
 
-export function normalizeManualFeedback(input: ScopedManualFeedbackInput): NormalizedManualFeedback {
+export function normalizeManualFeedback(
+  input: ScopedManualFeedbackInput,
+): NormalizedManualFeedback {
   const reporterNote = input.reporterNote.trim();
   if (reporterNote.length === 0) {
     throw new Error("manual feedback reporterNote is required");

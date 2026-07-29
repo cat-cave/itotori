@@ -235,5 +235,4 @@ export const NODE_SPECS_FOUNDATION = [
     ],
     dependsOnProposal: ["a"],
   },
-
 ];

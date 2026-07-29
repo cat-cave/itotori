@@ -158,5 +158,4 @@ export const NODE_SPECS_RUNTIME = [
     ],
     dependsOnProposal: ["g"],
   },
-
 ];

@@ -11,9 +11,7 @@
 // bespoke HTML strings.
 
 import type { ReactNode } from "react";
-import type {
-  ProjectDashboardStatus,
-} from "@itotori/db";
+import type { ProjectDashboardStatus } from "@itotori/db";
 import { Badge, DataTable, Pagination, Panel } from "@itotori/ds";
 import type { ApiCallState } from "../../api-client.js";
 import type {

@@ -1,8 +1,5 @@
 import { assertLlmSha256, type LlmJsonValue } from "../llm-content-address.js";
-import {
-  type LlmContextSnapshot,
-  type LlmSnapshotFact,
-} from "./llm-snapshot-repository.js";
+import { type LlmContextSnapshot, type LlmSnapshotFact } from "./llm-snapshot-repository.js";
 import {
   LlmConversationEventConflictError,
   type AppendLlmConversationEventInput,
@@ -387,4 +384,3 @@ export type AcceptedHeadSets = {
 function compareCodeUnits(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
-

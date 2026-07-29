@@ -253,11 +253,13 @@ function versionOf(bin) {
     const r = spawnSync(bin, args, { encoding: "utf8", timeout: 15_000, env: NATIVE_CHILD_ENV });
     if (r.error) {
       if (r.error.code === "ENOENT") return { ok: false, error: "not found (ENOENT)" };
-      if (r.error.code === "ENOEXEC") return { ok: false, error: "exec format error (wrong arch?)" };
+      if (r.error.code === "ENOEXEC")
+        return { ok: false, error: "exec format error (wrong arch?)" };
       continue;
     }
     const output = `${r.stdout || ""}${r.stderr || ""}`;
-    if (r.status === 0 && args[0] === "--version") return { ok: true, version: output.split("\n")[0].trim() };
+    if (r.status === 0 && args[0] === "--version")
+      return { ok: true, version: output.split("\n")[0].trim() };
     if (output.trim().length > 0 || r.status !== null) return { ok: true, version: undefined };
   }
   return { ok: false, error: "binary did not execute on this platform" };
@@ -267,7 +269,8 @@ function probeOf(bin, args) {
   const r = spawnSync(bin, args, { encoding: "utf8", timeout: 15_000, env: NATIVE_CHILD_ENV });
   if (r.error) {
     if (r.error.code === "ENOENT") return { ok: false, error: "not found (ENOENT)", text: "" };
-    if (r.error.code === "ENOEXEC") return { ok: false, error: "exec format error (wrong arch?)", text: "" };
+    if (r.error.code === "ENOEXEC")
+      return { ok: false, error: "exec format error (wrong arch?)", text: "" };
     return { ok: false, error: r.error.message || "spawn failed", text: "" };
   }
   const text = `${r.stdout || ""}${r.stderr || ""}`;

@@ -110,7 +110,9 @@ export function semanticFromRow(
   };
 }
 
-export function conflictFromRow(row: typeof terminologyConflicts.$inferSelect): TerminologyConflictRecord {
+export function conflictFromRow(
+  row: typeof terminologyConflicts.$inferSelect,
+): TerminologyConflictRecord {
   return {
     conflictId: row.conflictId,
     projectId: row.projectId,

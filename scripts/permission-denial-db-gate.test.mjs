@@ -59,7 +59,9 @@ test("no-DATABASE_URL run fails loudly and never green-on-skip", async (t) => {
   assert.equal(marker.status, "skipped");
   assert.equal(marker.permissionDenialCovered, false);
   assert.equal(marker.node, "SHARED-027");
-  assert.ok(Number.isInteger(marker.expectedMatrixEntries) && marker.expectedMatrixEntries > 0);
+  // This catches a parser that merely finds the split matrix's three spreads
+  // instead of resolving the 136 concrete denial cases behind them.
+  assert.equal(marker.expectedMatrixEntries, 136);
   assert.deepEqual(marker.skippedSuites, ["authorization-matrix.test.ts"]);
   assert.equal(marker.skippedSuiteCount, marker.skippedSuites.length);
   // The isolated skip artifact must exist and match the marker.
@@ -79,7 +81,7 @@ test("no-DATABASE_URL run writes a machine-readable skipped artifact and no proo
   assert.equal(artifact.permissionDenialCovered, false);
   assert.equal(artifact.coverage, "none");
   assert.equal(artifact.node, "SHARED-027");
-  assert.ok(Number.isInteger(artifact.expectedMatrixEntries) && artifact.expectedMatrixEntries > 0);
+  assert.equal(artifact.expectedMatrixEntries, 136);
   assert.deepEqual(artifact.skippedSuites, ["authorization-matrix.test.ts"]);
   assert.ok(
     typeof artifact.remediationCommand === "string" && artifact.remediationCommand.length > 0,

@@ -23,7 +23,10 @@ import {
   type StyleGuideRecord,
   type StyleGuideVersionRecord,
 } from "./style-guide-repository-contracts.js";
-import { appendAffectedWorkInvalidatedEventsInTx, appendStyleGuideVersionChangedEventInTx } from "./style-guide-repository-outbox.js";
+import {
+  appendAffectedWorkInvalidatedEventsInTx,
+  appendStyleGuideVersionChangedEventInTx,
+} from "./style-guide-repository-outbox.js";
 import {
   getLocaleBranchContextInTx,
   getSourceRevisionInTx,

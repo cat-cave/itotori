@@ -90,12 +90,7 @@ function targetFor(id) {
 // each node has 4-6 concrete bullets.
 // ---------------------------------------------------------------------------
 
-const NODE_SPECS = [
-  ...NODE_SPECS_FOUNDATION,
-  ...NODE_SPECS_RUNTIME,
-  ...NODE_SPECS_SUBSYSTEMS,
-];
-
+const NODE_SPECS = [...NODE_SPECS_FOUNDATION, ...NODE_SPECS_RUNTIME, ...NODE_SPECS_SUBSYSTEMS];
 
 // ---------------------------------------------------------------------------
 // Build node objects and apply mutations.

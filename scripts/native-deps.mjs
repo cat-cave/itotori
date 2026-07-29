@@ -20,7 +20,12 @@ export {
   postgresPlan,
   rustBinCandidates,
 } from "./native-deps-resolution.mjs";
-export { contractProbeHonored, defaultProbe, runDoctor, tcpReachable } from "./native-deps-doctor.mjs";
+export {
+  contractProbeHonored,
+  defaultProbe,
+  runDoctor,
+  tcpReachable,
+} from "./native-deps-doctor.mjs";
 export { formatReport, provisionPlan } from "./native-deps-provisioning.mjs";
 
 import { main } from "./native-deps-provisioning.mjs";

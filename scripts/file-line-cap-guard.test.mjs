@@ -49,7 +49,13 @@ test("tree scan includes tracked JavaScript and TypeScript alongside Rust", () =
   execFileSync("git", ["add", "."], { cwd: dir });
   writeFileSync(join(dir, "untracked.mjs"), "export const ignored = false;\n");
 
-  assert.deepEqual(listScanFiles(dir), ["javascript.js", "module.mjs", "rust.rs", "tsx.tsx", "typescript.ts"]);
+  assert.deepEqual(listScanFiles(dir), [
+    "javascript.js",
+    "module.mjs",
+    "rust.rs",
+    "tsx.tsx",
+    "typescript.ts",
+  ]);
 });
 
 test("a NEW oversized file (not whitelisted) fails", () => {

@@ -37,7 +37,9 @@ export function provisionPlan({
     actions.push({
       id: "rust",
       why: "kaifuu/utsushi CLI binaries missing",
-      cmd: cmds.cargo ? ["cargo", "build", "--release", "-p", "kaifuu-cli", "-p", "utsushi-cli"] : null,
+      cmd: cmds.cargo
+        ? ["cargo", "build", "--release", "-p", "kaifuu-cli", "-p", "utsushi-cli"]
+        : null,
       note: cmds.cargo
         ? "builds pinned bins into target/release (rust-toolchain.toml pins the compiler)"
         : "cargo not found — install Rust (rustup, rust-toolchain.toml) or drop prebuilt bins in ITOTORI_LIBEXEC_DIR",
@@ -97,13 +99,18 @@ function runProvision({ dryRun, profile }) {
     process.stdout.write(`  ${dryRun ? "would run" : "running"}: ${printable}  (cwd: ${a.cwd})\n`);
     if (dryRun) continue;
     try {
-      execFileSync(a.cmd[0], a.cmd.slice(1), { cwd: a.cwd, stdio: "inherit", env: NATIVE_CHILD_ENV });
+      execFileSync(a.cmd[0], a.cmd.slice(1), {
+        cwd: a.cwd,
+        stdio: "inherit",
+        env: NATIVE_CHILD_ENV,
+      });
     } catch (err) {
       process.stderr.write(`  provision step "${a.id}" failed: ${err.message}\n`);
       failed = true;
     }
   }
-  if (!dryRun && !failed) process.stdout.write("\nRe-run `node scripts/native-deps.mjs doctor` to confirm.\n");
+  if (!dryRun && !failed)
+    process.stdout.write("\nRe-run `node scripts/native-deps.mjs doctor` to confirm.\n");
   return failed ? 1 : 0;
 }
 
@@ -119,7 +126,9 @@ function parseArgs(argv) {
     else throw new Error(`unknown argument: ${a}`);
   }
   if (!PROFILES[args.profile]) {
-    throw new Error(`unknown profile "${args.profile}" (expected one of ${Object.keys(PROFILES).join(", ")})`);
+    throw new Error(
+      `unknown profile "${args.profile}" (expected one of ${Object.keys(PROFILES).join(", ")})`,
+    );
   }
   return args;
 }
@@ -135,7 +144,8 @@ export function main(argv) {
     );
     return 2;
   }
-  if (args.command === "provision") return runProvision({ dryRun: args.dryRun, profile: args.profile });
+  if (args.command === "provision")
+    return runProvision({ dryRun: args.dryRun, profile: args.profile });
   const report = runDoctor({ profile: args.profile });
   if (args.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   else process.stdout.write(`${formatReport(report)}\n`);
