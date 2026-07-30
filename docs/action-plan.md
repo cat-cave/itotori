@@ -1,9 +1,9 @@
 # Itotori action plan
 
-This document is the sole program-intent authority. The replacement roadmap
-ledger will derive all 553 harvested capabilities from it without becoming a
-second prose plan. Other documents may specify contracts or preserve evidence,
-but they do not add, defer, or reinterpret scope.
+This document is the sole program-intent authority. The portable behavior
+catalog accounts for all 582 harvested capabilities without becoming a second
+prose plan. Other documents may specify contracts or preserve evidence, but
+they do not add, defer, or reinterpret scope.
 
 ## 1. The mission
 
@@ -118,8 +118,8 @@ blocking boundary defects.
 
 ### Scope and evidence
 
-- All 553 harvested capabilities move to the replacement ledger. The inventory
-  itself does not enter this document.
+- All 582 harvested capabilities are accounted for by the portable behavior
+  catalog. The inventory itself does not enter this document.
 - A real family claim requires the same mechanism on at least two real titles.
   Synthetic fixtures qualify regression machinery, never real support.
 - Full-fidelity text, bytes, frames, art, audio, and reconstruction data stay
