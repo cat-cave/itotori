@@ -61,24 +61,6 @@ fn encrypted_media_proof_command_happy_path_routes_without_overclaim() {
 }
 
 #[test]
-fn encrypted_media_proof_command_qd_contract_writes_stdout_without_output_flag() {
-    run_with_args(
-        [
-            "rpgmaker",
-            "encrypted-media-proof",
-            "--fixture",
-            rpgmaker_fixture_path("encrypted-media.json")
-                .to_str()
-                .unwrap(),
-        ]
-        .iter()
-        .map(std::string::ToString::to_string)
-        .collect(),
-    )
-    .unwrap();
-}
-
-#[test]
 fn encrypted_media_proof_command_missing_key_routes_to_unsupported() {
     let root = temp_dir("encrypted-media-missing-key");
     let output = root.join("missing-key-report.json");

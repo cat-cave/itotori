@@ -1,8 +1,6 @@
 //! Hand-rolled JSON Schema (Draft 2020-12) emitter for the implementation
 //! map. The Rust types in [`super::schema`] are the source of truth; this
-//! module emits a parity document validated by [`super::tests`] and by the
-//! external `roadmap/impl-map.schema.json` artifact (committed alongside
-//! this crate; checked at `just check` time).
+//! module emits a parity document validated by [`super::tests`].
 
 use serde_json::{Value, json};
 
@@ -32,7 +30,7 @@ pub fn build_schema() -> Value {
         },
         "EvidenceKind": {
             "type": "string",
-            "enum": ["Fixture", "Doc", "RoadmapNode", "ReferenceImplAnchor"]
+            "enum": ["Fixture", "Doc", "ReferenceImplAnchor"]
         },
         "CaptureMethod": {
             "type": "string",
@@ -69,7 +67,7 @@ pub fn build_schema() -> Value {
             "required": ["kind", "data"],
             "additionalProperties": false,
             "properties": {
-                "kind": { "type": "string", "enum": ["SemanticCode", "DeferredTo"] },
+                "kind": { "type": "string", "enum": ["SemanticCode"] },
                 "data": { "type": "string", "minLength": 1 }
             }
         },

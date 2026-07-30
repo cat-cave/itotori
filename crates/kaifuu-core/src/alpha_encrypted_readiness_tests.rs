@@ -16,6 +16,10 @@ fn generate() -> AlphaEncryptedReadinessReport {
 fn positive_dir_is_green_and_consumes_validation() {
     let report = generate();
     assert_eq!(
+        report.schema_version,
+        ALPHA_ENCRYPTED_READINESS_REPORT_SCHEMA_VERSION
+    );
+    assert_eq!(
         report.status,
         OperationStatus::Passed,
         "failed entries: {:?}",
@@ -57,7 +61,6 @@ fn every_entry_names_the_acceptance_tuple() {
     for entry in &report.entries {
         assert!(!entry.profile_id.is_empty());
         assert!(!entry.fixture_id.is_empty());
-        assert_eq!(entry.source_node_id, ALPHA_ENCRYPTED_SOURCE_NODE_ID);
         assert!(entry.content_hash.as_str().starts_with("sha256:"));
         // Posture/outcome and patch-result presence are mechanically tied.
         match entry.posture {
@@ -90,6 +93,11 @@ fn summary_is_readme_safe() {
     assert_eq!(summary.evidence_kind, "readiness_evidence");
     assert_eq!(summary.report_hash, report.report_hash);
     let json = summary.stable_json().unwrap();
+    assert_eq!(
+        summary.schema_version,
+        ALPHA_ENCRYPTED_READINESS_SUMMARY_SCHEMA_VERSION
+    );
+    assert!(!json.contains("sourceNodeId"));
     // The summary names no asset / helper / key / patch id and no paths.
     assert!(!json.contains("local-secret:"));
     assert!(!json.contains("kaifuu.helper."));
@@ -152,7 +160,6 @@ fn readiness_only_with_patch_artifact_fails() {
         schema_version: ALPHA_ENCRYPTED_PATCH_ARTIFACT_SCHEMA_VERSION.to_string(),
         patch_result_id: "patch/should-not-exist".to_string(),
         profile_id: readiness_only.profile_id.clone(),
-        source_node_id: ALPHA_ENCRYPTED_SOURCE_NODE_ID.to_string(),
         status: OperationStatus::Passed,
         patch_back: readiness_only.transform_stack.patch_back,
         touched_assets: vec!["scene/000.ss".to_string()],
@@ -188,6 +195,7 @@ fn empty_dir_reports_missing_inputs() {
 fn report_round_trips() {
     let report = generate();
     let json = report.stable_json().unwrap();
+    assert!(!json.contains("sourceNodeId"));
     assert!(json.ends_with('\n'));
     let parsed: AlphaEncryptedReadinessReport = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed.status, report.status);

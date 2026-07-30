@@ -1,7 +1,7 @@
 # Agent Conventions
 
 > **Contributor pointer.** This file is the short agent-conventions note.
-> The full developer docs (worktree lifecycle, qd orchestration, testing
+> The full developer docs (worktree lifecycle, testing
 > standard, CI policy, internal architecture) live under
 > [`docs/dev/`](docs/dev/README.md). Start at
 > [`CONTRIBUTING.md`](CONTRIBUTING.md) if you are going to change code.

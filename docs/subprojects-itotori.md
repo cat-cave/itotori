@@ -35,9 +35,8 @@ opaque retrieval store.
 
 ## Local database and scale checks
 
-The application configuration selects the local database. For qd local CI, use
-`just ci affected`; that runner owns the disposable database lifecycle. For
-manual development, use the supported `just dev db-*` selectors. Do not use
+The application configuration selects the local database. For manual
+development, use the supported `just dev db-*` selectors. Do not use
 ad-hoc environment variables for database URLs, Compose project names, ports,
 or scale schemas: they are application/development configuration, not
 deployment inputs.
@@ -47,7 +46,6 @@ just dev db-up
 just dev db-wait
 just dev db-migrate
 just dev db-reset
-just ci affected
 just ci public
 just dev scale-smoke
 ```

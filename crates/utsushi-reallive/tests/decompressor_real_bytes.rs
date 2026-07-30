@@ -7,10 +7,9 @@
 //! `RealLive encryption research notes`
 //! (outcome A: no second-level XOR for Sukara-branch titles).
 //!
-//! **Multi-game validation status.** Per the itotori operating model
-//! (`docs/dev/orchestration-operating-model.md`), a parser that targets a
-//! real engine substrate must be exercised against at least two real
-//! corpora before its node is merged-complete. Sweetie HD is the only
+//! **Multi-game validation status.** A parser that targets a real engine
+//! substrate must be exercised against at least two real corpora before an
+//! engine-family support claim. Sweetie HD is the only
 //! RealLive title currently staged. mirrors the pattern
 //! its predecessors landed: the node stays `planned`
 //! until a second RealLive corpus is sourced and exercised by an

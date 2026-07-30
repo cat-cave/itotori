@@ -10,7 +10,6 @@ document maps that stable surface without inventing additional recipes.
 | Lane                     | Contents                                                                             | Boundary                                                                     |
 | ------------------------ | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
 | `just ci public`         | `check all`, build, DB migration, `test all`, and mutation differential              | Public integration entry point; needs the local database path for migration. |
-| `just ci affected`       | qd’s affected-aware runner                                                           | qd owns the disposable DB lifecycle and decides the affected scope.          |
 | `just ci tier0`          | Meta, TypeScript, Rust, and manifest sublanes                                        | Static and public checks; no browser or private corpus proof.                |
 | `just ci tier0-meta`     | Repository scripts, structural guards, generated-artifact checks, and metadata tests | Detects only what its individual guards scan.                                |
 | `just ci tier0-ts`       | TypeScript format and typecheck                                                      | Does not run all TypeScript tests.                                           |
@@ -44,10 +43,8 @@ reason to weaken the reproducible public lanes.
 
 For ordinary changes, begin with the narrowest `check` or `test` selector that
 matches the behavior, then use `just ci public` or the CI partition selected by
-the workflow. For qd work, use `just ci affected` rather than manually copying
-the disposable database setup. `just check affected` is advisory: it prints
-recommended commands and does not replace required CI.
+the workflow. `just check affected` is advisory: it prints recommended commands
+and does not replace required CI.
 
 The GitHub workflow configuration remains the authority for required PR checks.
-The landing path is a pull request through GitHub’s native merge queue; see
-[`docs/orchestration.md`](../orchestration.md).
+The landing path is a pull request through GitHub’s native merge queue.

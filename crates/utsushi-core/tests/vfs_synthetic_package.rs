@@ -21,9 +21,7 @@ use support::{FixturePolicyPackage, fixture_package};
 // The route-by-package-id `MountedVfs` is removed; the
 // synthetic fixture exercises the `AssetPackage` boundary directly. The
 // composite path is exercised by `composite_asset_package.rs` and the
-// real-bytes integration suite. See
-// `docs/dev/orchestration-operating-model.md` "Legacy-path preservation"
-// (2026-06-24) for the no-shim rule.
+// real-bytes integration suite.
 
 #[test]
 fn synthetic_package_open_returns_plaintext_bytes_for_intro_txt() {

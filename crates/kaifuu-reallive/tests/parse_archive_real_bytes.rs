@@ -2,10 +2,9 @@
 //! envelope parser. Anchors the parser against the only RealLive corpus
 //! currently staged (primary_corpus HD) and exercises the truncation path on
 //! synthetic 10,001-slot bytes.
-//! **Multi-game validation status.** Per the itotori operating model
-//! (`docs/dev/orchestration-operating-model.md`), a parser that targets a
-//! real engine substrate must be exercised against at least two real
-//! corpora before its node is merged-complete. The MV/MZ and KAG corpora
+//! **Multi-game validation status.** A parser that targets a real engine
+//! substrate must be exercised against at least two real corpora before an
+//! engine-family support claim. The MV/MZ and KAG corpora
 //! are different engines and do not contain a `Seen.txt`. Single
 //! RealLive corpus (primary_corpus HD) until a second RealLive title is
 //! sourced. Per the multi-game-validation rule, 's status

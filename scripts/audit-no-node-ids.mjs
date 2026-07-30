@@ -5,15 +5,14 @@
 // `p0-core-<slug>`, or three prose cross-reference forms. Provenance like that
 // is stale-on-write: it belongs in
 // git history + the PR description, never in a doc comment or source line.
-// Planning provenance is stale-on-write outside the generated planning ledger
-// and immutable migration history. Those two paths are intentionally scoped
-// exemptions below; every other tracked text artifact must be free of node ids.
+// Planning provenance is stale-on-write outside immutable migration history.
+// Every other tracked text artifact must be free of node ids.
 //
 // Scope: every tracked text file, regardless of extension. This includes source,
 // documentation, configuration, workflows, manifests, and scripts. The generated,
-// content-addressed artifacts under `fixtures/`, the qd-generated `roadmap/`
-// planning-ledger export, and `packages/itotori-db/migrations/` applied
-// checksum-locked migration history are scoped exemptions below.
+// content-addressed artifacts under `fixtures/` and
+// `packages/itotori-db/migrations/` applied checksum-locked migration history
+// are scoped exemptions below.
 // Binary files are scanned too: node-id tokens are ASCII, so a byte decode can
 // find them without a file-type blind spot.
 //
@@ -27,7 +26,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
 
-const EXCLUDE_ROOTS = ["fixtures/", "roadmap/", "packages/itotori-db/migrations/"];
+const EXCLUDE_ROOTS = ["fixtures/", "packages/itotori-db/migrations/"];
 
 const NODE_ID_PATTERNS = [
   // Deliberately no word boundaries: `_`, letters, and digits can surround a
@@ -116,7 +115,7 @@ function main() {
       : scanFiles(options.root, listScanFiles(options.root));
   const scope =
     "Scope: all tracked files (including binary files); exempt only generated, content-addressed " +
-    "fixtures/, generated roadmap/, and applied packages/itotori-db/migrations/. Cannot see " +
+    "fixtures/ and applied packages/itotori-db/migrations/. Cannot see " +
     "untracked or ignored files.\n";
   if (result.violations.length === 0) {
     process.stdout.write(

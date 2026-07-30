@@ -1,9 +1,9 @@
 # Itotori Docs
 
 [`action-plan.md`](action-plan.md) is the sole product-intent authority.
-Readiness, research, design, subproject, and roadmap-ledger documents preserve
-point-in-time evidence, contracts, or operating mechanics; they do not add,
-defer, or reinterpret its scope.
+Readiness, research, design, and subproject documents preserve point-in-time
+evidence, contracts, or operating mechanics; they do not add, defer, or
+reinterpret its scope.
 
 These docs describe the monorepo as a three-project suite:
 
@@ -17,13 +17,9 @@ New users start with the root [README.md](../README.md) user quickstart
 (`itotori` install → `init` → observed `extract` → `structure-export`, with
 the live-state and patch-handoff boundary stated explicitly), then
 [install.md](install.md) (fresh-clone setup + the public-fixture demo), then
-[alpha-readiness.md](alpha-readiness.md) (checked alpha readiness) and
+[alpha-readiness.md](alpha-readiness.md) (alpha readiness) and
 [security-and-limitations.md](security-and-limitations.md) for the security
-posture, legal boundaries, and honest limitations. The alpha readiness checklist
-command
-([`scripts/alpha-readiness-checklist.mjs`](../scripts/alpha-readiness-checklist.mjs),
-`just check alpha-readiness`) re-derives those readiness claims from the
-generated capability + benchmark artifacts so the docs cannot drift.
+posture, legal boundaries, and honest limitations.
 
 Then read [alpha-proof.md](alpha-proof.md) and
 [project-readiness.md](project-readiness.md). The Studio SPA — the React
@@ -73,12 +69,9 @@ vault-source adapter. Its generic public-fixture workflow supersedes the former
 fixture gate.
 Affected detection and CI cache rules live in the dev doc
 [`docs/dev/ci-cache-and-affected.md`](dev/ci-cache-and-affected.md).
-The action plan defines intended capability and dependency waves. The roadmap
-ledger format and its currently committed export are documented in
-[`docs/dev/spec-dag.md`](dev/spec-dag.md) and `roadmap/spec-dag.json`.
-Agent-led implementation should also follow the dev doc
-[`docs/dev/orchestration-operating-model.md`](dev/orchestration-operating-model.md)
-and the [agent worktree lifecycle](dev/worktree-lifecycle.md).
+The action plan defines intended capability and dependency waves. Agent-led
+implementation should also follow the
+[agent worktree lifecycle](dev/worktree-lifecycle.md).
 Provider credentials, routing, logging, and recording policy is defined in
 [ADR 0002](adrs/0002-provider-routing-and-recording.md).
 Search and indexing infrastructure, including exact indexes, pgvector handling,
@@ -89,16 +82,13 @@ feedback escalation policy are defined in
 [itotori-product-workflow.md](itotori-product-workflow.md).
 The synthetic large-project generator and scale harness are documented in
 [itotori-scale-harness.md](itotori-scale-harness.md).
-Research recommendations are historical evidence unless mapped to live DAG
-nodes. The current research-to-DAG mapping lives in
-[research/research-to-dag-crosswalk.md](research/research-to-dag-crosswalk.md);
-the research index is [research/README.md](research/README.md).
+Research recommendations are historical evidence. The research index is
+[research/README.md](research/README.md).
 
 ## Developer / contributor docs
 
 The **developer / contributor surface** lives under
 [`docs/dev/`](dev/README.md): dev toolchain policy, internal architecture,
-the qd DAG / orchestration workflow, worktree lifecycle, testing standard,
-CI / dependency policy, and the audit playbook. If you are going to change
-code, start with [`CONTRIBUTING.md`](../CONTRIBUTING.md) at the repo root
-and follow its pointer into [`docs/dev/`](dev/README.md).
+worktree lifecycle, testing standard, and CI / dependency policy. If you are
+going to change code, start with [`CONTRIBUTING.md`](../CONTRIBUTING.md) at the
+repo root and follow its pointer into [`docs/dev/`](dev/README.md).

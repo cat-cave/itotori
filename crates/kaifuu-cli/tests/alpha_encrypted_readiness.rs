@@ -68,7 +68,8 @@ fn positive_tree_generates_evidence_and_consumes_validation() {
 
     let report: Value = serde_json::from_slice(&fs::read(&report_path).unwrap()).unwrap();
     assert_eq!(report["status"], "passed");
-    assert_eq!(report["sourceNodeId"], "synthetic-fixture");
+    assert_eq!(report["schemaVersion"], "0.2.0");
+    assert!(report.get("sourceNodeId").is_none());
 
     // The validation report was consumed (status + hash), not prose.
     let consumed = &report["consumedValidation"];
@@ -93,7 +94,7 @@ fn positive_tree_generates_evidence_and_consumes_validation() {
     for entry in entries {
         assert!(!entry["profileId"].as_str().unwrap().is_empty());
         assert!(!entry["fixtureId"].as_str().unwrap().is_empty());
-        assert_eq!(entry["sourceNodeId"], "synthetic-fixture");
+        assert!(entry.get("sourceNodeId").is_none());
         assert!(entry["engineFamily"].is_string());
         assert!(
             entry["contentHash"]
@@ -135,6 +136,8 @@ fn summary_is_readme_safe_and_distinguishes_evidence_from_support() {
 
     let raw = fs::read_to_string(&summary_path).unwrap();
     let summary: Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(summary["schemaVersion"], "0.2.0");
+    assert!(summary.get("sourceNodeId").is_none());
     assert_eq!(summary["evidenceKind"], "readiness_evidence");
     assert_eq!(
         summary["reportHash"].as_str().unwrap(),

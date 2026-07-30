@@ -47,35 +47,6 @@ An implementation agent may start adapter code only after these gates are true:
    through `EngineAdapter`. Key discovery, Wine, Windows, and remote helper
    orchestration stay outside the pure adapter.
 
-## Branch And Worktree Steps
-
-For primary spec work, follow the lifecycle commands rather than inventing a
-branch name:
-
-```sh
-qd ready --json
-qd node show <NODE-ID> --full
-qd claim <NODE-ID> --agent "<OWNER>" --branch spec/<node-id-lower>
-git worktree add -b spec/<node-id-lower> /scratch/worktrees/itotori-spec-<node-id-lower> main
-just check roadmap
-git diff --check
-git add roadmap/spec-dag.json
-git commit -m "chore(roadmap): claim <NODE-ID>"
-# Push the claim branch or merge this claim commit per the coordination workflow.
-```
-
-Do not start implementation, planning, or delegation until the claim has been
-validated and committed, then published or merged as durable qd ownership. If
-the claim cannot be made durable, return the node to `ready` before further
-work.
-
-For parallel adapter workers, use disjoint worker branches and worktrees as
-defined in the dev doc
-[worktree-lifecycle.md](dev/worktree-lifecycle.md). Before editing, check
-the branch and dirty state from inside the assigned worktree. If unrelated
-changes are present, leave them alone and keep the adapter slice scoped to the
-claimed files.
-
 ## Readiness Record
 
 The readiness record is durable context for future workers and reviewers. It is
@@ -524,15 +495,6 @@ Before claiming patch support, the adapter must satisfy the relevant rules in
   unsupported multi-entry behavior. Silent partial success is forbidden.
 
 ## Local Validation Commands
-
-For documentation-only adapter planning changes, run:
-
-```sh
-node scripts/spec-dag.mjs validate
-pnpm exec vp check
-git diff --check
-qd ready
-```
 
 For adapter code or fixture changes, add the focused commands that protect the
 behavior:

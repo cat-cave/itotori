@@ -892,6 +892,5 @@ Existing itotori code:
   classifier (not a structured Gameexe parser).
 - `crates/utsushi-core/src/substrate.rs` — runtime substrate facade
   (the relevant capability, complete).
-- `roadmap/spec-dag.json:20898-20940` — current single-node the relevant capability.
 
 ---

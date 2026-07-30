@@ -38,7 +38,7 @@ function labels(path, contents) {
 // onto THIS test process's own stderr, so that failure line escaped the test
 // even though the probes below are INTENTIONAL detection checks, not real repo
 // violations. Tooling that greps the test's stderr for that string (e.g.
-// `qd advance`, which treats a stderr match as a lifecycle failure) then
+// lifecycle tooling, which may treat a stderr match as a failure) then
 // false-tripped on a passing test. Capturing stdout+stderr here (stdin
 // ignored) keeps the child's output inside this helper: the tests still PROVE
 // detection by asserting on the captured stderr, but the parent stderr stays
@@ -129,7 +129,7 @@ test("CLI exits 1 on a crafted file with a hardcoded amountUsd literal", () => {
   const { code, stderr } = runAuditCli(probe);
   assert.equal(code, 1);
   // Detection is proven via the CAPTURED stderr; it never reaches this test's
-  // own stderr (so `qd advance`'s failure-string grep no longer false-trips).
+  // own stderr.
   assert.match(stderr, /Cost audit failed/u);
 });
 

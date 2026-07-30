@@ -175,39 +175,6 @@ local_scan(path, source, source_id, engine, signals, owned, scanned_at)     -- l
 
 ---
 
-## 9. Historical proposed roadmap DAG nodes
-
-This section preserves the original proposal table. The `RESEARCH-*` ids are
-historical placeholders and are not claimable. The live DAG absorbed adopted
-scope into `CATALOG-*`, Kaifuu, Itotori, Utsushi, Shared, and Alpha nodes; see
-[`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md).
-
-| id           | title                                | pri    | dependsOn         | summary                                                                                                                  |
-| ------------ | ------------------------------------ | ------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| RESEARCH-000 | Source adapter + raw cache contract  | P2     | UNIV-000          | Unified `source_raw` JSONB cache; adapter trait (pull→normalize→cache); resumable/idempotent.                            |
-| RESEARCH-001 | VNDB dump ingest + migrations        | P2     | RESEARCH-000      | Nightly dump fetch/decompress/load into normalized tables; engine+lang+mtl+rtype+extlinks.                               |
-| RESEARCH-002 | EGS SQL-endpoint adapter             | P2     | RESEARCH-000      | Port `egs_query`; load gamelist incrementally; JP median/votes/dlsite_id.                                                |
-| RESEARCH-003 | DLsite enrichment crawler            | P2     | RESEARCH-000      | Resumable per-workno AJAX pull; sales, work_type, translation_info tree.                                                 |
-| RESEARCH-004 | Steam appdetails adapter             | P2     | RESEARCH-000      | supported_languages + type; 429-backoff.                                                                                 |
-| RESEARCH-005 | **Full-outer-join entity resolver**  | **P1** | 001-004           | Union-find over all source nodes incl. DLsite translation tree; source-only works first-class.                           |
-| RESEARCH-006 | Language-completeness model          | P1     | RESEARCH-005      | Per-(work,lang) status vocabulary + provenance + cross-source conflict flags.                                            |
-| RESEARCH-007 | Local library scanner                | P2     | RESEARCH-005      | Discovery seeds + engine ground-truth from file signatures + owned flag.                                                 |
-| RESEARCH-008 | Opportunity finders                  | P2     | RESEARCH-006      | Abandoned/partial/MTL + cross-source-only gems; demand ranking; export.                                                  |
-| RESEARCH-009 | DLsite catalog discovery crawl       | P3     | RESEARCH-003      | Enumerate indie RPG long tail by work_type/ranking, independent of VNDB/EGS.                                             |
-| RESEARCH-010 | Stalled-TL deep signal               | P3     | RESEARCH-006      | Mine release notes / fan-TL trackers for explicit %-complete & last-activity.                                            |
-| RESEARCH-011 | Owned-library candidate finder       | P3     | RESEARCH-007, 008 | Steam GetOwnedGames / DLsite purchases; intersect with opportunity set.                                                  |
-| RESEARCH-012 | Engine cross-feed to Kaifuu          | P2     | RESEARCH-006, 007 | Feed engine prevalence × completeness gap into Kaifuu adapter prioritization.                                            |
-| RESEARCH-013 | Wikidata platform + cross-ID adapter | P2     | RESEARCH-005      | Free/no-auth: platforms + cross-IDs (IGDB/MobyGames/Steam/PS/eShop); flags console-only; strengthens dedup.              |
-| RESEARCH-014 | IGDB language_supports adapter       | P2     | RESEARCH-006, 013 | Twitch-OAuth; authoritative official languages across console+PC; resolves console-only official EN (13 Sentinels case). |
-| RESEARCH-015 | MobyGames console augmenter          | P3     | RESEARCH-013      | Broaden console/historical coverage and release-region data.                                                             |
-| RESEARCH-016 | Platform-aware completeness          | P1     | RESEARCH-006, 014 | `release_platform` + `unverified_console`; per-platform official detection; remove console false positives.              |
-
-`RESEARCH-005` (resolver) and `RESEARCH-006` (completeness) were the load-bearing
-proposal ids. They are now superseded by `CATALOG-001` and `CATALOG-002`;
-adapter, finder, and discovery scope is mapped in the crosswalk.
-
----
-
 ## 10. Prototype → Rust mapping
 
 | Prototype (Python)                           | Promotes to                                                                    |

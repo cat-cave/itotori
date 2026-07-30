@@ -4,7 +4,7 @@
  *
  * Siglus private-local redacted VALIDATION SUMMARY renderer. Like the relevant capability's
  * triage this is a FIRST-CLASS LOCAL workflow, ABSENT from public/per-gate CI
- * (no `just check`/`ci` lane and no affected.mjs / qd-full-ci.mjs selection
+ * (no `just check`/`ci` lane and no affected.mjs selection
  * references it). It reads operator private-local Siglus validation manifests
  * (describing local known-key / decrypt / patch-verify runs) and emits ONLY a
  * redacted aggregate validation summary.

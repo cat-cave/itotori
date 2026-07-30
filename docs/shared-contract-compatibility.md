@@ -11,8 +11,8 @@ pnpm --filter @itotori/localization-bridge-schema test
 cargo test -p kaifuu-core shared_contract_fixture_suite
 ```
 
-`just check schema`, `cargo test --workspace`, and `pnpm exec vp run ts:test` remain
-the spec verification targets.
+`cargo test --workspace` and `pnpm exec vp run ts:test` remain the verification
+targets.
 
 ## Report
 

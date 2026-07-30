@@ -40,7 +40,7 @@ pins the reported value and regression-fails on a `0.0.0` rollback.
 ### Product version vs. internal package churn
 
 Internal workspace packages (`@itotori/db`, `@itotori/localization-bridge-schema`,
-`@itotori/app`, `@itotori/spec-dag-dashboard`, `@itotori/runtime-web-review`)
+`@itotori/app`, `@itotori/runtime-web-review`)
 intentionally stay at `0.0.0` and are all `private: true` — they are **not
 published** and their churn does not bump anything user-facing. The product
 version is the single visible number; it moves when the **publishable surface**

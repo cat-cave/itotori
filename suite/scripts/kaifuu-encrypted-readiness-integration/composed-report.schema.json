@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "itotori.kaifuu-encrypted-readiness-integration.v0.1",
+  "$id": "itotori.kaifuu-encrypted-readiness-integration.v0.2",
   "title": "Kaifuu alpha encrypted-readiness evidence integration composed report",
-  "description": "The alpha-readiness composed-evidence artifact emitted by the kaifuu:encrypted-readiness workflow (capability_kaifuu_042). It NAMES + aggregates the prerequisite surfaces/adapters/command-evidence/proof artifacts (capability_kaifuu_103 packed-engine readiness + capability_kaifuu_104 alpha-encrypted evidence) by content HASH, and carries the private-encrypted-corpus readiness aggregate. The `skipped` status with reason `private_inputs_absent` is the deterministic REDACTED no-corpus artifact emitted when no private encrypted corpus is configured. Contains ONLY redacted fields: logical ids, source-node ids, sha256 proof hashes, aggregate counts, and per-engine readiness bins. Never key material, decrypted content, or local paths.",
+  "description": "The alpha-readiness composed-evidence artifact emitted by the kaifuu:encrypted-readiness workflow. It names and aggregates the prerequisite surfaces, adapters, command evidence, and proof artifacts by content hash, and carries the private-encrypted-corpus readiness aggregate. The `skipped` status with reason `private_inputs_absent` is the deterministic redacted no-corpus artifact emitted when no private encrypted corpus is configured. Contains only redacted fields: logical ids, sha256 proof hashes, aggregate counts, and per-engine readiness bins. Never key material, decrypted content, or local paths.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -19,7 +19,7 @@
     "entries"
   ],
   "properties": {
-    "schemaVersion": { "const": "itotori.kaifuu-encrypted-readiness-integration.v0.1" },
+    "schemaVersion": { "const": "itotori.kaifuu-encrypted-readiness-integration.v0.2" },
     "status": { "enum": ["ok", "skipped", "failed"] },
     "reason": {
       "oneOf": [{ "const": "private_inputs_absent" }, { "type": "null" }]
@@ -39,10 +39,9 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["id", "sourceNodeId"],
+            "required": ["id"],
             "properties": {
-              "id": { "type": "string" },
-              "sourceNodeId": { "type": "string" }
+              "id": { "type": "string" }
             }
           }
         },
@@ -75,11 +74,10 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["artifactId", "kind", "sourceNodeId", "engineFamily", "contentHash"],
+            "required": ["artifactId", "kind", "engineFamily", "contentHash"],
             "properties": {
               "artifactId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
               "kind": { "enum": ["readiness_profile", "readiness_patch_evidence"] },
-              "sourceNodeId": { "type": "string" },
               "engineFamily": { "type": ["string", "null"] },
               "contentHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
             }
@@ -94,7 +92,6 @@
             "commandEvidence",
             "readinessProfiles",
             "patchEvidence",
-            "coveredSourceNodes",
             "coveredEngineFamilies"
           ],
           "properties": {
@@ -103,7 +100,6 @@
             "commandEvidence": { "type": "integer", "minimum": 0 },
             "readinessProfiles": { "type": "integer", "minimum": 0 },
             "patchEvidence": { "type": "integer", "minimum": 0 },
-            "coveredSourceNodes": { "type": "integer", "minimum": 0 },
             "coveredEngineFamilies": { "type": "integer", "minimum": 0 }
           }
         }

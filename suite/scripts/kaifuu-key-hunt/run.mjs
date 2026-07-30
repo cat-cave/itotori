@@ -5,7 +5,7 @@
  * Private-local key-hunting run workflow. Like the relevant capability's triage and
  * the relevant capability's Siglus validation renderer this is a FIRST-CLASS LOCAL workflow,
  * ABSENT from public/per-gate CI (no `just check`/`ci` lane and no affected.mjs /
- * qd-full-ci.mjs selection references it). It reads operator private-local
+ * CI selection references it). It reads operator private-local
  * key-hunt manifests (describing per-attempt helper outcomes) and emits ONLY a
  * redacted aggregate key-hunt report of the five outcome categories.
  *

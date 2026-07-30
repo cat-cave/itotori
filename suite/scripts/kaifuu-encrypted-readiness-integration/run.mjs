@@ -10,7 +10,7 @@
  * corpus is configured.
  *
  * This is a FIRST-CLASS LOCAL workflow, intentionally ABSENT from public/per
- * -gate CI (no `just check`/`ci` lane and no affected.mjs / qd-full-ci.mjs
+ * -gate CI (no `just check`/`ci` lane and no affected.mjs
  * selection reference it). It composes existing prerequisite proofs by content
  * HASH; it never re-owns a prerequisite slice, never re-derives readiness, and
  * never shells out.

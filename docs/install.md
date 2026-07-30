@@ -131,7 +131,7 @@ patched-output runtime proof is grounded.
 
 ### Full gates
 
-- `just check` — the fast gate: lint, typecheck, unit tests, spec-DAG
+- `just check` — the fast gate: lint, typecheck, and unit tests
   validation, capability-matrix drift check, and the readiness checklist. No DB
   required.
 - `just ci` — the complete gate: `check` + build + DB migrations + full TS/Rust

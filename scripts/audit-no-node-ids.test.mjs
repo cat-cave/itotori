@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,11 +65,10 @@ test("catches node ids embedded in snake_case, camelCase, and digit identifiers"
   );
 });
 
-test("scope exempts only generated artifacts, ledger, and immutable migration paths", () => {
+test("scope exempts only generated artifacts and immutable migration paths", () => {
   assert.equal(isExcludedPath("crates/x/tests/fixtures/seed.rs"), false);
   assert.equal(isExcludedPath("fixtures/public/kaifuu-kag-synthetic-corpus/01-intro.ks"), true);
   assert.equal(isExcludedPath("packages/itotori-db/migrations/0035_ledger.sql"), true);
-  assert.equal(isExcludedPath("roadmap/spec-dag.json"), true);
   assert.equal(isExcludedPath("apps/itotori/src/llm/dispatch.ts"), false);
   assert.equal(isExcludedPath("docs/research/note.md"), false);
   assert.equal(shouldScan("crates/foo/src/lib.rs"), true);
@@ -88,26 +87,6 @@ test("scans a NUL-containing tracked-artifact payload", () => {
   assert.deepEqual(
     violations.map((item) => item.token),
     [nodeId("rb", 99)],
-  );
-});
-
-test("history decomposition modules avoid node-id references", () => {
-  const history = join(here, "history");
-  const parentStem = ["apply", "utsushi", "146", "decomposition"].join("-");
-  const modulePaths = [
-    join(history, `${parentStem}.mjs`),
-    join(history, "decomposition-foundation.mjs"),
-    join(history, "decomposition-runtime.mjs"),
-    join(history, "decomposition-subsystems.mjs"),
-  ];
-  const violations = modulePaths.flatMap((path) =>
-    findNodeIdViolations(path, readFileSync(path, "utf8")),
-  );
-
-  assert.equal(
-    violations.length,
-    0,
-    `node-id violations:\n${violations.map((item) => `${item.file}:${item.line} ${item.token}`).join("\n")}`,
   );
 });
 

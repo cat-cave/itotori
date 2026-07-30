@@ -121,9 +121,6 @@ test("rule 5 parses the ci-real-bytes lane and detects real-bytes crates", () =>
     "ci-real-bytes:",
     "    export X=y",
     "    cargo test -p kaifuu-reallive -p utsushi-reallive -p kaifuu-cli -p utsushi-cli -p kaifuu-softpal -- --ignored",
-    "",
-    "qd-full-ci:",
-    "    node scripts/qd-full-ci.mjs",
   ].join("\n");
   const lane = parseLaneCrates(jf);
   assert.deepEqual([...lane].sort(), [

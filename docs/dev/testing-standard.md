@@ -29,12 +29,10 @@ for the complete, executable selector lists.
 | `just check ts`           | TypeScript formatting and typecheck.                                                                                 |
 | `just check rust`         | Rust formatting, workspace check, clippy, and dependency audit.                                                      |
 | `just check fixtures`     | Public fixture-manifest validation.                                                                                  |
-| `just check roadmap`      | Spec-DAG validation.                                                                                                 |
 | `just test`               | TypeScript test tasks and `cargo test --workspace`.                                                                  |
 | `just test dlsite-demand` | The supported scoped app-suite selector.                                                                             |
 | `just test ratio`         | A report-only classification of tracked test files by seam.                                                          |
 | `just ci public`          | The public integration sequence: all checks, build, database migration, all tests, and mutation differential.        |
-| `just ci affected`        | qd’s affected runner; it owns its disposable database lifecycle.                                                     |
 
 Use the smallest command that exercises the changed behavior during a tight
 loop, then run the lane required by the change. Package-level commands are fine

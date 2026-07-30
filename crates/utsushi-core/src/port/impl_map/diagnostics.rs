@@ -148,7 +148,6 @@ fn evidence_kind_label(kind: EvidenceKind) -> &'static str {
     match kind {
         EvidenceKind::Fixture => "fixture",
         EvidenceKind::Doc => "doc",
-        EvidenceKind::RoadmapNode => "roadmap-node",
         EvidenceKind::ReferenceImplAnchor => "reference-impl-anchor",
     }
 }

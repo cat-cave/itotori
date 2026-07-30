@@ -9,7 +9,7 @@
 // per-gate run no longer re-parses whole real games (~30-45 min). That is only
 // SAFE while the synthetic still faithfully mirrors reality. This oracle is the
 // safety net: a PERIODIC (nightly + on-demand) run — invoked OUTSIDE the
-// per-gate `qd-full-ci` path — that keeps the REAL archives as ground truth and
+// per-gate path — that keeps the REAL archives as ground truth and
 // FAILS LOUD the moment the synthetic drifts away from what the real bytes
 // exercise.
 //
@@ -47,7 +47,7 @@
 // ------------------------------
 //   * Nightly cron + manual workflow_dispatch (.github/workflows/real-bytes-oracle.yml),
 //     and on-demand locally via `just test real-bytes-oracle`.
-//   * It is NOT wired into affected.mjs / qd-full-ci — a per-gate green never
+//   * It is NOT wired into affected.mjs — a per-gate green never
 //     pays for (or waits on) this. That separation is the whole point.
 //   * A RED oracle means the synthetic fixtures / coverage manifest DRIFTED
 //     from reality: RE-DERIVE the synthetic (regenerate the manifest with
@@ -227,7 +227,7 @@ function main(argv) {
         : "PERIODIC oracle — GROUND TRUTH + DRIFT (full)",
   );
   console.log(
-    "NOT part of per-gate qd-full-ci; nightly cron + on-demand only. " +
+    "NOT part of per-gate CI; nightly cron + on-demand only. " +
       "A red run means the synthetic drifted from reality — re-derive it.",
   );
 

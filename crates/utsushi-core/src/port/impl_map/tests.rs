@@ -46,17 +46,6 @@ fn baseline_map() -> ImplementationMap {
     }
 }
 
-fn roadmap_node_locator_from_fixture() -> String {
-    let fixture = include_str!("fixtures/positive/mixed-status.json");
-    let fixture: serde_json::Value =
-        serde_json::from_str(fixture).expect("mixed-status fixture must be valid JSON");
-    fixture
-        .pointer("/subsystems/3/status/data/evidenceRefs/0/locator")
-        .and_then(serde_json::Value::as_str)
-        .expect("mixed-status fixture must include a roadmap-node locator")
-        .to_string()
-}
-
 // 7.1 Positive shape.
 
 #[test]
@@ -111,8 +100,8 @@ fn accepts_supported_partial_unsupported_and_research_subsystem_variants_in_one_
         name: "Research".to_string(),
         status: SubsystemStatus::Research {
             evidence_refs: vec![EvidenceRef {
-                kind: EvidenceKind::RoadmapNode,
-                locator: roadmap_node_locator_from_fixture(),
+                kind: EvidenceKind::Doc,
+                locator: "docs/action-plan.md".to_string(),
                 caption: "Reference vm research anchor".to_string(),
             }],
         },
@@ -170,25 +159,6 @@ fn accepts_synthetic_inline_classification_when_kind_is_synthetic_inline() {
 }
 
 #[test]
-fn accepts_research_subsystem_with_roadmap_node_evidence_ref() {
-    let mut map = baseline_map();
-    map.subsystems[0].status = SubsystemStatus::Research {
-        evidence_refs: vec![EvidenceRef {
-            kind: EvidenceKind::RoadmapNode,
-            locator: roadmap_node_locator_from_fixture(),
-            caption: "Reference vm research anchor".to_string(),
-        }],
-    };
-    let report = validate(&map).expect("research validates");
-    assert!(
-        report
-            .warnings
-            .iter()
-            .any(|w| matches!(w, ValidationWarning::ResearchSubsystemPresent { .. }))
-    );
-}
-
-#[test]
 fn accepts_reference_behavior_no_reference_comparison_as_warning_not_error() {
     let mut map = baseline_map();
     map.reference_behavior.capture_method = CaptureMethod::NoReferenceComparison;
@@ -232,8 +202,8 @@ fn rejects_research_evidence_ref_with_empty_caption() {
     let mut map = baseline_map();
     map.subsystems[0].status = SubsystemStatus::Research {
         evidence_refs: vec![EvidenceRef {
-            kind: EvidenceKind::RoadmapNode,
-            locator: "synthetic-fixture".to_string(),
+            kind: EvidenceKind::Doc,
+            locator: "docs/action-plan.md".to_string(),
             caption: "  ".to_string(),
         }],
     };
@@ -250,8 +220,8 @@ fn rejects_research_evidence_locator_not_matching_kind_shape() {
     let mut map = baseline_map();
     map.subsystems[0].status = SubsystemStatus::Research {
         evidence_refs: vec![EvidenceRef {
-            kind: EvidenceKind::RoadmapNode,
-            locator: "not-a-node-id".to_string(),
+            kind: EvidenceKind::Doc,
+            locator: "not-a-doc-path".to_string(),
             caption: "Caption".to_string(),
         }],
     };

@@ -1,9 +1,7 @@
 //! Real-bytes multi-engine validation for the M.1 composite asset
 //! package ().
 //!
-//! Two engine families are exercised here per the
-//! `docs/dev/orchestration-operating-model.md` "Single-game validation
-//! passing as 'claimed support'" rule: RealLive and RPG Maker MV/MZ.
+//! Two engine families are exercised here: RealLive and RPG Maker MV/MZ.
 //! Both must pass for the substrate's cross-engine genericity claim to
 //! hold. Single-corpus validation is a P0 audit failure.
 //!

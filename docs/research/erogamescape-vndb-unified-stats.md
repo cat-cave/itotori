@@ -1,9 +1,7 @@
 # ErogameScape × VNDB — Unified Statistics
 
 **Status:** Historical evidence. This document is a dated statistical input from
-2026-06-17, not a current adapter or roadmap plan. Use
-[`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md) for current
-live DAG mappings.
+2026-06-17, not a current adapter or roadmap plan.
 
 **Purpose:** Add ErogameScape (EGS) as a second statistical front and join it to VNDB, so
 we have one combined catalog. EGS covers many games VNDB doesn't — especially the DLsite

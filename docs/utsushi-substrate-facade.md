@@ -189,10 +189,4 @@ No fourth runtime path exists outside these three.
 
 This document is held engine-neutral by the
 `facade_documentation_contains_no_engine_family_names` lint in
-`crates/utsushi-core/tests/substrate_conformance.rs` (see §4). The
-third runtime path and its resolution node are therefore named by
-**role** (engine-VM `replay_scene` driver; P2 decomposition node 4),
-not by the engine-specific crate, port type, or node id. The literal,
-engine-named node id and crate path live in `roadmap/spec-dag.json`
-(this parent's decomposition) and in that node's own spec, which are
-not subject to the neutrality lint.
+`crates/utsushi-core/tests/substrate_conformance.rs` (see §4).

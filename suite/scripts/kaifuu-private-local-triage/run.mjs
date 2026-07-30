@@ -4,7 +4,7 @@
  *
  * Private-local encrypted owned-game corpus triage. This is a FIRST-CLASS LOCAL
  * workflow, ABSENT from public/per-gate CI (no `just check`/`ci` lane and no
- * affected.mjs / qd-full-ci.mjs selection reference it). It scans operator
+ * affected.mjs or CI selection reference it). It scans operator
  * private-local triage manifests and emits ONLY redacted aggregate readiness
  * evidence.
  *

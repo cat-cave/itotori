@@ -2,15 +2,14 @@
 // CI guard: corpus identities in tracked artifacts must be opaque.
 //
 // A corpus is addressed by engine/ordinal/variant or a content hash. A title
-// must not be copied into code, test names, docs, workflows, or a generated
-// ledger. The detector deliberately recognises identifier *shapes*, rather
+// must not be copied into code, test names, docs, or workflows. The detector
+// deliberately recognises identifier *shapes*, rather
 // than a hand-maintained title vocabulary: adding another title-shaped corpus
 // identity therefore changes the result without changing this guard.
 //
 // Scope: every tracked UTF-8 text file. The two files below are individually
 // exempt because one defines the detection shapes and the other supplies
-// synthetic negative examples. Generated ledgers are scanned and reported,
-// but are not edited in place; their source must be regenerated separately.
+// synthetic negative examples.
 //
 // Limit: unstructured prose names and encrypted/opaque byte blobs cannot be
 // identified reliably without an authoritative title inventory. Shift-JIS
@@ -29,7 +28,6 @@ const SELF_REFERENTIAL_FILES = new Set([
   "scripts/audit-no-game-names.test.mjs",
 ]);
 
-const GENERATED_LEDGER = "roadmap/spec-dag.json";
 const TITLE_SHAPES = [
   /\b[a-z][a-z0-9-]{2,}\.v[1-9][0-9]{4,}\b/giu,
   /\bv[1-9][0-9]{3,}_(?:[a-z0-9]+_){2,}[a-z0-9]+\b/giu,
@@ -110,7 +108,6 @@ function readUtf8(path) {
 
 function scanFiles(root, files) {
   const violations = [];
-  const ledger = [];
   let scanned = 0;
   for (const file of files) {
     if (!shouldScan(file)) continue;
@@ -118,14 +115,13 @@ function scanFiles(root, files) {
       const target = root === null ? file : join(root, file);
       const contents = readUtf8(target);
       if (contents === null) continue;
-      const found = findGameNameViolations(file, contents);
-      (file === GENERATED_LEDGER ? ledger : violations).push(...found);
+      violations.push(...findGameNameViolations(file, contents));
       scanned += 1;
     } catch {
       // A disappeared, binary, or non-UTF-8 file cannot be text-scanned.
     }
   }
-  return { ledger, violations, scanned };
+  return { violations, scanned };
 }
 
 function parseArgs(argv) {
@@ -159,9 +155,6 @@ function main() {
     options.files.length > 0
       ? scanFiles(null, options.files)
       : scanFiles(options.root, listScanFiles(options.root));
-  if (result.ledger.length > 0) {
-    printReferences("game-name guard: generated ledger requires regeneration", result.ledger);
-  }
   if (result.violations.length === 0) {
     process.stdout.write(
       `game-name guard: passed. 0 enforced references across ${result.scanned} scanned files. ` +

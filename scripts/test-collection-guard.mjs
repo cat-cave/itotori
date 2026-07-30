@@ -18,7 +18,6 @@ const vitestProjects = [
   "packages/localization-bridge-schema",
   "packages/itotori-db",
   "packages/itotori-ds",
-  "packages/spec-dag-dashboard",
   "apps/itotori",
   "apps/runtime-web-review",
 ];

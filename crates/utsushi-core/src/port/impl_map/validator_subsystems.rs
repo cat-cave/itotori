@@ -133,16 +133,12 @@ fn validate_subsystem_status(
             }
         }
         SubsystemStatus::Unsupported { reason } => {
-            let (ok, raw) = match reason {
-                UnsupportedReason::SemanticCode(code) => (is_semantic_code(code), code.clone()),
-                UnsupportedReason::DeferredTo(node_id) => {
-                    (is_forward_sentinel(node_id), node_id.clone())
-                }
-            };
+            let UnsupportedReason::SemanticCode(raw) = reason;
+            let ok = is_semantic_code(raw);
             if !ok {
                 errors.push(ImplMapError::UnsupportedReasonNotSemantic {
                     subsystem_id: subsystem.id.clone(),
-                    raw,
+                    raw: raw.clone(),
                 });
             }
         }
@@ -189,36 +185,6 @@ pub(super) fn is_semantic_code(code: &str) -> bool {
     })
 }
 
-fn is_forward_sentinel(value: &str) -> bool {
-    let Some(rest) = value.strip_prefix("deferred-to-") else {
-        return false;
-    };
-    is_node_id(rest)
-}
-
-fn is_node_id(value: &str) -> bool {
-    let capability_alias = value
-        .strip_prefix("capability_")
-        .and_then(|alias| alias.split_once('_'));
-    if let Some((project, digits)) = capability_alias {
-        let projects = ["utsushi", "kaifuu", "itotori", "alpha", "shared"];
-        return projects.contains(&project)
-            && digits.len() == 3
-            && digits.chars().all(|c| c.is_ascii_digit());
-    }
-    let Some((project, digits)) = value.split_once('-') else {
-        return false;
-    };
-    let projects = ["UTSUSHI", "KAIFUU", "ITOTORI", "ALPHA", "SHARED"];
-    if !projects.contains(&project) {
-        return false;
-    }
-    if digits.len() != 3 {
-        return false;
-    }
-    digits.chars().all(|c| c.is_ascii_digit())
-}
-
 fn is_evidence_locator_valid(kind: EvidenceKind, locator: &str) -> bool {
     let trimmed = locator.trim();
     if trimmed.is_empty() {
@@ -230,7 +196,6 @@ fn is_evidence_locator_valid(kind: EvidenceKind, locator: &str) -> bool {
         // evidence is mechanical. Anything outside its known root is rejected.
         EvidenceKind::Fixture => is_rooted_repo_path(trimmed, "fixtures/"),
         EvidenceKind::Doc => is_rooted_repo_path(trimmed, "docs/"),
-        EvidenceKind::RoadmapNode => is_node_id(trimmed),
         // A reference-impl anchor MUST be a colon-anchored URI (`scheme:path`)
         // e.g. `https://github.com/...` or `rlvm:src/machine/rlmachine.cc`.
         EvidenceKind::ReferenceImplAnchor => is_colon_anchored_uri(trimmed),

@@ -51,7 +51,7 @@ Source: [`suite/scripts/siglus-private-local-validation-renderer/`](../suite/scr
 
 The render command is a private-local-only workflow. It is intentionally **not**
 selected by any per-gate CI lane: `just check`/`ci` never invoke it, and neither
-`scripts/affected.mjs` nor `scripts/qd-full-ci.mjs` reference
+`scripts/affected.mjs` nor the CI workflows reference
 `siglus:private-local-validation-render`. Any non-private run produces the
 deterministic redacted no-corpus artifact, so no private corpora are ever a CI
 dependency. The hermetic test

@@ -8,10 +8,10 @@ Use it to find a small local loop, then run every command it recommends or a
 broader supported lane. The dispatcher owns the command vocabulary:
 
 - `check` selectors include `all`, `meta`, `ts`, `rust`, `fixtures`, `schema`,
-  `roadmap`, `affected`, and the readiness selectors.
+  and `affected`.
 - `test` selectors include `all`, browser, database, contract, mutation,
   real-byte, ratio, and focused test selectors.
-- `ci` selectors include `public`, `affected`, Tier 0, partitioned Tier 1, and
+- `ci` selectors include `public`, Tier 0, partitioned Tier 1, and
   the private-real-byte preflight.
 
 Do not create a new `just` recipe to express a one-off combination; add a
