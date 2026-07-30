@@ -1,9 +1,9 @@
 # Itotori action plan
 
 This document is the sole program-intent authority. The portable behavior
-catalog accounts for all 582 harvested capabilities without becoming a second
-prose plan. Other documents may specify contracts or preserve evidence, but
-they do not add, defer, or reinterpret scope.
+catalog accounts for all 582 canonical source capabilities without becoming a
+second prose plan. Other documents may specify contracts or preserve evidence,
+but they do not add, defer, or reinterpret scope.
 
 ## 1. The mission
 
@@ -23,27 +23,30 @@ The measurement is pinned to
 `e2113b06e05e5ef99d43227e842d2db95b0a1720`. A capability is admitted only by
 the observation named for its state:
 
-| State              | Reported entries | Admission rule                                                                                 |
-| ------------------ | ---------------: | ---------------------------------------------------------------------------------------------- |
-| `proven-real`      |               38 | The composed capability was observed on at least two independently sourced real titles.        |
-| `proven-synthetic` |              166 | The composed capability was observed only on authored or synthetic inputs.                     |
-| `built`            |              101 | Code exists; composition at the claimed boundary is unproved.                                  |
-| `asserted`         |              116 | A claim exists; no supporting observation was found.                                           |
-| `intended`         |               57 | The capability is wanted but unbuilt, with a falsifiable acceptance observation.               |
-| `dropped`          |               19 | A mechanism or scope is explicitly out, with a reason and any replacement capability retained. |
+| State              | Canonical entries | Admission rule                                                                                 |
+| ------------------ | ----------------: | ---------------------------------------------------------------------------------------------- |
+| `proven-real`      |                25 | The composed capability was observed on at least two independently sourced real titles.        |
+| `proven-synthetic` |               190 | The composed capability was observed only on authored or synthetic inputs.                     |
+| `built`            |               219 | Code exists; composition at the claimed boundary is unproved.                                  |
+| `asserted`         |                38 | A claim exists; no supporting observation was found.                                           |
+| `intended`         |                94 | The capability is wanted but unbuilt, with a falsifiable acceptance observation.               |
+| `dropped`          |                16 | A mechanism or scope is explicitly out, with a reason and any replacement capability retained. |
 
-The synthesis brief reports 482 classified capabilities across its two
-grounding scopes while supplying state buckets totaling 497. The 15-entry
-difference is numerically equal to the generated capability-matrix projection,
-but no identity crosswalk proves that explanation. The roadmap rebuild must
-preserve every source identity and supplied classification and make the
-reconciliation executable before either total can be called canonical.
+The sole source universe is the 582 unique `c` identities in
+[`behaviors/source-inventory/`](behaviors/source-inventory/). The one-to-one
+capability map preserves every identity and state; the catalog audit pins the
+full-row and sorted-identity hashes. The identity lineage and the forensic
+retirement of prose-derived totals are closed in
+[`roadmap/source-accounting.md`](roadmap/source-accounting.md).
 
-| Grounded area     | Reported capabilities | Reported `proven-real` | What the distribution means                                                                    |
-| ----------------- | --------------------: | ---------------------: | ---------------------------------------------------------------------------------------------- |
-| Bytes and runtime |                   192 |                     34 | Strong real-byte foundations exist in three families, with narrower real runtime slices.       |
-| Product           |                   290 |                      4 | Almost the entire user-facing composition is synthetic, partial, asserted, or merely intended. |
-| Total             |                   482 |                     38 | Foundations landed; the product they were meant to compose did not.                            |
+| Subsystem    | Source identities | `proven-real` | `proven-synthetic` | `built` | `asserted` | `intended` | `dropped` |
+| ------------ | ----------------: | ------------: | -----------------: | ------: | ---------: | ---------: | --------: |
+| Decode       |               150 |            20 |                 35 |      51 |          3 |         41 |         0 |
+| Runtime      |                72 |             2 |                 16 |      40 |          1 |         13 |         0 |
+| Localization |               109 |             0 |                 65 |      27 |          8 |          7 |         2 |
+| Quality      |                83 |             3 |                 24 |      35 |         15 |          5 |         1 |
+| Product      |                95 |             0 |                 34 |      26 |         11 |         21 |         3 |
+| Platform     |                73 |             0 |                 16 |      40 |          0 |          7 |        10 |
 
 This is not a nearly finished product with a few missing adapters. It is a
 large set of credible native components, contracts, repositories, synthetic
@@ -118,7 +121,7 @@ blocking boundary defects.
 
 ### Scope and evidence
 
-- All 582 harvested capabilities are accounted for by the portable behavior
+- All 582 canonical source capabilities are accounted for by the portable behavior
   catalog. The inventory itself does not enter this document.
 - A real family claim requires the same mechanism on at least two real titles.
   Synthetic fixtures qualify regression machinery, never real support.
@@ -303,9 +306,10 @@ invalid rather than passed.
   backup purge, and authorized-recipient copies remain outside the
   cryptographic claim.
 
-The remaining harvested conflicts are not implicitly decided. Their
-load-bearing groups are listed under UNVERIFIED; the replacement ledger must
-retain each individual ambiguity until a contract observation resolves it.
+Every harvested conflict is either fixed in this section or represented by a
+fail-closed evidence observation. The exhaustive 32-entry acceptance register
+in [`roadmap/unverified.md`](roadmap/unverified.md) assigns each observation to
+the exact behavior cell that must resolve it.
 
 ## 5. Workstreams
 
@@ -349,7 +353,7 @@ control sequencing.
 |                             6 — RealLive source to pixels | The sole registered product adapter sits over failing generic variants, unknown whole-store operations, one-title integrated render, and no selected reviewed patch.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | The common path performs length-changing text/image/audio patching, re-extraction, generic runtime launch, deterministic audiovisual capture, and the retained C0-C7 ladder. **Accept when** two real titles with nonempty translation scope traverse source -> Wiki/Bible -> live agents -> reviewed patch -> rebuilt bytes -> clean runtime -> translated pixels; advance remains blocked then consumes exactly one input; every choice commits its selected index and a required pair diverges; backlog is visible; speed changes logical ticks; auto advances only under virtual time; volume changes mixed PCM and voice decodes non-silently; save/load survives fresh-process replacement; original/patched runs share an input log and structural checkpoints; two clean C6 replays match; and a distinct C7 manifest accounts for every start mode and reachable terminal. Both titles report nonzero source-oracle and observation N/total for each claimed leg; missing/empty legs fail, and C4/C6 never display as C7 or reference fidelity.                                                                                                                | Workstreams 1-5; runtime conformance and local/private artifacts.               |
 |                    7 — production Studio and human rounds | Core surfaces are fixture-rendered or disconnected; account/project/locale navigation, large-corpus behavior, and accessibility lack a production gate. Unit-edit/unit-ID surfaces violate the boundary, no feedback batch starts a successor round, export lacks a played-patch gate, and refinement state is disconnected.                                                                                                                                                                                                                                                                                                                        | One accessible typed Studio owns the design system/shell, account/project/locale switching, stable deep links, permission-aware search/command palette, pagination/virtualization, notifications, private/public redaction governance, portfolio/jobs/progress/cost/ZDR views, and linked catalog, Wiki, runtime, asset, review, benchmark, and export surfaces. The human plays an immutable patch, records scene/moment notes, batches feedback, triggers a round, and alone gates export; agents map feedback inward. **Accept when** production-DB browser runs—not fixtures—prove every core route; account/project/locale switches and deep links neither leak nor stale; UI actions equal server grants; 50,000 equal-key rows paginate/virtualize with zero duplicate/gap; keyboard/a11y checks and locked-width screenshots pass; public mode leaks zero private artifacts; zero human unit controls remain; two successor rounds preserve unrelated hashes and recover the parent on failure; export consumes the exact play receipt.                                                                                                                         | Workstreams 3-6; durable addresses, feedback, CAS, patch, and runtime evidence. |
 |                    8 — benchmark, scoring, and confidence | Narrow residue/layout checks and offline reducers do not measure semantic, voice, terminology, continuity, cultural, rendered-layout, speaker, choice, or comparative quality.                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | A locked holdout, anonymous contestants, fair context, deterministic metrics, calibrated semantic reviewers, inspectable human anchors, bias/sabotage/meta-validity, exact cost/latency, durable reports, backlog, cockpit, zero-call replay of Wiki/Bible/accepted-output/patch/runtime artifacts, and a strict non-compensating readiness scorecard compose. **Accept when** current, reference, pure-MTL, and ablation outputs cover identical held-out units; scores, confusion matrices, agreement, validity, bills, and latency reproduce; all five artifacts replay; seeded meaning/voice defects, contestant-order bias, or provenance leakage invalidate the result and create evidence-linked backlog items; every required scorecard dimension meets its locked threshold, and a zero or failed dimension blocks readiness rather than averaging away.                                                                                                                                                                                                                                                                                                       | Workstreams 2 and 5-7; lawful aligned corpora and real runtime layout.          |
-|                                   9 — every engine family | Most families lack a two-title corpus, production extractor, runtime port, or product composition; `crates/kaifuu-core/src/adapter_core.rs:57-75` selects the first positive detector, which cannot scale to the retained sixty-family discovery horizon, and reference-only entries risk inflation.                                                                                                                                                                                                                                                                                                                                                | A bounded engine-neutral feature extractor feeds adapter-owned signature packs; all candidates resolve as verified, ambiguous, unknown, or incomplete, never first-match. Every family/generation in the scope manifest keeps its ledger role/state; production profiles admit extraction before downstream legs; encrypted XP3 is mandatory; bounded Unity and reference rows cannot inflate support. **Accept when** all sixty discovery entries evaluate within declared byte/time budgets; every claimed detection profile uses at least two real positives plus negative neighbors/collisions and reports precision, recall, ambiguity, and incomplete rates; detection grants zero downstream support; each claimed production family extracts two real titles through the common path; encrypted XP3 qualifies two distinct encryption profiles and refuses wrong/missing keys before writes; receipts alone populate downstream cells; two families promote concurrently without shared orchestration edits.                                                                                                                                                    | Workstreams 1-2 for parallel implementation; 3-8 for product admission.         |
+|                                   9 — every engine family | Most production targets lack a two-title corpus, extractor, runtime port, or product composition; `crates/kaifuu-core/src/adapter_core.rs:57-75` selects the first positive detector, which cannot serve the exact 47-row canonical registry, and bounded non-production roles risk inflating support.                                                                                                                                                                                                                                                                                                                                              | A bounded engine-neutral feature extractor feeds adapter-owned signature packs; all candidates resolve as verified, ambiguous, unknown, or incomplete, never first-match. The 47 canonical rows retain exactly 39 production targets and eight bounded non-production roles; production profiles admit extraction before downstream legs; encrypted XP3 is mandatory; bounded Unity and reference rows cannot inflate support. **Accept when** collection matches the 47-row, 570-authored-row, 687-cell, and 3,400-selected-case contract in [`roadmap/case-selection.md`](roadmap/case-selection.md); every claimed production profile uses at least two real positives plus negative neighbors/collisions and reports precision, recall, ambiguity, and incomplete rates; detection grants zero downstream support; each claimed production family extracts two real titles through the common path; encrypted XP3 qualifies two distinct encryption profiles and refuses wrong/missing keys before writes; receipts alone populate downstream cells; two families promote concurrently without shared orchestration edits.                                          | Workstreams 1-2 for parallel implementation; 3-8 for product admission.         |
 |                        10 — portable platform and custody | Encryption is operator-custody; no managed deployment, companion, PlanetScale qualification, confidential executor, placement parity, package, or operator-blind receipt exists.                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | The platform-neutral PostgreSQL/object/executor/capability/receipt contract serves self-hosted and Cloudflare placements; customer keys, exact grants, attestation, customer-direct provider egress, packaging, init/update/rollback, retention/deletion reporting, observability, and release require no ninth environment input. **Accept when** local/managed runs match on two real titles per admitted family with field N/total; a planted sentinel is unrecoverable to a full-control service adversary from Postgres, R2, Queue, Workflow, Durable Object, logs, backups, or an operator provider/gateway; wrong DNS/certificate/host/port/credential/account and every extra destination/call/token/byte fail, while `egress=none` emits none; a clean host completes the journey; PlanetScale provisioning/load/failover/invoice meets the locked profile; the registry remains eight and a source guard rejects config outside `readRegisteredProjectEnv` or durable config; replayed/forked/stale/spent grants, changed claims, state loss, publication, deletion, and update/rollback attacks fail. Managed upload stays disabled until every case passes. | Workstreams 2-9; legal, attestation, residency, and platform qualification.     |
 
 ## 6. Milestones
@@ -366,12 +370,15 @@ Milestones are dependency waves, never dates or task totals.
 | F — breadth and confidence             | A second family and the evaluation facility use the same product path.                            | Another two-title family reaches playable human rounds without shared orchestration edits; a held-out comparative benchmark reproduces quality, calibration, cost, latency, validity, and backlog, and readiness fails if any required scorecard dimension misses its locked threshold.                                                                                                                                   | Waves D-E  |
 | G — portable private release           | Self-hosted and managed placements satisfy the same custody and product receipts.                 | A clean host completes the product journey; every replay/fork/stale/spent grant, changed claim, state-loss, leakage, publication, deletion, and update/rollback attack in Workstream 10 fails; local/managed real-title outputs agree; the composed release gate retains only post-change receipts and honest residual risks.                                                                                             | Waves A-F  |
 
-## 7. What remains UNVERIFIED
+## 7. Fail-closed evidence observations
+
+These are measured implementation or evidence gaps, not design questions.
+[`roadmap/unverified.md`](roadmap/unverified.md) exhaustively groups them into
+32 acceptance entries and assigns every entry to a literal behavior cell or a
+validator-expanded finite cell set. Missing evidence leaves those cells red.
 
 ### Audit and evidence limits
 
-- The supplied 482/497 classification accounting has not yet been
-  deduplicated by the replacement ledger.
 - The full Rust workspace/package sweep did not complete after an initial disk
   quota failure; targeted runs used reduced build settings and were not a
   substitute.
@@ -385,9 +392,9 @@ Milestones are dependency waves, never dates or task totals.
 
 ### Bytes, runtime, and engine breadth
 
-- Exact sixty-family detector accuracy is unverified until the labeled corpus
-  supplies two positives per claimed profile plus negative neighbors and
-  collisions; detection alone will still prove no support.
+- Detector accuracy for the 39 canonical production targets is unverified until
+  the labeled corpus supplies two positives per claimed profile plus negative
+  neighbors and collisions; detection alone will still prove no support.
 - Two-title real bytes are absent for XP3, NeXAS, RPG Maker MV/MZ and RGSS
   generations, BGI, TyranoScript, Ren'Py, Wolf, Majiro, CatSystem2, and the
   Unity profiles; other researched families have no admitted production
@@ -462,27 +469,18 @@ Milestones are dependency waves, never dates or task totals.
   ciphertext, provider terms, residency, and customer rights require separate
   policy and legal evidence.
 
-### Contract questions not silently resolved
+### Remaining contract decisions
 
-- Provider implementation library, application-versus-provider fallback
-  ownership, and any local-model posture.
-- Durable state mechanics where memo/CAS and lease/fence designs overlap;
-  cost-kind taxonomy for external benchmark inputs; cache-discount accounting.
-- Snapshot size envelopes, partial-report shape, bridge identity algorithm,
-  and the post-repair semantic-review policy.
-- Output and source contracts: schema versus another strict wire mode;
-  Shift-JIS `81 40`/U+3000 notation; configured translation scope versus
-  whole-archive decode; Wiki-required-field pauses versus every-unit writing;
-  environment-only versus scoped external secret-file loading; canonical by-ID
-  vault resolution versus hash-path identity.
-- RealLive opcode framing, complete corpus accounting, graphical-choice
-  mapping, malformed G00 behavior, qualifying second prose corpus, and removal
-  of the legacy patcher.
-- Siglus key-resolution method; structural Softpal/NeXAS classification;
-  native/helper/browser delegation boundaries; runtime migration end state.
-- Identity-provider default, registry granularity for KAG and RPG generations,
-  and the exact point at which public schema compatibility begins.
+| Area                           | Fixed decision                                                                                                                                                                                                                                                                                                                                                                                             | Owning cell or finite set                                                                                                                     |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider calls                 | Official provider SDKs sit behind one internal client; the application owns ordered fallback inside the signed ZDR allowlist. Production has no local-model fallback; recorded and fixture providers remain test roles.                                                                                                                                                                                    | `cell::run.account-provider-use::all`                                                                                                         |
+| Durable work and cost          | Postgres memo/CAS records own idempotent results; leases and monotonically increasing fences own execution only. Cost kind is provider-billed, provider-estimated, local-measured, or zero-replay; cache discounts are separate observations and never netted away.                                                                                                                                        | `cell::run.control-durable-work::all`; `cell::run.account-provider-use::all`                                                                  |
+| Reports, snapshots, and repair | The signed plan supplies versioned snapshot size bounds. Every partial run emits the complete manifest with typed per-item outcomes. Bridge identity is the hash of canonical source address, original-byte digest, and schema identity. Any semantic repair requires a new agent review before acceptance.                                                                                                | `cells(quality.output-completeness-is-reported, production-targets)`; `cell::review.compare-rounds::all`                                      |
+| Source and wire contracts      | Versioned JSON Schema with typed JSON is the sole wire contract. Shift-JIS `81 40` round-trips as U+3000; the whole archive is decoded/accounted while only configured scope is writable; a missing required Wiki field pauses the run. Secrets resolve only through registered custody references or scoped files, and vault object identity is a durable ID with an integrity digest, never a hash path. | `cell::platform.public-formats-upgrade-predictably::all`; `cells(run.localize-complete-scope, production-targets)`                            |
+| First-family runtime           | Opcode framing must be parser-validated across the two-title corpus; an unclassified opcode is typed failure. Graphical choices bind structural target plus visible index; malformed G00 refuses without effects. A distinct second prose corpus is mandatory, and the legacy patcher is removed only after two-title common-writer parity.                                                                | `cell::play.control-reproducible-session::decode.engine.reallive`; `cell::quality.untrusted-inputs-fail-without-harm::decode.engine.reallive` |
+| Other runtime boundaries       | Siglus keys resolve only through a signed adapter profile/custody reference. Softpal and NeXAS remain separate structural profiles. Native, authorized-helper, and browser delegation use one typed family port; legacy runtimes are removed after the replacement passes the same qualification cell.                                                                                                     | Applicable `cells(support.qualify-profile, production-targets)`                                                                               |
+| Identity and compatibility     | Browser identity defaults to OIDC authorization-code plus PKCE; SAML is a conformance adapter. KAG/XP3 remains one row with material profiles; MV/MZ and VX Ace/RGSS3 remain paired rows; legacy generations aggregate under the XP migration cell. Public compatibility begins at the first signed released schema artifact, before which only the canonical schema exists.                               | `cell::account.authenticate-session::all`; `cell::platform.public-formats-upgrade-predictably::all`                                           |
 
-Each question stays UNVERIFIED until one canonical contract and a failing
-observation resolve it. None may create a second production path or a new
-environment input.
+These choices introduce neither a second production path nor a new environment
+input. A missing implementation is the owning cell's red observation, not an
+additional design choice.

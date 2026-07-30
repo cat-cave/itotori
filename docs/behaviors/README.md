@@ -3,10 +3,10 @@
 Start with the [eight personas](personas.md). They were fixed before any
 behavior was derived, and every retained behavior names at least one of them.
 
-This catalog reduces 582 source capabilities to 47 user-observable behaviors.
-It is the portable BDD view of the capability inventory: each behavior and its
-test is intended to be copyable into a fresh repository and exercised through
-boundaries a greenfield implementation would also expose.
+This catalog reduces 582 canonical source capabilities to 47 user-observable
+behaviors. It is the portable BDD view of the capability inventory: each
+behavior and its test is intended to be copyable into a fresh repository and
+exercised through boundaries a greenfield implementation would also expose.
 
 ## Accounting
 
@@ -70,9 +70,12 @@ families are example values only; they never appear in a behavior identifier.
 ## Source and audit trail
 
 [`source-inventory/`](source-inventory/) is a lossless JSONL copy of the 582
-supplied source rows. [`catalog.jsonl`](catalog.jsonl) records each behavior's
-personas, weakest state, observable boundaries, parameters, feature file, and
-portability test. The catalog audit verifies:
+canonical source rows. The exact identity lineage, state/subsystem totals, and
+sorted-ID hashes are recorded in
+[`../roadmap/source-accounting.md`](../roadmap/source-accounting.md).
+[`catalog.jsonl`](catalog.jsonl) records each behavior's personas, weakest
+state, observable boundaries, parameters, feature file, and portability test.
+The catalog audit verifies:
 
 - the canonical 582-row source hash and source-field population;
 - exact one-for-one mapping coverage, order, and source state;
@@ -95,9 +98,12 @@ node scripts/audit-behavior-catalog.mjs
 
 ## Strategy reconciliation
 
-The earlier prose inventory contained 553 rows. The supplied canonical input
-adds 29 intended engine-target identities, bringing decode from 121 to 150 and
-the overall total to 582. Those identities are slots, not implied support.
-The action plan remains authoritative: research profiles stay research-only,
-the fixture remains synthetic-only, the benchmark and parity rows remain
-references, and the dedicated excluded profile remains excluded.
+The earlier stable-name scope contained 553 identities: 543 carry over
+unchanged and ten retired planning-control identities have one-for-one neutral
+replacements with the same meaning, acceptance boundary, order, and `dropped`
+state. The canonical input then appends 29 intended engine-row identities,
+bringing decode from 121 to 150 and the overall total to 582. Those identities
+are slots, not implied support. The action plan remains authoritative: research
+profiles stay research-only, the fixture remains synthetic-only, the benchmark
+and parity rows remain references, and the dedicated excluded profile remains
+excluded.
