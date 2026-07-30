@@ -58,9 +58,9 @@ test("parseArgs ignores the `vp run -- ` separator", () => {
 test("composed evidence path NAMES prerequisites and AGGREGATES their proofs", () => {
   const composed = compose({ prerequisites: PREREQ_PATH() });
   // Names the prerequisite surfaces, adapters, command evidence, and artifacts.
-  assert.deepEqual(composed.composes.surfaces.map((s) => s.sourceNodeId).sort(), [
-    "capability_kaifuu_103",
-    "capability_kaifuu_104",
+  assert.deepEqual(composed.composes.surfaces.map((surface) => surface.id).sort(), [
+    "alpha-encrypted-readiness-evidence",
+    "packed-engine-readiness",
   ]);
   assert.deepEqual(
     composed.composes.adapters.map((a) => a.engineFamily).sort(),
@@ -74,7 +74,6 @@ test("composed evidence path NAMES prerequisites and AGGREGATES their proofs", (
   }
   assert.equal(composed.composes.prerequisiteCounts.readinessProfiles, 5);
   assert.equal(composed.composes.prerequisiteCounts.patchEvidence, 2);
-  assert.equal(composed.composes.prerequisiteCounts.coveredSourceNodes, 2);
   assert.match(composed.composedEvidenceHash, /^sha256:[0-9a-f]{64}$/);
   assert.equal(composed.findings.length, 0);
 });
@@ -176,22 +175,10 @@ test("MISSING prerequisite proof is a semantic diagnostic (status failed)", () =
   assert.equal(composed.findings.length, manifest.artifacts.length);
 });
 
-test("TAMPERED prerequisite (wrong source node) is a source_node_mismatch diagnostic", () => {
-  const manifest = structuredClone(PREREQ_MANIFEST);
-  const composed = composePrerequisites(manifest, (relPath) => {
-    const parsed = JSON.parse(readFileSync(join(REPO_ROOT, relPath), "utf8"));
-    // Simulate someone swapping in an artifact from a different slice.
-    return { ...parsed, sourceNodeId: "capability_kaifuu_999" };
-  });
-  assert.ok(
-    composed.findings.some((f) => f.code === "kaifuu.encrypted_readiness.source_node_mismatch"),
-  );
-});
-
 test("prerequisite content hash changes iff the proof content changes (formatter-independent)", () => {
-  const base = { sourceNodeId: "capability_kaifuu_103", engineFamily: "siglus", a: 1, b: 2 };
-  const reordered = { b: 2, engineFamily: "siglus", a: 1, sourceNodeId: "capability_kaifuu_103" };
-  const changed = { sourceNodeId: "capability_kaifuu_103", engineFamily: "siglus", a: 1, b: 3 };
+  const base = { engineFamily: "siglus", a: 1, b: 2 };
+  const reordered = { b: 2, engineFamily: "siglus", a: 1 };
+  const changed = { engineFamily: "siglus", a: 1, b: 3 };
   assert.equal(canonicalHash(base), canonicalHash(reordered), "key order must not change the hash");
   assert.notEqual(canonicalHash(base), canonicalHash(changed), "a content change must move it");
 });

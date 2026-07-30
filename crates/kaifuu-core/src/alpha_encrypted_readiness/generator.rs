@@ -16,9 +16,9 @@ use crate::{
 
 use super::{
     ALPHA_ENCRYPTED_PATCH_ARTIFACT_SCHEMA_VERSION, ALPHA_ENCRYPTED_READINESS_REPORT_SCHEMA_VERSION,
-    ALPHA_ENCRYPTED_READINESS_SUPPORT_BOUNDARY, ALPHA_ENCRYPTED_SOURCE_NODE_ID,
-    AlphaEncryptedFinding, AlphaEncryptedPatchArtifact, AlphaEncryptedPatchResultRef,
-    AlphaEncryptedReadinessEntry, AlphaEncryptedReadinessReport, ConsumedValidationReport, finding,
+    ALPHA_ENCRYPTED_READINESS_SUPPORT_BOUNDARY, AlphaEncryptedFinding, AlphaEncryptedPatchArtifact,
+    AlphaEncryptedPatchResultRef, AlphaEncryptedReadinessEntry, AlphaEncryptedReadinessReport,
+    ConsumedValidationReport, finding,
 };
 
 // Generator
@@ -204,7 +204,6 @@ pub(super) fn build_entry(
     AlphaEncryptedReadinessEntry {
         profile_id: validation_entry.profile_id.clone(),
         fixture_id: validation_entry.fixture_id.clone(),
-        source_node_id: ALPHA_ENCRYPTED_SOURCE_NODE_ID.to_string(),
         engine_family: validation_entry.engine_family,
         transform_stack: validation_entry.transform_stack,
         surface_ids,
@@ -417,7 +416,6 @@ pub fn generate_alpha_encrypted_readiness(
 
     Ok(AlphaEncryptedReadinessReport {
         schema_version: ALPHA_ENCRYPTED_READINESS_REPORT_SCHEMA_VERSION.to_string(),
-        source_node_id: ALPHA_ENCRYPTED_SOURCE_NODE_ID.to_string(),
         support_boundary: ALPHA_ENCRYPTED_READINESS_SUPPORT_BOUNDARY.to_string(),
         status,
         consumed_validation,

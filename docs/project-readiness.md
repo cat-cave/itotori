@@ -71,10 +71,7 @@ fire and pieces can be swapped."
    the full Itotori workflow (draft → QA → patch export) is reachable
    with deterministic outputs. Tracked by
    `the relevant capability` / `the relevant capability` / `the relevant capability`.
-5. **Dashboard reachable.** The spec-dag-dashboard renders DAG, claims, and
-   audit state from real DB state (not fixtures); audit-findings dashboard
-   work in flight extends this.
-6. **Repo hygiene.** `just check` / `just test` / `just ci` / `just test alpha`
+5. **Repo hygiene.** `just check` / `just test` / `just ci` / `just test alpha`
    green locally; no silenced tests that represent real outstanding work;
    no foreign-tool subprocess invocations in production code.
 
@@ -87,11 +84,9 @@ Stricter than real-game-testing-ready. All six criteria above PLUS:
    `providerId` as a pair (no defaulting, no fallback). Recorded bundles
    pin both. Pre-alpha development pairs are small/cheap; alpha defends its
    chosen pair in prompt/preset metadata.
-2. **the relevant capability..221 runtime port largely landed.** The 22-sub-node
-   `utsushi-reallive` runtime decomposition (`the relevant capability..221`,
-   `docs/research/reallive-engine-dag-proposal.md`) has shipped enough of
-   the opcode VM, variable system, asset pipeline, and system-call dispatch
-   to run a patched scene of the configured alpha corpus on Linux.
+2. **Runtime port largely landed.** The `utsushi-reallive` opcode VM, variable
+   system, asset pipeline, and system-call dispatch have shipped enough to run
+   a patched scene of the configured alpha corpus on Linux.
 3. **Full agentic loop fires end-to-end.** Context building +
    pre-translation + translation + QA agents + deterministic checks +
    editing/review cycles all minimally functional. Each piece is swappable.
@@ -179,16 +174,3 @@ These rules govern every tier:
   validation against ≥2 real-world games of that engine; single-title pass
   is fixture-shaped
   (`~/.claude/projects/-home-trevor-projects-itotori/memory/feedback_multi_game_validation.md`).
-- **`feedback_investigation_not_in_dag`** — research happens
-  interactively against real bytes; concrete implementation nodes are
-  written **from** research output, not as scaffolding for it
-  (`~/.claude/projects/-home-trevor-projects-itotori/memory/feedback_investigation_not_in_dag.md`).
-- **`project_no_timeline`** — no eng-month/week/year estimates in DAG
-  nodes, plans, or docs; sized scope, not calendar promises
-  (`~/.claude/projects/-home-trevor-projects-itotori/memory/project_no_timeline.md`).
-
-## 5. DAG Tiering
-
-The four-tier framework is applied to nodes via their `target` field in
-`roadmap/spec-dag.json`. This doc fixes the framework vocabulary and
-acceptance criteria; it does not mutate the DAG.

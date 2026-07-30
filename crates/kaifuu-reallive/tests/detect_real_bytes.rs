@@ -7,10 +7,8 @@
 //! negative test confirms the detector does NOT false-positive on an
 //! MV/MZ shape (`tmp/data/System.json`) that lacks the RealLive marker.
 //! # Multi-game validation status
-//! Per the itotori operating model
-//! (`docs/dev/orchestration-operating-model.md`), an engine detector that
-//! works on game X may fail on game Y; the rule normally requires a
-//! second corpus before merging-complete. satisfies the rule
+//! An engine detector that works on game X may fail on game Y; the support
+//! claim normally requires a second corpus. This suite satisfies the rule
 //! **by the engine's hard-coded `REALLIVEDATA/` marker invariant**: the
 //! directory name is fixed in the RealLive runtime (Haeleth's RLDEV
 //! site, `https://dev.haeleth.net/rldev.shtml`, and every observable

@@ -199,7 +199,7 @@ export default defineConfig({
       },
       // the relevant capability: private-local encrypted corpus triage. A FIRST-CLASS LOCAL
       // workflow that is intentionally ABSENT from per-gate CI — no `just
-      // check`/`ci` lane and no affected.mjs / qd-full-ci.mjs selection runs it.
+      // check`/`ci` lane and no affected.mjs selection runs it.
       // With no private inputs (the public/default case) it emits the
       // deterministic REDACTED no-corpus artifact under
       // .tmp/kaifuu-private-local/; with an operator manifest it emits the safe
@@ -218,7 +218,7 @@ export default defineConfig({
       // the relevant capability: Siglus private-local redacted VALIDATION SUMMARY renderer.
       // Like the relevant capability this is a FIRST-CLASS LOCAL workflow that is
       // intentionally ABSENT from per-gate CI — no `just check`/`ci` lane and
-      // no affected.mjs / qd-full-ci.mjs selection runs it. With no private
+      // no affected.mjs selection runs it. With no private
       // inputs (the public/default case) it emits the deterministic REDACTED
       // no-corpus artifact under .tmp/siglus-private-local/; with an operator
       // validation manifest it emits the safe aggregate validation summary
@@ -239,7 +239,7 @@ export default defineConfig({
       // the relevant capability: private-local key-hunting run workflow. Like the relevant capability and
       // the relevant capability this is a FIRST-CLASS LOCAL workflow, intentionally ABSENT
       // from per-gate CI — no `just check`/`ci` lane and no affected.mjs /
-      // qd-full-ci.mjs selection runs it. It PLANS the applicable helper attempts
+      // CI selection runs it. It PLANS the applicable helper attempts
       // per detected engine + capability (Siglus known-key / XP3 / MV-MZ / Wolf /
       // RGSS3 — plan, never brute-force), then aggregates operator-recorded
       // per-attempt outcomes (attempted / succeeded / failed / skipped /

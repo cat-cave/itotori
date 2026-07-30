@@ -1,7 +1,0 @@
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "noEmit": true
-  },
-  "include": ["src/client/**/*.ts", "src/types.ts", "src/provenance-status.ts"]
-}

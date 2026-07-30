@@ -224,7 +224,6 @@ const TS_TEST_GLOBS = [
   "apps/itotori/test",
   "packages/itotori-db/test",
   "packages/localization-bridge-schema/test",
-  "packages/spec-dag-dashboard/test",
 ];
 
 function listTsTestFiles() {

@@ -8,8 +8,7 @@
 //
 // The actual write goes through `cargo run -p kaifuu-cli -- patch ...`
 // by a caller that owns the emitted artifact — this module only assembles JSON.
-// Kaifuu invocation remains downstream and out of scope for policy (the
-// roadmap node is itotori-side).
+// Kaifuu invocation remains downstream and out of scope for policy.
 
 import type {
   PatchExportAssetDecision,

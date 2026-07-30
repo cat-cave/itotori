@@ -224,12 +224,6 @@ test("DB development selectors use explicit compose env files without project-gl
   assert.doesNotMatch(commandScript, /ITOTORI_DB_COMPOSE_ENV_PATH/u);
 });
 
-test("local qd CI uses the DB-owning full-CI wrapper", () => {
-  const qdConfig = readFileSync(".qd/config.toml", "utf8");
-  assert.match(qdConfig, /check_command = "nix develop --command bash -lc 'just check all'"/u);
-  assert.match(qdConfig, /ci_command = "nix develop --command bash -lc 'just ci affected'"/u);
-});
-
 // ---------------------------------------------------------------------------
 // UNIV-022: dollar-safe compose env-file encoding. Compose interpolates
 // env-file values, so a `$` in a decoded DATABASE_URL credential must survive

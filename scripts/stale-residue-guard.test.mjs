@@ -64,25 +64,6 @@ test("requires explicit snapshot markers for dated Traced notes", () => {
   }
 });
 
-test("fails active qd text that points at retired paths without a marker", () => {
-  const result = scanFixture({
-    "roadmap/spec-dag.json": JSON.stringify({
-      nodes: [
-        {
-          id: "bad-node",
-          status: "ready",
-          spec: "Load presets/localize-sweetie-hd.pair-policy.json for new runs.",
-          acceptance: "",
-          verification: [],
-        },
-      ],
-      node_notes: [],
-    }),
-  });
-
-  assertViolation(result, "retired-game-specific-localize-preset");
-});
-
 test("fails active select_objbtn module_type=1 coordinates", () => {
   const result = scanFixture({
     "crates/utsushi-reallive/src/rlop/module_ctrl.rs":
@@ -125,25 +106,6 @@ test("scopes stale premise allow markers to local match context", () => {
   assertViolation(markerElsewhere, "retired-game-specific-localize-preset");
 });
 
-test("allows active qd repair text that marks retired paths as stale", () => {
-  const result = scanFixture({
-    "roadmap/spec-dag.json": JSON.stringify({
-      nodes: [
-        {
-          id: "repair-node",
-          status: "claimed",
-          spec: "Repair stale text that still mentions retired presets/localize-sweetie-hd.pair-policy.json.",
-          acceptance: "",
-          verification: [],
-        },
-      ],
-      node_notes: [],
-    }),
-  });
-
-  assert.deepEqual(result.violations, []);
-});
-
 test("fails when the facade doc cites a symbol no tracked source exports", () => {
   const result = scanFixture({
     "docs/utsushi-substrate-facade.md": [
@@ -161,8 +123,8 @@ test("fails when the facade doc cites a symbol no tracked source exports", () =>
 
 test("passes when linked files and documented facade symbols exist", () => {
   const result = scanFixture({
-    "docs/README.md": "Read [dev](dev/spec-dag.md).\n",
-    "docs/dev/spec-dag.md": "# Spec DAG\n",
+    "docs/README.md": "Read [dev](dev/README.md).\n",
+    "docs/dev/README.md": "# Developer docs\n",
     "docs/utsushi-substrate-facade.md": [
       "## 2. Subsystem entry points",
       "| Subsystem | Owning spec | Canonical type / fn | Use when |",
@@ -171,7 +133,6 @@ test("passes when linked files and documented facade symbols exist", () => {
       "## 3. Schema version inventory",
     ].join("\n"),
     "crates/utsushi-core/src/substrate.rs": "pub struct RuntimeVfs;\npub fn take_snapshot() {}\n",
-    "roadmap/spec-dag.json": JSON.stringify({ nodes: [], node_notes: [] }),
   });
 
   assert.deepEqual(result.violations, []);

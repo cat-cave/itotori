@@ -22,7 +22,7 @@
 //!   80_000` and are referenced by absolute file offsets in the slot
 //!   table.
 //!   No legacy compat: the synthetic "u32 count + (offset, size) entries"
-//!   envelope is deleted, not aliased. See in the spec DAG.
+//!   envelope is deleted, not aliased.
 
 use serde::{Deserialize, Serialize};
 

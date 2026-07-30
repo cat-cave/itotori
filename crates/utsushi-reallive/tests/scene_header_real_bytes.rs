@@ -8,10 +8,9 @@
 //! confirmed by the
 //! `tests/scene_index_real_bytes.rs`.
 //!
-//! **Multi-game validation status.** Per the itotori operating model
-//! (`docs/dev/orchestration-operating-model.md`), a parser that targets a
-//! real engine substrate must be exercised against at least two real
-//! corpora before its node is merged-complete. The MV/MZ and KAG
+//! **Multi-game validation status.** A parser that targets a real engine
+//! substrate must be exercised against at least two real corpora before an
+//! engine-family support claim. The MV/MZ and KAG
 //! corpora are different engines and do not carry a `Seen.txt`.
 //! `utsushi-reallive` is therefore in the same single-RealLive-corpus
 //! position as `kaifuu-reallive` was for and as

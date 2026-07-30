@@ -24,12 +24,6 @@ When available, a profile is a performance measurement, not a correctness
 proof for a real corpus. Report the profile, input counts, operation timings,
 and pass/fail budgets from its generated summary when making a scale claim.
 
-For qd work, `just ci affected` owns the disposable database lifecycle. Do not
-create per-worktree environment variables to choose database ports, compose
-files, schema names, or corpus roots. Host deployment mounts and scratch roots
-are the only environment inputs, and only when declared in the environment
-registry. Developer and translator choices belong in application configuration.
-
 Before changing the harness or its measured budgets, run the applicable public
 checks and inspect the output summary. A pass says only that the measured
 synthetic profile met its current thresholds; it cannot establish real-corpus

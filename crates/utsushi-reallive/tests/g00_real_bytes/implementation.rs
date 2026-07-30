@@ -34,10 +34,8 @@
 //!
 //! # Multi-game validation status
 //!
-//! Per the itotori operating model
-//! (`docs/dev/orchestration-operating-model.md`), a parser that targets a
-//! real engine substrate must be exercised against at least two real
-//! corpora before its node is merged-complete. primary_corpus HD is the only
+//! A parser that targets a real engine substrate must be exercised against at
+//! least two real corpora before an engine-family support claim. primary_corpus HD is the only
 //! RealLive title currently staged. The g00 module mirrors the pattern
 //! its sibling parsers landed: real-bytes pinned
 //! against the only staged corpus today, with the second-corpus

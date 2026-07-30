@@ -10,10 +10,10 @@ differentially-validated synthetic archives — so a per-gate run no longer
 re-parses whole real games (~30-45 min). That speed is only **safe** while the
 synthetic still faithfully mirrors reality.
 
-This oracle is the safety net. It is a **periodic** run — nightly + on-demand,
-invoked **outside** the per-gate `qd-full-ci` path — that keeps the real
-archives as ground truth and **fails loud** the moment the synthetic drifts away
-from what the real bytes exercise. Paying the slow real-bytes cost periodically
+This oracle is the safety net. It is a **periodic** run — nightly + on-demand —
+that keeps the real archives as ground truth and **fails loud** the moment the
+synthetic drifts away from what the real bytes exercise. Paying the slow
+real-bytes cost periodically
 (instead of per-gate) is the entire trade the collapse makes; this oracle is
 what makes that trade honest.
 
@@ -81,12 +81,9 @@ real-bytes-oracle-drift` (drift check only, no corpora).
 
 ## It is NOT in the per-gate CI path
 
-The oracle is intentionally **not** wired into `scripts/affected.mjs` /
-`scripts/qd-full-ci.mjs`. The `real-bytes-oracle` / `real-bytes-oracle-drift`
-recipes are not in the affected-lane order, so a per-gate `qd-full-ci` run never
-selects them. That separation is the whole point: per-gate green stays fast and
-never waits on the ~30-45 min real-bytes suite; the slow ground-truth cost is
-paid periodically instead.
+The oracle is intentionally **not** wired into `scripts/affected.mjs`.
+Per-gate green stays fast and never waits on the ~30-45 min real-bytes suite;
+the slow ground-truth cost is paid periodically instead.
 
 ## What a failure means
 

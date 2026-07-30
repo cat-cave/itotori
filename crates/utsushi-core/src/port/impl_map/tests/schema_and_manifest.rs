@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn json_schema_under_roadmap_validates_the_example_fixture() {
+fn json_schema_validates_the_example_fixture() {
     let schema = build_schema();
     let map = baseline_map();
     let value = serde_json::to_value(&map).expect("serialize");

@@ -1,8 +1,7 @@
 {
-  "schemaVersion": "0.1.0",
+  "schemaVersion": "0.2.0",
   "patchResultId": "patch/siglus/positive/repack",
   "profileId": "packed/siglus/positive",
-  "sourceNodeId": "KAIFUU-104",
   "status": "passed",
   "patchBack": "repack_archive",
   "touchedAssets": ["scene/000.ss"],

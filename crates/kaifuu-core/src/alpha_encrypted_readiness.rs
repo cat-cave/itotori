@@ -59,17 +59,12 @@ use crate::sha256_hash_bytes;
 #[cfg(test)]
 use generator::{build_entry, requires_patch_evidence};
 
-/// Spec-DAG source node id stamped into generated reports and entries.
-/// Kept here (not in the child module) so the grandfathered node-id token
-/// stays on the whitelisted parent path only.
-const ALPHA_ENCRYPTED_SOURCE_NODE_ID: &str = "synthetic-fixture";
-
 /// Schema version of the synthetic patch-artifact input.
-pub const ALPHA_ENCRYPTED_PATCH_ARTIFACT_SCHEMA_VERSION: &str = "0.1.0";
+pub const ALPHA_ENCRYPTED_PATCH_ARTIFACT_SCHEMA_VERSION: &str = "0.2.0";
 /// Schema version of the generated full evidence report.
-pub const ALPHA_ENCRYPTED_READINESS_REPORT_SCHEMA_VERSION: &str = "0.1.0";
+pub const ALPHA_ENCRYPTED_READINESS_REPORT_SCHEMA_VERSION: &str = "0.2.0";
 /// Schema version of the README-safe summary artifact.
-pub const ALPHA_ENCRYPTED_READINESS_SUMMARY_SCHEMA_VERSION: &str = "0.1.0";
+pub const ALPHA_ENCRYPTED_READINESS_SUMMARY_SCHEMA_VERSION: &str = "0.2.0";
 
 /// Glob the generator reads for synthetic patch artifacts.
 pub const ALPHA_ENCRYPTED_PATCH_ARTIFACT_GLOB: &str = "*.patch.json";
@@ -92,8 +87,6 @@ pub struct AlphaEncryptedPatchArtifact {
     pub patch_result_id: String,
     /// The `profileId` of the readiness profile this patch result is for.
     pub profile_id: String,
-    /// Provenance node id stamped into generated reports.
-    pub source_node_id: String,
     /// Outcome of the synthetic patch run.
     pub status: OperationStatus,
     /// The patch-back transform exercised (must match the profile's).
@@ -188,7 +181,6 @@ impl AlphaEncryptedPatchResultRef {
 pub struct AlphaEncryptedReadinessEntry {
     pub profile_id: String,
     pub fixture_id: String,
-    pub source_node_id: String,
     pub engine_family: PackedEngineFamily,
     pub transform_stack: PackedTransformStack,
     /// Synthetic in-archive surface (asset) ids drawn from the profile content.
@@ -222,7 +214,6 @@ impl AlphaEncryptedReadinessEntry {
         Self {
             profile_id: redact_for_log_or_report(&self.profile_id),
             fixture_id: redact_for_log_or_report(&self.fixture_id),
-            source_node_id: redact_for_log_or_report(&self.source_node_id),
             engine_family: self.engine_family,
             transform_stack: self.transform_stack,
             surface_ids: self
@@ -278,7 +269,6 @@ pub struct ConsumedValidationReport {
 #[serde(rename_all = "camelCase")]
 pub struct AlphaEncryptedReadinessReport {
     pub schema_version: String,
-    pub source_node_id: String,
     pub support_boundary: String,
     pub status: OperationStatus,
     /// Proof the validator output was consumed (not prose).
@@ -313,7 +303,6 @@ impl AlphaEncryptedReadinessReport {
     pub fn redacted_for_report(&self) -> Self {
         Self {
             schema_version: self.schema_version.clone(),
-            source_node_id: redact_for_log_or_report(&self.source_node_id),
             support_boundary: redact_for_log_or_report(&self.support_boundary),
             status: self.status.clone(),
             consumed_validation: self.consumed_validation.clone(),
@@ -344,7 +333,6 @@ impl AlphaEncryptedReadinessReport {
     pub fn summary(&self) -> AlphaEncryptedReadinessSummary {
         AlphaEncryptedReadinessSummary {
             schema_version: ALPHA_ENCRYPTED_READINESS_SUMMARY_SCHEMA_VERSION.to_string(),
-            source_node_id: self.source_node_id.clone(),
             support_boundary: self.support_boundary.clone(),
             evidence_kind: ALPHA_ENCRYPTED_EVIDENCE_KIND.to_string(),
             status: self.status.clone(),
@@ -374,7 +362,6 @@ pub const ALPHA_ENCRYPTED_EVIDENCE_KIND: &str = "readiness_evidence";
 #[serde(rename_all = "camelCase")]
 pub struct AlphaEncryptedReadinessSummary {
     pub schema_version: String,
-    pub source_node_id: String,
     pub support_boundary: String,
     /// Always `readiness_evidence` — distinguishes evidence from production
     /// support.
@@ -392,7 +379,6 @@ impl AlphaEncryptedReadinessSummary {
     pub fn redacted_for_report(&self) -> Self {
         Self {
             schema_version: self.schema_version.clone(),
-            source_node_id: redact_for_log_or_report(&self.source_node_id),
             support_boundary: redact_for_log_or_report(&self.support_boundary),
             evidence_kind: self.evidence_kind.clone(),
             status: self.status.clone(),

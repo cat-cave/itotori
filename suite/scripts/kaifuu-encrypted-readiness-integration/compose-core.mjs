@@ -1,20 +1,19 @@
 #!/usr/bin/env node
 /*
- * the relevant capability — Alpha encrypted-readiness evidence integration core.
+ * Alpha encrypted-readiness evidence integration core.
  *
  * Pure, deterministic core for the `kaifuu:encrypted-readiness` workflow. It
  * COMPOSES the already-generated encrypted-readiness EVIDENCE of the
- * prerequisite slices (the relevant capability packed-engine readiness surface +
- * the relevant capability alpha-encrypted readiness evidence) into an alpha-readiness
+ * prerequisite slices (the packed-engine readiness surface and
+ * alpha-encrypted readiness evidence) into an alpha-readiness
  * composed-evidence artifact, and produces a deterministic REDACTED no-corpus
  * artifact when no PRIVATE encrypted corpus is configured.
  *
  * IT DOES NOT RE-OWN PREREQUISITE SLICES. It never re-derives readiness
- * postures, never re-runs an adapter, and never re-implements the the relevant capability
+ * postures, never re-runs an adapter, and never re-implements the
  * generator. It reads the committed prerequisite manifest, aggregates the
- * committed prerequisite proof artifacts by content HASH, and cross-checks that
- * each artifact still declares the source node the manifest names. Any missing,
- * tampered, mismatched, or UNSUPPORTED prerequisite is a structured SEMANTIC
+ * committed prerequisite proof artifacts by content HASH. Any missing,
+ * tampered, or UNSUPPORTED prerequisite is a structured SEMANTIC
  * DIAGNOSTIC — never a hidden success.
  *
  * COPYRIGHT / STRICT-PROOF LAW (this module is the enforcement point):
@@ -33,11 +32,11 @@
 
 import { createHash } from "node:crypto";
 
-export const SCHEMA_VERSION = "itotori.kaifuu-encrypted-readiness-integration.v0.1";
+export const SCHEMA_VERSION = "itotori.kaifuu-encrypted-readiness-integration.v0.2";
 export const PRIVATE_MANIFEST_SCHEMA_VERSION =
   "itotori.kaifuu-encrypted-readiness-private-corpus-manifest.v0.1";
 export const PREREQUISITES_MANIFEST_SCHEMA_VERSION =
-  "itotori.kaifuu-encrypted-readiness-prerequisites.v0.1";
+  "itotori.kaifuu-encrypted-readiness-prerequisites.v0.2";
 export const GENERATOR_PATH = "suite/scripts/kaifuu-encrypted-readiness-integration/run.mjs";
 
 // Canonical redacted command strings. The real argv is NEVER recorded because
@@ -224,7 +223,7 @@ export function composePrerequisites(manifest, readArtifact) {
     );
   }
 
-  const surfaces = normalizeNamedList(manifest.surfaces, "surfaces", ["id", "sourceNodeId"]);
+  const surfaces = normalizeNamedList(manifest.surfaces, "surfaces", ["id"]);
   const adapters = normalizeNamedList(manifest.adapters, "adapters", ["id", "engineFamily"]);
   const commandEvidence = normalizeNamedList(manifest.commandEvidence, "commandEvidence", [
     "id",
@@ -264,8 +263,6 @@ export function composePrerequisites(manifest, readArtifact) {
       );
       continue;
     }
-    const declaredSourceNodeId = declared?.sourceNodeId;
-
     let parsed;
     try {
       parsed = readArtifact(declared.path);
@@ -278,19 +275,6 @@ export function composePrerequisites(manifest, readArtifact) {
           "kaifuu.encrypted_readiness.prerequisite_missing",
           "artifacts",
           `prerequisite proof ${artifactId} could not be read`,
-        ),
-      );
-      continue;
-    }
-
-    // Cross-check: the committed artifact must still declare the source node the
-    // manifest names (proves we aggregated the RIGHT prerequisite proof).
-    if (parsed.sourceNodeId !== declaredSourceNodeId) {
-      findings.push(
-        finding(
-          "kaifuu.encrypted_readiness.source_node_mismatch",
-          "artifacts",
-          `prerequisite ${artifactId} declares sourceNodeId ${JSON.stringify(parsed.sourceNodeId)} but manifest names ${JSON.stringify(declaredSourceNodeId)}`,
         ),
       );
       continue;
@@ -314,7 +298,6 @@ export function composePrerequisites(manifest, readArtifact) {
     artifacts.push({
       artifactId,
       kind,
-      sourceNodeId: declaredSourceNodeId,
       engineFamily,
       contentHash: canonicalHash(parsed),
     });
@@ -335,7 +318,6 @@ export function composePrerequisites(manifest, readArtifact) {
       commandEvidence: commandEvidence.length,
       readinessProfiles: artifacts.filter((a) => a.kind === "readiness_profile").length,
       patchEvidence: artifacts.filter((a) => a.kind === "readiness_patch_evidence").length,
-      coveredSourceNodes: [...new Set(artifacts.map((a) => a.sourceNodeId))].sort().length,
       coveredEngineFamilies: [
         ...new Set(artifacts.map((a) => a.engineFamily).filter((f) => f !== null)),
       ].sort().length,

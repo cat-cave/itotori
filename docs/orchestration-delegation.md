@@ -1,9 +1,5 @@
 # Orchestrator Delegate Reference
 
-This companion to [the orchestrator playbook](orchestration.md) contains the
-worker rules that are useful during delegation but do not belong in the main
-landing and qd lifecycle guide.
-
 ## Choose and isolate workers
 
 Use one worktree per worker and give workers disjoint files. Mechanical docs
@@ -11,8 +7,8 @@ and tooling work can use a shell agent. Byte-sensitive, gate, or
 runtime-semantics work needs a high-fidelity worker and an independent audit.
 The audit model must differ from the implementation model.
 
-The orchestrator alone runs qd. On worker exit, inspect its worktree and pull
-request state; a reaped worker can leave useful uncommitted work behind.
+On worker exit, inspect its worktree and pull request state; a reaped worker can
+leave useful uncommitted work behind.
 
 Before asking a worker to finish, state the formatting requirement explicitly:
 

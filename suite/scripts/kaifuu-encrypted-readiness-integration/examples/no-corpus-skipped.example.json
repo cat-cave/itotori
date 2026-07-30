@@ -9,7 +9,7 @@
   },
   "checkedInputs": ["private-encrypted-corpus-root"],
   "command": "vp run kaifuu:encrypted-readiness -- --no-corpus",
-  "composedEvidenceHash": "sha256:15be4285b4ad81a30cc0f708ef82c3a231971c1a09ad6dcb08cb7df49a67a7d6",
+  "composedEvidenceHash": "sha256:f14a0490536df5bc7f0082a8d104464cba8ed6529d5a046dd6222265e16e0b0f",
   "composes": {
     "adapters": [
       {
@@ -30,50 +30,43 @@
         "artifactId": "kirikiri-xp3.helper-required.profile",
         "contentHash": "sha256:537026a8fdbf2534c38af509fe158b53d773b4e62063a2c5de6a8babcce3715a",
         "engineFamily": "kirikiri_xp3",
-        "kind": "readiness_profile",
-        "sourceNodeId": "capability_kaifuu_103"
+        "kind": "readiness_profile"
       },
       {
         "artifactId": "kirikiri-xp3.positive.patch",
-        "contentHash": "sha256:6a02e938a46c42f4e66a4f8123509325ca888fb233f47e76ab13f1bce26531cc",
+        "contentHash": "sha256:4e0cf2055928300fd05f6a04feb190f3eaf4c05cddbbe81a6c29f3f2c3d44e98",
         "engineFamily": null,
-        "kind": "readiness_patch_evidence",
-        "sourceNodeId": "capability_kaifuu_104"
+        "kind": "readiness_patch_evidence"
       },
       {
         "artifactId": "kirikiri-xp3.positive.profile",
         "contentHash": "sha256:05bcafe501e4de05bf29388a1a333f5e4939424a1443885e3bea2a22b469792c",
         "engineFamily": "kirikiri_xp3",
-        "kind": "readiness_profile",
-        "sourceNodeId": "capability_kaifuu_103"
+        "kind": "readiness_profile"
       },
       {
         "artifactId": "mv-mz-media.positive.profile",
         "contentHash": "sha256:36bf6606f2067d4092c96194884a5c8a964c7e7cecda33b5598b7d66e5c5b563",
         "engineFamily": "rpg_maker_mv_mz_media",
-        "kind": "readiness_profile",
-        "sourceNodeId": "capability_kaifuu_103"
+        "kind": "readiness_profile"
       },
       {
         "artifactId": "siglus.missing-key.profile",
         "contentHash": "sha256:a5e7f141b3213a35aa38ad620a06c8f77cda6206a47120d132a98bbfdab318f0",
         "engineFamily": "siglus",
-        "kind": "readiness_profile",
-        "sourceNodeId": "capability_kaifuu_103"
+        "kind": "readiness_profile"
       },
       {
         "artifactId": "siglus.positive.patch",
-        "contentHash": "sha256:cb68c5544bedc74826cd8824081ff2fb352b4a3742c80ae471271ce64a0bba8f",
+        "contentHash": "sha256:1bcc5d78137ab4e1e4a1fb424719b74d51d72b318ddd6312d4631389d0e5af6e",
         "engineFamily": null,
-        "kind": "readiness_patch_evidence",
-        "sourceNodeId": "capability_kaifuu_104"
+        "kind": "readiness_patch_evidence"
       },
       {
         "artifactId": "siglus.positive.profile",
         "contentHash": "sha256:f8c8982c5188f60528097edb924e8e206b45fb0b22f227ce126a67e26587b848",
         "engineFamily": "siglus",
-        "kind": "readiness_profile",
-        "sourceNodeId": "capability_kaifuu_103"
+        "kind": "readiness_profile"
       }
     ],
     "commandEvidence": [
@@ -90,19 +83,16 @@
       "adapters": 3,
       "commandEvidence": 2,
       "coveredEngineFamilies": 3,
-      "coveredSourceNodes": 2,
       "patchEvidence": 2,
       "readinessProfiles": 5,
       "surfaces": 2
     },
     "surfaces": [
       {
-        "id": "alpha-encrypted-readiness-evidence",
-        "sourceNodeId": "capability_kaifuu_104"
+        "id": "alpha-encrypted-readiness-evidence"
       },
       {
-        "id": "packed-engine-readiness",
-        "sourceNodeId": "capability_kaifuu_103"
+        "id": "packed-engine-readiness"
       }
     ]
   },
@@ -161,6 +151,6 @@
   "generatedBy": "suite/scripts/kaifuu-encrypted-readiness-integration/run.mjs",
   "prerequisiteFindings": [],
   "reason": "private_inputs_absent",
-  "schemaVersion": "itotori.kaifuu-encrypted-readiness-integration.v0.1",
+  "schemaVersion": "itotori.kaifuu-encrypted-readiness-integration.v0.2",
   "status": "skipped"
 }

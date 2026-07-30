@@ -120,8 +120,7 @@ pub enum SubsystemStatus {
     Supported,
     /// Covered partially. Each limitation must be non-empty.
     Partial { limitations: Vec<String> },
-    /// Explicitly out of scope. The reason MUST cite a semantic error code
-    /// or a `deferred-to-<NODE-ID>` sentinel.
+    /// Explicitly out of scope. The reason MUST cite a semantic error code.
     Unsupported { reason: UnsupportedReason },
     /// Research subsystem: not yet covered by a fixture-driven validation
     /// but documented with cited evidence references.
@@ -137,8 +136,6 @@ pub enum SubsystemStatus {
 pub enum UnsupportedReason {
     /// `<project>.<category>.<detail>` semantic error code.
     SemanticCode(String),
-    /// `deferred-to-<NODE-ID>` sentinel.
-    DeferredTo(String),
 }
 
 /// An evidence reference for [`SubsystemStatus::Research`].
@@ -157,7 +154,6 @@ pub struct EvidenceRef {
 pub enum EvidenceKind {
     Fixture,
     Doc,
-    RoadmapNode,
     ReferenceImplAnchor,
 }
 

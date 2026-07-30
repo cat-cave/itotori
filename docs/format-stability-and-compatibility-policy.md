@@ -1,15 +1,5 @@
 # Format Stability and Compatibility Policy
 
-> **Beta definition (2026-07-06).** Closes spec-DAG node
-> `[[beta-schema-stability-policy]]` (Beta user-install-readiness epic), as a
-> sibling to `[[beta-semver-versioning-and-release-policy]]`. The product
-> SEMVER and the publishable surface are documented in
-> [versioning-and-release-policy.md](versioning-and-release-policy.md); this
-> doc adds the THIRD axis — a per-format **stability tier** — and the
-> backward-compatibility / version-negotiation rules a user relies on so that
-> an in-progress localization survives a tool update (or fails loudly with a
-> migration path) instead of silently breaking.
-
 Single source of truth for the **stability tier** each public format occupies,
 the **backward-compatibility policy** that governs how a `schemaVersion`
 marker may move, and the **version-negotiation** a loader performs on read.

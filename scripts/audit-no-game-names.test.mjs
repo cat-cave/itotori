@@ -33,9 +33,8 @@ test("rejects title-shaped test names and encoded Shift-JIS title literals", () 
   );
 });
 
-test("scans docs, roadmap, and tests while exempting only the guard pair", () => {
+test("scans docs and tests while exempting only the guard pair", () => {
   assert.equal(shouldScan("docs/probe.md"), true);
-  assert.equal(shouldScan("roadmap/spec-dag.json"), true);
   assert.equal(shouldScan("crates/example/tests/probe.rs"), true);
   assert.equal(isExcludedPath("scripts/audit-no-game-names.mjs"), true);
   assert.equal(isExcludedPath("scripts/audit-no-game-names.test.mjs"), true);

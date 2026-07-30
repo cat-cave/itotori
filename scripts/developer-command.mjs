@@ -40,29 +40,11 @@ function oneOf(kind, value, values) {
 }
 
 function check(scope, forwarded) {
-  const scopes = [
-    "all",
-    "meta",
-    "ts",
-    "rust",
-    "fixtures",
-    "schema",
-    "roadmap",
-    "affected",
-    "alpha-readiness",
-    "rgt-readiness",
-  ];
+  const scopes = ["all", "meta", "ts", "rust", "fixtures", "affected"];
   oneOf("check scope", scope, scopes);
   if (scope === "fixtures")
     return run("pnpm", ["exec", "node", "fixtures/validate-public-manifests.mjs", ...forwarded]);
-  if (scope === "schema")
-    return run("pnpm", ["exec", "node", "scripts/validate-impl-map-schema.mjs", ...forwarded]);
-  if (scope === "roadmap") return run("node", ["scripts/spec-dag.mjs", "validate", ...forwarded]);
   if (scope === "affected") return run("node", ["scripts/affected.mjs", ...forwarded]);
-  if (scope === "alpha-readiness")
-    return run("node", ["scripts/alpha-readiness-checklist.mjs", ...forwarded]);
-  if (scope === "rgt-readiness")
-    return run("node", ["scripts/rgt-readiness-checklist.mjs", ...forwarded]);
   if (scope === "ts") return shell("pnpm exec vp check\npnpm exec vp run ts:typecheck");
   if (scope === "rust")
     return shell(
@@ -79,7 +61,6 @@ node --test scripts/justfile-surface.test.mjs
 node --test scripts/itotori-db-wait.test.mjs
 node --test scripts/permission-denial-db-gate.test.mjs
 node --test scripts/catalog-replay-db-gate.test.mjs
-node --test scripts/qd-full-ci.test.mjs
 node --test scripts/affected.test.mjs
 node --test scripts/native-deps.test.mjs
 node --test scripts/itotori-installable-package.test.mjs
@@ -87,7 +68,6 @@ node --test scripts/validate-tracked-artifact-hygiene.test.mjs
 node scripts/validate-tracked-artifact-hygiene.mjs --mode check
 node --test scripts/stale-residue-guard.test.mjs
 node scripts/stale-residue-guard.mjs --mode check
-node scripts/spec-dag.mjs validate
 node --test scripts/audit-no-hardcoded-cost.test.mjs
 node scripts/audit-no-hardcoded-cost.mjs
 node --test scripts/audit-strictness.test.mjs
@@ -104,7 +84,6 @@ node --test scripts/audit-no-node-ids.test.mjs
 node scripts/audit-no-node-ids.mjs
 node --test scripts/audit-no-game-names.test.mjs
 node scripts/audit-no-game-names.mjs
-node --test scripts/alpha-readiness-checklist.test.mjs
 node --test scripts/audit-ci-input-pins.test.mjs
 node scripts/audit-ci-input-pins.mjs
 node --test scripts/validate-no-specific-game-references.test.mjs
@@ -135,12 +114,8 @@ node scripts/synthetic-coverage-manifest.mjs --check
 node --test scripts/mutation-differential.test.mjs
 node --test scripts/coverage-parity.test.mjs
 node scripts/coverage-parity.mjs
-node scripts/alpha-readiness-checklist.mjs
-node --test scripts/rgt-readiness-checklist.test.mjs
-node scripts/rgt-readiness-checklist.mjs
 pnpm exec node fixtures/validate-public-manifests.mjs
 node --test fixtures/generate-kaifuu-encrypted-public-fixtures.test.mjs
-pnpm exec node scripts/validate-impl-map-schema.mjs
 node scripts/verify-toolchain-policy.mjs
 node scripts/verify-deny-strict.mjs
 `);
@@ -261,7 +236,6 @@ ${softpalRealBytesCommand()}`,
 function ci(lane, forwarded) {
   const lanes = [
     "public",
-    "affected",
     "tier0",
     "tier0-meta",
     "tier0-ts",
@@ -282,7 +256,6 @@ function ci(lane, forwarded) {
     return shell(
       "node scripts/developer-command.mjs check all\nnode scripts/developer-command.mjs dev build\nnode scripts/developer-command.mjs dev db-migrate\nnode scripts/developer-command.mjs test all\nnode scripts/developer-command.mjs test mutation-differential",
     );
-  if (lane === "affected") return run("node", ["scripts/qd-full-ci.mjs", ...forwarded]);
   if (lane === "tier0")
     return shell(
       "node scripts/developer-command.mjs ci tier0-meta\nnode scripts/developer-command.mjs ci tier0-ts\nnode scripts/developer-command.mjs ci tier0-rust\nnode scripts/developer-command.mjs ci tier0-manifest",
@@ -300,7 +273,7 @@ function ci(lane, forwarded) {
     );
   if (lane === "tier1-ts-public-2of2")
     return shell(
-      "pnpm exec vp run ts:build\npnpm --filter @itotori/spec-dag-dashboard test\npnpm --filter @itotori/db test\npnpm --filter @itotori/app exec vitest run --shard=2/2 --exclude '**/.direnv/**'",
+      "pnpm exec vp run ts:build\npnpm --filter @itotori/db test\npnpm --filter @itotori/app exec vitest run --shard=2/2 --exclude '**/.direnv/**'",
     );
   const rustPartition = /^tier1-rust-([1-3])of3$/u.exec(lane)?.[1];
   if (rustPartition !== undefined)
@@ -352,11 +325,7 @@ switch (delegate) {
       "package-pack",
       "scale-smoke",
       "scale-large",
-      "roadmap-dashboard",
-      "roadmap-dashboard-watch",
       "audit-findings-seed",
-      "qd-import",
-      "qd-export",
       "upgrade",
       "db-up",
       "db-down",
@@ -373,18 +342,8 @@ switch (delegate) {
       shell("node packages/itotori-cli/build.mjs\ncd packages/itotori-cli && npm pack");
     else if (selector === "scale-smoke" || selector === "scale-large")
       runScaleHarness(selector.slice(6), args);
-    else if (selector === "roadmap-dashboard" || selector === "roadmap-dashboard-watch")
-      shell(
-        `pnpm --filter @itotori/spec-dag-dashboard build\nnode packages/spec-dag-dashboard/dist/cli.js ${selector.endsWith("watch") ? "--watch" : ""}`,
-      );
     else if (selector === "audit-findings-seed")
       shell("pnpm --filter @itotori/app build\nnode apps/itotori/dist/audit-findings/seed-cli.js");
-    else if (selector === "qd-import")
-      shell(
-        "qd import --from roadmap/spec-dag.json\nnode scripts/spec-dag.mjs validate\nqd doctor --json",
-      );
-    else if (selector === "qd-export")
-      shell("qd export --out roadmap/spec-dag.json\nnode scripts/spec-dag.mjs validate");
     else if (selector === "db-up")
       shell(
         'compose_env_path="$(node scripts/itotori-db-compose-env.mjs --print-compose-env-path)"\nnode scripts/itotori-db-compose-env.mjs\ndocker compose --env-file "$compose_env_path" up -d postgres',

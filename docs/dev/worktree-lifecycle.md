@@ -1,32 +1,10 @@
 # Agent Worktree Lifecycle
 
-We use **qdcli** for orchestration. The branch/claim/plan/implement/audit/
-repair/merge/complete/blocked/cleanup lifecycle and worktree discipline are
-documented in the orchestrator playbook
-([`docs/orchestration.md`](../orchestration.md), especially §B and §D). Do not
-duplicate that generic lifecycle here.
-
-This page keeps only the itotori-specific worktree facts that qd does not
-encode.
-
 ## Worktrees Live OUTSIDE The Repo
 
 Itotori worktrees must be created under `/scratch/worktrees/`, never inside the
-repo (e.g. not `.qd/worktrees/...`). In-repo worktrees pollute `vp check` and
-cargo discovery, and get picked up by tooling that walks the workspace tree.
-
-Naming convention (uppercase DAG id in prose, lower-case slug in branch/path;
-slug format `[a-z0-9]+(-[a-z0-9]+)*`):
-
-| Purpose                        | Branch                                      | Worktree                                                               |
-| ------------------------------ | ------------------------------------------- | ---------------------------------------------------------------------- |
-| Primary spec work              | `spec/<node-id-lower>`                      | `/scratch/worktrees/itotori-spec-<node-id-lower>`                      |
-| Disjoint implementation worker | `worker/<node-id-lower>-<scope-slug>`       | `/scratch/worktrees/itotori-worker-<node-id-lower>-<scope-slug>`       |
-| Blocking repair worker         | `repair/<node-id-lower>-<finding-id-lower>` | `/scratch/worktrees/itotori-repair-<node-id-lower>-<finding-id-lower>` |
-| Read-only audit lane           | detached from `spec/<node-id-lower>`        | `/scratch/worktrees/itotori-audit-<node-id-lower>-<lane-slug>`         |
-
-Do not add random suffixes to resolve collisions. If the canonical branch or
-worktree already exists, inspect and reuse or prune it.
+repo. In-repo worktrees pollute `vp check` and cargo discovery, and get picked
+up by tooling that walks the workspace tree.
 
 ## Parallel-agent safety
 
@@ -35,20 +13,14 @@ worktrees** off the same main checkout. The conventions below keep them from
 clobbering one another.
 
 - **Worktree paths live OUTSIDE the repo**, under
-  `/scratch/worktrees/itotori-<slug>` — never in-repo (e.g. never under
-  `.qd/worktrees/...`). Use the canonical `[a-z0-9]+(-[a-z0-9]+)*` slug with no
+  `/scratch/worktrees/itotori-<slug>` — never in-repo. Use the canonical
+  `[a-z0-9]+(-[a-z0-9]+)*` slug with no
   random suffixes; if the path already exists, inspect and reuse or prune it.
 - **Each worktree gets an isolated `CARGO_TARGET_DIR` automatically** via the
   `flake.nix` shell hook (see [`AGENTS.md`](../../AGENTS.md) and
   [Per-Worktree CARGO_TARGET_DIR](#per-worktree-cargo_target_dir) below). Never
   point two concurrent worktrees at the same target dir — concurrent writes
   corrupt the build.
-- **`qd` is used ONLY by the orchestrator from the main checkout; subagents
-  never call `qd`.** The dev-shell qd guard points qd at the main
-  checkout (the git common dir's parent) in every shell, so even a stray `qd`
-  call from inside a worktree resolves against the single shared ledger instead
-  of forking an empty `.qd/qd.db` here (which would make `qd claim` grant
-  exclusivity against nobody).
 - **Staying current:** use [`scripts/sync-main.sh`](../../scripts/sync-main.sh)
   (run in the main checkout — fast-forward-only, with `main`-branch + clean-tree
   guards) and [`scripts/sync-worktree.sh`](../../scripts/sync-worktree.sh) (run

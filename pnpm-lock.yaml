@@ -220,25 +220,6 @@ importers:
 
   packages/localization-bridge-schema: {}
 
-  packages/spec-dag-dashboard:
-    dependencies:
-      '@itotori/db':
-        specifier: workspace:*
-        version: link:../itotori-db
-      pg:
-        specifier: ^8.21.0
-        version: 8.21.0
-    devDependencies:
-      '@types/pg':
-        specifier: ^8.20.0
-        version: 8.20.0
-      esbuild:
-        specifier: ^0.28.1
-        version: 0.28.1
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@types/node@24.13.2)(jsdom@29.1.1)(msw@2.14.6(@types/node@24.13.2)(typescript@7.0.2))(vite@8.1.4(@types/node@24.13.2)(esbuild@0.28.1))
-
 packages:
 
   '@adobe/css-tools@4.5.0':
@@ -4488,6 +4469,7 @@ snapshots:
       '@esbuild/win32-arm64': 0.28.1
       '@esbuild/win32-ia32': 0.28.1
       '@esbuild/win32-x64': 0.28.1
+    optional: true
 
   escalade@3.2.0: {}
 

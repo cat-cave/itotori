@@ -169,14 +169,11 @@ under the backward-compatibility policy in
 [docs/format-stability-and-compatibility-policy.md](docs/format-stability-and-compatibility-policy.md)
 and [docs/versioning-and-release-policy.md](docs/versioning-and-release-policy.md).
 
-Readiness is enforced, not asserted: the readiness checklists re-derive their
-claims from the generated artifacts so the docs cannot drift.
-
 ## Developer setup (contributing)
 
 The paths above are the **user** path. If you are going to **change itotori**
 itself — the Nix + direnv + pnpm dev toolchain, the `just`-orchestrated gates,
-the qd DAG workflow, worktree lifecycle, internal architecture, testing
+worktree lifecycle, internal architecture, testing
 standard, CI policy — start at [CONTRIBUTING.md](CONTRIBUTING.md), which routes
 you into [`docs/dev/`](docs/dev/README.md). The developer fresh-clone path
 (`just dev install`, `just test alpha`, `just check` / `just ci`) is documented in

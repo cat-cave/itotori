@@ -5,11 +5,9 @@
 > [`action-plan.md`](action-plan.md) is the sole authority for current scope,
 > state admission, and dependency waves.
 
-This document is the **alpha readiness README**: the checked statement of what
-the suite can do at the alpha milestone and how a new user proves it from a
-fresh clone. It is the human-facing companion to the machine gate
-`just check alpha-readiness`
-([`scripts/alpha-readiness-checklist.mjs`](../scripts/alpha-readiness-checklist.mjs)).
+This document is the **alpha readiness README**: the statement of what the
+suite can do at the alpha milestone and how a new user proves it from a fresh
+clone.
 
 > **What "alpha" means here.** Alpha is **readiness to _start_ a real
 > localization project**, not a finished product and not a terminal release.
@@ -116,42 +114,7 @@ Engine families explicitly EXCLUDED from the capability breadth: **2**.
 > multi-game and encrypted-variant end-to-end coverage is beta work
 > ([`project-readiness.md`](project-readiness.md) §2.3, §3).
 
-## 4. Evidence node references
-
-The alpha readiness gate validates that each of these DAG nodes resolves in
-`roadmap/spec-dag.json` and is cited here. Together they cover the required
-gates: CI, the alpha-proof / public-fixture vertical, the benchmark smoke, and
-recorded-or-opted-in real-provider proof.
-
-| node                                     | proves                                                                                                                                                                    |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ALPHA-006`                              | first real-engine end-to-end alpha vertical (RealLive); the live provider path (`alpha-006d` full-chain + `agentic-repair-live` residue) is opt-in.                       |
-| `ALPHA-007`                              | suite public-fixture vertical run (`just test alpha`).                                                                                                                    |
-| `ALPHA-008`                              | sanitized live-provider proof bundle.                                                                                                                                     |
-| Recorded-LLM proof harness               | public real-LLM proof harness (recorded by default; `--live` opt-in).                                                                                                     |
-| Raw-MTL baseline proof                   | real-LLM degenerate raw-MTL baseline proof through the same harness.                                                                                                      |
-| Encrypted-readiness evidence integration | alpha encrypted-readiness evidence integration: composes the packed-engine readiness surface and alpha-encrypted readiness proofs; deterministic redacted no-corpus skip. |
-| Patched-output runtime proof             | MV/MZ patched-output runtime proof: runtime observation consumes a `PatchResult` + SHARED-025 manifest ids (not a static/pre-patch read).                                 |
-| `SHARED-025`                             | alpha vertical proof manifest contract (ties bridge / patch / runtime / provider / benchmark ids + content hashes).                                                       |
-| `UNIV-013`                               | self-contained DB test + scale smoke recipe.                                                                                                                              |
-| `SHARED-013`                             | permission-gate negative test matrix.                                                                                                                                     |
-| `SHARED-014`                             | permission constant + migration drift guard.                                                                                                                              |
-| `UNIV-021`                               | spec-DAG implementability lint.                                                                                                                                           |
-
-### Patched-output runtime proof
-
-The SHARED-025 alpha proof manifest
-([`../fixtures/alpha-vertical-proof/hello-game-alpha-proof-v0.2.fr-FR.json`](../fixtures/alpha-vertical-proof/hello-game-alpha-proof-v0.2.fr-FR.json))
-records, for one source revision, a `patch_result` artifact ref **and** a
-`runtime_report` artifact ref that observes the SAME `sourceBridgeId` /
-`sourceBundleHash`, plus the relevant artifact-lineage ids — the patched-output
-runtime proof consumes a `PatchResult` and the SHARED-025 manifest ids rather
-than a static read. `just check alpha-readiness` re-verifies every one of
-those artifact hashes against the committed fixtures and confirms the runtime
-report's source matches the manifest (a mismatched revision or a missing patch
-result fails the gate).
-
-### Encrypted-readiness evidence integration
+## 4. Encrypted-readiness evidence integration
 
 The `kaifuu:encrypted-readiness` workflow
 ([`../suite/scripts/kaifuu-encrypted-readiness-integration/run.mjs`](../suite/scripts/kaifuu-encrypted-readiness-integration/run.mjs))
@@ -162,9 +125,8 @@ composed-evidence artifact. It does **not** re-own those slices: the committed
 [`prerequisites.manifest.json`](../suite/scripts/kaifuu-encrypted-readiness-integration/prerequisites.manifest.json)
 NAMES the prerequisite surfaces, adapters, command evidence, and proof
 artifacts, and the workflow AGGREGATES each committed proof artifact by content
-hash (`composedEvidenceHash`). A missing, tampered (wrong source node), or
-UNSUPPORTED prerequisite becomes a structured **semantic diagnostic**
-(`status: failed`) — never a hidden success.
+hash (`composedEvidenceHash`). A missing or unsupported prerequisite becomes a
+structured **semantic diagnostic** (`status: failed`) — never a hidden success.
 
 Like the related private-local workflows this is a
 FIRST-CLASS LOCAL lane, intentionally absent from per-gate CI. When **no private
@@ -184,19 +146,7 @@ pnpm exec vp run kaifuu:encrypted-readiness -- --no-corpus
 
 ## 5. Required gates (CI + workflows)
 
-| gate                | command / workflow                                                                | scope                                                                               |
-| ------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| CI                  | `.github/workflows/pr-tiers.yml` → `_tier0.yml` / `_tier1.yml` (`just ci <lane>`) | tiered TypeScript, Rust, database, browser, alpha, and mutation gates.              |
-| Alpha proof         | `_tier1.yml` `alpha` job → `just test alpha`                                      | public-fixture vertical + independent linkage validator.                            |
-| Readiness checklist | `just check alpha-readiness` (in `just check`)                                    | docs-vs-generated-artifact drift + node refs + patched-output proof + demo command. |
-
-## 6. Running the checklist
-
-```sh
-just check alpha-readiness
-```
-
-It reads the generated capability matrix and the SHARED-025 proof manifest,
-validates the node references above, and confirms the patched-output proof
-linkage. It is also run inside `just check` (and therefore `just ci`), so the
-readiness docs cannot drift from the generated artifacts without turning CI red.
+| gate        | command / workflow                                                                | scope                                                                  |
+| ----------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| CI          | `.github/workflows/pr-tiers.yml` → `_tier0.yml` / `_tier1.yml` (`just ci <lane>`) | tiered TypeScript, Rust, database, browser, alpha, and mutation gates. |
+| Alpha proof | `_tier1.yml` `alpha` job → `just test alpha`                                      | public-fixture vertical + independent linkage validator.               |

@@ -9,13 +9,7 @@ const repoRoot = resolve(here, "..");
 
 const checkedSourceExtensions = new Set([".js", ".jsx", ".mjs", ".ts", ".tsx", ".rs"]);
 const checkedTextExtensions = new Set([".md"]);
-const historicalMarkdownPrefixes = [
-  ".plan/",
-  "docs/audits/",
-  "docs/proposals/",
-  "docs/research/",
-  "roadmap/",
-];
+const historicalMarkdownPrefixes = [".plan/", "docs/audits/", "docs/proposals/", "docs/research/"];
 
 const stalePremiseRules = [
   {
@@ -35,13 +29,6 @@ const stalePremiseRules = [
     pattern: /\bpresets\/localize-\x73weetie-hd\.pair-policy\.json\b/u,
     reason: "generic localize-project target data replaced the retired game-specific preset path",
     allowWhen: /\b(?:retired|superseded|historical|removed|stale|repair|no longer)\b/iu,
-  },
-  {
-    id: "deleted-qd-wrapper-test",
-    pattern: /\bscripts\/qd-wrapper\.test\.mjs\b/u,
-    reason:
-      "qd-wrapper-era tests were removed; active roadmap text must point at surviving qdcli-native evidence",
-    allowWhen: /\b(?:removed|stale|historical|repair|no such file|returns 0|missing)\b/iu,
   },
   {
     id: "select-objbtn-stale-module-type-one-coordinate",
@@ -135,7 +122,6 @@ export function scanStaleResidue({
   }
 
   scanUtsushiFacadeDocSymbols({ violations, files: existingFiles, readFile, exportedSymbols });
-  scanRoadmapQdText({ violations, files: existingFiles, readFile });
 
   return {
     violations,
@@ -346,64 +332,6 @@ function scanUtsushiFacadeDocSymbols({ violations, files, readFile, exportedSymb
   }
 }
 
-function scanRoadmapQdText({ violations, files, readFile }) {
-  if (!files.includes("roadmap/spec-dag.json")) {
-    return;
-  }
-  let dag;
-  try {
-    dag = JSON.parse(readFile("roadmap/spec-dag.json"));
-  } catch (error) {
-    violations.push({
-      file: "roadmap/spec-dag.json",
-      surface: "qd-text",
-      rule: "roadmap-json-unreadable",
-      reason: `cannot parse roadmap/spec-dag.json: ${error.message}`,
-    });
-    return;
-  }
-  const nodesById = new Map((dag.nodes ?? []).map((node) => [node.id, node]));
-  for (const node of dag.nodes ?? []) {
-    if (["done", "cancelled"].includes(node.status)) {
-      continue;
-    }
-    const fields = [
-      ["spec", node.spec],
-      ["acceptance", node.acceptance],
-      ["status_reason", node.status_reason],
-      ...(Array.isArray(node.verification)
-        ? node.verification.map((entry, index) => [`verification[${index}]`, entry?.value])
-        : []),
-    ];
-    for (const [field, value] of fields) {
-      scanQdTextValue(violations, node.id, field, value);
-    }
-  }
-  for (const note of dag.node_notes ?? []) {
-    const node = nodesById.get(note.node_id);
-    if (node !== undefined && ["done", "cancelled"].includes(node.status)) {
-      continue;
-    }
-    scanQdTextValue(violations, note.node_id, "node_note", note.text);
-  }
-}
-
-function scanQdTextValue(violations, nodeId, field, value) {
-  if (typeof value !== "string" || value.length === 0) {
-    return;
-  }
-  for (const rule of stalePremiseRules) {
-    if (hasUnallowedStalePremise(rule, value)) {
-      violations.push({
-        file: "roadmap/spec-dag.json",
-        surface: "qd-text",
-        rule: rule.id,
-        reason: `${nodeId} ${field}: ${rule.reason}`,
-      });
-    }
-  }
-}
-
 function isExternalTarget(target) {
   return /^(?:[a-z][a-z0-9+.-]*:)?\/\//iu.test(target) || /^[a-z][a-z0-9+.-]*:/iu.test(target);
 }
@@ -462,7 +390,7 @@ function usage() {
   return [
     "usage: node scripts/stale-residue-guard.mjs [--mode check|report] [--root <DIR>]",
     "",
-    "Fails on high-risk stale comments/docs/qd text, missing doc path targets, and stale documented facade symbols.",
+    "Fails on high-risk stale comments/docs, missing doc path targets, and stale documented facade symbols.",
   ].join("\n");
 }
 

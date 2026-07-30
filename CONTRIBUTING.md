@@ -12,9 +12,8 @@ what the formats are, and how to read the alpha / beta milestones. **You do
 not need to read anything in `docs/dev/` to localize a game.**
 
 The docs under [`docs/dev/`](docs/dev/) are the contributor / developer
-surface: dev setup, internal architecture, the qd DAG workflow, worktree
-lifecycle, testing standard, CI policy, and the audit playbook. Start there
-when you are going to change code.
+surface: dev setup, internal architecture, worktree lifecycle, testing
+standard, and CI policy. Start there when you are going to change code.
 
 ## How to work in this repository
 
@@ -31,14 +30,12 @@ when you are going to change code.
 3. Use the six stable `just` delegates. `just --summary` lists them; selectors
    are validated by `scripts/developer-command.mjs`, not added as new recipes.
 4. Start with `just check` for the complete static gate. Use a scoped command
-   when it matches the change, for example `just check fixtures`,
-   `just check roadmap`, or `just test dlsite-demand`. See
+   when it matches the change, for example `just check fixtures` or
+   `just test dlsite-demand`. See
    [`docs/dev/testing-standard.md`](docs/dev/testing-standard.md) for the
    available scopes and selectors.
 5. Use [`docs/dev/ci-lanes.md`](docs/dev/ci-lanes.md) to choose a CI lane.
-   `just ci public` is the local public integration lane; `just ci affected`
-   is the qd-owned affected runner. Orchestrators start at
-   [`docs/orchestration.md`](docs/orchestration.md).
+   `just ci public` is the local public integration lane.
 
 ## Workflow at a glance
 
@@ -47,10 +44,6 @@ when you are going to change code.
   [`docs/dev/worktree-lifecycle.md`](docs/dev/worktree-lifecycle.md).
 - A fresh worktree has no `node_modules`; run `direnv exec . just
 worktree-setup` once before TypeScript checks or fixture validation.
-- Orchestration goes through qd; see
-  [`docs/orchestration.md`](docs/orchestration.md) (playbook),
-  [`docs/dev/orchestration-operating-model.md`](docs/dev/orchestration-operating-model.md)
-  (itotori-only rules), and [`docs/dev/spec-dag.md`](docs/dev/spec-dag.md).
 - Before opening a PR, run the lane appropriate to the change. The available
   lanes and their contents are mapped in
   [`docs/dev/ci-lanes.md`](docs/dev/ci-lanes.md).
