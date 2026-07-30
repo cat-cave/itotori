@@ -68,6 +68,8 @@ node --test scripts/validate-tracked-artifact-hygiene.test.mjs
 node scripts/validate-tracked-artifact-hygiene.mjs --mode check
 node --test scripts/stale-residue-guard.test.mjs
 node scripts/stale-residue-guard.mjs --mode check
+node --test scripts/audit-behavior-catalog.test.mjs
+node scripts/audit-behavior-catalog.mjs
 node --test scripts/audit-no-hardcoded-cost.test.mjs
 node scripts/audit-no-hardcoded-cost.mjs
 node --test scripts/audit-strictness.test.mjs

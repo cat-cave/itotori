@@ -5,6 +5,10 @@ Readiness, research, design, and subproject documents preserve point-in-time
 evidence, contracts, or operating mechanics; they do not add, defer, or
 reinterpret its scope.
 
+The [portable behavior catalog](behaviors/README.md) starts from eight user
+personas and accounts for all 582 inventory capabilities as 47 parameterized
+BDD behaviors or explicit, reasoned drops.
+
 These docs describe the monorepo as a three-project suite:
 
 - Itotori: localization state and agentic workflows.

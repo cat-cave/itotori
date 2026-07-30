@@ -1,0 +1,47 @@
+{"engineFamily":"Fixture/reference","profile":"synthetic conformance profile","supportRole":"synthetic-reference","sourceCapability":"decode.engine.fixture-reference","sourceState":"proven-synthetic"}
+{"engineFamily":"RealLive","profile":"registered production profile","supportRole":"production-target","sourceCapability":"decode.engine.reallive","sourceState":"built"}
+{"engineFamily":"Siglus","profile":"registered production profile","supportRole":"production-target","sourceCapability":"decode.engine.siglus","sourceState":"built"}
+{"engineFamily":"Softpal","profile":"registered production profile","supportRole":"production-target","sourceCapability":"decode.engine.softpal","sourceState":"built"}
+{"engineFamily":"NeXAS","profile":"registered production profile","supportRole":"production-target","sourceCapability":"decode.engine.nexas","sourceState":"built"}
+{"engineFamily":"RPG Maker MV/MZ","profile":"registered production profile","supportRole":"production-target","sourceCapability":"decode.engine.rpg-maker-mv-mz","sourceState":"built"}
+{"engineFamily":"RPG Maker VX Ace/RGSS3","profile":"registered production profile","supportRole":"production-target","sourceCapability":"decode.engine.rpg-maker-vx-ace-rgss3","sourceState":"built"}
+{"engineFamily":"KiriKiri/KAG/XP3","profile":"registered production profile","supportRole":"production-target","sourceCapability":"decode.engine.kirikiri-kag-xp3","sourceState":"built"}
+{"engineFamily":"Ren'Py","profile":"registered production profile","supportRole":"production-target","sourceCapability":"decode.engine.renpy","sourceState":"built"}
+{"engineFamily":"Wolf RPG Editor","profile":"registered production profile","supportRole":"production-target","sourceCapability":"decode.engine.wolf-rpg-editor","sourceState":"built"}
+{"engineFamily":"BGI/Ethornell","profile":"registered production profile","supportRole":"production-target","sourceCapability":"decode.engine.bgi-ethornell","sourceState":"built"}
+{"engineFamily":"Majiro","profile":"registered production profile","supportRole":"production-target","sourceCapability":"decode.engine.majiro","sourceState":"intended"}
+{"engineFamily":"CatSystem2","profile":"registered production profile","supportRole":"production-target","sourceCapability":"decode.engine.catsystem2","sourceState":"intended"}
+{"engineFamily":"TyranoScript","profile":"registered production profile","supportRole":"production-target","sourceCapability":"decode.engine.tyranoscript","sourceState":"built"}
+{"engineFamily":"Unity I2 Localization","profile":"bounded production profile","supportRole":"production-target","sourceCapability":"decode.engine.unity-i2","sourceState":"intended"}
+{"engineFamily":"Unity/Naninovel","profile":"bounded production profile","supportRole":"production-target","sourceCapability":"decode.engine.unity-naninovel","sourceState":"intended"}
+{"engineFamily":"MAGES benchmark reference","profile":"benchmark profile","supportRole":"benchmark-reference","sourceCapability":"quality.engine.mages-benchmark-reference","sourceState":"intended"}
+{"engineFamily":"RPG Maker XP","profile":"parity profile","supportRole":"parity-reference","sourceCapability":"runtime.engine.rpg-maker-xp-parity-reference","sourceState":"intended"}
+{"engineFamily":"codeX RScript","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.codex-rscript","sourceState":"intended"}
+{"engineFamily":"Malie","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.malie","sourceState":"intended"}
+{"engineFamily":"QLIE","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.qlie","sourceState":"intended"}
+{"engineFamily":"Stuff Script Engine","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.stuff-script-engine","sourceState":"intended"}
+{"engineFamily":"Artemis Engine","profile":"research profile","supportRole":"research-only","sourceCapability":"decode.engine.artemis-engine","sourceState":"intended"}
+{"engineFamily":"CMVS","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.cmvs","sourceState":"intended"}
+{"engineFamily":"KID Engine","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.kid-engine","sourceState":"intended"}
+{"engineFamily":"NScripter","profile":"excluded profile","supportRole":"explicit-exclusion","sourceCapability":"decode.engine.nscripter","sourceState":"intended"}
+{"engineFamily":"Shiina Rio","profile":"research profile","supportRole":"research-only","sourceCapability":"decode.engine.shiina-rio","sourceState":"intended"}
+{"engineFamily":"System-NNN","profile":"research profile","supportRole":"research-only","sourceCapability":"decode.engine.system-nnn","sourceState":"intended"}
+{"engineFamily":"ADV DX","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.adv-dx","sourceState":"intended"}
+{"engineFamily":"adv32","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.adv32","sourceState":"intended"}
+{"engineFamily":"AliceSoft System3.X","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.alicesoft-system3-x","sourceState":"intended"}
+{"engineFamily":"AVGEngineV2","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.avgenginev2","sourceState":"intended"}
+{"engineFamily":"CatSystem3","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.catsystem3","sourceState":"intended"}
+{"engineFamily":"DDSystem","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.ddsystem","sourceState":"intended"}
+{"engineFamily":"FVP","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.fvp","sourceState":"intended"}
+{"engineFamily":"G2","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.g2","sourceState":"intended"}
+{"engineFamily":"KaGuYa","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.kaguya","sourceState":"intended"}
+{"engineFamily":"LiveMaker","profile":"research profile","supportRole":"research-only","sourceCapability":"decode.engine.livemaker","sourceState":"intended"}
+{"engineFamily":"Lucifen","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.lucifen","sourceState":"intended"}
+{"engineFamily":"Musica","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.musica","sourceState":"intended"}
+{"engineFamily":"Nitroplus System 2","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.nitroplus-system-2","sourceState":"intended"}
+{"engineFamily":"PIX STUDIO","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.pix-studio","sourceState":"intended"}
+{"engineFamily":"Silky Engine","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.silky-engine","sourceState":"intended"}
+{"engineFamily":"STUDIO SELDOM Adventure System","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.studio-seldom-adventure-system","sourceState":"intended"}
+{"engineFamily":"Willadv","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.willadv","sourceState":"intended"}
+{"engineFamily":"Xuse Engine","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.xuse-engine","sourceState":"intended"}
+{"engineFamily":"Yeti/Regista Engine","profile":"unqualified target profile","supportRole":"production-target","sourceCapability":"decode.engine.yeti-regista-engine","sourceState":"intended"}
