@@ -20,13 +20,12 @@ and the readiness vocabulary in [`docs/kaifuu-engine-playbook.md`](kaifuu-engine
   leak throws **before** anything is written — the workflow never redacts
   silently and never emits a leaking artifact.
 - Output is byte-deterministic (sorted keys, no timestamps, no absolute paths),
-  so the committed README-safe examples and the no-corpus artifact are stable.
+  so the committed README-safe report is stable.
 
 ## Command
 
 ```sh
-# Public/default case: no private inputs present -> deterministic redacted
-# no-corpus artifact at .tmp/kaifuu-private-local/no-corpus-skipped.json.
+# Explicitly exercise the content-free absent-input failure (exit nonzero).
 pnpm exec vp run kaifuu:private-local-triage -- --no-corpus
 
 # Triage a single operator manifest.
@@ -43,8 +42,10 @@ Flags: `--no-corpus`, `--manifest <path>`, `--corpus-dir <dir>`,
 `--out <path>` (output override).
 
 When neither `--manifest` nor `--corpus-dir` is given, the command probes the
-private-local root; if it is absent or empty it writes the no-corpus artifact.
-**Absence of `fixtures/private-local` never fails.**
+private-local root. A missing root, empty directory, empty manifest selection,
+zero-byte manifest, non-file manifest, missing option value, or explicit
+`--no-corpus` request emits only a typed content-free diagnostic, writes no
+evidence artifact, and exits nonzero.
 
 Source: [`suite/scripts/kaifuu-private-local-triage/`](../suite/scripts/kaifuu-private-local-triage).
 
@@ -53,10 +54,9 @@ Source: [`suite/scripts/kaifuu-private-local-triage/`](../suite/scripts/kaifuu-p
 The triage command is a private-local-only workflow. It is intentionally **not**
 selected by any per-gate CI lane: `just check`/`ci` never invoke it, and neither
 `scripts/affected.mjs` nor the CI workflows reference
-`kaifuu:private-local-triage`. Any non-private run produces the deterministic
-redacted no-corpus artifact, so no private corpora are ever a CI dependency. The
-hermetic test (`kaifuu:private-local-triage-test`) seeds its own mock manifests
-and needs no private inputs.
+`kaifuu:private-local-triage`. Public CI therefore never selects private work.
+The hermetic test (`kaifuu:private-local-triage-test`) uses mock manifests and
+absent-input cases and needs no private inputs.
 
 ## Private-local manifest conventions
 
@@ -90,26 +90,19 @@ README-safe example input:
 
 The command aggregates validated entries into a safe report. Schema:
 [`readiness-report.schema.json`](../suite/scripts/kaifuu-private-local-triage/readiness-report.schema.json).
-Top-level fields: `schemaVersion`, `status` (`ok`/`skipped`), `reason`,
+Top-level fields: `schemaVersion`, `status` (`ok`), `reason`,
 `command` (canonical redacted command string), `generatedBy`, `aggregateCounts`
 (`corpora`, `entries`, `assets`, `encryptedAssets`, `textUnits`, `archives`),
 `engineReadinessBins` (per-engine bin counts covering MV/MZ/XP3/Siglus/Wolf/RGSS3),
 and `entries` (redacted per-corpus rows). README-safe example:
 [`examples/aggregate-readiness-report.example.json`](../suite/scripts/kaifuu-private-local-triage/examples/aggregate-readiness-report.example.json).
 
-## Deterministic redacted no-corpus artifact
+## Missing input is a typed failure
 
-When private inputs are absent (or `--no-corpus`), the command writes
-`.tmp/kaifuu-private-local/no-corpus-skipped.json`:
-
-- `status: "skipped"`, `reason: "private_inputs_absent"`.
-- `command` — the canonical redacted command string.
-- `checkedPaths` — checked inputs redacted to logical ids (e.g.
-  `["private-local-root"]`).
-- `aggregateCounts` — all zero; `engineReadinessBins` — all zero.
-
-Committed reference:
-[`examples/no-corpus-skipped.example.json`](../suite/scripts/kaifuu-private-local-triage/examples/no-corpus-skipped.example.json).
+Absent or invalid selection never produces a report. The command emits a stable
+JSON diagnostic containing only its task, failure class, generic reason code,
+and `effectOutcome: "no-effects"`, then exits nonzero. It never includes the
+private path, filename, rejected value, parser message, or manifest content.
 
 ## What a report may / must not contain
 

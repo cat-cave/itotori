@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "outDir": "../../.tmp/behavior-proof/glue/product",
+    "noEmit": false,
+    "paths": {
+      "@itotori/db": ["../../packages/itotori-db/src/index.ts"],
+      "@itotori/ds": ["../../packages/itotori-ds/src/index.ts"],
+      "@itotori/localization-bridge-schema": [
+        "../../packages/localization-bridge-schema/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "../../packages/itotori-db/src/managed-artifact-refs.ts",
+    "product/evidence-expectation-scenario-boundary.ts",
+    "product/evidence-product-fixture.ts",
+    "product/evidence-scenario-projection.ts",
+    "product/managed-artifact-boundary.ts"
+  ]
+}

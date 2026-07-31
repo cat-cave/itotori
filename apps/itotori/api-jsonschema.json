@@ -745,11 +745,21 @@
             "not_found",
             "method_not_allowed",
             "database_migrations_required",
+            "database_unreachable",
+            "workflow_failed",
             "internal_error"
           ]
         },
         "error": {
           "type": "string"
+        },
+        "incidentReference": {
+          "pattern": "^incident:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "remainingAllowanceMicrosUsd": {
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "required": [
@@ -2164,6 +2174,74 @@
       ],
       "type": "object"
     },
+    "ApiPlayAddressableUnitResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "localeBranchId": {},
+        "projectId": {},
+        "schemaVersion": {
+          "const": "itotori.play.addressable-unit.v0"
+        },
+        "unit": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "bridgeUnitId": {
+                  "type": "string"
+                },
+                "sceneId": {
+                  "type": "string"
+                },
+                "sourceUnitKey": {
+                  "type": "string"
+                },
+                "state": {
+                  "const": "resolved"
+                }
+              },
+              "required": [
+                "bridgeUnitId",
+                "sceneId",
+                "sourceUnitKey",
+                "state"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "bridgeUnitId": {
+                  "type": "string"
+                },
+                "reason": {
+                  "enum": [
+                    "not_imported_in_branch",
+                    "scene_coordinate_missing"
+                  ]
+                },
+                "state": {
+                  "const": "unresolvable"
+                }
+              },
+              "required": [
+                "bridgeUnitId",
+                "reason",
+                "state"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": [
+        "localeBranchId",
+        "projectId",
+        "schemaVersion",
+        "unit"
+      ],
+      "type": "object"
+    },
     "ApiPlayDeliveryResponse": {
       "additionalProperties": false,
       "properties": {
@@ -2289,7 +2367,16 @@
     "ApiPlayFlagAnnotationResponse": {
       "additionalProperties": false,
       "properties": {
-        "category": {},
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "contextCorrectionId": {
           "type": "string"
         },
@@ -2540,7 +2627,14 @@
           "type": "string"
         },
         "category": {
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "contextCorrectionId": {
           "type": "string"

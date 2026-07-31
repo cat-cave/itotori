@@ -2,6 +2,7 @@ import * as contracts from "./api-handler-contracts.js";
 import * as deps from "./api-handler-dependencies.js";
 import { translationScopeValues } from "./api-enum-values.js";
 import { ContextScopeValueSchema, RunModeValueSchema } from "./contracts/index.js";
+import { explicitFailureApiResponse } from "./explicit-failure/api-response.js";
 
 export function ok(
   routeId: "projects.list",
@@ -363,11 +364,11 @@ export function draftProviderConfigurationRefusal(error: unknown): string | null
 }
 
 export function errorResponse(error: unknown): contracts.ApiJsonResponse {
-  if (error instanceof deps.ApiValidationError || error instanceof SyntaxError) {
-    return errorBody(400, "bad_request", error.message);
+  if (deps.hasExplicitFailureEvidence(error)) {
+    return applicationFailureBody(error);
   }
-  if (error instanceof deps.AuthorizationError) {
-    return errorBody(403, "forbidden", error.message);
+  if (error instanceof deps.ApiValidationError) {
+    return errorBody(400, "bad_request", error.message);
   }
   // policy — a mutation targeting a project/branch outside the server-side
   // ownership scope is refused as forbidden (broken object-level authorization),
@@ -401,11 +402,11 @@ export function errorResponse(error: unknown): contracts.ApiJsonResponse {
   if (databaseMessage !== null) {
     return errorBody(503, "database_unreachable", databaseMessage);
   }
-  return errorBody(
-    500,
-    "internal_error",
-    "The service could not complete this request. Check the server logs and try again.",
-  );
+  return applicationFailureBody(error);
+}
+
+function applicationFailureBody(error: unknown): contracts.ApiJsonResponse {
+  return explicitFailureApiResponse(error);
 }
 
 export function hasPostgresErrorCode(error: unknown, expectedCode: string): boolean {
@@ -425,8 +426,9 @@ export function errorBody(
   statusCode: number,
   code: deps.ApiErrorResponse["code"],
   error: string,
+  details: Pick<deps.ApiErrorResponse, "remainingAllowanceMicrosUsd" | "incidentReference"> = {},
 ): contracts.ApiJsonResponse {
-  return { statusCode, body: { error, code } };
+  return { statusCode, body: { error, code, ...details } };
 }
 
 export function parseProjectRoute(pathname: string): {

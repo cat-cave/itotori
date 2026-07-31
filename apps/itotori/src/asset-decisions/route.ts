@@ -1,4 +1,5 @@
 import type { AssetDecisionRecord, AssetLocalizationDecisionAssetKind } from "@itotori/db";
+import { renderExplicitFailureHtml } from "../explicit-failure/render.js";
 import {
   parseAssetDecisionsRoute,
   renderAssetDecisionsView,
@@ -24,8 +25,10 @@ const defaultEndpoints: AssetDecisionsRouteEndpoints = {
     `/api/projects/${encodeURIComponent(params.projectId)}/locale-branches/${encodeURIComponent(params.localeBranchId)}/asset-decisions/candidates`,
 };
 
+type HtmlRoot = { innerHTML: string };
+
 export async function renderAssetDecisionsRoute(
-  root: HTMLElement,
+  root: HtmlRoot,
   params: AssetDecisionsRouteParams,
   endpoints: AssetDecisionsRouteEndpoints = defaultEndpoints,
 ): Promise<void> {
@@ -44,7 +47,7 @@ export async function renderAssetDecisionsRoute(
     };
     root.innerHTML = renderAssetDecisionsView(data);
   } catch (error) {
-    renderError(root, params, error);
+    renderAssetDecisionsFailure(root, params, error);
   }
 }
 
@@ -169,7 +172,7 @@ function requireDate(value: unknown, label: string): Date {
   return parsed;
 }
 
-function renderLoading(root: HTMLElement, params: AssetDecisionsRouteParams): void {
+function renderLoading(root: HtmlRoot, params: AssetDecisionsRouteParams): void {
   root.innerHTML = `
     <main class="itotori-shell" data-state="asset-decisions-loading">
       <p role="status">Loading asset decisions for ${escapeHtml(params.localeBranchId)}…</p>
@@ -177,15 +180,16 @@ function renderLoading(root: HTMLElement, params: AssetDecisionsRouteParams): vo
   `;
 }
 
-function renderError(root: HTMLElement, params: AssetDecisionsRouteParams, error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
-  root.innerHTML = `
-    <main class="itotori-shell" data-state="asset-decisions-error">
-      <h1>Asset decisions unavailable</h1>
-      <p role="alert">Could not load asset decisions for ${escapeHtml(params.localeBranchId)}.</p>
-      <pre>${escapeHtml(message)}</pre>
-    </main>
-  `;
+export function renderAssetDecisionsFailure(
+  root: HtmlRoot,
+  params: AssetDecisionsRouteParams,
+  error: unknown,
+): void {
+  root.innerHTML = renderExplicitFailureHtml(error, {
+    state: "asset-decisions-error",
+    title: "Asset decisions unavailable",
+    context: `Could not load asset decisions for ${params.localeBranchId}.`,
+  });
 }
 
 function escapeHtml(value: string): string {

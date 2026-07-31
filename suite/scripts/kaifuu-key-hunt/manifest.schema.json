@@ -10,6 +10,7 @@
     "schemaVersion": { "const": "itotori.kaifuu-key-hunt-manifest.v0.1" },
     "helperAttempts": {
       "type": "array",
+      "minItems": 1,
       "items": { "$ref": "#/definitions/attempt" }
     }
   },

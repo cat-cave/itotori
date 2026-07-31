@@ -122,23 +122,23 @@ localize summary is not patch input.
 ### Run the readiness checklist
 
 ```sh
-just check alpha-readiness
+just test alpha
 ```
 
-Validates that the readiness docs match the generated capability + benchmark
-artifacts, that the evidence node references resolve, and that the
-patched-output runtime proof is grounded.
+This is the supported readiness proof command. It reruns the deterministic
+public-fixture vertical and its independent cross-artifact linkage validator;
+`just check meta` separately enforces generated capability-matrix drift and the
+repository's structural guards.
 
 ### Full gates
 
-- `just check` — the fast gate: lint, typecheck, and unit tests
-  validation, capability-matrix drift check, and the readiness checklist. No DB
-  required.
-- `just ci` — the complete gate: `check` + build + DB migrations + full TS/Rust
-  test suites + the real-bytes lane. Spins up and tears down a worktree-scoped
-  Postgres stack (`just dev db-up` / `just dev db-down`). The real-bytes lane reads
-  staged corpora **read-only** and is skipped unless the corpus roots are staged
-  (it never copies copyrighted bytes).
+- `just check` — metadata and policy guards, generated-artifact checks,
+  TypeScript formatting/typecheck, and Rust format/check/clippy/dependency
+  checks. No DB is required.
+- `just ci` — the public integration sequence: `check`, build, DB migration,
+  public TypeScript and Rust tests, and mutation differential. Start the
+  worktree-scoped Postgres stack first with `just dev db-up`; this command does
+  not claim browser or private-byte evidence.
 
 ### Live runs (opt-in only — see security docs first)
 

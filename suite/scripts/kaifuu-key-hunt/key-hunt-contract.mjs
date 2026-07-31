@@ -8,8 +8,8 @@
  * level (the relevant capability Siglus known-key, XP3 key, MV/MZ key, Wolf archive key,
  * RGSS3 key — plan, never brute-force), turns operator-authored, ALREADY-REDACTED
  * key-hunt manifests into a SAFE AGGREGATE redacted report of per-attempt
- * outcomes, and produces a deterministic REDACTED no-corpus artifact when no
- * private inputs exist.
+ * outcomes. Missing or empty private input is handled by the command as a typed
+ * failure diagnostic, never as a report.
  *
  * This is a SIBLING of the relevant capability (private-local encrypted corpus triage) and
  * the relevant capability (Siglus private-local validation renderer). It REUSES their
@@ -43,8 +43,7 @@
  *     BEFORE anything is written (fail-loud, emit nothing — never silently
  *     redacts).
  *   - Output is byte-deterministic (sorted keys, no timestamps, no absolute
- *     paths), so the committed public-safe examples and the no-corpus artifact are
- *     stable and diffable and validate in public CI without private assets.
+ *     paths), so the committed public-safe report is stable and diffable.
  */
 "use strict";
 
@@ -65,7 +64,6 @@ export const KEY_HUNT_TASK = "kaifuu:key-hunt";
 // Canonical redacted command strings. The real argv is NEVER recorded (it can
 // carry local absolute paths); the mode maps to a fixed logical command.
 export const COMMANDS = {
-  noCorpus: "vp run kaifuu:key-hunt -- --no-corpus",
   manifest: "vp run kaifuu:key-hunt -- --manifest <private-manifest>",
   corpusDir: "vp run kaifuu:key-hunt -- --corpus-dir <private-corpus-directory>",
 };

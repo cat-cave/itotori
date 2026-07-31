@@ -1,8 +1,7 @@
 #!/usr/bin/env node
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runItotoriCliCommand, type JsonFileStore } from "./cli-handlers.js";
+import { readOwnedJsonFile, writeJsonFile, writeTextFile } from "./cli-json-file-store.js";
 import {
   migrateItotoriDatabase,
   resetItotoriDatabase,
@@ -20,21 +19,11 @@ export async function main(cliArgs = args): Promise<void> {
   });
 }
 
-function readJson(path: string): unknown {
-  return JSON.parse(readFileSync(path, "utf8"));
-}
-
-function writeJson(path: string, value: unknown): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-function writeText(path: string, contents: string): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, contents);
-}
-
-const nodeJsonFileStore: JsonFileStore = { readJson, writeJson, writeText };
+const nodeJsonFileStore: JsonFileStore = {
+  readJson: readOwnedJsonFile,
+  writeJson: writeJsonFile,
+  writeText: writeTextFile,
+};
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main().catch((error: unknown) => {

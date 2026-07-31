@@ -1,16 +1,13 @@
 /*
  * the relevant capability — deterministic unit + integration tests for the alpha
  * encrypted-readiness evidence INTEGRATION workflow. `node --test`, no network,
- * no DB, no build, no private corpora: the no-corpus path + the committed public
- * prerequisite fixtures + a MOCK redacted private-corpus manifest drive
+ * no DB, no build, no private corpora: typed absent-input failures, committed
+ * public prerequisite fixtures, and a MOCK redacted private-corpus manifest drive
  * everything. Proves:
  *   - the composed evidence path NAMES its prerequisites (surfaces, adapters,
  *     command evidence, proof artifacts) and AGGREGATES their proofs by content
  *     hash, WITHOUT re-owning any prerequisite slice;
- *   - with NO private encrypted corpus (default / --no-corpus) it emits the
- *     DETERMINISTIC REDACTED no-corpus artifact — status skipped, reason
- *     private_inputs_absent, redacted corpus ids, ZERO aggregate counts, NO
- *     local paths — byte-stable across runs and matching the committed example;
+ *   - missing or empty private inputs fail with no evidence artifact effects;
  *   - an UNSUPPORTED / MISSING / TAMPERED prerequisite stays a SEMANTIC
  *     DIAGNOSTIC (status failed), never a hidden success (boundary regression);
  *   - NO raw key/secret/path/decrypted bytes reach any output;
@@ -19,17 +16,18 @@
 "use strict";
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import Ajv from "ajv";
 import {
-  ENGINES,
-  READINESS_BINS,
+  PRIVATE_MANIFEST_SCHEMA_VERSION,
   SUPPORTED_PREREQUISITE_ENGINE_FAMILIES,
   assertNoSecrets,
-  buildNoCorpusArtifact,
+  buildComposedReport,
   canonicalHash,
   composePrerequisites,
   findSecretLeak,
@@ -37,9 +35,13 @@ import {
   stableStringify,
 } from "./compose.mjs";
 import { REPO_ROOT, compose, integrate, parseArgs } from "./run.mjs";
+import { PRIVATE_INPUT_DIAGNOSTIC_SCHEMA_VERSION } from "../kaifuu-private-local-triage/triage.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXAMPLES = join(HERE, "examples");
+const RUNNER = join(HERE, "run.mjs");
+const TASK = "kaifuu:encrypted-readiness";
+const RAW_SECRET = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
 const PREREQ_MANIFEST = JSON.parse(readFileSync(join(HERE, "prerequisites.manifest.json"), "utf8"));
 
 function readExample(name) {
@@ -48,6 +50,15 @@ function readExample(name) {
 
 function readExampleJson(name) {
   return JSON.parse(readExample(name));
+}
+
+function withTempDir(fn) {
+  const dir = mkdtempSync(join(tmpdir(), "k800-encrypted-readiness-"));
+  try {
+    return fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 test("parseArgs ignores the `vp run -- ` separator", () => {
@@ -82,49 +93,98 @@ function PREREQ_PATH() {
   return "suite/scripts/kaifuu-encrypted-readiness-integration/prerequisites.manifest.json";
 }
 
-test("no-corpus: deterministic redacted artifact, stable across runs", () => {
-  const a = integrate({ noCorpus: true, prerequisites: PREREQ_PATH() }).artifact;
-  const b = integrate({ noCorpus: true, prerequisites: PREREQ_PATH() }).artifact;
-  assert.equal(stableStringify(a), stableStringify(b), "no-corpus artifact must be deterministic");
-  assert.equal(a.status, "skipped");
-  assert.equal(a.reason, "private_inputs_absent");
-  assert.deepEqual(a.corpusIds, [], "redacted corpus ids empty");
-  assert.deepEqual(a.checkedInputs, ["private-encrypted-corpus-root"]);
-  assert.equal(a.command, "vp run kaifuu:encrypted-readiness -- --no-corpus");
-  // ZERO aggregate counts.
-  for (const key of Object.keys(a.aggregateCounts)) {
-    assert.equal(a.aggregateCounts[key], 0, `no-corpus ${key} count must be zero`);
-  }
-  // Per-engine bins present and all zero.
-  for (const engine of ENGINES) {
-    for (const bin of READINESS_BINS) {
-      assert.equal(a.engineReadinessBins[engine][bin], 0);
+test("selected_private_task_without_manifest_fails_cell", () => {
+  withTempDir((root) => {
+    const zeroBytes = join(root, "zero.json");
+    const emptySelection = join(root, "empty-selection.json");
+    const manifestDirectory = join(root, "manifest-directory");
+    const leakingManifest = join(root, "private-manifest.json");
+    mkdirSync(manifestDirectory);
+    writeFileSync(zeroBytes, "");
+    writeFileSync(
+      emptySelection,
+      JSON.stringify({ schemaVersion: PRIVATE_MANIFEST_SCHEMA_VERSION, corpora: [] }),
+    );
+    writeFileSync(
+      leakingManifest,
+      JSON.stringify({
+        schemaVersion: PRIVATE_MANIFEST_SCHEMA_VERSION,
+        corpora: [
+          {
+            corpusIdRedacted: "private-corpus",
+            engine: "siglus",
+            readinessBin: "ready",
+            proofHash: RAW_SECRET,
+          },
+        ],
+      }),
+    );
+    const cases = [
+      [[], "private-input-manifest-missing"],
+      [["--no-corpus"], "private-input-explicitly-absent"],
+      [["--private-manifest", join(root, "missing.json")], "private-input-manifest-missing"],
+      [["--private-manifest", zeroBytes], "private-input-zero-bytes"],
+      [["--private-manifest", emptySelection], "private-input-selection-empty"],
+      [["--private-manifest"], "private-input-argument-missing", "invalid-input"],
+      [["--no-corpus", "--help"], "private-input-invalid", "invalid-input"],
+      [
+        ["--private-manifest", manifestDirectory],
+        "private-input-manifest-not-file",
+        "invalid-input",
+      ],
+      [["--private-manifest", leakingManifest], "private-input-invalid", "invalid-input"],
+      [
+        ["--no-corpus", "--private-manifest", leakingManifest],
+        "private-input-invalid",
+        "invalid-input",
+      ],
+      [
+        ["--private-manifest", leakingManifest, "--private-manifest", leakingManifest],
+        "private-input-invalid",
+        "invalid-input",
+      ],
+    ];
+    for (const [args, reasonCode, failureClass = "missing-input"] of cases) {
+      const out = join(root, "effects", "encrypted-readiness-report.json");
+      const result = spawnSync(process.execPath, [RUNNER, ...args, "--out", out], {
+        encoding: "utf8",
+      });
+      assert.equal(result.status, 1, reasonCode);
+      assert.equal(result.stdout, "", reasonCode);
+      assert.deepEqual(JSON.parse(result.stderr), {
+        schemaVersion: PRIVATE_INPUT_DIAGNOSTIC_SCHEMA_VERSION,
+        status: "failed",
+        task: TASK,
+        failureClass,
+        reasonCode,
+        diagnosticOutcome: "safe-actionable-remediation",
+        effectOutcome: "no-effects",
+      });
+      assert.equal(result.stderr.includes(RAW_SECRET), false, reasonCode);
+      assert.equal(result.stderr.includes(root), false, reasonCode);
+      assert.equal(existsSync(join(root, "effects")), false, reasonCode);
     }
-  }
-  assert.deepEqual(a.entries, []);
-  // NO local paths anywhere.
-  assert.doesNotMatch(stableStringify(a), /\/home\/|\/Users\/|\/scratch\/|[A-Za-z]:\\/);
-});
-
-test("no-corpus: matches the committed README-safe example", () => {
-  const { artifact } = integrate({ noCorpus: true, prerequisites: PREREQ_PATH() });
-  assert.deepEqual(artifact, readExampleJson("no-corpus-skipped.example.json"));
-});
-
-test("default (no --private-manifest) falls back to the no-corpus artifact", () => {
-  const { kind, artifact } = integrate({ prerequisites: PREREQ_PATH() });
-  assert.equal(kind, "no-corpus");
-  assert.equal(artifact.status, "skipped");
-  assert.equal(artifact.reason, "private_inputs_absent");
-});
-
-test("a configured but absent private manifest still skips (never fails)", () => {
-  const { kind, artifact } = integrate({
-    prerequisites: PREREQ_PATH(),
-    privateManifest: "does/not/exist/private.local.json",
   });
-  assert.equal(kind, "no-corpus");
-  assert.equal(artifact.status, "skipped");
+});
+
+test("valid manifest command writes the schema-valid composed report", () => {
+  withTempDir((root) => {
+    const out = join(root, `${RAW_SECRET}.json`);
+    const manifest = join(EXAMPLES, "private-encrypted-corpus-manifest.local.example.json");
+    const result = spawnSync(
+      process.execPath,
+      [RUNNER, "--private-manifest", manifest, "--out", out],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stderr, "");
+    assert.equal(result.stdout.includes(root), false);
+    assert.equal(result.stdout.includes(RAW_SECRET), false);
+    assert.deepEqual(
+      JSON.parse(readFileSync(out, "utf8")),
+      readExampleJson("composed-readiness-report.example.json"),
+    );
+  });
 });
 
 test("aggregate report: mock manifest yields redacted report matching the example", () => {
@@ -145,8 +205,8 @@ test("aggregate report: mock manifest yields redacted report matching the exampl
   assert.equal(artifact.composes.artifacts.length, 7);
   assert.equal(
     artifact.composedEvidenceHash,
-    readExampleJson("no-corpus-skipped.example.json").composedEvidenceHash,
-    "composed prerequisite hash is stable across modes",
+    compose({ prerequisites: PREREQ_PATH() }).composedEvidenceHash,
+    "composed prerequisite hash is stable",
   );
 });
 
@@ -160,8 +220,11 @@ test("UNSUPPORTED prerequisite engine is a semantic diagnostic, not a hidden suc
   );
   const codes = composed.findings.map((f) => f.code);
   assert.ok(codes.includes("kaifuu.encrypted_readiness.unsupported_adapter"), codes.join(","));
-  // And the built no-corpus artifact status is FAILED — never "ok"/"skipped".
-  assert.equal(buildNoCorpusArtifact({ composed }).status, "failed");
+  const entries = normalizePrivateManifest({
+    schemaVersion: PRIVATE_MANIFEST_SCHEMA_VERSION,
+    corpora: [{ corpusIdRedacted: "x", engine: "siglus", readinessBin: "ready" }],
+  });
+  assert.equal(buildComposedReport(entries, { composed }).status, "failed");
 });
 
 test("MISSING prerequisite proof is a semantic diagnostic (status failed)", () => {
@@ -245,9 +308,12 @@ test("committed examples validate against the committed schemas", () => {
   const validateReport = ajv.compile(reportSchema);
   const validatePrivate = ajv.compile(privateSchema);
 
-  for (const name of ["no-corpus-skipped.example.json", "composed-readiness-report.example.json"]) {
+  for (const name of ["composed-readiness-report.example.json"]) {
     const report = readExampleJson(name);
     assert.ok(validateReport(report), `${name}: ${ajv.errorsText(validateReport.errors)}`);
+    const missingCorpusIds = structuredClone(report);
+    delete missingCorpusIds.corpusIds;
+    assert.equal(validateReport(missingCorpusIds), false, `${name}: corpusIds must be required`);
   }
   const manifest = readExampleJson("private-encrypted-corpus-manifest.local.example.json");
   assert.ok(validatePrivate(manifest), ajv.errorsText(validatePrivate.errors));

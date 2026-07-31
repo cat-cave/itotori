@@ -1,10 +1,9 @@
 /*
  * the relevant capability — deterministic unit + integration tests for the Siglus
  * private-local redacted validation summary renderer. `node --test`, no
- * network, no DB, no build, no private corpora: the no-corpus path and a MOCK
- * redacted manifest drive everything. Proves:
- *   - with NO private inputs the renderer emits the DETERMINISTIC REDACTED
- *     no-corpus artifact (stable across runs, matches the committed example);
+ * network, no DB, no build, no private corpora: typed absent-input failures and
+ * a MOCK redacted manifest drive everything. Proves:
+ *   - missing or empty private inputs fail with no evidence artifact effects;
  *   - with a mock/fixture manifest it produces the aggregate validation summary
  *     (redacted fields only, matches the committed example, correct
  *     capability-level / helper-outcome / validation-status / failure bins);
@@ -18,30 +17,32 @@
 "use strict";
 
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import Ajv from "ajv";
 import {
-  CAPABILITY_LEVELS,
   FAILURE_CATEGORIES,
   HELPER_OUTCOME_CATEGORIES,
   MANIFEST_SCHEMA_VERSION,
-  VALIDATION_STATUSES,
   assertNoSecrets,
-  buildNoCorpusArtifact,
   buildValidationSummary,
   findSecretLeak,
   normalizeManifest,
   stableStringify,
 } from "./render.mjs";
 import { discoverManifestPaths, parseArgs, render } from "./run.mjs";
+import { PRIVATE_INPUT_DIAGNOSTIC_SCHEMA_VERSION } from "../kaifuu-private-local-triage/triage.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXAMPLES = join(HERE, "examples");
 const MANIFEST_FILENAME = "siglus-validation-manifest.local.json";
+const RUNNER = join(HERE, "run.mjs");
+const TASK = "siglus:private-local-validation-render";
+const RAW_SECRET = "00112233445566778899aabbccddeeff";
 
 function readExample(name) {
   return readFileSync(join(EXAMPLES, name), "utf8");
@@ -95,43 +96,92 @@ test("parseArgs ignores the `vp run -- ` separator", () => {
   assert.equal(parseArgs(["--no-corpus"]).noCorpus, true);
 });
 
-test("no-corpus: deterministic redacted artifact, stable across runs", () => {
-  const a = render({ noCorpus: true }).artifact;
-  const b = render({ noCorpus: true }).artifact;
-  assert.equal(stableStringify(a), stableStringify(b), "no-corpus artifact must be deterministic");
-  assert.equal(a.status, "skipped");
-  assert.equal(a.reason, "private_inputs_absent");
-  assert.deepEqual(a.checkedPaths, ["private-local-root"]);
-  assert.equal(a.command, "vp run siglus:private-local-validation-render -- --no-corpus");
-  assert.equal(a.engineFamily, "siglus");
-  assert.equal(a.aggregateCounts.profiles, 0);
-  assert.equal(a.aggregateCounts.runs, 0);
-  for (const key of [
-    "scenesValidated",
-    "unitsValidated",
-    "gameexeEntriesValidated",
-    "filesProcessed",
-  ]) {
-    assert.equal(a.aggregateCounts[key], 0, `no-corpus ${key} count must be zero`);
-  }
-  for (const level of CAPABILITY_LEVELS) {
-    assert.equal(a.capabilityLevelBins[level], 0);
-  }
-  for (const status of VALIDATION_STATUSES) {
-    assert.equal(a.validationStatusBins[status], 0);
-  }
-});
-
-test("no-corpus: matches the committed public-safe example", () => {
-  assert.deepEqual(buildNoCorpusArtifact(), readExampleJson("no-corpus-skipped.example.json"));
-});
-
-test("absent private-local root falls back to the no-corpus artifact (never fails)", () => {
+test("selected_private_task_without_manifest_fails_cell", () => {
   withTempDir((root) => {
-    const { kind, artifact } = render({ root: "fixtures/private-local" }, root);
-    assert.equal(kind, "no-corpus");
-    assert.equal(artifact.status, "skipped");
-    assert.equal(artifact.reason, "private_inputs_absent");
+    const emptyDir = join(root, "empty");
+    const zeroBytes = join(root, "zero.json");
+    const emptySelection = join(root, "empty-selection.json");
+    const leakingManifest = join(root, "private-manifest.json");
+    mkdirSync(emptyDir);
+    writeFileSync(zeroBytes, "");
+    writeFileSync(
+      emptySelection,
+      JSON.stringify({ schemaVersion: MANIFEST_SCHEMA_VERSION, runs: [] }),
+    );
+    writeFileSync(
+      leakingManifest,
+      JSON.stringify(manifestWith(baseRun({ profileId: RAW_SECRET }))),
+    );
+    const mixedDir = join(root, "mixed-selection");
+    mkdirSync(join(mixedDir, "empty"), { recursive: true });
+    mkdirSync(join(mixedDir, "valid"), { recursive: true });
+    writeFileSync(join(mixedDir, "empty", MANIFEST_FILENAME), readFileSync(emptySelection));
+    writeFileSync(
+      join(mixedDir, "valid", MANIFEST_FILENAME),
+      readExample("siglus-validation-manifest.local.example.json"),
+    );
+    const cases = [
+      [["--no-corpus"], "private-input-explicitly-absent"],
+      [["--manifest", join(root, "missing.json")], "private-input-manifest-missing"],
+      [["--root", join(root, "missing-root")], "private-input-root-missing"],
+      [["--corpus-dir", emptyDir], "private-input-directory-empty"],
+      [["--manifest", zeroBytes], "private-input-zero-bytes"],
+      [["--manifest", emptySelection], "private-input-selection-empty"],
+      [["--corpus-dir", mixedDir], "private-input-selection-empty"],
+      [["--manifest"], "private-input-argument-missing", "invalid-input"],
+      [["--no-corpus", "--help"], "private-input-invalid", "invalid-input"],
+      [["--manifest", emptyDir], "private-input-manifest-not-file", "invalid-input"],
+      [["--manifest", leakingManifest], "private-input-invalid", "invalid-input"],
+      [
+        ["--manifest", leakingManifest, "--corpus-dir", emptyDir],
+        "private-input-invalid",
+        "invalid-input",
+      ],
+      [
+        ["--manifest", leakingManifest, "--manifest", leakingManifest],
+        "private-input-invalid",
+        "invalid-input",
+      ],
+    ];
+    for (const [args, reasonCode, failureClass = "missing-input"] of cases) {
+      const out = join(root, "effects", "validation-summary.json");
+      const result = spawnSync(process.execPath, [RUNNER, ...args, "--out", out], {
+        encoding: "utf8",
+      });
+      assert.equal(result.status, 1, reasonCode);
+      assert.equal(result.stdout, "", reasonCode);
+      assert.deepEqual(JSON.parse(result.stderr), {
+        schemaVersion: PRIVATE_INPUT_DIAGNOSTIC_SCHEMA_VERSION,
+        status: "failed",
+        task: TASK,
+        failureClass,
+        reasonCode,
+        diagnosticOutcome: "safe-actionable-remediation",
+        effectOutcome: "no-effects",
+      });
+      assert.equal(result.stderr.includes(RAW_SECRET), false, reasonCode);
+      assert.equal(result.stderr.includes(root), false, reasonCode);
+      assert.equal(existsSync(join(root, "effects")), false, reasonCode);
+    }
+    assert.throws(() => discoverManifestPaths(zeroBytes), /private-input-directory-unreadable/);
+  });
+});
+
+test("valid manifest command writes the schema-valid summary", () => {
+  withTempDir((root) => {
+    const out = join(root, `${RAW_SECRET}.json`);
+    const manifest = join(EXAMPLES, "siglus-validation-manifest.local.example.json");
+    const result = spawnSync(process.execPath, [RUNNER, "--manifest", manifest, "--out", out], {
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stderr, "");
+    assert.equal(result.stdout.includes(root), false);
+    assert.equal(result.stdout.includes(RAW_SECRET), false);
+    assert.deepEqual(
+      JSON.parse(readFileSync(out, "utf8")),
+      readExampleJson("validation-summary.example.json"),
+    );
   });
 });
 
@@ -268,8 +318,8 @@ test("seeded ABSOLUTE LOCAL PATH is REJECTED before any emit", () => {
 // --- Diagnostics stay distinct ----------------------------------------------
 
 test("renderer diagnostics distinguish the four acceptance cases", () => {
-  // (1) missing private corpus -> skipped no-corpus artifact.
-  assert.equal(render({ noCorpus: true }).artifact.status, "skipped");
+  // (1) missing private corpus -> typed failure (never evidence).
+  assert.equal(render({ noCorpus: true }).diagnostic.reasonCode, "private-input-explicitly-absent");
   // (2) redaction violation -> THROW (never a status).
   const dirty = buildValidationSummary([baseRun()]);
   dirty.runs[0].profileId = "Gameexe.dat";
@@ -339,7 +389,7 @@ test("committed examples validate against the committed schemas", () => {
   const manifest = readExampleJson("siglus-validation-manifest.local.example.json");
   assert.ok(validateManifest(manifest), ajv.errorsText(validateManifest.errors));
 
-  for (const name of ["validation-summary.example.json", "no-corpus-skipped.example.json"]) {
+  for (const name of ["validation-summary.example.json"]) {
     const summary = readExampleJson(name);
     assert.ok(validateSummary(summary), `${name}: ${ajv.errorsText(validateSummary.errors)}`);
   }

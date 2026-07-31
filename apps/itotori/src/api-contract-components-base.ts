@@ -60,8 +60,16 @@ export function extractResponseVariants(): Schema[] {
 export const baseComponentBuilders: ComponentBuilders = {
   ApiErrorResponse: () =>
     object({
-      required: STRICT_API_BODY_KEYS.ApiErrorResponse,
-      properties: { error: str, code: { enum: [...API_ERROR_RESPONSE_CODES] } },
+      required: ["error", "code"],
+      properties: {
+        error: str,
+        code: { enum: [...API_ERROR_RESPONSE_CODES] },
+        remainingAllowanceMicrosUsd: { type: "integer", minimum: 0 },
+        incidentReference: {
+          type: "string",
+          pattern: "^incident:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+        },
+      },
       additionalProperties: false,
     }),
   // Asset decisions --------------------------------------------------------

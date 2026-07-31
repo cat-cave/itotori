@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -10,7 +13,9 @@ import {
   buildEvidenceManifest,
   deriveStages,
   evaluateProofGate,
+  parseProofMode,
   probeFromEnv,
+  requireProtectedPrivateAgent,
   repoRoot,
 } from "./private-real-byte-proof.mjs";
 
@@ -197,23 +202,76 @@ test("deriveStages defaults absent stages to not-executed (never fabricates a pa
   assert.equal(stages.replay.passed, false);
 });
 
-// --- workflow config: parses, opt-in, NOT merge-required --------------------
+// --- workflow quarantine: external protected path is not installed ----------
 const wf = readFileSync(join(repoRoot, ".github/workflows/real-bytes-private-proof.yml"), "utf8");
 
-test("the private-proof workflow is opt-in (workflow_dispatch + label), never push/merge_group", () => {
+test("the private-proof workflow has only a manual fail-closed trigger", () => {
   assert.match(wf, /workflow_dispatch:/);
-  assert.match(wf, /types:\s*\[labeled\]|label/);
-  assert.ok(
-    !/merge_group:/.test(wf),
-    "private proof must NOT run on merge_group (not a required gate)",
-  );
-  assert.ok(!/branches:\s*\[main\]/.test(wf), "private proof must NOT run on push to main");
+  assert.doesNotMatch(wf, /pull_request:|merge_group:|push:/u);
+  assert.match(wf, /external-private-evidence-agent-unavailable/u);
+  assert.match(wf, /exit 1/u);
 });
 
-test("the private-proof workflow runs the gated recipe on the corpora runner", () => {
-  assert.match(wf, /self-hosted/);
-  assert.match(wf, /itotori-corpora/);
-  assert.match(wf, /ci-real-bytes-private-proof/);
+test("the quarantined workflow cannot reach candidate code, private runners, inputs, or uploads", () => {
+  assert.doesNotMatch(wf, /self-hosted|itotori-corpora|actions\/checkout|setup-itotori/u);
+  assert.doesNotMatch(wf, /upload-artifact|ITOTORI_ZDR_PROFILE|pull_request/u);
+});
+
+test("the local private lane cannot claim acceptance without the protected agent", () => {
+  assert.throws(requireProtectedPrivateAgent, /external-private-evidence-agent-unavailable/u);
+  assert.equal(parseProofMode(["--accepted"]), "--accepted");
+  assert.throws(
+    () => parseProofMode(["--accepted", "--preflight"]),
+    /private-proof-mode-must-be-exactly-one/u,
+  );
+  const conflicting = spawnSync(
+    process.execPath,
+    [join(repoRoot, "scripts/ci/private-real-byte-proof.mjs"), "--accepted", "--preflight"],
+    { encoding: "utf8" },
+  );
+  assert.equal(conflicting.status, 2);
+  assert.equal(conflicting.stdout, "");
+  assert.match(conflicting.stderr, /^usage: private-real-byte-proof\.mjs/u);
+  assert.doesNotMatch(conflicting.stderr, /proof gate passed/u);
+  const dispatcher = readFileSync(join(repoRoot, "scripts/developer-command.mjs"), "utf8");
+  assert.match(dispatcher, /private-real-byte-proof\.mjs", "--accepted"/u);
+});
+
+test("a passing local preflight still fails accepted proof without the protected agent", () => {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), "itotori-private-proof-"));
+  const configRoot = join(fixtureRoot, "config");
+  const corpusRoot = join(fixtureRoot, "corpus");
+  const hashList = `${JSON.stringify({ path: "fixture.bin", bytes: 1 })}\n`;
+  const contentAddress = createHash("sha256").update(hashList).digest("hex");
+  mkdirSync(join(configRoot, "itotori"), { recursive: true });
+  mkdirSync(corpusRoot, { recursive: true });
+  writeFileSync(join(corpusRoot, "private-hash-list.local.jsonl"), hashList);
+  writeFileSync(
+    join(configRoot, "itotori", "inventory.toml"),
+    `[[corpus]]\nid = "corpus-reallive-1-encrypted"\nroot = ${JSON.stringify(corpusRoot)}\ncontent_address = "${contentAddress}"\n`,
+  );
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [join(repoRoot, "scripts/ci/private-real-byte-proof.mjs"), "--accepted"],
+      {
+        cwd: fixtureRoot,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          XDG_CONFIG_HOME: configRoot,
+          ITOTORI_ZDR_PROFILE: APPROVED_ZDR_PROFILE,
+        },
+      },
+    );
+    assert.equal(result.status, 1);
+    assert.equal(result.signal, null);
+    assert.match(result.stdout, /gate ok:/u);
+    assert.equal(result.stderr, "external-private-evidence-agent-unavailable\n");
+    assert.deepEqual(readdirSync(fixtureRoot).sort(), ["config", "corpus"]);
+  } finally {
+    rmSync(fixtureRoot, { force: true, recursive: true });
+  }
 });
 
 // --- the required merge-queue checks are UNCHANGED --------------------------

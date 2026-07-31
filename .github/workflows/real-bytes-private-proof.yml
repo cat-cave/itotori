@@ -1,48 +1,23 @@
-name: Real-Bytes Private Proof (opt-in)
+name: Real-Bytes Private Proof (quarantined)
 
-# OPT-IN private real-byte proof lane. Deliberately SEPARATE from pr-tiers /
-# _tier0 / _tier1 (the merge-queue-required checks): it needs the content-
-# addressed private engine corpus + the exact approved ZDR profile, which the public
-# hosted runners do not have, so it is NOT — and must never become — a required
-# gate. A red run here never stalls the native merge queue.
-#
-# Triggers (opt-in only): manual dispatch, or attaching the `real-byte-proof`
-# label to a PR. Never `push`/`merge_group`, so it cannot gate a merge.
-#
-# THE KEY INVERSION vs. the periodic oracle: this lane FAILS (never green-skips)
-# when a REQUIRED real corpus is missing or the ZDR profile drifts. See
-# `just ci-real-bytes-private-proof` + scripts/ci/private-real-byte-proof.mjs.
-# It emits a CONTENT-FREE evidence manifest (counts/hashes/ids only) and
-# exercises extract -> structure -> patch -> replay on the staged private bytes.
+# The protected broker/evidence-agent path specified by docs/roadmap/real-bytes.md
+# does not exist yet. Keep the old candidate-controlled, corpus-runner path
+# unreachable: no pull-request trigger, private runner, candidate checkout,
+# project-specific environment input, network-capable setup, or artifact upload.
+# Manual requests fail closed until the external verifier installs that path.
 
 on:
   workflow_dispatch: {}
-  pull_request:
-    types: [labeled]
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
-  private-proof:
-    # Gate the label trigger so only the opt-in label runs it; manual dispatch
-    # always runs. Runs on the self-hosted runner that stages the real corpora.
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.label.name == 'real-byte-proof' }}
-    runs-on: [self-hosted, itotori-corpora]
-    env:
-      ITOTORI_ZDR_PROFILE: ${{ vars.ITOTORI_ZDR_PROFILE }}
+  unavailable:
+    name: Private proof / unavailable
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: ./.github/actions/setup-itotori
-
-      # extract -> structure -> patch -> replay on staged private bytes, behind
-      # the fail-not-skip preflight gate; emits the content-free manifest.
-      - run: just ci private-real-bytes
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: ${{ always() }}
-        with:
-          name: private-proof-evidence-${{ github.sha }}
-          path: .tmp/private-proof/evidence.json
-          if-no-files-found: warn
-          retention-days: 7
+      - name: Reject while the protected evidence agent is unavailable
+        run: |
+          echo 'external-private-evidence-agent-unavailable' >&2
+          exit 1

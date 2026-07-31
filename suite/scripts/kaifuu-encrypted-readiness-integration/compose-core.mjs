@@ -6,8 +6,8 @@
  * COMPOSES the already-generated encrypted-readiness EVIDENCE of the
  * prerequisite slices (the packed-engine readiness surface and
  * alpha-encrypted readiness evidence) into an alpha-readiness
- * composed-evidence artifact, and produces a deterministic REDACTED no-corpus
- * artifact when no PRIVATE encrypted corpus is configured.
+ * composed-evidence artifact. Missing private input is handled as a typed
+ * failure by the command wrapper, before this evidence core is called.
  *
  * IT DOES NOT RE-OWN PREREQUISITE SLICES. It never re-derives readiness
  * postures, never re-runs an adapter, and never re-implements the
@@ -26,7 +26,7 @@
  *     (absolute local paths, raw key/hex material, `local-secret:` refs, PEM
  *     blocks). A leak throws BEFORE anything is written.
  *   - Output is byte-deterministic (sorted keys, no timestamps, no absolute
- *     paths), so the committed examples and the no-corpus artifact are stable.
+ *     paths), so the committed examples are stable.
  */
 "use strict";
 
@@ -42,14 +42,9 @@ export const GENERATOR_PATH = "suite/scripts/kaifuu-encrypted-readiness-integrat
 // Canonical redacted command strings. The real argv is NEVER recorded because
 // it can carry local absolute paths; the mode maps to a fixed logical command.
 export const COMMANDS = {
-  noCorpus: "vp run kaifuu:encrypted-readiness -- --no-corpus",
   privateManifest:
     "vp run kaifuu:encrypted-readiness -- --private-manifest <private-encrypted-corpus-manifest>",
 };
-
-// The redacted logical id used for the no-corpus artifact's checked inputs — a
-// logical id, never a local path.
-export const PRIVATE_CORPUS_CHECKED_INPUT = "private-encrypted-corpus-root";
 
 // Packed / encrypted engine families the encrypted-readiness lane tracks. Order
 // is fixed so per-engine bin objects serialize deterministically. These mirror

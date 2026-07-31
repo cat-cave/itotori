@@ -5,7 +5,6 @@ import {
   emptyEngineBins,
   ENGINES,
   GENERATOR_PATH,
-  PRIVATE_CORPUS_CHECKED_INPUT,
   PRIVATE_MANIFEST_SCHEMA_VERSION,
   READINESS_BINS,
   SCHEMA_VERSION,
@@ -88,17 +87,17 @@ export function normalizePrivateManifest(manifest, source = "private-corpus-mani
 
 // --- Artifact builders --------------------------------------------------------
 
-function statusFor(prerequisiteFindings, privateSkipped) {
-  if (prerequisiteFindings.length > 0) {
-    return "failed";
-  }
-  return privateSkipped ? "skipped" : "ok";
+function statusFor(prerequisiteFindings) {
+  return prerequisiteFindings.length > 0 ? "failed" : "ok";
 }
 
 // The composed alpha-readiness evidence artifact when a PRIVATE encrypted
 // corpus IS configured. Aggregates the operator's already-redacted entries into
 // per-engine readiness bins; carries the public prerequisite composition too.
 export function buildComposedReport(entries, { composed }) {
+  if (entries.length === 0) {
+    throw new Error("cannot build encrypted-readiness evidence without selected private input");
+  }
   const sorted = [...entries].sort((a, b) => {
     if (a.corpusIdRedacted !== b.corpusIdRedacted) {
       return a.corpusIdRedacted < b.corpusIdRedacted ? -1 : 1;
@@ -122,7 +121,7 @@ export function buildComposedReport(entries, { composed }) {
 
   const artifact = {
     schemaVersion: SCHEMA_VERSION,
-    status: statusFor(composed.findings, false),
+    status: statusFor(composed.findings),
     reason: null,
     command: COMMANDS.privateManifest,
     generatedBy: GENERATOR_PATH,
@@ -133,30 +132,6 @@ export function buildComposedReport(entries, { composed }) {
     aggregateCounts,
     engineReadinessBins,
     entries: sorted,
-  };
-  assertNoSecrets(artifact);
-  return artifact;
-}
-
-// The deterministic REDACTED no-corpus artifact. Zeroed aggregate counts +
-// empty per-engine bins, corpus ids empty, checked inputs reduced to a logical
-// id, no timestamp, no local paths. Still NAMES + aggregates the public
-// prerequisite composition (proving the composed path is intact).
-export function buildNoCorpusArtifact({ composed }) {
-  const artifact = {
-    schemaVersion: SCHEMA_VERSION,
-    status: statusFor(composed.findings, true),
-    reason: "private_inputs_absent",
-    command: COMMANDS.noCorpus,
-    generatedBy: GENERATOR_PATH,
-    composes: composed.composes,
-    composedEvidenceHash: composed.composedEvidenceHash,
-    prerequisiteFindings: composed.findings,
-    checkedInputs: [PRIVATE_CORPUS_CHECKED_INPUT],
-    corpusIds: [],
-    aggregateCounts: emptyAggregateCounts(),
-    engineReadinessBins: emptyEngineBins(),
-    entries: [],
   };
   assertNoSecrets(artifact);
   return artifact;

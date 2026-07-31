@@ -8,8 +8,8 @@
  * private-local triage manifests and emits ONLY redacted aggregate readiness
  * evidence.
  *
- * Inputs (all optional; default is the no-corpus path):
- *   --no-corpus            Force the deterministic redacted no-corpus artifact.
+ * Inputs:
+ *   --no-corpus            Exercise the explicit absent-input failure path.
  *   --manifest <path>      Read a single private-triage-manifest.local.json.
  *   --corpus-dir <dir>     Scan <dir> for private-triage-manifest.local.json
  *                          files (dir root + one level of corpus subdirs).
@@ -22,10 +22,8 @@
  *     redacted; the triage validates + aggregates them and secret-scans the
  *     result. It never reads raw keys, encrypted bytes, or retail assets, and
  *     never shells out.
- *   - When no private inputs are present (default root absent, or --no-corpus,
- *     or an empty corpus dir), it writes the deterministic REDACTED no-corpus
- *     artifact to .tmp/kaifuu-private-local/no-corpus-skipped.json and exits 0.
- *     Absence of fixtures/private-local NEVER fails.
+ *   - Missing or empty private input emits a typed content-free diagnostic,
+ *     creates no evidence artifact, and exits nonzero.
  *   - Otherwise it writes the aggregate readiness report to
  *     .tmp/kaifuu-private-local/readiness-report.json.
  */
@@ -37,9 +35,15 @@ import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   COMMANDS,
-  buildNoCorpusArtifact,
   buildReadinessReport,
+  claimPrivateOption,
   normalizeManifest,
+  PrivateInputContractError,
+  privateInputFailure,
+  privateInputFailureFromError,
+  rejectPrivateHelpConflict,
+  rejectPrivateSelectorConflict,
+  requirePrivateOptionValue,
   stableStringify,
 } from "./triage.mjs";
 
@@ -49,10 +53,11 @@ export const REPO_ROOT = resolve(HERE, "..", "..", "..");
 const MANIFEST_FILENAME = "private-triage-manifest.local.json";
 const DEFAULT_PRIVATE_ROOT = "fixtures/private-local";
 const OUTPUT_DIR = join(".tmp", "kaifuu-private-local");
-const NO_CORPUS_OUTPUT = join(OUTPUT_DIR, "no-corpus-skipped.json");
 const REPORT_OUTPUT = join(OUTPUT_DIR, "readiness-report.json");
 
 export function parseArgs(argv) {
+  const seen = new Set();
+  const selectors = new Set();
   const options = {
     noCorpus: false,
     manifest: null,
@@ -67,33 +72,46 @@ export function parseArgs(argv) {
       continue;
     }
     if (arg === "--no-corpus") {
+      claimPrivateOption(seen, arg);
+      selectors.add("absent");
       options.noCorpus = true;
     } else if (arg === "--manifest") {
-      options.manifest = argv[(i += 1)];
+      claimPrivateOption(seen, arg);
+      selectors.add("manifest");
+      options.manifest = requirePrivateOptionValue(argv, i);
+      i += 1;
     } else if (arg === "--corpus-dir") {
-      options.corpusDir = argv[(i += 1)];
+      claimPrivateOption(seen, arg);
+      selectors.add("directory");
+      options.corpusDir = requirePrivateOptionValue(argv, i);
+      i += 1;
     } else if (arg === "--root") {
-      options.root = argv[(i += 1)];
+      claimPrivateOption(seen, arg);
+      selectors.add("root");
+      options.root = requirePrivateOptionValue(argv, i);
+      i += 1;
     } else if (arg === "--out") {
-      options.out = argv[(i += 1)];
+      claimPrivateOption(seen, arg);
+      options.out = requirePrivateOptionValue(argv, i);
+      i += 1;
     } else if (arg === "--help" || arg === "-h") {
       options.help = true;
     } else {
       throw new Error(`unknown argument: ${arg}`);
     }
   }
+  rejectPrivateHelpConflict(argv, options.help === true);
+  rejectPrivateSelectorConflict(selectors);
   return options;
 }
 
 function readManifestFile(path) {
   const text = readFileSync(path, "utf8");
-  let parsed;
   try {
-    parsed = JSON.parse(text);
-  } catch (error) {
-    throw new Error(`invalid JSON in ${path}: ${error instanceof Error ? error.message : error}`);
+    return JSON.parse(text);
+  } catch {
+    throw new PrivateInputContractError("private-input-invalid");
   }
-  return parsed;
 }
 
 // Discover manifest files under a corpus directory: an optional root-level
@@ -109,7 +127,7 @@ export function discoverManifestPaths(dir) {
   try {
     entries = readdirSync(dir, { withFileTypes: true });
   } catch {
-    return found.sort();
+    throw new PrivateInputContractError("private-input-directory-unreadable");
   }
   for (const entry of entries) {
     if (!entry.isDirectory()) {
@@ -123,64 +141,87 @@ export function discoverManifestPaths(dir) {
   return [...new Set(found)].sort();
 }
 
-// Resolve which manifest paths (if any) to triage, and the logical ids for the
-// no-corpus artifact's redacted checkedPaths. Returns { command, manifestPaths,
-// checkedPaths }.
+// Resolve selected manifest paths or a content-free input-failure reason.
 export function resolveInputs(options, root = REPO_ROOT) {
   if (options.noCorpus) {
-    return { command: COMMANDS.noCorpus, manifestPaths: [], checkedPaths: ["private-local-root"] };
+    return { failureReason: "private-input-explicitly-absent" };
   }
   if (options.manifest) {
     const path = resolve(root, options.manifest);
+    if (!existsSync(path)) {
+      return { failureReason: "private-input-manifest-missing" };
+    }
+    if (!statSync(path).isFile()) {
+      return { failureReason: "private-input-manifest-not-file" };
+    }
     return {
       command: COMMANDS.manifest,
-      manifestPaths: existsSync(path) ? [path] : [],
-      checkedPaths: ["private-manifest"],
+      manifestPaths: [path],
     };
   }
   if (options.corpusDir) {
     const dir = resolve(root, options.corpusDir);
-    const manifestPaths = existsSync(dir) ? discoverManifestPaths(dir) : [];
+    if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+      return { failureReason: "private-input-root-missing" };
+    }
+    const manifestPaths = discoverManifestPaths(dir);
+    if (manifestPaths.length === 0) {
+      return { failureReason: "private-input-directory-empty" };
+    }
     return {
       command: COMMANDS.corpusDir,
       manifestPaths,
-      checkedPaths: ["private-corpus-directory"],
     };
   }
   const rootDir = resolve(root, options.root);
-  const manifestPaths =
-    existsSync(rootDir) && statSync(rootDir).isDirectory() ? discoverManifestPaths(rootDir) : [];
-  return { command: COMMANDS.corpusDir, manifestPaths, checkedPaths: ["private-local-root"] };
+  if (!existsSync(rootDir) || !statSync(rootDir).isDirectory()) {
+    return { failureReason: "private-input-root-missing" };
+  }
+  const manifestPaths = discoverManifestPaths(rootDir);
+  return manifestPaths.length === 0
+    ? { failureReason: "private-input-directory-empty" }
+    : { command: COMMANDS.corpusDir, manifestPaths };
 }
 
-// Produce the artifact (no-corpus OR aggregate report) for the given options.
-// Pure w.r.t. output: reads only manifest JSON, returns { artifact, kind }.
+// Produce an aggregate report or a typed failure for the given options.
+// Pure w.r.t. output: reads only manifest JSON and never writes.
 export function triage(options, root = REPO_ROOT) {
-  const { command, manifestPaths, checkedPaths } = resolveInputs(options, root);
-  if (manifestPaths.length === 0) {
-    return {
-      kind: "no-corpus",
-      artifact: buildNoCorpusArtifact({
-        command: options.noCorpus ? COMMANDS.noCorpus : command,
-        checkedPaths,
-      }),
-    };
+  const resolved = resolveInputs(options, root);
+  if (resolved.failureReason) {
+    return privateInputFailure("kaifuu:private-local-triage", resolved.failureReason);
   }
   const entries = [];
-  for (const path of manifestPaths) {
+  for (const path of resolved.manifestPaths) {
+    const file = statSync(path);
+    if (!file.isFile()) {
+      return privateInputFailure("kaifuu:private-local-triage", "private-input-manifest-not-file");
+    }
+    if (file.size === 0) {
+      return privateInputFailure("kaifuu:private-local-triage", "private-input-zero-bytes");
+    }
     const parsed = readManifestFile(path);
-    for (const entry of normalizeManifest(parsed, MANIFEST_FILENAME)) {
+    const selected = normalizeManifest(parsed, MANIFEST_FILENAME);
+    if (selected.length === 0) {
+      return privateInputFailure("kaifuu:private-local-triage", "private-input-selection-empty");
+    }
+    for (const entry of selected) {
       entries.push(entry);
     }
   }
-  return { kind: "report", artifact: buildReadinessReport(entries, { command }) };
+  if (entries.length === 0) {
+    return privateInputFailure("kaifuu:private-local-triage", "private-input-selection-empty");
+  }
+  return {
+    kind: "report",
+    artifact: buildReadinessReport(entries, { command: resolved.command }),
+  };
 }
 
 function usage() {
   return [
     "usage: pnpm exec vp run kaifuu:private-local-triage -- [options]",
     "",
-    "  --no-corpus          emit the deterministic redacted no-corpus artifact",
+    "  --no-corpus          fail with the typed absent-input diagnostic",
     "  --manifest <path>    triage a single private-triage-manifest.local.json",
     "  --corpus-dir <dir>   scan a directory of private-local corpora",
     "  --root <dir>         private-local root to probe (default fixtures/private-local)",
@@ -194,13 +235,18 @@ export function main(argv = process.argv.slice(2), root = REPO_ROOT) {
     process.stdout.write(`${usage()}\n`);
     return 0;
   }
-  const { kind, artifact } = triage(options, root);
-  const defaultOut = kind === "no-corpus" ? NO_CORPUS_OUTPUT : REPORT_OUTPUT;
+  const result = triage(options, root);
+  if (result.kind === "failure") {
+    process.stderr.write(stableStringify(result.diagnostic));
+    return 1;
+  }
+  const { kind, artifact } = result;
+  const defaultOut = REPORT_OUTPUT;
   const outPath = resolve(root, options.out ?? defaultOut);
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, stableStringify(artifact), "utf8");
   process.stdout.write(
-    `kaifuu-private-local-triage: ${kind} -> ${options.out ?? defaultOut} ` +
+    `kaifuu-private-local-triage: ${kind} written ` +
       `(status=${artifact.status}, corpora=${artifact.aggregateCounts.corpora}, ` +
       `entries=${artifact.aggregateCounts.entries})\n`,
   );
@@ -211,7 +257,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   try {
     process.exit(main());
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    const failure = privateInputFailureFromError("kaifuu:private-local-triage", error);
+    process.stderr.write(stableStringify(failure.diagnostic));
     process.exit(1);
   }
 }

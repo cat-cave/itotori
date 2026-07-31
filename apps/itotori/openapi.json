@@ -744,11 +744,21 @@
               "not_found",
               "method_not_allowed",
               "database_migrations_required",
+              "database_unreachable",
+              "workflow_failed",
               "internal_error"
             ]
           },
           "error": {
             "type": "string"
+          },
+          "incidentReference": {
+            "pattern": "^incident:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "remainingAllowanceMicrosUsd": {
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
@@ -2163,6 +2173,74 @@
         ],
         "type": "object"
       },
+      "ApiPlayAddressableUnitResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "localeBranchId": {},
+          "projectId": {},
+          "schemaVersion": {
+            "const": "itotori.play.addressable-unit.v0"
+          },
+          "unit": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "bridgeUnitId": {
+                    "type": "string"
+                  },
+                  "sceneId": {
+                    "type": "string"
+                  },
+                  "sourceUnitKey": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "const": "resolved"
+                  }
+                },
+                "required": [
+                  "bridgeUnitId",
+                  "sceneId",
+                  "sourceUnitKey",
+                  "state"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "bridgeUnitId": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "enum": [
+                      "not_imported_in_branch",
+                      "scene_coordinate_missing"
+                    ]
+                  },
+                  "state": {
+                    "const": "unresolvable"
+                  }
+                },
+                "required": [
+                  "bridgeUnitId",
+                  "reason",
+                  "state"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "localeBranchId",
+          "projectId",
+          "schemaVersion",
+          "unit"
+        ],
+        "type": "object"
+      },
       "ApiPlayDeliveryResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2288,7 +2366,16 @@
       "ApiPlayFlagAnnotationResponse": {
         "additionalProperties": false,
         "properties": {
-          "category": {},
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "contextCorrectionId": {
             "type": "string"
           },
@@ -2539,7 +2626,14 @@
             "type": "string"
           },
           "category": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "contextCorrectionId": {
             "type": "string"
@@ -4514,6 +4608,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -4523,6 +4647,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Load account plan and seat usage derived from auth memberships.",
@@ -4583,6 +4727,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -4592,6 +4766,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Resolve the caller's Studio capability permission view (flag/decide/steer/reveal).",
@@ -4652,6 +4846,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -4661,6 +4885,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Resolve the signed-in actor and their account memberships.",
@@ -4721,6 +4965,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -4730,6 +5004,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "List account members and granted permission sets.",
@@ -4800,6 +5094,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -4809,6 +5133,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Invite a member with optional initial permission sets.",
@@ -4889,6 +5233,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -4898,6 +5272,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Accept a member invitation, creating membership and initial grants transactionally.",
@@ -4978,6 +5372,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -4987,6 +5411,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Remove a member and revoke account-scoped permission-set grants.",
@@ -5047,6 +5491,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -5056,6 +5530,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "List account permission sets available for member grants.",
@@ -5144,6 +5638,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -5153,6 +5677,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Grant a permission set to an account principal.",
@@ -5241,6 +5785,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -5250,6 +5824,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Revoke a permission set from an account principal.",
@@ -5320,6 +5914,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -5329,6 +5953,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "List active auth sessions and captured device metadata for a principal.",
@@ -5417,6 +6061,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -5426,6 +6100,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Revoke an active auth session for a principal.",
@@ -5486,6 +6180,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -5495,6 +6219,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Catalog benchmark seed finder read model.",
@@ -5555,6 +6299,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -5564,6 +6338,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Catalog completeness benchmark pools.",
@@ -5624,6 +6418,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -5633,6 +6457,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Catalog conflict review read model.",
@@ -5693,6 +6537,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -5702,6 +6576,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Catalog opportunity ranking read model.",
@@ -5772,6 +6666,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -5781,6 +6705,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Import a bridge bundle.",
@@ -5841,6 +6785,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -5850,6 +6824,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Paged jobs run table with physical journal attempts and served provider facts.",
@@ -5911,6 +6905,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -5920,6 +6944,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Produce a playable patched build from a run's accepted outputs and download it.",
@@ -5990,6 +7034,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -5999,6 +7073,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "List durable patch versions and lineage for one locale branch.",
@@ -6079,6 +7173,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -6088,6 +7212,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Replace one delivered target line and select its child patch revision.",
@@ -6158,6 +7302,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -6167,6 +7341,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Load a historical patch play surface, feedback inbox, and informational QA callouts.",
@@ -6237,6 +7431,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -6246,6 +7470,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Load immutable archive metadata for one exact playable patch version.",
@@ -6317,6 +7561,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -6326,6 +7600,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Download the immutable delivered patch archive for one exact patch version.",
@@ -6406,6 +7700,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -6415,6 +7739,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Persist individual or batched result edits, canonical scoped comments, or canonical context play-test feedback.",
@@ -6495,6 +7839,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -6504,6 +7878,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Create a persisted feedback batch for the exact patch version observed.",
@@ -6584,6 +7978,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -6593,6 +8017,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Freeze feedback/wiki inputs and complete a real-byte refinement patch version.",
@@ -6673,6 +8117,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -6682,6 +8156,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Start a play session for the exact playable patch version observed.",
@@ -6752,6 +8246,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -6761,6 +8285,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Load the selected delivered patch export for a run.",
@@ -6832,6 +8376,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -6841,6 +8415,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Download the selected delivered patch archive for a run.",
@@ -6901,6 +8495,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -6910,6 +8534,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "List projects with dashboard status.",
@@ -6970,6 +8614,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -6979,6 +8653,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Benchmark report summaries.",
@@ -7039,6 +8733,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -7048,6 +8772,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Project cost report.",
@@ -7108,6 +8852,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -7117,6 +8891,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Paged cost drill-down.",
@@ -7177,6 +8971,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -7186,6 +9010,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Dashboard decision read model.",
@@ -7256,6 +9100,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -7265,6 +9139,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Decode a game source (identify/inventory/extract) into a bridge bundle.",
@@ -7325,6 +9219,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -7334,6 +9258,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Composed project overview cockpit read model.",
@@ -7394,6 +9338,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -7403,6 +9377,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Project dashboard status.",
@@ -7483,6 +9477,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -7492,6 +9516,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Record a benchmark report.",
@@ -7572,6 +9616,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -7581,6 +9655,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Draft a locale branch.",
@@ -7661,6 +9755,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -7670,6 +9794,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Record a QA finding.",
@@ -7750,6 +9894,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -7759,10 +9933,175 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Launch the next localization pass or cancel an existing durable run.",
         "x-itotoriRouteId": "projects.launchPass"
+      }
+    },
+    "/api/projects/{projectId}/locale-branches/{localeBranchId}/addressable-units/{bridgeUnitId}": {
+      "get": {
+        "operationId": "playAddressableUnit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "localeBranchId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bridgeUnitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPlayAddressableUnitResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
+          }
+        },
+        "summary": "Resolve one cited bridge unit against the imported branch and its producer-declared scene.",
+        "x-itotoriRouteId": "play.addressableUnit"
       }
     },
     "/api/projects/{projectId}/locale-branches/{localeBranchId}/asset-decisions": {
@@ -7837,6 +10176,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -7846,6 +10215,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Active asset localization decisions.",
@@ -7924,6 +10313,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -7933,6 +10352,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Candidate assets for localization decisions.",
@@ -8019,6 +10458,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -8028,6 +10497,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Catalog context panel read model for a work and target locale branch.",
@@ -8116,6 +10605,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -8125,6 +10644,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Compose a playtest flag (AnnotationComposer) into a context correction.",
@@ -8203,6 +10742,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -8212,6 +10781,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Play RouteMap route/choice tree with coverage state.",
@@ -8290,6 +10879,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -8299,6 +10918,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Load editable branch policy and glossary reference state for a locale branch.",
@@ -8385,6 +11024,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -8394,6 +11063,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Save editable branch policy for a locale branch and refresh its glossary reference.",
@@ -8482,6 +11171,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -8491,6 +11210,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Register the operator-local config, data root, pinned model/provider pair, and run directory for launch-pass.",
@@ -8569,6 +11308,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -8578,6 +11347,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Load the config-driven translation scope (dialogue / +choices / +UI-text / +images) for a locale branch.",
@@ -8664,6 +11453,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -8673,6 +11492,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Save the config-driven translation scope for a locale branch. Read by the localize command.",
@@ -8751,6 +11590,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -8760,6 +11629,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "List durable unit-bound feedback notes for one bridge unit.",
@@ -8840,6 +11729,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -8849,6 +11768,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Ingest a runtime evidence report.",
@@ -8909,6 +11848,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -8918,6 +11887,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Queue health read model (outbox + jobs).",
@@ -8978,6 +11967,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -8987,6 +12006,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Runtime dashboard status.",
@@ -9047,6 +12086,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -9056,6 +12125,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Load project model routing settings and available provider/model/prompt choices.",
@@ -9124,6 +12213,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -9133,6 +12252,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Save one project model-routing task route.",
@@ -9203,6 +12342,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -9212,6 +12381,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Configure account SSO provider and security/session policy.",
@@ -9272,6 +12461,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -9281,6 +12500,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Terminology search read model.",
@@ -9341,6 +12580,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -9350,6 +12619,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "List source WikiObjects or per-target bible renderings by snapshot.",
@@ -9428,6 +12717,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -9437,6 +12756,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Show one WikiObject with citations, media, badges, history, and dependency impact.",
@@ -9525,6 +12864,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -9534,6 +12903,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Apply a durable edit/feedback batch through one bounded enhancement.",
@@ -9622,6 +13011,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -9631,6 +13050,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Append a durable direct edit to a WikiObject.",
@@ -9719,6 +13158,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -9728,6 +13197,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Append durable feedback to a WikiObject without awaiting inference.",
@@ -9806,6 +13295,36 @@
             },
             "description": "Method not allowed (method_not_allowed)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow conflicts with the current state (workflow_failed)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Workflow input or operation cannot be processed (workflow_failed)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Exact cost allowance is exhausted (workflow_failed)."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -9815,6 +13334,26 @@
               }
             },
             "description": "Internal error (internal_error)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Service unavailable (database_unreachable or workflow_failed)."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Declared provider deadline reached (workflow_failed)."
           }
         },
         "summary": "Show immutable WikiObject history.",

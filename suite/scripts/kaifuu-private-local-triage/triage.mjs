@@ -4,8 +4,8 @@
  *
  * Pure, deterministic core for the `kaifuu:private-local-triage` workflow. It
  * turns operator-authored, ALREADY-REDACTED private-local triage manifests into
- * a SAFE AGGREGATE readiness report, and produces a deterministic REDACTED
- * no-corpus artifact when no private inputs exist.
+ * a SAFE AGGREGATE readiness report. Missing or empty private input is a typed
+ * failure diagnostic, never an evidence artifact.
  *
  * COPYRIGHT / STRICT-PROOF LAW (this module is the enforcement point):
  *   - The triage NEVER reads raw keys, raw encrypted bytes, decrypted text, or
@@ -18,8 +18,7 @@
  *     blocks). A leak throws BEFORE anything is written — it never redacts
  *     silently and never emits.
  *   - Output is byte-deterministic (sorted keys, no timestamps, no absolute
- *     paths), so the committed README-safe examples and the no-corpus artifact
- *     are stable and diffable.
+ *     paths), so committed README-safe evidence is stable and diffable.
  */
 "use strict";
 
@@ -27,6 +26,25 @@ export const SCHEMA_VERSION = "itotori.kaifuu-private-local-triage-report.v0.1";
 export const MANIFEST_SCHEMA_VERSION = "itotori.kaifuu-private-local-triage-manifest.v0.1";
 export const GENERATOR_PATH = "suite/scripts/kaifuu-private-local-triage/run.mjs";
 export const TRIAGE_TASK = "kaifuu:private-local-triage";
+export const PRIVATE_INPUT_DIAGNOSTIC_SCHEMA_VERSION = "itotori.private-input-diagnostic.v1";
+export const PRIVATE_INPUT_REASON_CODES = [
+  "private-input-explicitly-absent",
+  "private-input-manifest-missing",
+  "private-input-root-missing",
+  "private-input-directory-empty",
+  "private-input-selection-empty",
+  "private-input-zero-bytes",
+  "private-input-argument-missing",
+  "private-input-directory-unreadable",
+  "private-input-manifest-not-file",
+  "private-input-invalid",
+];
+const INVALID_INPUT_REASON_CODES = new Set([
+  "private-input-argument-missing",
+  "private-input-directory-unreadable",
+  "private-input-manifest-not-file",
+  "private-input-invalid",
+]);
 
 // Per-engine aggregate bins cover MV/MZ encrypted media plus the other
 // encrypted engines the beta readiness lane tracks. Order is fixed so bins
@@ -64,7 +82,6 @@ export const COUNT_KEYS = ["assets", "encryptedAssets", "textUnits", "archives"]
 // Canonical redacted command strings. The real argv is NEVER recorded because
 // it can carry local absolute paths; the mode maps to a fixed logical command.
 export const COMMANDS = {
-  noCorpus: "vp run kaifuu:private-local-triage -- --no-corpus",
   manifest: "vp run kaifuu:private-local-triage -- --manifest <private-manifest>",
   corpusDir: "vp run kaifuu:private-local-triage -- --corpus-dir <private-corpus-directory>",
 };
@@ -151,6 +168,78 @@ function sortValue(value) {
 // Matches the repo formatter so committed examples stay byte-stable.
 export function stableStringify(value) {
   return `${JSON.stringify(sortValue(value), null, 2)}\n`;
+}
+
+export class PrivateInputContractError extends Error {
+  constructor(reasonCode) {
+    super(reasonCode);
+    if (!PRIVATE_INPUT_REASON_CODES.includes(reasonCode)) {
+      throw new Error("unknown private input failure reason");
+    }
+    this.name = "PrivateInputContractError";
+    this.reasonCode = reasonCode;
+  }
+}
+
+export function requirePrivateOptionValue(argv, index) {
+  const value = argv[index + 1];
+  if (typeof value !== "string" || value.length === 0 || value === "-h" || value.startsWith("--")) {
+    throw new PrivateInputContractError("private-input-argument-missing");
+  }
+  return value;
+}
+
+export function claimPrivateOption(seen, option) {
+  if (seen.has(option)) {
+    throw new PrivateInputContractError("private-input-invalid");
+  }
+  seen.add(option);
+}
+
+export function rejectPrivateSelectorConflict(selectors) {
+  if (selectors.size > 1) {
+    throw new PrivateInputContractError("private-input-invalid");
+  }
+}
+
+export function rejectPrivateHelpConflict(argv, help) {
+  const args = argv.filter((value) => value !== "--");
+  if (help && (args.length !== 1 || (args[0] !== "--help" && args[0] !== "-h"))) {
+    throw new PrivateInputContractError("private-input-invalid");
+  }
+}
+
+export function buildPrivateInputFailureDiagnostic({ task, reasonCode }) {
+  if (typeof task !== "string" || task.length === 0) {
+    throw new Error("private input diagnostic task must be nonempty");
+  }
+  if (!PRIVATE_INPUT_REASON_CODES.includes(reasonCode)) {
+    throw new Error(`unknown private input failure reason: ${JSON.stringify(reasonCode)}`);
+  }
+  const diagnostic = {
+    schemaVersion: PRIVATE_INPUT_DIAGNOSTIC_SCHEMA_VERSION,
+    status: "failed",
+    task,
+    failureClass: INVALID_INPUT_REASON_CODES.has(reasonCode) ? "invalid-input" : "missing-input",
+    reasonCode,
+    diagnosticOutcome: "safe-actionable-remediation",
+    effectOutcome: "no-effects",
+  };
+  assertNoSecrets(diagnostic);
+  return diagnostic;
+}
+
+export function privateInputFailure(task, reasonCode) {
+  return {
+    kind: "failure",
+    diagnostic: buildPrivateInputFailureDiagnostic({ task, reasonCode }),
+  };
+}
+
+export function privateInputFailureFromError(task, error) {
+  const reasonCode =
+    error instanceof PrivateInputContractError ? error.reasonCode : "private-input-invalid";
+  return privateInputFailure(task, reasonCode);
 }
 
 export function emptyEngineBins() {
@@ -291,6 +380,9 @@ export function normalizeManifest(manifest, source = "manifest") {
 // Aggregate validated entries into the safe readiness report. Entries are
 // sorted by (corpusId, engine) for determinism; the secret scan runs last.
 export function buildReadinessReport(entries, { command = COMMANDS.manifest } = {}) {
+  if (entries.length === 0) {
+    throw new Error("readiness report requires at least one selected private input");
+  }
   const sorted = [...entries].sort((a, b) => {
     if (a.corpusId !== b.corpusId) {
       return a.corpusId < b.corpusId ? -1 : 1;
@@ -324,31 +416,4 @@ export function buildReadinessReport(entries, { command = COMMANDS.manifest } = 
   };
   assertNoSecrets(report);
   return report;
-}
-
-// The deterministic REDACTED no-corpus artifact. Zeroed aggregate counts +
-// empty per-engine bins, checked paths reduced to logical ids, no timestamp.
-export function buildNoCorpusArtifact({
-  command = COMMANDS.noCorpus,
-  checkedPaths = ["private-local-root"],
-} = {}) {
-  const logicalIds = [...new Set(checkedPaths)].sort();
-  for (const id of logicalIds) {
-    if (!LOGICAL_ID_RE.test(id)) {
-      throw new Error(`no-corpus checkedPaths must be logical ids, got ${JSON.stringify(id)}`);
-    }
-  }
-  const artifact = {
-    schemaVersion: SCHEMA_VERSION,
-    status: "skipped",
-    reason: "private_inputs_absent",
-    command,
-    generatedBy: GENERATOR_PATH,
-    checkedPaths: logicalIds,
-    aggregateCounts: emptyAggregateCounts(),
-    engineReadinessBins: emptyEngineBins(),
-    entries: [],
-  };
-  assertNoSecrets(artifact);
-  return artifact;
 }

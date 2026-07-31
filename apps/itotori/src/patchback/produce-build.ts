@@ -23,6 +23,7 @@ import {
   type PatchbackEngineReceipt,
   type PatchbackScope,
 } from "./adapters.js";
+import { bindScopedTargets } from "./bind-scoped-targets.js";
 import { runNativePatchbackApply } from "./index.js";
 import type { NativePatchbackInput } from "./types.js";
 import type { NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
@@ -103,6 +104,9 @@ export function produceNativePatchbackBuild(
   input: NativePatchbackInput,
   options: ProducePatchbackBuildOptions,
 ): ProducedPatchbackBuild {
+  // Pure preflight must precede the first owned write. In particular, a stale
+  // accepted source hash is a no-effects command refusal, not a partial build.
+  bindScopedTargets(input);
   const buildRoot = options.buildRoot;
   const targetRoot = join(buildRoot, "patch-target");
   const translatedBundlePath = join(buildRoot, "translated-bridge.json");

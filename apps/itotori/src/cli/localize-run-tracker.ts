@@ -1,13 +1,14 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type {
-  ProjectRunLease,
-  ProjectRunLiveReadModel,
-  ProjectRunProgressStatus,
+import {
+  type ProjectRunLease,
+  type ProjectRunLiveReadModel,
+  type ProjectRunProgressStatus,
 } from "@itotori/db";
 import type { LocalizationRunPlane } from "../composition/localize-entrypoint.js";
 import type { ItotoriProjectWorkflowPort } from "../services/project-operations-port.js";
 import type { PhysicalAttemptCostObserver } from "../llm/physical-attempt-policy.js";
 import type { WorkflowPorts } from "../workflow/index.js";
+import { localizeFailureBlocker } from "./localize-failure-blocker.js";
 
 const PROGRESS_ROLE = "localize";
 const LEASE_DURATION_SECONDS = 90;
@@ -257,7 +258,7 @@ export class LocalizeRunTracker {
         }
         return value;
       } catch (error: unknown) {
-        await this.recordFailure(unitIds, failureStage);
+        await this.recordFailure(unitIds, failureStage, error);
         throw error;
       }
     });
@@ -272,7 +273,7 @@ export class LocalizeRunTracker {
       try {
         return await operation();
       } catch (error: unknown) {
-        await this.recordFailure(unitIds, failureStage);
+        await this.recordFailure(unitIds, failureStage, error);
         throw error;
       }
     });
@@ -286,17 +287,21 @@ export class LocalizeRunTracker {
     try {
       return await operation();
     } catch (error: unknown) {
-      await this.recordFailure(unitIds, failureStage);
+      await this.recordFailure(unitIds, failureStage, error);
       throw error;
     }
   }
 
-  private async recordFailure(unitIds: readonly string[], stage: string): Promise<void> {
+  private async recordFailure(
+    unitIds: readonly string[],
+    stage: string,
+    error: unknown,
+  ): Promise<void> {
     await Promise.all(
       unitIds.map(
         async (unitId) =>
           await this.record(unitId, this.#statusByUnit.get(unitId) ?? "decoded", [
-            this.#failureBlockerByUnit.get(unitId) ?? `${stage}-failed`,
+            this.#failureBlockerByUnit.get(unitId) ?? localizeFailureBlocker(stage, error),
           ]),
       ),
     );

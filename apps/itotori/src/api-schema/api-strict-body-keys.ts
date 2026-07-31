@@ -1,7 +1,7 @@
 import { API_STRICT_PLAY_BODY_KEYS } from "./api-strict-play-keys.js";
 
 export const STRICT_API_BODY_KEYS = {
-  ApiErrorResponse: ["error", "code"],
+  ApiErrorResponse: ["error", "code", "remainingAllowanceMicrosUsd", "incidentReference"],
   ApiAssetDecisionsResponse: ["decisions"],
   ApiCandidateAssetsResponse: ["candidateAssets"],
   ApiWikiObjectListResponse: [

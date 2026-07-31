@@ -14,7 +14,7 @@ document maps that stable surface without inventing additional recipes.
 | `just ci tier0-meta`     | Repository scripts, structural guards, generated-artifact checks, and metadata tests | Detects only what its individual guards scan.                                |
 | `just ci tier0-ts`       | TypeScript format and typecheck                                                      | Does not run all TypeScript tests.                                           |
 | `just ci tier0-rust`     | Rust format, check, clippy, and dependency audit                                     | Does not run all Rust tests.                                                 |
-| `just ci tier0-manifest` | Optional manifest gate                                                               | Prints that the gate is pending when its script is absent.                   |
+| `just ci tier0-manifest` | Live behavior manifest and Cucumber collection gate                                  | Requires exact outline, row, case, cell, and non-applicable-pair counts.     |
 
 Tier-1 public work is partitioned rather than hidden behind aliases:
 
@@ -24,13 +24,34 @@ Tier-1 public work is partitioned rather than hidden behind aliases:
   nextest partitions.
 - `tier1-db` exercises migration/reset and database-backed tests.
 - `tier1-mutation` runs the mutation-differential selector.
+- `tier1-behavior` runs the behavior ledger, local evidence verifier,
+  fixed-success mutation proof, and private-input failure contracts.
+
+The behavior artifact has three deliberately different verdicts. The required
+Tier-1 context downloads the artifact and runs
+`node scripts/ci/verify-behavior-gate.mjs --local-candidate`. That command
+rebuilds the cell conclusions from the signed selection plan, raw Cucumber
+fragments, portable evidence, and fixed-success mutation run; it establishes a
+local candidate contract only. Running the verifier with `--accepted` (or with
+no mode) performs that local validation and then fails with
+`external-verifier-app-unavailable`, because no protected external verifier App
+is installed. A local receipt cannot be relabeled as external acceptance.
+
+The distinct `Tier 1 / behavior full matrix` context downloads and validates
+the same artifact, then requires all 687 applicable cells to pass. It is
+excluded from the required-job aggregation and has no `continue-on-error`; at
+the root implementation's honest 2/687 state it intentionally remains red as
+`full-matrix-incomplete:2/687`.
 
 ## Evidence lanes
 
 `just ci tier1-browser` runs the renderer contract, browser selector, and
 visual tests. The browser selector requires an executable browser supplied by
 the environment; absence is a hard failure. `just ci private-real-bytes` runs
-the private-real-byte preflight. `just test real-bytes`, `just test
+the legacy local preflight and then fails closed because the protected external
+evidence agent is not installed. Its old candidate-controlled private workflow
+is quarantined and has no pull-request trigger, private runner, checkout, or
+artifact upload. `just test real-bytes`, `just test
 real-bytes-oracle`, and `just test real-bytes-oracle-drift` are named evidence
 commands, not substitutes for a public lane.
 

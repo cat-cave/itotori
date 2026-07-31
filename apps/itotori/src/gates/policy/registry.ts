@@ -9,10 +9,18 @@
 
 import type { LocalizationTargetPolicy, LocalizationTargetPolicyId } from "./types.js";
 
-/** Thrown when a policy id / adapter id is not registered, or a duplicate
- * registration is attempted. */
+export type LocalizationTargetPolicyErrorKind =
+  | "unknown-policy"
+  | "unknown-adapter"
+  | "duplicate-policy"
+  | "duplicate-adapter";
+
+/** Typed lookup limitations stay distinct from registry wiring defects. */
 export class LocalizationTargetPolicyError extends Error {
-  constructor(detail: string) {
+  constructor(
+    readonly kind: LocalizationTargetPolicyErrorKind,
+    detail: string,
+  ) {
     super(`localization target policy: ${detail}`);
     this.name = "LocalizationTargetPolicyError";
   }
@@ -25,10 +33,16 @@ const BY_ADAPTER_ID = new Map<string, LocalizationTargetPolicy>();
  * a collision is a wiring bug and throws. */
 export function registerLocalizationTargetPolicy(policy: LocalizationTargetPolicy): void {
   if (BY_POLICY_ID.has(policy.policyId)) {
-    throw new LocalizationTargetPolicyError(`duplicate policy id ${policy.policyId}`);
+    throw new LocalizationTargetPolicyError(
+      "duplicate-policy",
+      `duplicate policy id ${policy.policyId}`,
+    );
   }
   if (BY_ADAPTER_ID.has(policy.adapterId)) {
-    throw new LocalizationTargetPolicyError(`duplicate adapter id ${policy.adapterId}`);
+    throw new LocalizationTargetPolicyError(
+      "duplicate-adapter",
+      `duplicate adapter id ${policy.adapterId}`,
+    );
   }
   BY_POLICY_ID.set(policy.policyId, policy);
   BY_ADAPTER_ID.set(policy.adapterId, policy);
@@ -40,7 +54,10 @@ export function resolveLocalizationTargetPolicy(
 ): LocalizationTargetPolicy {
   const policy = BY_POLICY_ID.get(policyId);
   if (policy === undefined) {
-    throw new LocalizationTargetPolicyError(`no policy registered for id ${policyId}`);
+    throw new LocalizationTargetPolicyError(
+      "unknown-policy",
+      `no policy registered for id ${policyId}`,
+    );
   }
   return policy;
 }
@@ -51,6 +68,7 @@ export function resolveTargetPolicyForAdapter(adapterId: string): LocalizationTa
   const policy = BY_ADAPTER_ID.get(adapterId);
   if (policy === undefined) {
     throw new LocalizationTargetPolicyError(
+      "unknown-adapter",
       `no policy registered for adapter ${adapterId}; register the adapter's target policy`,
     );
   }

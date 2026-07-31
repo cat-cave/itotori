@@ -9,6 +9,7 @@ import {
   projectRuns,
 } from "../schema.js";
 import {
+  ItotoriProjectRunCostCapError,
   ItotoriProjectRunRepositoryError,
   assertCoverage,
   assertMicros,
@@ -22,6 +23,8 @@ import {
   normalizeBlockers,
   normalizeCreate,
   normalizeLease,
+  nullableNumberOf,
+  numberOf,
   progressFromRow,
   progressRank,
   requireCurrentLease,
@@ -257,9 +260,24 @@ export class ItotoriProjectRunRepository implements ItotoriProjectRunRepositoryP
       `,
       );
       if (updated[0] === undefined) {
-        throw new ItotoriProjectRunRepositoryError(
-          "cost_cap_exceeded",
-          "project run cost cap would be exceeded by this reservation",
+        const accounts = await rowsOf(
+          executor,
+          sql`
+            select cap_micros_usd, spent_micros_usd, reserved_micros_usd
+            from ${projectRunCostAccounts}
+            where run_id = ${lease.runId} and project_id = ${lease.projectId}
+            for update
+          `,
+        );
+        const account = accounts[0];
+        if (account === undefined) throw new Error("project run cost account was not found");
+        const capMicrosUsd = nullableNumberOf(account, "cap_micros_usd");
+        if (capMicrosUsd === null) throw new Error("uncapped project run refused a reservation");
+        throw new ItotoriProjectRunCostCapError(
+          capMicrosUsd,
+          numberOf(account, "spent_micros_usd"),
+          numberOf(account, "reserved_micros_usd"),
+          input.reservedMicrosUsd,
         );
       }
       return reservationFromRow(inserted[0]);

@@ -1,12 +1,10 @@
 #!/usr/bin/env node
-// PRIVATE REAL-BYTE PROOF LANE — gate + content-free evidence manifest.
+// PRIVATE REAL-BYTE PROOF HELPERS — quarantined gate + content-free manifest.
 //
-// This is the OPT-IN counterpart to the public secretless lane. It runs ONLY
-// on a host that stages the content-addressed RealLive alpha corpus and attests the
-// exact approved ZDR profile, and it exercises extract → structure → patch →
-// replay on ACTUAL bytes. It is NOT a merge-required check (public runners have
-// no real bytes); it is triggered on demand / by label. See
-// .github/workflows/real-bytes-private-proof.yml + `just ci private-real-bytes`.
+// The local preflight and manifest helpers remain available for contract tests,
+// but they cannot claim acceptance. The manual workflow and developer command
+// fail closed until a protected external evidence agent owns execution and
+// publication. See .github/workflows/real-bytes-private-proof.yml.
 //
 // THE KEY INVERSION (fail, not skip): the periodic oracle may skip a corpus
 // family that is legitimately absent (e.g. Softpal under its own root). This
@@ -25,6 +23,9 @@
 //       Evaluate the gate from the environment. Exit 1 (never skip) on any
 //       missing required corpus, unpinned/mismatched content-address, or ZDR
 //       profile drift. Prints only content-free failure reasons.
+//   node scripts/ci/private-real-byte-proof.mjs --accepted
+//       Run the local preflight, then fail closed because the protected
+//       broker/evidence-agent path is not installed.
 //   node scripts/ci/private-real-byte-proof.mjs --emit-manifest \
 //       --results <stage-results.json> --out <evidence.json>
 //       Build + validate + write the content-free evidence manifest from the
@@ -365,14 +366,40 @@ function emitManifest() {
   process.stdout.write(`content-free evidence manifest written: ${outPath}\n`);
 }
 
+export function requireProtectedPrivateAgent() {
+  throw new Error("external-private-evidence-agent-unavailable");
+}
+
+const MODES = ["--preflight", "--accepted", "--record-stage", "--emit-manifest"];
+
+export function parseProofMode(argv) {
+  const selected = MODES.filter((mode) => argv.includes(mode));
+  if (selected.length !== 1) throw new Error("private-proof-mode-must-be-exactly-one");
+  return selected[0];
+}
+
 function main() {
-  if (process.argv.includes("--preflight")) return preflight();
-  if (process.argv.includes("--record-stage")) return recordStage();
-  if (process.argv.includes("--emit-manifest")) return emitManifest();
-  process.stderr.write(
-    "usage: private-real-byte-proof.mjs --preflight | --record-stage <s> --results <f> | --emit-manifest --results <f> --out <f>\n",
-  );
-  process.exit(2);
+  let mode;
+  try {
+    mode = parseProofMode(process.argv.slice(2));
+  } catch {
+    process.stderr.write(
+      "usage: private-real-byte-proof.mjs --preflight | --accepted | --record-stage <s> --results <f> | --emit-manifest --results <f> --out <f>\n",
+    );
+    process.exit(2);
+  }
+  if (mode === "--preflight") return preflight();
+  if (mode === "--accepted") {
+    preflight();
+    try {
+      return requireProtectedPrivateAgent();
+    } catch {
+      process.stderr.write("external-private-evidence-agent-unavailable\n");
+      process.exit(1);
+    }
+  }
+  if (mode === "--record-stage") return recordStage();
+  return emitManifest();
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();

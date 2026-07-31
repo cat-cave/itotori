@@ -95,6 +95,8 @@ export type ApiErrorResponse = {
     | "database_unreachable"
     | "workflow_failed"
     | "internal_error";
+  remainingAllowanceMicrosUsd?: number;
+  incidentReference?: string;
 };
 
 export const API_ERROR_RESPONSE_CODES = [
