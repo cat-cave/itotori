@@ -127,6 +127,9 @@ files belong together; expanded instances inherit that rationale.
   prerequisite repairs.
 - [`ci-initialization.md`](ci-initialization.md) fixes the runner, report,
   lanes, gates, missing-input policy, private path, and initial numerator.
+- [`progress-ledger.md`](progress-ledger.md) fixes accepted-report publication,
+  base/head transition queries, generated progress views, issue reconciliation,
+  and stacked delivery.
 - [`real-bytes.md`](real-bytes.md) defines the private maximum-truth proof.
 - [`engines.md`](engines.md) explains applicability and canonical subject
   identity without another engine registry.

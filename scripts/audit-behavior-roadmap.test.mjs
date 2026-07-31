@@ -258,3 +258,54 @@ test("a stale but well-formed committed hash is rejected", () => {
   });
   assert.match(output(root), /roadmap contract hash changed/u);
 });
+
+test("progress ledger remains CI-derived and fail-closed", () => {
+  const ledger = readFileSync(join(repoRoot, "docs", "roadmap", "progress-ledger.md"), "utf8");
+  const required = [
+    ["CI-only authority", /Only the\s+designated verifier App, running protected CI/u],
+    ["no committed progress", /No report or status snapshot is committed to any Git ref/u],
+    ["complete accepted report", /The Check Run contains the report, not merely a link or digest/u],
+    ["canonical chunks", /`chunk-NNNN-of-TTTT`/u],
+    ["candidate report", /named `behavior-proof \/ candidate-report`/u],
+    ["main baseline", /`B`, the unique valid accepted evidence\s+bound to `M`/u],
+    ["atomic layer tuple", /one immutable tuple `T`/u],
+    ["exact base", /base ref: exactly `main` for a normal\/bottom pull request/u],
+    ["evaluation target", /required-check evaluation SHA\/tree `E`/u],
+    ["layer transition", /layerGreen = pass\(HP\) - pass\(L\)/u],
+    [
+      "integration regression",
+      /integrationRegression = \(pass\(B\) union pass\(L\)\) - pass\(HE\)/u,
+    ],
+    [
+      "unproved claim failure",
+      /references a spec but makes none of its owned accepted-main-red to\s+layer-green transitions/u,
+    ],
+    ["accepted-main-red claim", /claimGreen = layerGreen intersection \(all cells - pass\(B\)\)/u],
+    ["global ownership", /globalOwners\(cell\) = managed specs in the protected contract/u],
+    ["governed classifier", /unknown paths and errors\s+default to governed/u],
+    ["dependency satisfaction", /Every transitive blocker\s+is report-complete/u],
+    ["same-SHA activation", /\*\*UNVERIFIED same-SHA admission:\*\*/u],
+    ["resolution envelope", /accepted-resolution[\s\S]*frontierDigest/u],
+    ["self-contained resolution", /embeds their canonical bytes\/manifests/u],
+    ["three query paths", /## Three query paths/u],
+    ["exhaustive check query", /`filter=all`/u],
+    ["report-derived work", /never consults live issue open\/closed state/u],
+    ["generated view", /## Generated human view/u],
+    ["live stale protection", /Before exposing\s+any cached metric/u],
+    ["report-derived issue close", /if and only if every owned cell passes/u],
+    ["separate issue writer", /separate protected issue-reconciler App first byte-compares/u],
+    [
+      "issue snapshot",
+      /one immutable\s+`\{main SHA, evidence digest, body\/graph digest\}` snapshot/u,
+    ],
+    ["failure dominance", /Candidate binding has conflicting states, including a flake/u],
+    ["new SHA after flake", /Correction requires\s+a new candidate head SHA/u],
+    ["merge-group equation", /pass\(G\) - pass\(Bq\) = union/u],
+    ["queue membership activation", /\*\*UNVERIFIED queue exactness:\*\*/u],
+    [
+      "per-layer stack gate",
+      /A green tip can never substitute for\s+a red or absent middle layer/u,
+    ],
+  ];
+  for (const [name, pattern] of required) assert.match(ledger, pattern, name);
+});
