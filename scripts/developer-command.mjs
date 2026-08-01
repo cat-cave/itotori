@@ -114,9 +114,7 @@ node scripts/ci/public-lane-coverage.mjs --check
 node --test scripts/ci/behavior-gate-mode.test.mjs
 node --test scripts/ci/behavior-workflow-contract.test.mjs
 node --test scripts/ci/build-cell-report.test.mjs
-node --test scripts/ci/run-behavior-proof.test.mjs
 node --test scripts/ci/run-behavior-proof-output.test.mjs
-node --test scripts/ci/verify-behavior-gate.test.mjs
 node --test scripts/ci/private-real-byte-proof.test.mjs
 pnpm --filter @itotori/db exec vitest run test/migrations-parity.test.ts --exclude '**/.direnv/**'
 node --test scripts/generate-engine-capability-matrix.test.mjs
@@ -309,7 +307,7 @@ function ci(lane, forwarded) {
   if (lane === "tier1-mutation") return test("mutation-differential", forwarded);
   if (lane === "tier1-behavior")
     return shell(
-      "node scripts/ci/run-behavior-proof.mjs\nnode scripts/ci/verify-behavior-gate.mjs --local-candidate\npnpm exec vp run private-input-contract:test",
+      "node --test scripts/ci/run-behavior-proof.test.mjs\nnode --test scripts/ci/verify-behavior-gate.test.mjs\nnode scripts/ci/run-behavior-proof.mjs\nnode scripts/ci/verify-behavior-gate.mjs --local-candidate\npnpm exec vp run private-input-contract:test",
     );
   return run("node", ["scripts/ci/private-real-byte-proof.mjs", "--accepted", ...forwarded]);
 }

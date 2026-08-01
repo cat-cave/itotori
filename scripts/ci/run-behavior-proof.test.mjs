@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
@@ -9,6 +10,46 @@ import { runMutationProof } from "./run-behavior-proof.mjs";
 test("cell_transition_kills_an_unsupported-version-acceptance_mutation", async () => {
   const root = resolve(new URL("../..", import.meta.url).pathname);
   const { mutant, baseline, baselinePlan } = await runMutationProof({ root });
+  const noDatabaseEnvironment = { ...process.env };
+  delete noDatabaseEnvironment.DATABASE_URL;
+  const missingDatabase = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `
+        import { observeDatabaseArtifactRepository } from "./packages/itotori-db/scripts/immutable-artifact-database-probes.mjs";
+        try {
+          await observeDatabaseArtifactRepository({ userId: "local-user" }, new TextEncoder());
+          process.exitCode = 1;
+        } catch (error) {
+          process.stdout.write(JSON.stringify({
+            name: error instanceof Error ? error.name : undefined,
+            message: error instanceof Error ? error.message : undefined,
+            inputName:
+              typeof error === "object" && error !== null && "inputName" in error
+                ? error.inputName
+                : undefined,
+          }));
+        }
+      `,
+    ],
+    { cwd: root, encoding: "utf8", env: noDatabaseEnvironment },
+  );
+  assert.equal(missingDatabase.status, 0, missingDatabase.stderr);
+  assert.deepEqual(JSON.parse(missingDatabase.stdout), {
+    name: "MissingRequiredInputError",
+    message: "required input is absent: DATABASE_URL",
+    inputName: "DATABASE_URL",
+  });
+  const missingDatabaseBoundary = spawnSync(
+    process.execPath,
+    ["packages/itotori-db/scripts/immutable-artifact-behavior-boundary.mjs"],
+    { cwd: root, encoding: "utf8", env: noDatabaseEnvironment },
+  );
+  assert.notEqual(missingDatabaseBoundary.status, 0);
+  assert.match(missingDatabaseBoundary.stderr, /MissingRequiredInputError/u);
+  assert.match(missingDatabaseBoundary.stderr, /DATABASE_URL/u);
   assert.equal(mutant.caseResults.length, 32);
   assert.equal(baseline.caseResults.length, 32);
   assert.deepEqual(new Set(mutant.caseResults.map(({ status }) => status)), new Set(["fail"]));

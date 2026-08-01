@@ -155,8 +155,11 @@ test("tier-one behavior lane fails when its local proof runner is absent", () =>
   const fixture = mkdtempSync(path.join(tmpdir(), "itotori-behavior-gate-"));
   try {
     const scripts = path.join(fixture, "scripts");
-    mkdirSync(scripts);
+    const ci = path.join(scripts, "ci");
+    mkdirSync(ci, { recursive: true });
     copyFileSync("scripts/developer-command.mjs", path.join(scripts, "developer-command.mjs"));
+    writeFileSync(path.join(ci, "run-behavior-proof.test.mjs"), "");
+    writeFileSync(path.join(ci, "verify-behavior-gate.test.mjs"), "");
 
     const result = spawnSync(
       process.execPath,
@@ -200,7 +203,9 @@ test("tier-one behavior lane runs proof, local verification, and private-input c
     assert.equal(result.status, 0, result.stderr);
     assert.equal(
       readFileSync(invocationLog, "utf8"),
-      "node scripts/ci/run-behavior-proof.mjs\n" +
+      "node --test scripts/ci/run-behavior-proof.test.mjs\n" +
+        "node --test scripts/ci/verify-behavior-gate.test.mjs\n" +
+        "node scripts/ci/run-behavior-proof.mjs\n" +
         "node scripts/ci/verify-behavior-gate.mjs --local-candidate\n" +
         "pnpm exec vp run private-input-contract:test",
     );

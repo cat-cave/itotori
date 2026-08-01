@@ -8,6 +8,7 @@ import {
   ItotoriImmutableArtifactRetentionRepository,
   ItotoriPrincipalRepository,
   localOperatorPrincipalId,
+  MissingRequiredInputError,
   openDatabaseImmutableArtifactRepository,
 } from "../dist/index.js";
 import { artifactCollisionVariantIdForBytes } from "../dist/immutable-artifact-store.js";
@@ -131,17 +132,8 @@ function auditTruncationRejected(pool) {
 }
 
 export async function observeDatabaseArtifactRepository(actor, encoder) {
-  if (process.env.DATABASE_URL === undefined) {
-    return {
-      collision: false,
-      lineage: false,
-      reload: false,
-      retention: false,
-      expiry: false,
-      mutation: false,
-      typedIncompatibleVersion: false,
-      audit: false,
-    };
+  if (!process.env.DATABASE_URL) {
+    throw new MissingRequiredInputError("DATABASE_URL");
   }
   return await withIsolatedArtifactDatabase(async (context) => {
     const cipher = new ArtifactBehaviorCipher();
