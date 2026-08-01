@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 
 import type { AuthorizationActor } from "./authorization.js";
-import { permissionValues, requirePermission } from "./authorization.js";
+import { AuthorizationError, permissionValues, requirePermission } from "./authorization.js";
 import type { ItotoriDatabase } from "./connection.js";
 import {
   ArtifactIdentityCollisionError,
@@ -11,24 +11,33 @@ import {
   type ArtifactReference,
   type ArtifactRetentionPolicy,
 } from "./immutable-artifact-store.js";
+import { artifactCollisionVariantIdForBytes } from "./immutable-artifact-store-collision.js";
 import { checkedArtifactRetention } from "./immutable-artifact-store-support.js";
 import {
   assertArtifactHash,
+  assertImmutableArtifactFormatVersion,
   canonicalArtifactTimestamp,
   decodeArtifactBytes,
+  immutableArtifactFormatVersion,
   nonBlankArtifactValue,
   sortedUniqueArtifactValues,
 } from "./immutable-artifact-snapshot.js";
+import {
+  databaseArtifactDescriptor,
+  databaseArtifactRow,
+  databaseTimestamp,
+  requiredDatabaseBytes,
+  requiredDatabaseString,
+  sameDatabaseArtifactMetadata,
+  type ArtifactDatabaseRow,
+} from "./immutable-artifact-database-repository-support.js";
 import type { LlmMemoCipher } from "./repositories/llm-call-memo-repository.js";
 
-type ArtifactRow = {
-  artifactId: string;
-  byteLength: number;
-  parents: readonly string[];
-  retention: ArtifactRetentionPolicy;
-  createdAt: string;
-  createdBy: string;
-  deletionState: string;
+type ArtifactDatabaseExecutor = Pick<ItotoriDatabase, "execute">;
+
+type DatabaseImmutableArtifactRepositoryOptions = {
+  /** Test-only seam for exercising a real same-primary-hash collision path. */
+  primaryHashForBytes?: (bytes: Uint8Array) => string;
 };
 
 export type ProjectArtifactReferenceInput = {
@@ -46,10 +55,15 @@ export function projectArtifactReferenceId(projectId: string, projectArtifactId:
 /** Production artifact persistence. Content-bearing columns are only selected
  * by read(), after the exact content.read permission check has succeeded. */
 export class DatabaseImmutableArtifactRepository {
+  readonly #primaryHashForBytes: (bytes: Uint8Array) => string;
+
   constructor(
     private readonly db: ItotoriDatabase,
     private readonly cipher: LlmMemoCipher,
-  ) {}
+    options: DatabaseImmutableArtifactRepositoryOptions = {},
+  ) {
+    this.#primaryHashForBytes = options.primaryHashForBytes ?? artifactIdForBytes;
+  }
 
   async put(
     actor: AuthorizationActor,
@@ -64,64 +78,127 @@ export class DatabaseImmutableArtifactRepository {
     await requirePermission(this.db, actor, permissionValues.runtimeIngest);
     const at = canonicalArtifactTimestamp(input.at, "put timestamp");
     const bytes = new Uint8Array(input.bytes);
-    const actualId = artifactIdForBytes(bytes);
-    const artifactId = input.expectedId ?? actualId;
-    assertArtifactHash(artifactId, "expected artifact identity");
-    if (artifactId !== actualId) throw new ArtifactIdentityCollisionError(artifactId);
+    const primaryId = this.#primaryHashForBytes(bytes);
+    assertArtifactHash(primaryId, "computed artifact identity");
+    const claimedId = input.expectedId ?? primaryId;
+    assertArtifactHash(claimedId, "expected artifact identity");
+    if (claimedId !== primaryId) {
+      await this.#audit(actor, at, "put", claimedId, "rejected", {
+        actualArtifactId: primaryId,
+        reason: "content-hash-mismatch",
+      });
+      throw new ArtifactStoreIntegrityError(`expected ${claimedId}, received ${primaryId}`);
+    }
     const parents = sortedUniqueArtifactValues(input.parents ?? [], "artifact parents");
-    if (parents.includes(artifactId)) {
-      throw new ArtifactStoreIntegrityError("an artifact cannot name itself as a parent");
-    }
     const retention = checkedArtifactRetention(input.retention, at);
-    for (const lockedId of [artifactId, ...parents].toSorted()) {
-      await this.db.execute(sql`
-        select pg_advisory_xact_lock(hashtextextended(${lockedId}, 0))
-      `);
-    }
-    await this.#requireParents(parents);
-
+    const fingerprint = artifactCollisionVariantIdForBytes(primaryId, bytes);
     const sealed = await this.cipher.seal(Buffer.from(bytes).toString("base64"));
     let ownsSealedPayload = true;
     try {
-      const inserted = await this.db.execute(sql`
-        insert into itotori_immutable_artifacts (
-          artifact_id, byte_length, parents, retention_classification,
-          retention_basis, expires_at, created_at, created_by,
-          content_ciphertext, content_key_ref, deletion_state
-        ) values (
-          ${artifactId}, ${bytes.byteLength}, ${sql.param(parents)}::text[], ${retention.classification},
-          ${retention.basis}, ${retention.expiresAt}::timestamptz,
-          ${at}::timestamptz, ${actor.userId}, ${Buffer.from(sealed.ciphertext)},
-          ${sealed.keyRef}, 'active'
-        )
-        on conflict (artifact_id) do nothing
-        returning artifact_id
-      `);
-      if (inserted.rows.length === 1) {
-        await this.#audit(actor, at, "put", artifactId, "created", {
-          byteLength: bytes.byteLength,
-          classification: retention.classification,
-        });
-        ownsSealedPayload = false;
-        return {
-          artifactId,
-          byteLength: bytes.byteLength,
-          parents,
-          retention,
-          createdAt: at,
-          createdBy: actor.userId,
-        };
+      const stored = await this.db.transaction(async (tx) => {
+        for (const lockedId of [primaryId, fingerprint, ...parents].toSorted()) {
+          await tx.execute(sql`
+            select pg_advisory_xact_lock(hashtextextended(${lockedId}, 0))
+          `);
+        }
+        const incumbent = await this.#metadata(primaryId, tx);
+        if (incumbent === undefined && primaryId !== artifactIdForBytes(bytes)) {
+          throw new ArtifactStoreIntegrityError(
+            "first artifact must use its canonical sha256 identity",
+          );
+        }
+        if (incumbent !== undefined && incumbent.deletionState !== "active") {
+          throw new ArtifactStoreIntegrityError(`artifact ${primaryId} is not available`);
+        }
+        // Pre-enforcement rows use their primary identity as a sentinel rather
+        // than a byte fingerprint. Treat that sentinel as unknown: accepting it
+        // as a duplicate could discard a real post-upgrade SHA-256 collision.
+        const incumbentMatchesBytes =
+          incumbent !== undefined && incumbent.contentFingerprint === fingerprint;
+        if (incumbentMatchesBytes) {
+          this.#assertSameMetadata(incumbent, parents, retention, primaryId, bytes.byteLength);
+          await this.#audit(actor, at, "put", primaryId, "already-present", {}, tx);
+          return { descriptor: databaseArtifactDescriptor(incumbent), persisted: false };
+        }
+        const collision = incumbent !== undefined;
+        const targetId = collision ? fingerprint : primaryId;
+        if (parents.includes(targetId)) {
+          throw new ArtifactStoreIntegrityError("an artifact cannot name itself as a parent");
+        }
+        await this.#requireParents(parents, tx);
+        const existing = collision ? await this.#metadata(targetId, tx) : undefined;
+        if (existing !== undefined) {
+          if (existing.deletionState !== "active" || existing.contentFingerprint !== fingerprint) {
+            throw new ArtifactStoreIntegrityError(`collision address ${targetId} is unavailable`);
+          }
+          if ((await this.#collisionPrimaryForVariant(targetId, tx)) !== primaryId) {
+            throw new ArtifactStoreIntegrityError(
+              `collision address ${targetId} belongs to another primary`,
+            );
+          }
+          this.#assertSameMetadata(existing, parents, retention, targetId, bytes.byteLength);
+        }
+        const inserted =
+          existing === undefined &&
+          (
+            await tx.execute(sql`
+          insert into itotori_immutable_artifacts (
+            artifact_id, byte_length, parents, retention_classification,
+            retention_basis, expires_at, created_at, created_by, format_version,
+            content_fingerprint, content_ciphertext, content_key_ref, deletion_state
+          ) values (
+            ${targetId}, ${bytes.byteLength}, ${sql.param(parents)}::text[], ${retention.classification},
+            ${retention.basis}, ${retention.expiresAt}::timestamptz,
+            ${at}::timestamptz, ${actor.userId}, ${immutableArtifactFormatVersion},
+            ${fingerprint}, ${Buffer.from(sealed.ciphertext)}, ${sealed.keyRef}, 'active'
+          )
+          returning artifact_id
+        `)
+          ).rows.length === 1;
+        const descriptor =
+          existing === undefined
+            ? {
+                artifactId: targetId,
+                byteLength: bytes.byteLength,
+                parents,
+                retention,
+                createdAt: at,
+                createdBy: actor.userId,
+              }
+            : databaseArtifactDescriptor(existing);
+        await this.#audit(
+          actor,
+          at,
+          "put",
+          targetId,
+          inserted ? "created" : "already-present",
+          inserted
+            ? { byteLength: bytes.byteLength, classification: retention.classification }
+            : {},
+          tx,
+        );
+        if (collision) {
+          await this.#bindCollision(primaryId, targetId, actor.userId, at, tx);
+          await this.#audit(
+            actor,
+            at,
+            "put",
+            primaryId,
+            "rejected",
+            {
+              actualArtifactId: targetId,
+              reason: "identity-collision",
+            },
+            tx,
+          );
+        }
+        return { descriptor, persisted: inserted, collision };
+      });
+      if (stored.persisted) ownsSealedPayload = false;
+      if (stored.collision === true) {
+        throw new ArtifactIdentityCollisionError(primaryId, stored.descriptor.artifactId);
       }
-
-      const existing = await this.#metadata(artifactId);
-      if (existing === undefined || existing.deletionState !== "active") {
-        throw new ArtifactStoreIntegrityError(`artifact ${artifactId} is not available`);
-      }
-      if (!sameImmutableMetadata(existing, { parents, retention, byteLength: bytes.byteLength })) {
-        throw new ArtifactStoreIntegrityError(`artifact metadata cannot replace ${artifactId}`);
-      }
-      await this.#audit(actor, at, "put", artifactId, "already-present", {});
-      return descriptorFromRow(existing);
+      return stored.descriptor;
     } finally {
       if (ownsSealedPayload) await this.cipher.releaseKeyReference(sealed.keyRef);
     }
@@ -213,7 +290,7 @@ export class DatabaseImmutableArtifactRepository {
     const at = canonicalArtifactTimestamp(input.at, "read timestamp");
     assertArtifactHash(input.artifactId, "artifact identity");
     const result = await this.db.execute(sql`
-      select byte_length, content_ciphertext, content_key_ref
+      select byte_length, format_version, content_fingerprint, content_ciphertext, content_key_ref
       from itotori_immutable_artifacts
       where artifact_id = ${input.artifactId} and deletion_state = 'active'
     `);
@@ -222,12 +299,31 @@ export class DatabaseImmutableArtifactRepository {
       await this.#audit(actor, at, "read", input.artifactId, "missing", {});
       return undefined;
     }
-    const ciphertext = requiredBytes(row.content_ciphertext, "artifact ciphertext");
-    const encoded = await this.cipher.open(ciphertext, requiredString(row.content_key_ref));
+    assertImmutableArtifactFormatVersion(row.format_version);
+    const ciphertext = requiredDatabaseBytes(row.content_ciphertext, "artifact ciphertext");
+    const encoded = await this.cipher.open(ciphertext, requiredDatabaseString(row.content_key_ref));
     const bytes = decodeArtifactBytes(encoded, input.artifactId);
+    const fingerprint = requiredDatabaseString(
+      row.content_fingerprint,
+      "artifact content fingerprint",
+    );
+    const collisionPrimary = await this.#collisionPrimaryForVariant(input.artifactId);
+    const canonicalIdentity = artifactIdForBytes(bytes);
+    const isLegacyCanonicalArtifact =
+      collisionPrimary === undefined &&
+      fingerprint === input.artifactId &&
+      canonicalIdentity === input.artifactId;
+    const isCurrentCanonicalArtifact =
+      collisionPrimary === undefined &&
+      fingerprint === artifactCollisionVariantIdForBytes(input.artifactId, bytes) &&
+      canonicalIdentity === input.artifactId;
+    const isCollisionVariant =
+      collisionPrimary !== undefined &&
+      fingerprint === input.artifactId &&
+      artifactCollisionVariantIdForBytes(collisionPrimary, bytes) === input.artifactId;
     if (
       bytes.byteLength !== Number(row.byte_length) ||
-      artifactIdForBytes(bytes) !== input.artifactId
+      (!isLegacyCanonicalArtifact && !isCurrentCanonicalArtifact && !isCollisionVariant)
     ) {
       throw new ArtifactStoreIntegrityError(
         `artifact ${input.artifactId} ciphertext is not intact`,
@@ -239,10 +335,31 @@ export class DatabaseImmutableArtifactRepository {
     return new Uint8Array(bytes);
   }
 
-  async #requireParents(parents: readonly string[]): Promise<void> {
+  async retain(
+    actor: AuthorizationActor,
+    input: { artifactId: string; until: string; at: string },
+  ): Promise<void> {
+    await requirePermission(this.db, actor, permissionValues.retentionManage);
+    if (actor.sessionId === undefined) {
+      throw new AuthorizationError(actor, permissionValues.retentionManage);
+    }
+    const until = canonicalArtifactTimestamp(input.until, "retention deadline");
+    const at = canonicalArtifactTimestamp(input.at, "retention timestamp");
+    assertArtifactHash(input.artifactId, "retained artifact identity");
+    await this.db.execute(sql`
+      select itotori_extend_immutable_artifact_retention(
+        ${actor.sessionId}, ${input.artifactId}, ${until}::timestamptz, ${at}::timestamptz
+      )
+    `);
+  }
+
+  async #requireParents(
+    parents: readonly string[],
+    db: ArtifactDatabaseExecutor = this.db,
+  ): Promise<void> {
     if (parents.length === 0) return;
     for (const parent of parents) assertArtifactHash(parent, "parent artifact identity");
-    const result = await this.db.execute(sql`
+    const result = await db.execute(sql`
       select artifact_id from itotori_immutable_artifacts
       where artifact_id = any(${sql.param(parents)}::text[]) and deletion_state = 'active'
     `);
@@ -251,14 +368,66 @@ export class DatabaseImmutableArtifactRepository {
     }
   }
 
-  async #metadata(artifactId: string): Promise<ArtifactRow | undefined> {
-    const result = await this.db.execute(sql`
+  async #metadata(
+    artifactId: string,
+    db: ArtifactDatabaseExecutor = this.db,
+  ): Promise<ArtifactDatabaseRow | undefined> {
+    const result = await db.execute(sql`
       select artifact_id, byte_length, parents, retention_classification,
-        retention_basis, expires_at, created_at, created_by, deletion_state
+        retention_basis, expires_at as base_expires_at,
+        itotori_immutable_artifact_effective_expiry(artifact_id) as effective_expires_at,
+        created_at, created_by, deletion_state, format_version, content_fingerprint
       from itotori_immutable_artifacts where artifact_id = ${artifactId}
     `);
     const row = result.rows[0];
-    return row === undefined ? undefined : artifactRow(row);
+    return row === undefined ? undefined : databaseArtifactRow(row);
+  }
+
+  #assertSameMetadata(
+    row: ArtifactDatabaseRow,
+    parents: readonly string[],
+    retention: ArtifactRetentionPolicy,
+    artifactId: string,
+    byteLength: number,
+  ): void {
+    if (!sameDatabaseArtifactMetadata(row, { parents, retention, byteLength })) {
+      throw new ArtifactStoreIntegrityError(`artifact metadata cannot replace ${artifactId}`);
+    }
+  }
+
+  async #collisionPrimaryForVariant(
+    variantArtifactId: string,
+    db: ArtifactDatabaseExecutor = this.db,
+  ): Promise<string | undefined> {
+    const result = await db.execute(sql`
+      select claimed_artifact_id
+      from itotori_immutable_artifact_collision_variants
+      where variant_artifact_id = ${variantArtifactId}
+    `);
+    const row = result.rows[0];
+    return row === undefined ? undefined : requiredDatabaseString(row.claimed_artifact_id);
+  }
+
+  async #bindCollision(
+    claimedArtifactId: string,
+    variantArtifactId: string,
+    actorId: string,
+    at: string,
+    db: ArtifactDatabaseExecutor,
+  ): Promise<void> {
+    await db.execute(sql`
+      insert into itotori_immutable_artifact_collision_variants (
+        claimed_artifact_id, variant_artifact_id, recorded_at, recorded_by
+      ) values (
+        ${claimedArtifactId}, ${variantArtifactId}, ${at}::timestamptz, ${actorId}
+      )
+      on conflict (variant_artifact_id) do nothing
+    `);
+    if ((await this.#collisionPrimaryForVariant(variantArtifactId, db)) !== claimedArtifactId) {
+      throw new ArtifactStoreIntegrityError(
+        `collision address ${variantArtifactId} belongs to another primary`,
+      );
+    }
   }
 
   async #projectReference(
@@ -281,7 +450,7 @@ export class DatabaseImmutableArtifactRepository {
       referenceId: String(row.reference_id),
       artifactId: String(row.artifact_id),
       purpose,
-      createdAt: timestamp(row.created_at),
+      createdAt: databaseTimestamp(row.created_at),
       createdBy: String(row.created_by),
     };
   }
@@ -293,8 +462,9 @@ export class DatabaseImmutableArtifactRepository {
     target: string,
     outcome: string,
     details: Readonly<Record<string, string | number>>,
+    db: ArtifactDatabaseExecutor = this.db,
   ): Promise<void> {
-    await this.db.execute(sql`
+    await db.execute(sql`
       insert into itotori_immutable_artifact_audit_events (
         occurred_at, actor_id, action, target, outcome, details
       ) values (
@@ -312,79 +482,11 @@ export function openDatabaseImmutableArtifactRepository(
   return new DatabaseImmutableArtifactRepository(db, cipher);
 }
 
-function artifactRow(row: Record<string, unknown>): ArtifactRow {
-  const classification = String(row.retention_classification);
-  const basis = String(row.retention_basis);
-  const parents = row.parents;
-  if (classification !== "public" && classification !== "restricted") {
-    throw new ArtifactStoreIntegrityError("stored retention classification is invalid");
-  }
-  if (!isRetentionBasis(basis) || !Array.isArray(parents) || !parents.every(isString)) {
-    throw new ArtifactStoreIntegrityError("stored immutable artifact metadata is invalid");
-  }
-  return {
-    artifactId: String(row.artifact_id),
-    byteLength: Number(row.byte_length),
-    parents,
-    retention: {
-      classification,
-      basis,
-      expiresAt: timestamp(row.expires_at),
-    },
-    createdAt: timestamp(row.created_at),
-    createdBy: String(row.created_by),
-    deletionState: String(row.deletion_state),
-  };
-}
-
-function descriptorFromRow(row: ArtifactRow): ArtifactDescriptor {
-  return {
-    artifactId: row.artifactId,
-    byteLength: row.byteLength,
-    parents: [...row.parents],
-    retention: { ...row.retention },
-    createdAt: row.createdAt,
-    createdBy: row.createdBy,
-  };
-}
-
-function sameImmutableMetadata(
-  row: ArtifactRow,
-  input: { parents: readonly string[]; retention: ArtifactRetentionPolicy; byteLength: number },
-): boolean {
-  return (
-    row.byteLength === input.byteLength &&
-    row.parents.length === input.parents.length &&
-    row.parents.every((parent, index) => parent === input.parents[index]) &&
-    row.retention.classification === input.retention.classification &&
-    row.retention.basis === input.retention.basis &&
-    row.retention.expiresAt === input.retention.expiresAt
-  );
-}
-
-function timestamp(value: unknown): string {
-  const date = value instanceof Date ? value : new Date(String(value));
-  if (Number.isNaN(date.getTime()))
-    throw new ArtifactStoreIntegrityError("stored timestamp is invalid");
-  return date.toISOString();
-}
-
-function requiredBytes(value: unknown, label: string): Uint8Array {
-  if (!(value instanceof Uint8Array)) throw new ArtifactStoreIntegrityError(`${label} is missing`);
-  return new Uint8Array(value);
-}
-
-function requiredString(value: unknown): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new ArtifactStoreIntegrityError("artifact key reference is missing");
-  }
-  return value;
-}
-
-function isString(value: unknown): value is string {
-  return typeof value === "string";
-}
-
-function isRetentionBasis(value: string): value is ArtifactRetentionPolicy["basis"] {
-  return ["lineage", "expiry", "release", "append-only", "declared-scope"].includes(value);
+/** Test-only factory. It is intentionally not re-exported from the package API. */
+export function openDatabaseImmutableArtifactRepositoryForTesting(
+  db: ItotoriDatabase,
+  cipher: LlmMemoCipher,
+  primaryHashForBytes: (bytes: Uint8Array) => string,
+): DatabaseImmutableArtifactRepository {
+  return new DatabaseImmutableArtifactRepository(db, cipher, { primaryHashForBytes });
 }

@@ -75,11 +75,13 @@ function validatePut(event: ArtifactAuditEvent): void {
   if (reason === "content-hash-mismatch") {
     exactDetails(event, ["actualArtifactId", "reason"]);
     assertArtifactHash(detailString(event, "actualArtifactId"), "actual artifact identity");
-  } else if (
-    reason === "identity-collision" ||
-    reason === "missing-or-self-parent" ||
-    reason === "immutable-metadata-conflict"
-  ) {
+  } else if (reason === "identity-collision") {
+    const variant = event.details.actualArtifactId;
+    if (typeof variant === "string") {
+      exactDetails(event, ["actualArtifactId", "reason"]);
+      assertArtifactHash(variant, "collision variant identity");
+    } else exactDetails(event, ["reason"]);
+  } else if (reason === "missing-or-self-parent" || reason === "immutable-metadata-conflict") {
     exactDetails(event, ["reason"]);
   } else fail("put rejection reason is invalid");
 }

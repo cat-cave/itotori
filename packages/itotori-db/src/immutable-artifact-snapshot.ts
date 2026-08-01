@@ -1,11 +1,24 @@
 import { createHash } from "node:crypto";
 
 import { validateAuditedArtifactState } from "./immutable-artifact-audit.js";
+import {
+  artifactCollisionPrimaryByVariant,
+  artifactCollisionVariantIdForBytes,
+} from "./immutable-artifact-store-collision.js";
+import { assertArtifactVersion } from "./immutable-artifact-version.js";
+
+export {
+  ArtifactIncompatibleVersionError,
+  assertImmutableArtifactFormatVersion,
+  immutableArtifactFormatVersion,
+} from "./immutable-artifact-version.js";
 
 export const immutableArtifactSnapshotVersion: "itotori.immutable-artifact-store.v1" =
   "itotori.immutable-artifact-store.v1";
 export const genesisArtifactAuditHash = `sha256:${"0".repeat(64)}`;
 const hashPattern = /^sha256:[0-9a-f]{64}$/u;
+const snapshotMigrationPath =
+  "Open the artifact with a compatible itotori version, then export a current snapshot.";
 
 export type ArtifactRetentionBasis =
   | "lineage"
@@ -191,9 +204,29 @@ function validateSnapshot(snapshot: ImmutableArtifactSnapshot): void {
   const identities = snapshot.artifacts.map((row) => row.artifactId);
   assertSortedUnique(identities, "snapshot artifacts");
   const known = new Set(identities);
+  const bytesByArtifactId = new Map(
+    snapshot.artifacts.map((row) => [
+      row.artifactId,
+      decodeArtifactBytes(row.bytesBase64, row.artifactId),
+    ]),
+  );
+  const collisionPrimaryByVariant = artifactCollisionPrimaryByVariant(snapshot.auditEvents);
+  if (collisionPrimaryByVariant === undefined) {
+    throw new ArtifactStoreIntegrityError("collision variant has conflicting primaries");
+  }
   for (const row of snapshot.artifacts) {
-    const bytes = decodeArtifactBytes(row.bytesBase64, row.artifactId);
-    if (artifactIdForBytes(bytes) !== row.artifactId || bytes.byteLength !== row.byteLength) {
+    const bytes = bytesByArtifactId.get(row.artifactId);
+    const collisionPrimary = collisionPrimaryByVariant.get(row.artifactId);
+    const collisionPrimaryBytes =
+      collisionPrimary === undefined ? undefined : bytesByArtifactId.get(collisionPrimary);
+    const intact =
+      bytes !== undefined &&
+      (collisionPrimary === undefined
+        ? artifactIdForBytes(bytes) === row.artifactId
+        : collisionPrimaryBytes !== undefined &&
+          artifactIdForBytes(collisionPrimaryBytes) === collisionPrimary &&
+          artifactCollisionVariantIdForBytes(collisionPrimary, bytes) === row.artifactId);
+    if (bytes === undefined || !intact || bytes.byteLength !== row.byteLength) {
       throw new ArtifactStoreIntegrityError(`artifact ${row.artifactId} bytes are not intact`);
     }
     if (row.retention.expiresAt <= row.createdAt) {
@@ -245,6 +278,13 @@ function validateSnapshot(snapshot: ImmutableArtifactSnapshot): void {
 }
 
 function assertSnapshot(value: unknown): asserts value is ImmutableArtifactSnapshot {
+  if (!isObject(value)) throw new ArtifactStoreIntegrityError("snapshot fields are invalid");
+  assertArtifactVersion(
+    value.schemaVersion,
+    [immutableArtifactSnapshotVersion],
+    snapshotMigrationPath,
+    "immutable artifact snapshot schema version",
+  );
   const root = exactObject(
     value,
     [
@@ -258,9 +298,6 @@ function assertSnapshot(value: unknown): asserts value is ImmutableArtifactSnaps
     ],
     "snapshot",
   );
-  if (root.schemaVersion !== immutableArtifactSnapshotVersion) {
-    throw new ArtifactStoreIntegrityError("snapshot schema version is incompatible");
-  }
   assertArtifactHash(root.snapshotHash, "snapshot hash");
   for (const item of unknownArray(root.artifacts, "snapshot artifacts")) {
     assertSnapshotArtifact(item);

@@ -20,6 +20,7 @@ export type ImmutableArtifactObservation = {
 };
 
 let cachedObservation: Promise<ImmutableArtifactObservation> | undefined;
+let cachedFixedSuccessObservation: Promise<ImmutableArtifactObservation> | undefined;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -118,13 +119,19 @@ function failedObservation(reason: string): ImmutableArtifactObservation {
   };
 }
 
-function observeArtifactProduct(repositoryRoot: string): ImmutableArtifactObservation {
+function observeArtifactProduct(
+  repositoryRoot: string,
+  fixedSuccess: boolean,
+): ImmutableArtifactObservation {
+  const productRoot = fixedSuccess
+    ? resolve(repositoryRoot, ".tmp", "behavior-proof", "immutable-artifact-fixed-success-mutation")
+    : repositoryRoot;
   const boundary = resolve(
-    repositoryRoot,
+    productRoot,
     "packages/itotori-db/scripts/immutable-artifact-behavior-boundary.mjs",
   );
   const result = spawnSync(process.execPath, [boundary], {
-    cwd: repositoryRoot,
+    cwd: productRoot,
     encoding: "utf8",
     maxBuffer: 8 * 1024 * 1024,
     timeout: 120_000,
@@ -141,8 +148,13 @@ function observeArtifactProduct(repositoryRoot: string): ImmutableArtifactObserv
 
 export async function observeImmutableArtifactBehavior(
   repositoryRoot: string,
+  fixedSuccess = false,
 ): Promise<ImmutableArtifactObservation> {
-  cachedObservation ??= Promise.resolve(observeArtifactProduct(repositoryRoot));
+  if (fixedSuccess) {
+    cachedFixedSuccessObservation ??= Promise.resolve(observeArtifactProduct(repositoryRoot, true));
+    return await cachedFixedSuccessObservation;
+  }
+  cachedObservation ??= Promise.resolve(observeArtifactProduct(repositoryRoot, false));
   return await cachedObservation;
 }
 

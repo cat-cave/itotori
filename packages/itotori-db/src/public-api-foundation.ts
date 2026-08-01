@@ -65,9 +65,12 @@ export {
 } from "./managed-artifact-refs.js";
 export {
   ArtifactAuthorizationError,
+  ArtifactIncompatibleVersionError,
   ArtifactIdentityCollisionError,
   ArtifactStoreIntegrityError,
+  assertImmutableArtifactFormatVersion,
   artifactIdForBytes,
+  immutableArtifactFormatVersion,
   immutableArtifactSnapshotVersion,
 } from "./immutable-artifact-store.js";
 export type {

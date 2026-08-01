@@ -6,12 +6,8 @@ import {
   canonicalArtifactTimestamp,
   copyArtifactAuditEvent,
   copyArtifactDescriptor,
-  decodeArtifactBytes,
-  decodeArtifactSnapshot,
   equalArtifactValues,
-  genesisArtifactAuditHash,
   hashArtifactJson,
-  immutableArtifactSnapshotVersion,
   nonBlankArtifactValue,
   sortedUniqueArtifactValues,
   type ArtifactAuditAction,
@@ -21,14 +17,17 @@ import {
   type ArtifactDescriptor,
   type ArtifactReference,
   type ArtifactRetentionPolicy,
-  type ImmutableArtifactSnapshot,
 } from "./immutable-artifact-snapshot.js";
+import { artifactCollisionVariantIdForBytes } from "./immutable-artifact-store-collision.js";
 import {
+  appendImmutableArtifactAuditEvent,
   buildImmutableArtifactSnapshot,
   assertRestrictedArtifactDeadline,
   checkedArtifactAuthority,
   checkedArtifactRetention,
-  equalArtifactBytes as equalBytes,
+  equalArtifactBytes,
+  loadImmutableArtifactStoreState,
+  pruneImmutableArtifactScope,
   type ArtifactActor,
   type ArtifactAuthority,
   type ArtifactCapability,
@@ -37,12 +36,32 @@ import {
   type ArtifactSnapshotExport,
   type StoredArtifactRecord,
 } from "./immutable-artifact-store-support.js";
+import {
+  ArtifactAuthorizationError,
+  ArtifactIdentityCollisionError,
+  assertArtifactAuditChronological,
+} from "./immutable-artifact-store-primitives.js";
+
+type ArtifactPutInput = {
+  bytes: Uint8Array;
+  retention: ArtifactRetentionPolicy;
+  actor: ArtifactActor;
+  at: string;
+  expectedId?: string;
+  parents?: readonly string[];
+};
+
+type ArtifactPrimaryHashForTesting = (bytes: Uint8Array) => string;
 
 export {
+  ArtifactIncompatibleVersionError,
   ArtifactStoreIntegrityError,
+  assertImmutableArtifactFormatVersion,
   artifactIdForBytes,
+  immutableArtifactFormatVersion,
   immutableArtifactSnapshotVersion,
 } from "./immutable-artifact-snapshot.js";
+export { artifactCollisionVariantIdForBytes } from "./immutable-artifact-store-collision.js";
 export type {
   ArtifactAuditAction,
   ArtifactAuditEvent,
@@ -61,38 +80,52 @@ export type {
   ArtifactPruneReceipt,
   ArtifactSnapshotExport,
 } from "./immutable-artifact-store-support.js";
-export class ArtifactIdentityCollisionError extends ArtifactStoreIntegrityError {
-  constructor(id: string) {
-    super(`artifact identity collision rejected for ${id}`);
-    this.name = "ArtifactIdentityCollisionError";
-  }
-}
-export class ArtifactAuthorizationError extends Error {
-  constructor(actor: string, capability: ArtifactCapability) {
-    super(`actor ${actor} lacks ${capability}`);
-    this.name = "ArtifactAuthorizationError";
-  }
-}
+export {
+  ArtifactAuthorizationError,
+  ArtifactIdentityCollisionError,
+} from "./immutable-artifact-store-primitives.js";
+
 export class ImmutableArtifactStore {
   readonly #authority: ArtifactAuthority;
   readonly #artifacts: Map<string, StoredArtifactRecord>;
   readonly #references: Map<string, ArtifactReference>;
   readonly #audit: ArtifactAuditEvent[];
+  readonly #collisionPrimaryByVariant: Map<string, string>;
+  readonly #primaryHashForBytes: ArtifactPrimaryHashForTesting;
 
   private constructor(
     authority: ArtifactAuthority,
     artifacts = new Map<string, StoredArtifactRecord>(),
     references = new Map<string, ArtifactReference>(),
     audit: ArtifactAuditEvent[] = [],
+    collisionPrimaryByVariant = new Map<string, string>(),
+    primaryHashForBytes: ArtifactPrimaryHashForTesting = artifactIdForBytes,
   ) {
     this.#authority = checkedArtifactAuthority(authority);
     this.#artifacts = artifacts;
     this.#references = references;
     this.#audit = audit;
+    this.#collisionPrimaryByVariant = collisionPrimaryByVariant;
+    this.#primaryHashForBytes = primaryHashForBytes;
   }
 
   static create(authority: ArtifactAuthority): ImmutableArtifactStore {
     return new ImmutableArtifactStore(authority);
+  }
+
+  /** Test-only seam: only a later candidate may share the first artifact's primary hash. */
+  static createForTesting(
+    authority: ArtifactAuthority,
+    primaryHashForBytes: ArtifactPrimaryHashForTesting,
+  ): ImmutableArtifactStore {
+    return new ImmutableArtifactStore(
+      authority,
+      new Map(),
+      new Map(),
+      [],
+      new Map(),
+      primaryHashForBytes,
+    );
   }
 
   static reload(
@@ -100,77 +133,84 @@ export class ImmutableArtifactStore {
     expectedSnapshotHash: string,
     authority: ArtifactAuthority,
   ): ImmutableArtifactStore {
-    assertArtifactHash(expectedSnapshotHash, "expected snapshot identity");
-    const value = decodeArtifactSnapshot(serialized);
-    if (value.snapshotHash !== expectedSnapshotHash) {
-      throw new ArtifactStoreIntegrityError(
-        `artifact snapshot identity mismatch: expected ${expectedSnapshotHash}, received ${value.snapshotHash}`,
-      );
-    }
-    const artifacts = new Map<string, StoredArtifactRecord>();
-    for (const row of value.artifacts) {
-      artifacts.set(row.artifactId, {
-        ...copyArtifactDescriptor(row),
-        bytes: decodeArtifactBytes(row.bytesBase64, row.artifactId),
-      });
-    }
+    const state = loadImmutableArtifactStoreState(serialized, expectedSnapshotHash);
     return new ImmutableArtifactStore(
       authority,
-      artifacts,
-      new Map(value.references.map((row) => [row.referenceId, { ...row }])),
-      value.auditEvents.map(copyArtifactAuditEvent),
+      state.artifacts,
+      state.references,
+      state.audit,
+      state.collisionPrimaryByVariant,
     );
   }
 
-  put(input: {
-    bytes: Uint8Array;
-    retention: ArtifactRetentionPolicy;
-    actor: ArtifactActor;
-    at: string;
-    expectedId?: string;
-    parents?: readonly string[];
-  }): ArtifactDescriptor {
+  put(input: ArtifactPutInput): ArtifactDescriptor {
     const at = canonicalArtifactTimestamp(input.at, "put timestamp");
     const bytes = new Uint8Array(input.bytes);
-    const actualId = artifactIdForBytes(bytes);
-    const target = input.expectedId ?? actualId;
-    assertArtifactHash(target, "expected artifact identity");
-    this.#authorize(input.actor, "artifact:write", "put", target, at);
-    const collision = this.#artifacts.get(target);
-    if (collision && !equalBytes(collision.bytes, bytes)) {
-      this.#reject(at, input.actor.actorId, "put", target, "identity-collision");
-      throw new ArtifactIdentityCollisionError(target);
-    }
-    if (target !== actualId) {
-      this.#record(at, input.actor.actorId, "put", target, "rejected", {
-        actualArtifactId: actualId,
+    const primaryId = this.#primaryHashForBytes(bytes);
+    assertArtifactHash(primaryId, "computed artifact identity");
+    const claimedId = input.expectedId ?? primaryId;
+    assertArtifactHash(claimedId, "expected artifact identity");
+    this.#authorize(input.actor, "artifact:write", "put", claimedId, at);
+    if (claimedId !== primaryId) {
+      this.#record(at, input.actor.actorId, "put", claimedId, "rejected", {
+        actualArtifactId: primaryId,
         reason: "content-hash-mismatch",
       });
-      throw new ArtifactStoreIntegrityError(`expected ${target}, received ${actualId}`);
+      throw new ArtifactStoreIntegrityError(`expected ${claimedId}, received ${primaryId}`);
     }
+    const incumbent = this.#artifacts.get(primaryId);
+    if (incumbent === undefined) {
+      if (primaryId !== artifactIdForBytes(bytes)) {
+        throw new ArtifactStoreIntegrityError(
+          "first artifact must use its canonical sha256 identity",
+        );
+      }
+      return this.#putCanonical(input, at, primaryId, bytes);
+    }
+    if (equalArtifactBytes(incumbent.bytes, bytes))
+      return this.#putCanonical(input, at, primaryId, bytes);
+    const variantId = artifactCollisionVariantIdForBytes(primaryId, bytes);
+    const variant = this.#putCanonical(input, at, variantId, bytes);
+    this.#collisionPrimaryByVariant.set(variant.artifactId, primaryId);
+    this.#record(at, input.actor.actorId, "put", primaryId, "rejected", {
+      actualArtifactId: variant.artifactId,
+      reason: "identity-collision",
+    });
+    throw new ArtifactIdentityCollisionError(primaryId, variant.artifactId);
+  }
+
+  #putCanonical(
+    input: ArtifactPutInput,
+    at: string,
+    artifactId: string,
+    bytes: Uint8Array,
+  ): ArtifactDescriptor {
     const parents = sortedUniqueArtifactValues(input.parents ?? [], "artifact parents");
     for (const parent of parents) {
       assertArtifactHash(parent, "parent artifact identity");
-      if (parent === target || !this.#artifacts.has(parent)) {
-        this.#reject(at, input.actor.actorId, "put", target, "missing-or-self-parent");
+      if (parent === artifactId || !this.#artifacts.has(parent)) {
+        this.#reject(at, input.actor.actorId, "put", artifactId, "missing-or-self-parent");
         throw new ArtifactStoreIntegrityError(`artifact parent ${parent} is not available`);
       }
     }
     const retention = checkedArtifactRetention(input.retention, at);
-    const existing = this.#artifacts.get(actualId);
+    const existing = this.#artifacts.get(artifactId);
     if (existing) {
+      if (!equalArtifactBytes(existing.bytes, bytes)) {
+        throw new ArtifactStoreIntegrityError(`artifact bytes cannot replace ${artifactId}`);
+      }
       const same =
         equalArtifactValues(existing.parents, parents) &&
         canonicalArtifactJson(existing.retention) === canonicalArtifactJson(retention);
       if (!same) {
-        this.#reject(at, input.actor.actorId, "put", target, "immutable-metadata-conflict");
-        throw new ArtifactStoreIntegrityError(`artifact metadata cannot replace ${target}`);
+        this.#reject(at, input.actor.actorId, "put", artifactId, "immutable-metadata-conflict");
+        throw new ArtifactStoreIntegrityError(`artifact metadata cannot replace ${artifactId}`);
       }
-      this.#record(at, input.actor.actorId, "put", target, "already-present", {});
+      this.#record(at, input.actor.actorId, "put", artifactId, "already-present", {});
       return copyArtifactDescriptor(existing);
     }
     const stored: StoredArtifactRecord = {
-      artifactId: target,
+      artifactId,
       byteLength: bytes.byteLength,
       parents,
       retention,
@@ -178,8 +218,8 @@ export class ImmutableArtifactStore {
       createdBy: input.actor.actorId,
       bytes,
     };
-    this.#artifacts.set(target, stored);
-    this.#record(at, input.actor.actorId, "put", target, "created", {
+    this.#artifacts.set(artifactId, stored);
+    this.#record(at, input.actor.actorId, "put", artifactId, "created", {
       basis: retention.basis,
       classification: retention.classification,
       expiresAt: retention.expiresAt,
@@ -287,41 +327,14 @@ export class ImmutableArtifactStore {
     this.#authorize(input.actor, "artifact:prune", "prune", target, at, {
       requestedArtifactIds: ids,
     });
-    const scheduled = new Set(ids.filter((id) => this.#eligible(id, at)));
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const id of scheduled) {
-        if (this.#dependents(id).some((child) => !scheduled.has(child))) {
-          scheduled.delete(id);
-          changed = true;
-        }
-      }
-    }
-    const decisions = ids.map((id): ArtifactPruneDecision => {
-      const artifact = this.#artifacts.get(id);
-      if (!artifact) return { artifactId: id, decision: "missing" };
-      if (scheduled.has(id)) return { artifactId: id, decision: "pruned" };
-      if (artifact.retention.expiresAt > at) return { artifactId: id, decision: "not-expired" };
-      if (this.#referenced(id)) return { artifactId: id, decision: "referenced" };
-      return { artifactId: id, decision: "lineage-dependent" };
-    });
-    const prunedArtifactIds = [...scheduled].sort();
-    for (const id of prunedArtifactIds) this.#artifacts.delete(id);
-    const event = this.#record(
+    return pruneImmutableArtifactScope(
+      this.#artifacts,
+      this.#references,
+      ids,
       at,
-      input.actor.actorId,
-      "prune",
-      target,
-      prunedArtifactIds.length ? "pruned" : "no-op",
-      { decisions: decisions.map((row) => ({ ...row })), requestedArtifactIds: ids },
+      (recordedTarget, outcome, details) =>
+        this.#record(at, input.actor.actorId, "prune", recordedTarget, outcome, details),
     );
-    return {
-      requestedArtifactIds: [...ids],
-      decisions: decisions.map((row) => ({ ...row })),
-      prunedArtifactIds,
-      auditEventHash: event.eventHash,
-    };
   }
 
   availability(input: {
@@ -346,7 +359,16 @@ export class ImmutableArtifactStore {
     const at = canonicalArtifactTimestamp(input.at, "read timestamp");
     assertArtifactHash(input.artifactId, "artifact identity");
     this.#authorize(input.actor, "artifact:read", "read", input.artifactId, at);
-    const bytes = this.#artifacts.get(input.artifactId)?.bytes;
+    const artifact = this.#artifacts.get(input.artifactId);
+    const primaryId = this.#collisionPrimaryByVariant.get(input.artifactId);
+    if (
+      artifact !== undefined &&
+      primaryId !== undefined &&
+      artifactCollisionVariantIdForBytes(primaryId, artifact.bytes) !== input.artifactId
+    ) {
+      throw new ArtifactStoreIntegrityError(`collision variant ${input.artifactId} is not intact`);
+    }
+    const bytes = artifact?.bytes;
     this.#record(
       at,
       input.actor.actorId,
@@ -410,19 +432,15 @@ export class ImmutableArtifactStore {
     const at = canonicalArtifactTimestamp(input.at, "artifact export timestamp");
     this.#authorize(input.actor, "artifact:export", "export", "artifact-snapshot", at);
     this.#record(at, input.actor.actorId, "export", "artifact-snapshot", "exported", {});
-    const snapshot = this.#snapshot();
-    return {
-      serialized: `${JSON.stringify(snapshot, null, 2)}\n`,
-      snapshotHash: snapshot.snapshotHash,
-    };
-  }
-
-  #snapshot(): ImmutableArtifactSnapshot {
-    return buildImmutableArtifactSnapshot(
+    const snapshot = buildImmutableArtifactSnapshot(
       this.#artifacts.values(),
       this.#references.values(),
       this.#audit,
     );
+    return {
+      serialized: `${JSON.stringify(snapshot, null, 2)}\n`,
+      snapshotHash: snapshot.snapshotHash,
+    };
   }
 
   #authorize(
@@ -434,7 +452,7 @@ export class ImmutableArtifactStore {
     details: ArtifactAuditDetails = {},
   ): void {
     const actorId = nonBlankArtifactValue(actor.actorId, "audit actor");
-    this.#chronological(at);
+    assertArtifactAuditChronological(this.#audit, at);
     if (this.#authority.hasCapability({ actorId }, capability) !== true) {
       this.#record(at, actorId, action, target, "denied", {
         ...details,
@@ -462,39 +480,14 @@ export class ImmutableArtifactStore {
     outcome: ArtifactAuditOutcome,
     details: ArtifactAuditDetails,
   ): ArtifactAuditEvent {
-    this.#chronological(occurredAt);
-    const base = {
-      ordinal: this.#audit.length,
+    return appendImmutableArtifactAuditEvent(
+      this.#audit,
       occurredAt,
-      actor: nonBlankArtifactValue(actor, "audit actor"),
+      actor,
       action,
-      target: nonBlankArtifactValue(target, "audit target"),
+      target,
       outcome,
-      details: structuredClone(details),
-      previousHash: this.#audit.at(-1)?.eventHash ?? genesisArtifactAuditHash,
-    };
-    const event = { ...base, eventHash: hashArtifactJson(base) };
-    this.#audit.push(event);
-    return copyArtifactAuditEvent(event);
-  }
-
-  #chronological(at: string): void {
-    const previous = this.#audit.at(-1)?.occurredAt;
-    if (previous !== undefined && at < previous) {
-      throw new ArtifactStoreIntegrityError(`audit timestamp ${at} precedes ${previous}`);
-    }
-  }
-  #referenced(id: string): boolean {
-    return [...this.#references.values()].some((reference) => reference.artifactId === id);
-  }
-  #dependents(id: string): string[] {
-    return [...this.#artifacts.values()]
-      .filter((artifact) => artifact.parents.includes(id))
-      .map((artifact) => artifact.artifactId);
-  }
-
-  #eligible(id: string, at: string): boolean {
-    const artifact = this.#artifacts.get(id);
-    return artifact !== undefined && artifact.retention.expiresAt <= at && !this.#referenced(id);
+      details,
+    );
   }
 }

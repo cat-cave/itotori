@@ -34,6 +34,7 @@ import {
 } from "./portable-evidence-artifacts.mjs";
 import { compileBehaviorGlue, computeBehaviorBuildDigest } from "./behavior-proof-build.mjs";
 import { buildLocalArtifactReceipt } from "./local-behavior-receipt.mjs";
+import { prepareImmutableArtifactFixedSuccessMutation } from "./behavior-proof-artifact-mutation.mjs";
 
 export { compileBehaviorGlue, computeBehaviorBuildDigest } from "./behavior-proof-build.mjs";
 
@@ -45,6 +46,7 @@ const OWNED_CELLS = [
   "cell::quality.failures-stay-explicit::all",
 ];
 const BASELINE_GREEN_CELLS = [
+  "cell::platform.artifacts-are-immutable-and-retained-by-policy::all",
   "cell::quality.evidence-is-traceable-and-portable::all",
   "cell::quality.failures-stay-explicit::all",
 ];
@@ -231,6 +233,7 @@ export async function runMutationProof({ root = defaultRoot } = {}) {
   const workRoot = resolve(root, ".tmp", "behavior-proof");
   rmSync(workRoot, { force: true, recursive: true });
   compileBehaviorGlue(root);
+  prepareImmutableArtifactFixedSuccessMutation(root, workRoot);
   const { plan: mutantPlan } = await buildBehaviorProofPlan({ root, mode: "fixed-success" });
   const mutant = executePlan(root, workRoot, mutantPlan, true);
   assertCellOutcome(mutant.caseResults, "fail", "fixed-success-did-not-turn-red");

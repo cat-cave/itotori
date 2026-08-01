@@ -101,7 +101,7 @@ async function stageExpiredArtifacts(
         `select parent.artifact_id
          from itotori_immutable_artifacts parent
          where parent.deletion_state = 'active'
-           and parent.expires_at <= $1::timestamptz
+           and itotori_immutable_artifact_effective_expiry(parent.artifact_id) <= $1::timestamptz
            and not exists (
              select 1 from itotori_immutable_artifact_references r
              where r.artifact_id = parent.artifact_id and r.removed_at is null
@@ -123,7 +123,7 @@ async function stageExpiredArtifacts(
           `update itotori_immutable_artifacts candidate
            set deletion_state = 'deleting'
            where candidate.artifact_id = $1 and candidate.deletion_state = 'active'
-             and candidate.expires_at <= $2::timestamptz
+             and itotori_immutable_artifact_effective_expiry(candidate.artifact_id) <= $2::timestamptz
              and not exists (
                select 1 from itotori_immutable_artifact_references r
                where r.artifact_id = candidate.artifact_id and r.removed_at is null
@@ -142,7 +142,7 @@ async function stageExpiredArtifacts(
          occurred_at, actor_id, action, target, outcome, artifact_id, details
        )
        select $1::timestamptz, $2, 'prune', artifact_id, 'staged', artifact_id,
-         jsonb_build_object('expiresAt', expires_at)
+         jsonb_build_object('expiresAt', itotori_immutable_artifact_effective_expiry(artifact_id))
        from itotori_immutable_artifacts
        where deletion_state = 'deleting'
          and not exists (

@@ -4,11 +4,16 @@ import { join } from "node:path";
 
 import {
   ArtifactIdentityCollisionError,
+  ArtifactIncompatibleVersionError,
   ArtifactStoreIntegrityError,
   artifactIdForBytes,
   localUserId,
   openLocalImmutableArtifactRepository,
 } from "../dist/index.js";
+import {
+  ImmutableArtifactStore,
+  artifactCollisionVariantIdForBytes,
+} from "../dist/immutable-artifact-store.js";
 import { observeDatabaseArtifactRepository } from "./immutable-artifact-database-probes.mjs";
 const actor = { userId: localUserId };
 const encoder = new TextEncoder();
@@ -79,6 +84,87 @@ function snapshotHasArtifactBytes(serialized, artifactId, bytes) {
       )
     );
   });
+}
+function snapshotHasCollisionLink(serialized, primaryArtifactId, variantArtifactId) {
+  return array(
+    record(JSON.parse(serialized), "artifact-collision-snapshot").auditEvents,
+    "artifact-collision-audit-events",
+  ).some((row, index) => {
+    const event = record(row, `artifact-collision-audit-event-${index}`);
+    const details = record(event.details, `artifact-collision-audit-details-${index}`);
+    return (
+      event.action === "put" &&
+      event.outcome === "rejected" &&
+      event.target === primaryArtifactId &&
+      details.reason === "identity-collision" &&
+      details.actualArtifactId === variantArtifactId
+    );
+  });
+}
+async function observeLocalHashCollision() {
+  const collisionActor = { actorId: "artifact-collision-proof" };
+  const authority = { hasCapability: () => true };
+  const primaryBytes = encoder.encode("forced primary collision bytes A");
+  const variantBytes = encoder.encode("forced primary collision bytes B");
+  const primaryArtifactId = artifactIdForBytes(primaryBytes);
+  const store = ImmutableArtifactStore.createForTesting(authority, (bytes) =>
+    bytesEqual(bytes, primaryBytes) || bytesEqual(bytes, variantBytes)
+      ? primaryArtifactId
+      : artifactIdForBytes(bytes),
+  );
+  const primary = store.put({
+    bytes: primaryBytes,
+    retention: publicRelease("2026-01-10T00:00:00.000Z"),
+    actor: collisionActor,
+    at: "2026-01-04T00:03:00.000Z",
+  });
+  const collision = await captureError(async () =>
+    store.put({
+      bytes: variantBytes,
+      retention: publicRelease("2026-01-10T00:00:00.000Z"),
+      actor: collisionActor,
+      at: "2026-01-04T00:03:01.000Z",
+    }),
+  );
+  const variantArtifactId =
+    collision instanceof ArtifactIdentityCollisionError ? collision.variantArtifactId : undefined;
+  const snapshot = store.exportSnapshot({
+    actor: collisionActor,
+    at: "2026-01-04T00:03:02.000Z",
+  });
+  const reloaded = ImmutableArtifactStore.reload(
+    snapshot.serialized,
+    snapshot.snapshotHash,
+    authority,
+  );
+  const original = reloaded.read({
+    artifactId: primaryArtifactId,
+    actor: collisionActor,
+    at: "2026-01-04T00:03:03.000Z",
+  });
+  const variant =
+    variantArtifactId === undefined
+      ? undefined
+      : reloaded.read({
+          artifactId: variantArtifactId,
+          actor: collisionActor,
+          at: "2026-01-04T00:03:04.000Z",
+        });
+  const expectedVariantId = artifactCollisionVariantIdForBytes(primaryArtifactId, variantBytes);
+  return {
+    replacement:
+      collision instanceof ArtifactIdentityCollisionError && bytesEqual(original, primaryBytes),
+    collisionPreservesBoth:
+      collision instanceof ArtifactIdentityCollisionError &&
+      collision.claimedArtifactId === primaryArtifactId &&
+      primary.artifactId === primaryArtifactId &&
+      variantArtifactId === expectedVariantId &&
+      bytesEqual(original, primaryBytes) &&
+      bytesEqual(variant, variantBytes) &&
+      snapshotHasArtifactBytes(snapshot.serialized, primaryArtifactId, primaryBytes) &&
+      snapshotHasArtifactBytes(snapshot.serialized, expectedVariantId, variantBytes) &&
+      snapshotHasCollisionLink(snapshot.serialized, primaryArtifactId, expectedVariantId),
+  };
 }
 async function localSnapshotFailure(transform) {
   const root = mkdtempSync(join(tmpdir(), "itotori-artifact-snapshot-"));
@@ -190,28 +276,7 @@ async function observeLocalRepository() {
         }),
         childBytes,
       );
-    const collisionBytes = encoder.encode("conflicting immutable child bytes");
-    const collision = await captureError(async () => {
-      await restored.put(actor, {
-        bytes: collisionBytes,
-        expectedId: child.artifactId,
-        retention: publicRelease("2026-01-10T00:00:00.000Z"),
-        at: "2026-01-04T00:03:00.000Z",
-      });
-    });
-    const originalIntact = bytesEqual(
-      await restored.read(actor, {
-        artifactId: child.artifactId,
-        at: "2026-01-04T00:04:00.000Z",
-      }),
-      childBytes,
-    );
-    const collisionSnapshot = await restored.exportSnapshot(actor, "2026-01-04T00:04:30.000Z");
-    const collisionPreservesBoth =
-      collision === undefined &&
-      originalIntact &&
-      snapshotHasArtifactBytes(collisionSnapshot.serialized, child.artifactId, childBytes) &&
-      snapshotHasArtifactBytes(collisionSnapshot.serialized, child.artifactId, collisionBytes);
+    const collision = await observeLocalHashCollision();
     const mutationFailure = await localSnapshotFailure(mutateSnapshotBytes);
     const versionFailure = await localSnapshotFailure(mutateSnapshotVersion);
     const auditFailure = await localSnapshotFailure(mutateSnapshotAudit);
@@ -233,13 +298,14 @@ async function observeLocalRepository() {
       expiry,
       prune,
       lineage,
-      replacement: collision instanceof ArtifactIdentityCollisionError && originalIntact,
-      collisionPreservesBoth,
+      replacement: collision.replacement,
+      collisionPreservesBoth: collision.collisionPreservesBoth,
       mutation: mutationFailure instanceof ArtifactStoreIntegrityError,
       typedIncompatibleVersion:
-        versionFailure instanceof Error &&
-        versionFailure.name !== "ArtifactStoreIntegrityError" &&
-        versionFailure.message.includes("incompatible"),
+        versionFailure instanceof ArtifactIncompatibleVersionError &&
+        versionFailure.observedVersion === "itotori.immutable-artifact-store.v2" &&
+        versionFailure.supportedVersions.includes("itotori.immutable-artifact-store.v1") &&
+        versionFailure.migrationPath.length > 0,
       audit,
     };
   } finally {

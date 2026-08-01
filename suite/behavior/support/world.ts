@@ -295,7 +295,10 @@ export class BehaviorWorld extends World<WorldParameters> {
           )}`,
         "artifact-given-mismatch",
       );
-      this.artifact = await observeImmutableArtifactBehavior(this.repositoryRoot);
+      this.artifact = await observeImmutableArtifactBehavior(
+        this.repositoryRoot,
+        this.plan.mode === "fixed-success",
+      );
       this.observations = this.artifact.observedFields;
       return;
     }

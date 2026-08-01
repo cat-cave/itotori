@@ -74,6 +74,18 @@ function replayEvent(
     if (!artifacts.has(event.target)) fail("audit repeats missing bytes");
     return;
   }
+  if (
+    event.action === "put" &&
+    event.outcome === "rejected" &&
+    event.details.reason === "identity-collision"
+  ) {
+    const variant = event.details.actualArtifactId;
+    if (typeof variant !== "string") return;
+    if (variant === event.target || !artifacts.has(event.target) || !artifacts.has(variant)) {
+      fail("audit collision does not preserve both variants");
+    }
+    return;
+  }
   if (event.action === "retain" && event.outcome === "retained") {
     const artifact = artifacts.get(event.target);
     if (!artifact) fail("audit retains missing bytes");

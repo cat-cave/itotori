@@ -2,19 +2,32 @@ import { timingSafeEqual } from "node:crypto";
 
 import {
   ArtifactStoreIntegrityError,
+  assertArtifactHash,
   canonicalArtifactTimestamp,
   copyArtifactAuditEvent,
   copyArtifactDescriptor,
+  decodeArtifactBytes,
+  decodeArtifactSnapshot,
   genesisArtifactAuditHash,
   hashArtifactJson,
   immutableArtifactSnapshotVersion,
+  nonBlankArtifactValue,
+  type ArtifactAuditAction,
+  type ArtifactAuditDetails,
   type ArtifactAuditEvent,
+  type ArtifactAuditOutcome,
   type ArtifactDescriptor,
   type ArtifactReference,
   type ArtifactRetentionBasis,
   type ArtifactRetentionPolicy,
   type ImmutableArtifactSnapshot,
 } from "./immutable-artifact-snapshot.js";
+import { artifactCollisionPrimaryByVariant } from "./immutable-artifact-store-collision.js";
+import {
+  artifactDependents,
+  artifactIsEligibleForPrune,
+  artifactIsReferenced,
+} from "./immutable-artifact-store-primitives.js";
 
 export type StoredArtifactRecord = ArtifactDescriptor & { bytes: Uint8Array };
 export type ArtifactCapability =
@@ -83,6 +96,112 @@ export function buildImmutableArtifactSnapshot(
     auditHead: auditEvents.at(-1)?.eventHash ?? genesisArtifactAuditHash,
   };
   return { ...body, snapshotHash: hashArtifactJson(body) };
+}
+
+export function loadImmutableArtifactStoreState(serialized: string, expectedSnapshotHash: string) {
+  assertArtifactHash(expectedSnapshotHash, "expected snapshot identity");
+  const snapshot = decodeArtifactSnapshot(serialized);
+  if (snapshot.snapshotHash !== expectedSnapshotHash) {
+    throw new ArtifactStoreIntegrityError(
+      `artifact snapshot identity mismatch: expected ${expectedSnapshotHash}, received ${snapshot.snapshotHash}`,
+    );
+  }
+  const collisionPrimaryByVariant = artifactCollisionPrimaryByVariant(snapshot.auditEvents);
+  if (collisionPrimaryByVariant === undefined) {
+    throw new ArtifactStoreIntegrityError("collision variant has conflicting primaries");
+  }
+  return {
+    artifacts: new Map(
+      snapshot.artifacts.map((row) => [
+        row.artifactId,
+        {
+          ...copyArtifactDescriptor(row),
+          bytes: decodeArtifactBytes(row.bytesBase64, row.artifactId),
+        },
+      ]),
+    ),
+    references: new Map(snapshot.references.map((row) => [row.referenceId, { ...row }])),
+    audit: snapshot.auditEvents.map(copyArtifactAuditEvent),
+    collisionPrimaryByVariant,
+  };
+}
+
+export function appendImmutableArtifactAuditEvent(
+  audit: ArtifactAuditEvent[],
+  occurredAt: string,
+  actor: string,
+  action: ArtifactAuditAction,
+  target: string,
+  outcome: ArtifactAuditOutcome,
+  details: ArtifactAuditDetails,
+): ArtifactAuditEvent {
+  const previous = audit.at(-1);
+  if (previous !== undefined && occurredAt < previous.occurredAt) {
+    throw new ArtifactStoreIntegrityError(
+      `audit timestamp ${occurredAt} precedes ${previous.occurredAt}`,
+    );
+  }
+  const base = {
+    ordinal: audit.length,
+    occurredAt,
+    actor: nonBlankArtifactValue(actor, "audit actor"),
+    action,
+    target: nonBlankArtifactValue(target, "audit target"),
+    outcome,
+    details: structuredClone(details),
+    previousHash: previous?.eventHash ?? genesisArtifactAuditHash,
+  };
+  const event = { ...base, eventHash: hashArtifactJson(base) };
+  audit.push(event);
+  return copyArtifactAuditEvent(event);
+}
+
+export function pruneImmutableArtifactScope(
+  artifacts: Map<string, StoredArtifactRecord>,
+  references: ReadonlyMap<string, ArtifactReference>,
+  ids: readonly string[],
+  at: string,
+  record: (
+    target: string,
+    outcome: "pruned" | "no-op",
+    details: ArtifactAuditDetails,
+  ) => ArtifactAuditEvent,
+): ArtifactPruneReceipt {
+  const scheduled = new Set(
+    ids.filter((id) => artifactIsEligibleForPrune(artifacts, references, id, at)),
+  );
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const id of scheduled) {
+      if (artifactDependents(artifacts, id).some((child) => !scheduled.has(child))) {
+        scheduled.delete(id);
+        changed = true;
+      }
+    }
+  }
+  const decisions = ids.map((artifactId): ArtifactPruneDecision => {
+    const artifact = artifacts.get(artifactId);
+    if (!artifact) return { artifactId, decision: "missing" };
+    if (scheduled.has(artifactId)) return { artifactId, decision: "pruned" };
+    if (artifact.retention.expiresAt > at) return { artifactId, decision: "not-expired" };
+    if (artifactIsReferenced(references, artifactId)) return { artifactId, decision: "referenced" };
+    return { artifactId, decision: "lineage-dependent" };
+  });
+  const prunedArtifactIds = [...scheduled].sort();
+  for (const id of prunedArtifactIds) artifacts.delete(id);
+  const requestedArtifactIds = [...ids];
+  const event = record(
+    `prune-scope:${hashArtifactJson(requestedArtifactIds)}`,
+    prunedArtifactIds.length ? "pruned" : "no-op",
+    { decisions: decisions.map((row) => ({ ...row })), requestedArtifactIds },
+  );
+  return {
+    requestedArtifactIds,
+    decisions: decisions.map((row) => ({ ...row })),
+    prunedArtifactIds,
+    auditEventHash: event.eventHash,
+  };
 }
 
 export function checkedArtifactRetention(

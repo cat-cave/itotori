@@ -243,4 +243,8 @@ export const productMigrationEntries = [
     id: "0118_immutable_artifact_repository",
     file: "0118_immutable_artifact_repository.sql",
   },
+  {
+    id: "0119_immutable_artifact_database_enforcement",
+    file: "0119_immutable_artifact_database_enforcement.sql",
+  },
 ] as const;
