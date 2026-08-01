@@ -12,14 +12,17 @@ import {
 import { expectedFragmentFileNames, fragmentArtifactPaths } from "./behavior-proof-fragments.mjs";
 
 const digest = (character) => character.repeat(64);
+const artifactCell = "cell::platform.artifacts-are-immutable-and-retained-by-policy::all";
+const baselineGreenCells = new Set(OWNED_CELLS.filter((cell) => cell !== artifactCell));
 const subjects = Array.from(
   { length: 47 },
   (_, index) => `decode.engine.subject-${String(index).padStart(2, "0")}`,
 );
 const sharedBehaviors = [
+  "platform.artifacts-are-immutable-and-retained-by-policy",
   "quality.evidence-is-traceable-and-portable",
   "quality.failures-stay-explicit",
-  ...Array.from({ length: 29 }, (_, index) => `proof.shared-${String(index).padStart(2, "0")}`),
+  ...Array.from({ length: 28 }, (_, index) => `proof.shared-${String(index).padStart(2, "0")}`),
 ];
 const canonicalBehaviors = Array.from(
   { length: 4 },
@@ -110,32 +113,33 @@ function passingInput() {
     ],
     caseResults: plan.cases.map(({ id, behavior, subject, cell }) => {
       const owned = OWNED_CELLS.includes(cell);
+      const green = baselineGreenCells.has(cell);
       return {
         caseId: id,
         behavior,
         subject,
         cell,
-        status: owned ? "pass" : "fail",
+        status: green ? "pass" : "fail",
         assertionCount: owned ? 1 : 0,
         observationCount: owned ? 1 : 0,
-        reasonCodes: owned ? [] : ["missing-execution"],
+        reasonCodes: green ? [] : owned ? ["artifact-substrate-gap"] : ["missing-execution"],
       };
     }),
     mutationResults: OWNED_CELLS.map((cell) => ({
       mutationId: `kill::${cell.slice("cell::".length)}`,
       cell,
-      outcome: "killed",
-      baselineStatus: "pass",
+      outcome: cell === artifactCell ? "invalid" : "killed",
+      baselineStatus: cell === artifactCell ? "fail" : "pass",
       mutantStatus: "fail",
-      reasonCodes: [],
+      reasonCodes: cell === artifactCell ? ["baseline-failed"] : [],
     })),
     verifiedReceiptDigests: Object.fromEntries(
-      OWNED_CELLS.map((cell, index) => [cell, digest(index === 0 ? "f" : "1")]),
+      [...baselineGreenCells].map((cell, index) => [cell, digest(index === 0 ? "f" : "1")]),
     ),
   };
 }
 
-test("a real-scale report passes only the two owned cells", () => {
+test("a real-scale report passes only the baseline-green owned cells", () => {
   const report = buildCellReport(passingInput());
   assert.equal(report.schema, "itotori.behavior-cell-report.v1");
   assert.equal(report.cells.length, 687);
@@ -151,12 +155,16 @@ test("a real-scale report passes only the two owned cells", () => {
   const passing = report.cells.filter(({ status }) => status === "pass");
   assert.deepEqual(
     passing.map(({ cell }) => cell),
-    [...OWNED_CELLS].sort(),
+    [...baselineGreenCells].sort(),
   );
   assert.ok(passing.every(({ verifiedReceiptDigest }) => verifiedReceiptDigest !== null));
-  const missing = report.cells.filter(({ status }) => status === "fail");
+  const missing = report.cells.filter(({ cell }) => !OWNED_CELLS.includes(cell));
   assert.ok(missing.every(({ reasonCodes }) => reasonCodes.join() === "missing-execution"));
   assert.ok(missing.every(({ verifiedReceiptDigest }) => verifiedReceiptDigest === null));
+  const artifact = report.cells.find(({ cell }) => cell === artifactCell);
+  assert.equal(artifact?.status, "fail");
+  assert.ok(artifact?.reasonCodes.includes("artifact-substrate-gap"));
+  assert.ok(artifact?.reasonCodes.includes("invalid-mutation"));
   assert.equal(
     formatCellReportSummary(report),
     "2/687 cells pass (0.29%); 685 fail; 96 pairs not applicable",
@@ -223,17 +231,17 @@ test("a signed plan can enumerate multiple shards for one logical lane", () => {
   );
 });
 
-test("fixed-success mutations turn both owned cells red", () => {
+test("fixed-success mutations turn the baseline-green owned cells red", () => {
   const input = passingInput();
   input.mutationResults = input.mutationResults.map((mutation) => ({
     ...mutation,
-    outcome: "escaped",
-    mutantStatus: "pass",
-    reasonCodes: ["fixed-success"],
+    ...(baselineGreenCells.has(mutation.cell)
+      ? { outcome: "escaped", mutantStatus: "pass", reasonCodes: ["fixed-success"] }
+      : {}),
   }));
   const report = buildCellReport(input);
   assert.equal(report.summary.passingCellCount, 0);
-  for (const cell of report.cells.filter(({ cell }) => OWNED_CELLS.includes(cell))) {
+  for (const cell of report.cells.filter(({ cell }) => baselineGreenCells.has(cell))) {
     assert.equal(cell.status, "fail");
     assert.deepEqual(cell.reasonCodes, ["mutation-escaped"]);
     assert.equal(cell.verifiedReceiptDigest, null);
@@ -242,7 +250,7 @@ test("fixed-success mutations turn both owned cells red", () => {
 
 test("one assertion cannot stand in for every Gherkin outcome", () => {
   const input = passingInput();
-  const selected = input.selectionPlan.cases.find(({ cell }) => OWNED_CELLS.includes(cell));
+  const selected = input.selectionPlan.cases.find(({ cell }) => baselineGreenCells.has(cell));
   selected.requiredAssertionCount = 2;
   input.selectionPlanDigest = canonicalDigest(input.selectionPlan);
   assert.throws(
@@ -273,7 +281,7 @@ test("no execution produces the honest 0/687 baseline", () => {
 test("missing execution or receipt keeps the affected owned cell red", async (context) => {
   await context.test("one missing selected case is red", () => {
     const input = passingInput();
-    const removed = input.caseResults.find(({ cell }) => OWNED_CELLS.includes(cell));
+    const removed = input.caseResults.find(({ cell }) => baselineGreenCells.has(cell));
     Object.assign(removed, {
       status: "fail",
       assertionCount: 0,
@@ -287,9 +295,10 @@ test("missing execution or receipt keeps the affected owned cell red", async (co
   });
   await context.test("one missing receipt is red and never emitted", () => {
     const input = passingInput();
-    delete input.verifiedReceiptDigests[OWNED_CELLS[0]];
+    const greenCell = [...baselineGreenCells][0];
+    delete input.verifiedReceiptDigests[greenCell];
     const report = buildCellReport(input);
-    const cell = report.cells.find(({ cell }) => cell === OWNED_CELLS[0]);
+    const cell = report.cells.find(({ cell }) => cell === greenCell);
     assert.equal(cell.status, "fail");
     assert.ok(cell.reasonCodes.includes("missing-verified-receipt"));
     assert.equal(cell.verifiedReceiptDigest, null);

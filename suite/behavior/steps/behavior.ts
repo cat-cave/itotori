@@ -8,8 +8,8 @@ Before<BehaviorWorld>(function ({ pickle }) {
   this.begin(pickle.name);
 });
 
-defineStep<BehaviorWorld>(/^(.+)$/u, function (text: string) {
-  this.execute(text);
+defineStep<BehaviorWorld>(/^(.+)$/u, async function (text: string) {
+  await this.execute(text);
 });
 
 After<BehaviorWorld>(function ({ result }) {

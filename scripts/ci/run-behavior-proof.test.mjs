@@ -9,10 +9,18 @@ import { runMutationProof } from "./run-behavior-proof.mjs";
 test("cell_transition_rejects_fixed_empty_driver", async () => {
   const root = resolve(new URL("../..", import.meta.url).pathname);
   const { mutant, baseline, baselinePlan } = await runMutationProof({ root });
-  assert.equal(mutant.caseResults.length, 24);
-  assert.equal(baseline.caseResults.length, 24);
+  assert.equal(mutant.caseResults.length, 32);
+  assert.equal(baseline.caseResults.length, 32);
   assert.deepEqual(new Set(mutant.caseResults.map(({ status }) => status)), new Set(["fail"]));
-  assert.deepEqual(new Set(baseline.caseResults.map(({ status }) => status)), new Set(["pass"]));
+  assert.equal(baseline.caseResults.filter(({ status }) => status === "pass").length, 24);
+  assert.equal(baseline.caseResults.filter(({ status }) => status === "fail").length, 8);
+  assert.ok(
+    baseline.caseResults
+      .filter(
+        ({ behavior }) => behavior === "platform.artifacts-are-immutable-and-retained-by-policy",
+      )
+      .every(({ status }) => status === "fail"),
+  );
 
   const driver = await import(
     pathToFileURL(resolve(root, ".tmp/behavior-proof/glue/drivers/explicit-failure.js")).href

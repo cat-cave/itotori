@@ -1,4 +1,8 @@
-import type { LlmRetentionDeletionReport } from "@itotori/db";
+import type { ImmutableArtifactRetentionReport, LlmRetentionDeletionReport } from "@itotori/db";
+
+export type RetentionDeletionReport = LlmRetentionDeletionReport & {
+  readonly immutableArtifacts?: ImmutableArtifactRetentionReport;
+};
 
 export const RETENTION_SCHEDULER_INTERVAL_MS = 24 * 60 * 60 * 1_000;
 
@@ -12,7 +16,7 @@ export type RetentionSchedulerEvent =
       readonly kind: "retention_deletion_completed";
       readonly startedAt: string;
       readonly finishedAt: string;
-      readonly report: LlmRetentionDeletionReport;
+      readonly report: RetentionDeletionReport;
     }
   | {
       readonly kind: "retention_deletion_failed";
@@ -43,7 +47,7 @@ type SchedulerTimer = ReturnType<typeof setInterval>;
 /** Runs retention once at process startup and at least once each following day.
  * Events intentionally contain lifecycle metadata and aggregate counts only. */
 export function createRetentionScheduler(input: {
-  readonly deleteExpired: () => Promise<LlmRetentionDeletionReport>;
+  readonly deleteExpired: () => Promise<RetentionDeletionReport>;
   readonly intervalMs?: number;
   readonly now?: () => Date;
   readonly observe?: (event: RetentionSchedulerEvent) => void;

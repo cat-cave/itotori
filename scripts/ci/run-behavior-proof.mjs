@@ -40,6 +40,11 @@ export { compileBehaviorGlue, computeBehaviorBuildDigest } from "./behavior-proo
 const here = dirname(fileURLToPath(import.meta.url));
 const defaultRoot = resolve(here, "../..");
 const OWNED_CELLS = [
+  "cell::platform.artifacts-are-immutable-and-retained-by-policy::all",
+  "cell::quality.evidence-is-traceable-and-portable::all",
+  "cell::quality.failures-stay-explicit::all",
+];
+const BASELINE_GREEN_CELLS = [
   "cell::quality.evidence-is-traceable-and-portable::all",
   "cell::quality.failures-stay-explicit::all",
 ];
@@ -201,8 +206,8 @@ function executePlan(root, workRoot, plan, mutationOnly) {
   };
 }
 
-function assertCellOutcome(results, status, label) {
-  for (const cell of OWNED_CELLS) {
+function assertCellOutcome(results, status, label, cells = OWNED_CELLS) {
+  for (const cell of cells) {
     const cellResults = results.filter((result) => result.cell === cell);
     if (cellResults.length === 0 || cellResults.some((result) => result.status !== status)) {
       throw new Error(`${label}:${cell}:${cellResults.length}/${status}`);
@@ -232,7 +237,12 @@ export async function runMutationProof({ root = defaultRoot } = {}) {
   preserveMutationRun(workRoot, mutant);
   const { plan: baselinePlan } = await buildBehaviorProofPlan({ root, mode: "normal" });
   const baseline = executePlan(root, workRoot, baselinePlan, true);
-  assertCellOutcome(baseline.caseResults, "pass", "real-driver-did-not-turn-green");
+  assertCellOutcome(
+    baseline.caseResults,
+    "pass",
+    "existing-real-drivers-did-not-stay-green",
+    BASELINE_GREEN_CELLS,
+  );
   return { mutant, baseline, mutantPlan, baselinePlan, workRoot };
 }
 
@@ -325,13 +335,20 @@ export async function runBehaviorProof({ root = defaultRoot, output = "behavior-
   preserveMutationRun(proof.workRoot, fullMutant);
   const { plan } = await buildBehaviorProofPlan({ root, mode: "normal" });
   const fullRun = executePlan(root, proof.workRoot, plan, false);
-  assertCellOutcome(fullRun.caseResults, "pass", "real-driver-did-not-stay-green");
-  const expectedFailures = fullRun.caseResults.filter(({ status }) => status === "fail");
+  assertCellOutcome(
+    fullRun.caseResults,
+    "pass",
+    "existing-real-drivers-did-not-stay-green",
+    BASELINE_GREEN_CELLS,
+  );
+  const missingExecutionFailures = fullRun.caseResults.filter(
+    ({ status, reasonCodes }) => status === "fail" && reasonCodes.includes("missing-execution"),
+  );
   if (
-    expectedFailures.length !== 3_376 ||
-    expectedFailures.some(({ reasonCodes }) => !reasonCodes.includes("missing-execution"))
+    missingExecutionFailures.length !== 3_368 ||
+    missingExecutionFailures.some(({ reasonCodes }) => !reasonCodes.includes("missing-execution"))
   ) {
-    throw new Error(`unexpected-unimplemented-case-count:${expectedFailures.length}/3376`);
+    throw new Error(`unexpected-unimplemented-case-count:${missingExecutionFailures.length}/3368`);
   }
   const mutations = buildMutationResults(fullMutant.caseResults, fullRun.caseResults);
   const selectionPlanDigest = canonicalDigest(plan);
@@ -448,15 +465,18 @@ function parseOutput(args) {
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   runBehaviorProof({ output: parseOutput(process.argv.slice(2)) })
-    .then(({ report, mutationReport, proof }) => {
+    .then(({ report, mutationReport, mutations, proof, fullRun }) => {
       process.stdout.write(
-        `Mutation fixed-success: ${OWNED_CELLS.length}/2 cells red (${proof.mutant.caseResults.length} cases failed).\n`,
+        `Fixed-success execution: ${OWNED_CELLS.length}/${OWNED_CELLS.length} owned cells red (${proof.mutant.caseResults.length} cases failed).\n`,
       );
       process.stdout.write(
-        `Restored drivers: ${OWNED_CELLS.length}/2 cells green (${proof.baseline.caseResults.length} cases passed).\n`,
+        `Mutation records: ${mutations.filter(({ outcome }) => outcome === "killed").length} killed, ${mutations.filter(({ outcome }) => outcome === "invalid").length} invalid, ${mutations.filter(({ outcome }) => outcome === "escaped").length} escaped.\n`,
       );
       process.stdout.write(
-        `Cucumber execution: ${report.summary.passingCellCount === 2 ? "3400/3400" : "invalid"} selected cases reported; 24 passed and 3376 failed explicitly.\n`,
+        `Restored drivers: ${proof.baseline.caseResults.filter(({ status }) => status === "pass").length}/${proof.baseline.caseResults.length} cases passed.\n`,
+      );
+      process.stdout.write(
+        `Cucumber execution: 3400/3400 selected cases reported; ${fullRun.caseResults.filter(({ status }) => status === "pass").length} passed and ${fullRun.caseResults.filter(({ status }) => status === "fail").length} failed explicitly.\n`,
       );
       process.stdout.write(`Fixed-success report: ${formatCellReportSummary(mutationReport)}\n`);
       process.stdout.write(`${formatCellReportSummary(report)}\n`);
