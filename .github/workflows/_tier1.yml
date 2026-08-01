@@ -264,7 +264,7 @@ jobs:
     if: ${{ always() }}
     needs: [native, portable, db, browser, alpha, mutation, behavior]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -284,22 +284,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          merge_base="$(git merge-base HEAD origin/${{ github.base_ref || 'main' }})"
+          base_ref="${{ github.base_ref || 'main' }}"
+          git fetch --no-tags origin "+refs/heads/$base_ref:refs/remotes/origin/$base_ref"
+          base_remote="refs/remotes/origin/$base_ref"
+          git rev-parse --verify --quiet "$base_remote^{commit}" >/dev/null
+          merge_base="$(git merge-base HEAD "$base_remote")"
           test -n "$merge_base"
           baseline_root="$RUNNER_TEMP/behavior-baseline"
+          cleanup() {
+            git worktree remove --force "$baseline_root"
+          }
           git worktree add --detach "$baseline_root" "$merge_base"
-          trap 'git worktree remove --force "$baseline_root"' EXIT
+          trap cleanup EXIT
           pnpm --dir "$baseline_root" install --frozen-lockfile
           (
             cd "$baseline_root"
             node scripts/ci/run-behavior-proof.mjs
           )
+          cp "$baseline_root/behavior-proof/cell-report.json" "$RUNNER_TEMP/baseline-cell-report.json"
+          cleanup
+          trap - EXIT
 
       - name: Reject behavior cell-count regression
         run: |
           node scripts/ci/behavior-cell-ratchet.mjs \
             behavior-proof/cell-report.json \
-            "$RUNNER_TEMP/behavior-baseline/behavior-proof/cell-report.json"
+            "$RUNNER_TEMP/baseline-cell-report.json"
 
       - name: Aggregate Tier-1 jobs
         run: |
