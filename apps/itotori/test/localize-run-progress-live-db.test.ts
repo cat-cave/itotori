@@ -87,7 +87,13 @@ postgresDescribe("localize run progress over Postgres", () => {
         const firstReviewGate = deferred();
         const firstFinalizeGate = deferred();
         const firstPatchGate = deferred();
-        const firstState = recordedRunState(firstReviewGate, firstFinalizeGate, firstPatchGate);
+        const firstDraftProgressGate = deferred();
+        const firstState = recordedRunState(
+          firstReviewGate,
+          firstFinalizeGate,
+          firstPatchGate,
+          firstDraftProgressGate,
+        );
         const first = runLocalizeCommand(
           commandArgs(projectId, "localize-progress-run-one", localeBranchId),
           commandDeps(
@@ -99,7 +105,10 @@ postgresDescribe("localize run progress over Postgres", () => {
         );
         let second: Promise<void> | undefined;
         try {
-          await firstState.reviewEntered;
+          // The raw gates port runs only after the tracker has awaited the
+          // confirmed cost observer and durably upserted drafted progress.
+          // Hold there: it is the exact in-flight projection this test reads.
+          await firstState.draftProgressEntered;
 
           const during = await workflow.loadLiveReadModel(projectId, "localize-progress-run-one");
           expect(during?.run.status).toBe("running");
@@ -116,6 +125,8 @@ postgresDescribe("localize run progress over Postgres", () => {
               secondState,
             ),
           );
+          firstDraftProgressGate.resolve();
+          await firstState.reviewEntered;
           firstReviewGate.resolve();
           await firstState.finalizeEntered;
           const duringQa = await workflow.loadLiveReadModel(projectId, "localize-progress-run-one");
@@ -256,6 +267,7 @@ postgresDescribe("localize run progress over Postgres", () => {
         } finally {
           // Assertions deliberately inspect in-flight runs. Always open every
           // gate and settle their promises before the DB service scope closes.
+          firstDraftProgressGate.resolve();
           firstReviewGate.resolve();
           firstFinalizeGate.resolve();
           firstPatchGate.resolve();
