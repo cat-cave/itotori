@@ -50,6 +50,44 @@ test("cell_transition_kills_an_unsupported-version-acceptance_mutation", async (
   assert.notEqual(missingDatabaseBoundary.status, 0);
   assert.match(missingDatabaseBoundary.stderr, /MissingRequiredInputError/u);
   assert.match(missingDatabaseBoundary.stderr, /DATABASE_URL/u);
+  const missingDatabaseDriver = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `
+        import { observeImmutableArtifactBehavior } from "./.tmp/behavior-proof/glue/drivers/immutable-artifact.js";
+        try {
+          await observeImmutableArtifactBehavior(${JSON.stringify(root)});
+          process.exitCode = 1;
+        } catch (error) {
+          process.stdout.write(JSON.stringify({
+            name: error instanceof Error ? error.name : undefined,
+            message: error instanceof Error ? error.message : undefined,
+            inputName:
+              typeof error === "object" && error !== null && "inputName" in error
+                ? error.inputName
+                : undefined,
+          }));
+        }
+      `,
+    ],
+    { cwd: root, encoding: "utf8", env: noDatabaseEnvironment },
+  );
+  assert.equal(missingDatabaseDriver.status, 0, missingDatabaseDriver.stderr);
+  assert.deepEqual(JSON.parse(missingDatabaseDriver.stdout), {
+    name: "ArtifactBehaviorDatabaseConfigurationError",
+    message: "required input is absent: DATABASE_URL",
+    inputName: "DATABASE_URL",
+  });
+  const missingDatabaseProof = spawnSync(process.execPath, ["scripts/ci/run-behavior-proof.mjs"], {
+    cwd: root,
+    encoding: "utf8",
+    env: noDatabaseEnvironment,
+  });
+  assert.notEqual(missingDatabaseProof.status, 0);
+  assert.match(missingDatabaseProof.stderr, /MissingRequiredInputError/u);
+  assert.match(missingDatabaseProof.stderr, /DATABASE_URL/u);
   assert.equal(mutant.caseResults.length, 32);
   assert.equal(baseline.caseResults.length, 32);
   assert.deepEqual(new Set(mutant.caseResults.map(({ status }) => status)), new Set(["fail"]));

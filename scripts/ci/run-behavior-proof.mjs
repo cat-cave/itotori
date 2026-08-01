@@ -79,6 +79,14 @@ function run(command, args, root) {
   return result;
 }
 
+async function requireDatabaseUrl(root) {
+  if (process.env.DATABASE_URL) return;
+  const { MissingRequiredInputError } = await import(
+    pathToFileURL(resolve(root, "packages/itotori-db/dist/index.js")).href
+  );
+  throw new MissingRequiredInputError("DATABASE_URL");
+}
+
 function existingDirectory(path, label, allowMissing = false) {
   let stat;
   try {
@@ -233,6 +241,7 @@ export async function runMutationProof({ root = defaultRoot } = {}) {
   const workRoot = resolve(root, ".tmp", "behavior-proof");
   rmSync(workRoot, { force: true, recursive: true });
   compileBehaviorGlue(root);
+  await requireDatabaseUrl(root);
   prepareImmutableArtifactFixedSuccessMutation(root, workRoot);
   const { plan: mutantPlan } = await buildBehaviorProofPlan({ root, mode: "fixed-success" });
   const mutant = executePlan(root, workRoot, mutantPlan, true);

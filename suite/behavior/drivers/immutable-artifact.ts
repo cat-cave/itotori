@@ -19,6 +19,16 @@ export type ImmutableArtifactObservation = {
   readonly observedFields: number;
 };
 
+/** The behavior ledger cannot turn an absent DB into a normal failed proof. */
+export class ArtifactBehaviorDatabaseConfigurationError extends Error {
+  readonly inputName = "DATABASE_URL";
+
+  constructor() {
+    super("required input is absent: DATABASE_URL");
+    this.name = "ArtifactBehaviorDatabaseConfigurationError";
+  }
+}
+
 let cachedObservation: Promise<ImmutableArtifactObservation> | undefined;
 let cachedFixedSuccessObservation: Promise<ImmutableArtifactObservation> | undefined;
 
@@ -150,6 +160,7 @@ export async function observeImmutableArtifactBehavior(
   repositoryRoot: string,
   fixedSuccess = false,
 ): Promise<ImmutableArtifactObservation> {
+  if (!process.env.DATABASE_URL) throw new ArtifactBehaviorDatabaseConfigurationError();
   if (fixedSuccess) {
     cachedFixedSuccessObservation ??= Promise.resolve(observeArtifactProduct(repositoryRoot, true));
     return await cachedFixedSuccessObservation;
