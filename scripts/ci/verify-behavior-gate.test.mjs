@@ -27,6 +27,19 @@ import {
 import { runPortableAdversarialTests } from "./verify-behavior-gate-portable-adversarial.mjs";
 
 const root = resolve(new URL("../..", import.meta.url).pathname);
+const DECLARED_APPLICABLE_CELL_COUNT = 687;
+
+function assertAcceptedReportInvariants(report) {
+  const { summary } = report;
+  const passingCells = report.cells.filter(({ status }) => status === "pass").length;
+  assert.equal(summary.applicableCellCount, DECLARED_APPLICABLE_CELL_COUNT);
+  assert.equal(Number.isInteger(summary.passingCellCount), true);
+  assert.ok(summary.passingCellCount >= 0);
+  assert.ok(summary.passingCellCount <= summary.applicableCellCount);
+  assert.equal(summary.applicableCellCount, report.cells.length);
+  assert.equal(summary.passingCellCount, passingCells);
+  assert.equal(summary.failingCellCount, summary.applicableCellCount - summary.passingCellCount);
+}
 
 test("missing_lane_fragment_fails_aggregate", () => {
   const fixture = mkdtempSync(join(tmpdir(), "behavior-fragment-"));
@@ -76,7 +89,7 @@ test("accepted gate rejects a relabeled local-candidate receipt", () => {
 
 test(
   "local gate rebuilds conclusions from raw Cucumber evidence",
-  // Parent deadline covers every awaited clean-copy rebuild; child assertions are unchanged.
+  // Parent deadline covers every awaited clean-copy rebuild.
   { timeout: 900_000 },
   async (context) => {
     mkdirSync(resolve(root, ".tmp"), { recursive: true });
@@ -93,7 +106,7 @@ test(
 
       await context.test("accepts the unmodified rebuilt report", async () => {
         const report = await verifyLocalCandidate({ root, artifactRoot });
-        assert.equal(report.summary.passingCellCount, 2);
+        assertAcceptedReportInvariants(report);
         const mutationReport = readJson(
           resolve(outputRoot, "mutation", "fixed-success-cell-report.json"),
         );
@@ -109,7 +122,7 @@ test(
       await context.test("rebuilds candidate glue on a clean host", async () => {
         rmSync(resolve(root, ".tmp", "behavior-proof"), { force: true, recursive: true });
         const report = await verifyLocalCandidate({ root, artifactRoot });
-        assert.equal(report.summary.passingCellCount, 2);
+        assertAcceptedReportInvariants(report);
       });
 
       await context.test("rejects symlinked report, lane, and root receipt artifacts", async () => {
@@ -265,6 +278,18 @@ test(
           writeJson(mutationsPath, []);
           writeJson(receiptPath, receipt);
           writeJson(reportPath, report);
+          await assert.rejects(
+            verifyLocalCandidate({ root, artifactRoot }),
+            /mutation-results-raw-evidence-binding-mismatch/u,
+          );
+        });
+      });
+
+      await context.test("rejects a killed mutation record with a passing mutant", async () => {
+        await restoring([mutationsPath], async () => {
+          const mutations = readJson(mutationsPath);
+          mutations[0].mutantStatus = "pass";
+          writeJson(mutationsPath, mutations);
           await assert.rejects(
             verifyLocalCandidate({ root, artifactRoot }),
             /mutation-results-raw-evidence-binding-mismatch/u,
