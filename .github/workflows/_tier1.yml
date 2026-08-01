@@ -267,6 +267,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
 
       - uses: ./.github/actions/setup-itotori
 
@@ -277,6 +279,27 @@ jobs:
 
       - name: Verify downloaded behavior proof against this candidate
         run: node scripts/ci/verify-behavior-gate.mjs --local-candidate
+
+      - name: Generate behavior baseline from merge base
+        shell: bash
+        run: |
+          set -euo pipefail
+          merge_base="$(git merge-base HEAD origin/${{ github.base_ref || 'main' }})"
+          test -n "$merge_base"
+          baseline_root="$RUNNER_TEMP/behavior-baseline"
+          git worktree add --detach "$baseline_root" "$merge_base"
+          trap 'git worktree remove --force "$baseline_root"' EXIT
+          pnpm --dir "$baseline_root" install --frozen-lockfile
+          (
+            cd "$baseline_root"
+            node scripts/ci/run-behavior-proof.mjs
+          )
+
+      - name: Reject behavior cell-count regression
+        run: |
+          node scripts/ci/behavior-cell-ratchet.mjs \
+            behavior-proof/cell-report.json \
+            "$RUNNER_TEMP/behavior-baseline/behavior-proof/cell-report.json"
 
       - name: Aggregate Tier-1 jobs
         run: |

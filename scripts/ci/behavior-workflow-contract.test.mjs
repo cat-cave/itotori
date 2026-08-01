@@ -32,11 +32,18 @@ test("non-required full-matrix context verifies the proof and remains fail-close
   assert.doesNotMatch(body, /continue-on-error/u);
 });
 
-test("required context verifies the candidate but excludes incomplete full-matrix coverage", () => {
+test("required context verifies the candidate and ratchets against its merge-base baseline", () => {
   const body = job("required");
   assert.match(body, /needs: \[native, portable, db, browser, alpha, mutation, behavior\]/u);
   assert.doesNotMatch(body, /needs:[^\n]*full-matrix/u);
   assert.match(body, /actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c/u);
+  assert.match(body, /fetch-depth: 0/u);
   assert.match(body, /verify-behavior-gate\.mjs --local-candidate/u);
+  assert.match(body, /git merge-base HEAD origin\/\$\{\{ github\.base_ref \|\| 'main' \}\}/u);
+  assert.match(body, /git worktree add --detach/u);
+  assert.match(body, /pnpm --dir "\$baseline_root" install --frozen-lockfile/u);
+  assert.match(body, /node scripts\/ci\/run-behavior-proof\.mjs/u);
+  assert.match(body, /node scripts\/ci\/behavior-cell-ratchet\.mjs/u);
+  assert.match(body, /\$RUNNER_TEMP\/behavior-baseline\/behavior-proof\/cell-report\.json/u);
   assert.match(body, /success,success,success,success,success,success,success/u);
 });
