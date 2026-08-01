@@ -44,9 +44,11 @@ export type RecordedRunState = {
   failOnDraft?: Error;
   /** A terminal provider failure is reported before the draft throws. */
   failAfterAttempt?: LlmStepExecution;
+  draftProgressEntered: Promise<void>;
   reviewEntered: Promise<void>;
   finalizeEntered: Promise<void>;
   patchEntered: Promise<void>;
+  waitForDraftProgress: () => Promise<void>;
   waitForReview: () => Promise<void>;
   waitForFinalize: () => Promise<void>;
   waitForPatch: () => Promise<void>;
@@ -109,7 +111,9 @@ export function recordedRunState(
   reviewGate?: ReturnType<typeof deferred>,
   finalizeGate?: ReturnType<typeof deferred>,
   patchGate?: ReturnType<typeof deferred>,
+  draftProgressGate?: ReturnType<typeof deferred>,
 ): RecordedRunState {
+  const draftProgress = deferred();
   const review = deferred();
   const finalize = deferred();
   const patch = deferred();
@@ -117,9 +121,14 @@ export function recordedRunState(
     heads: new Map(),
     attempts: [],
     providerCallCount: 0,
+    draftProgressEntered: draftProgress.promise,
     reviewEntered: review.promise,
     finalizeEntered: finalize.promise,
     patchEntered: patch.promise,
+    waitForDraftProgress: async () => {
+      draftProgress.resolve();
+      await draftProgressGate?.promise;
+    },
     waitForReview: async () => {
       review.resolve();
       await reviewGate?.promise;
@@ -207,6 +216,7 @@ export function recordedPorts(
     },
     gates: {
       async evaluate() {
+        await state.waitForDraftProgress();
         return { defects: [], evaluatedGates: ["protected-spans"] };
       },
     },
