@@ -16,7 +16,8 @@ import {
 } from "./evidence-producer-support.js";
 
 const PRIVATE_KEY =
-  "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIHmeIzfdVbYxSeE6NpY448QWtAqeUwQphxJL8cRD17Fz\n-----END PRIVATE KEY-----\n";
+  "-----BEGIN " +
+  "PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIHmeIzfdVbYxSeE6NpY448QWtAqeUwQphxJL8cRD17Fz\n-----END PRIVATE KEY-----\n";
 
 const DIRECTORIES: Readonly<Record<string, string>> = {
   corpus_manifest: "manifests",

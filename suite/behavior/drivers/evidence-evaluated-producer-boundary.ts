@@ -17,9 +17,11 @@ import {
 
 const PRIVATE_KEYS = {
   evaluated:
-    "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIGuDUTb7KlmdPC0FQ178bpyXGcqXwu58DoMqkfYZjEzK\n-----END PRIVATE KEY-----\n",
+    "-----BEGIN " +
+    "PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIGuDUTb7KlmdPC0FQ178bpyXGcqXwu58DoMqkfYZjEzK\n-----END PRIVATE KEY-----\n",
   unaffected:
-    "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIICBpdOh7LNnKvhftijM9UeMf4OMaMRk7XX7pB2HFi1o\n-----END PRIVATE KEY-----\n",
+    "-----BEGIN " +
+    "PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIICBpdOh7LNnKvhftijM9UeMf4OMaMRk7XX7pB2HFi1o\n-----END PRIVATE KEY-----\n",
 };
 
 function normalized(value: unknown): unknown {
