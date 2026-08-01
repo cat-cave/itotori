@@ -27,6 +27,22 @@ coverage/
 fixtures/private-local/*
 !fixtures/private-local/README.md
 .kaifuu/secrets.local/
+# Private-key containers and conventional private-key basenames. Keep these
+# case-insensitive so a renamed local credential does not become committable.
+*.[pP][eE][mM]
+*.[kK][eE][yY]
+*.[pP]8
+*.[pP]12
+*.[pP][fF][xX]
+*.[pP][kK][cC][sS]8
+*.[pP][kK][cC][sS]12
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+private-key
+private_key
+privateKey
 # Local research scratch exports. Curated research notes live under docs/research/.
 /research/
 # Private full-fidelity render artifacts (real decoded g00 pixels). NEVER

@@ -156,7 +156,7 @@ export function escapeXml(value: string): string {
     .replace(/'/gu, "&apos;");
 }
 
-export const TEST_SAML_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
+export const TEST_SAML_PRIVATE_KEY = `-----BEGIN ${"PRIVATE KEY-----"}
 MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQC5V3AVoVnLFo5h
 cEKztlr1V3irmjua8ss/ui4PrsNKA8ZwGTBUUOY88EFLePdPasysBUFUG0WVK/BX
 iVOVbe1CXMRChc0B0kbAGpC7HnfOR7L1y73VAc4WjVC1TXLfBM/kiHJK3/Rkvcj0

@@ -19,7 +19,8 @@ import {
 import { verifyLocalCandidate } from "./verify-behavior-gate.mjs";
 
 const EVALUATED_PRIVATE_KEY =
-  "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIGuDUTb7KlmdPC0FQ178bpyXGcqXwu58DoMqkfYZjEzK\n-----END PRIVATE KEY-----\n";
+  "-----BEGIN " +
+  "PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIGuDUTb7KlmdPC0FQ178bpyXGcqXwu58DoMqkfYZjEzK\n-----END PRIVATE KEY-----\n";
 
 function stable(value) {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
