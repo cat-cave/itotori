@@ -166,16 +166,32 @@ export default defineConfig({
         env: ["NODE_ENV"],
       },
       "ts:typecheck": {
-        command: "vp run -r typecheck",
+        command:
+          "vp run -r typecheck && tsc -p suite/behavior/tsconfig.json --noEmit && tsc -p suite/behavior/tsconfig.product.json --noEmit && tsc -p suite/behavior/tsconfig.failure-product.json --noEmit",
         dependsOn: ["schema:check"],
       },
       "ts:test": {
         command: "vp run -r test",
-        dependsOn: ["schema:check", "test:collection"],
+        dependsOn: [
+          "schema:check",
+          "test:collection",
+          "behavior:test",
+          "private-input-contract:test",
+        ],
       },
       "test:collection": {
-        command: "node scripts/test-collection-guard.mjs",
+        command: "node scripts/test-collection-guard.mjs && node scripts/ci/lane-manifest-gate.mjs",
         dependsOn: ["ts:build"],
+      },
+      "behavior:test": {
+        command: "node scripts/ci/run-behavior-proof.mjs",
+        cache: false,
+        dependsOn: ["ts:build"],
+      },
+      "private-input-contract:test": {
+        command:
+          "node --test suite/scripts/kaifuu-private-local-triage/run.test.mjs suite/scripts/siglus-private-local-validation-renderer/render.test.mjs suite/scripts/kaifuu-key-hunt/key-hunt.test.mjs suite/scripts/kaifuu-encrypted-readiness-integration/run.test.mjs",
+        cache: false,
       },
       "ts:build": {
         command: "vp run -r build",
@@ -200,17 +216,16 @@ export default defineConfig({
       // the relevant capability: private-local encrypted corpus triage. A FIRST-CLASS LOCAL
       // workflow that is intentionally ABSENT from per-gate CI — no `just
       // check`/`ci` lane and no affected.mjs selection runs it.
-      // With no private inputs (the public/default case) it emits the
-      // deterministic REDACTED no-corpus artifact under
-      // .tmp/kaifuu-private-local/; with an operator manifest it emits the safe
-      // aggregate readiness report. Never reads raw keys/bytes, never shells out.
+      // Missing or empty private input fails with a content-free diagnostic and
+      // no output. With an operator manifest it emits the safe aggregate
+      // readiness report. Never reads raw keys/bytes, never shells out.
       "kaifuu:private-local-triage": {
         command: "node suite/scripts/kaifuu-private-local-triage/run.mjs",
         cache: false,
       },
-      // the relevant capability: deterministic unit + integration tests (no-corpus
-      // determinism + redacted aggregate + secret-leak rejection + schema
-      // validation). Hermetic; no private corpora.
+      // the relevant capability: deterministic unit + integration tests (absent-input
+      // failure + redacted aggregate + secret-leak rejection + schema validation).
+      // Hermetic; no private corpora.
       "kaifuu:private-local-triage-test": {
         command: "node --test suite/scripts/kaifuu-private-local-triage/run.test.mjs",
         cache: false,
@@ -218,19 +233,18 @@ export default defineConfig({
       // the relevant capability: Siglus private-local redacted VALIDATION SUMMARY renderer.
       // Like the relevant capability this is a FIRST-CLASS LOCAL workflow that is
       // intentionally ABSENT from per-gate CI — no `just check`/`ci` lane and
-      // no affected.mjs selection runs it. With no private
-      // inputs (the public/default case) it emits the deterministic REDACTED
-      // no-corpus artifact under .tmp/siglus-private-local/; with an operator
-      // validation manifest it emits the safe aggregate validation summary
+      // no affected.mjs selection runs it. Missing or empty private input fails
+      // with a content-free diagnostic and no output; with an operator validation
+      // manifest it emits the safe aggregate validation summary
       // (capability-level / helper-outcome / status / failure bins + counts).
       // Never reads raw keys/Scene.pck bytes/decrypted text, never shells out.
       "siglus:private-local-validation-render": {
         command: "node suite/scripts/siglus-private-local-validation-renderer/run.mjs",
         cache: false,
       },
-      // the relevant capability: deterministic unit + integration tests (no-corpus
-      // determinism + redacted aggregate + per-category secret-leak rejection +
-      // schema validation). Hermetic; no private corpora.
+      // the relevant capability: deterministic unit + integration tests (absent-input
+      // failure + redacted aggregate + per-category secret-leak rejection + schema
+      // validation). Hermetic; no private corpora.
       "siglus:private-local-validation-render-test": {
         command:
           "node --test suite/scripts/siglus-private-local-validation-renderer/render.test.mjs",
@@ -242,19 +256,17 @@ export default defineConfig({
       // CI selection runs it. It PLANS the applicable helper attempts
       // per detected engine + capability (Siglus known-key / XP3 / MV-MZ / Wolf /
       // RGSS3 — plan, never brute-force), then aggregates operator-recorded
-      // per-attempt outcomes (attempted / succeeded / failed / skipped /
-      // unsupported) into a redacted report. A CONFIRMED key is recorded ONLY as
+      // per-attempt outcomes into a redacted report. A CONFIRMED key is recorded ONLY as
       // a local-secret: ref + a sha256: proof hash; the report surfaces only the
-      // key-profile id + proof hash. With no private inputs it emits the
-      // deterministic REDACTED no-corpus artifact under
-      // .tmp/kaifuu-private-local/. Never reads raw keys/bytes, never shells out.
+      // key-profile id + proof hash. Missing or empty private input fails with a
+      // content-free diagnostic and no output. Never reads raw keys/bytes, never shells out.
       "kaifuu:key-hunt": {
         command: "node suite/scripts/kaifuu-key-hunt/run.mjs",
         cache: false,
       },
       // the relevant capability: deterministic unit + integration tests (five outcome
       // categories + attempt planner by engine/capability + key-validation
-      // ref-only schema + secret-leak rejection + no-corpus determinism + schema
+      // ref-only schema + secret-leak rejection + absent-input failure + schema
       // validation). Hermetic; no private corpora, no Wine/Windows, no network.
       "kaifuu:key-hunt-test": {
         command: "node --test suite/scripts/kaifuu-key-hunt/key-hunt.test.mjs",
@@ -266,22 +278,18 @@ export default defineConfig({
       // alpha-encrypted readiness evidence) into an alpha-readiness composed
       // -evidence artifact by content HASH — it never re-owns a prerequisite
       // slice. Like the relevant capability/067/094 it is a FIRST-CLASS LOCAL workflow,
-      // intentionally ABSENT from per-gate CI. With NO private encrypted corpus
-      // (the public/default case, or --no-corpus) it emits the deterministic
-      // REDACTED no-corpus artifact
-      // .tmp/kaifuu-private-local/encrypted-readiness-no-corpus-skipped.json
-      // (status skipped / reason private_inputs_absent / redacted ids / zero
-      // counts / no local paths); with an operator manifest it emits the safe
-      // aggregate report. A missing/tampered/unsupported prerequisite is a
+      // intentionally ABSENT from per-gate CI. Missing or empty private input
+      // fails with a content-free diagnostic and no output; with an operator
+      // manifest it emits the safe aggregate report. A missing or tampered prerequisite is a
       // semantic diagnostic (status failed), never a hidden success. Never reads
       // raw keys/bytes, never shells out.
       "kaifuu:encrypted-readiness": {
         command: "node suite/scripts/kaifuu-encrypted-readiness-integration/run.mjs",
         cache: false,
       },
-      // the relevant capability: deterministic unit + integration tests (no-corpus
-      // determinism + prerequisite composition + boundary regression on a
-      // tampered/missing/unsupported prerequisite + secret-leak rejection +
+      // the relevant capability: deterministic unit + integration tests (absent-input
+      // failure + prerequisite composition + boundary regression on a
+      // tampered or missing prerequisite + secret-leak rejection +
       // schema validation). Hermetic; no private corpora.
       "kaifuu:encrypted-readiness-test": {
         command: "node --test suite/scripts/kaifuu-encrypted-readiness-integration/run.test.mjs",

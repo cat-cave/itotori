@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "itotori.kaifuu-private-local-triage-report.v0.1",
   "title": "Kaifuu private-local encrypted corpus triage aggregate readiness report",
-  "description": "SAFE AGGREGATE readiness evidence emitted by the kaifuu:private-local-triage workflow. Publicly citable by aggregate/hash metadata. Contains ONLY redacted fields: logical corpus/profile ids, helper classes, proof HASHES, detector results, aggregate counts, and per-engine readiness bins. The `skipped` status is the deterministic REDACTED no-corpus artifact emitted when no private inputs exist.",
+  "description": "SAFE AGGREGATE readiness evidence emitted by the kaifuu:private-local-triage workflow after non-empty private input is selected. Publicly citable by aggregate/hash metadata. Contains ONLY redacted fields: logical corpus/profile ids, helper classes, proof HASHES, detector results, aggregate counts, and per-engine readiness bins.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,17 +17,10 @@
   ],
   "properties": {
     "schemaVersion": { "const": "itotori.kaifuu-private-local-triage-report.v0.1" },
-    "status": { "enum": ["ok", "skipped"] },
-    "reason": {
-      "oneOf": [{ "const": "private_inputs_absent" }, { "type": "null" }]
-    },
+    "status": { "const": "ok" },
+    "reason": { "type": "null" },
     "command": { "type": "string" },
     "generatedBy": { "const": "suite/scripts/kaifuu-private-local-triage/run.mjs" },
-    "checkedPaths": {
-      "type": "array",
-      "description": "Present only on the no-corpus artifact: checked inputs redacted to logical ids.",
-      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
-    },
     "aggregateCounts": {
       "type": "object",
       "additionalProperties": false,
@@ -77,6 +70,7 @@
     },
     "entries": {
       "type": "array",
+      "minItems": 1,
       "items": {
         "type": "object",
         "additionalProperties": false,

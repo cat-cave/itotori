@@ -6,6 +6,7 @@ import {
   loadProjectRunLiveReadModel,
 } from "../src/index.js";
 import {
+  ItotoriProjectRunCostCapError,
   ItotoriProjectRunRepository,
   ItotoriProjectRunRepositoryError,
 } from "../src/repositories/project-run-repository.js";
@@ -294,7 +295,12 @@ describe("ItotoriProjectRunRepository", () => {
         }),
       ).rejects.toMatchObject({
         code: "cost_cap_exceeded",
-      } satisfies Partial<ItotoriProjectRunRepositoryError>);
+        capMicrosUsd: 100,
+        spentMicrosUsd: 0,
+        reservedMicrosUsd: 60,
+        requestedMicrosUsd: 41,
+        remainingMicrosUsd: 40,
+      } satisfies Partial<ItotoriProjectRunCostCapError>);
       const settled = await fixture.runs.settleCost(actor, {
         lease,
         reservationId: "reservation-cost-a",

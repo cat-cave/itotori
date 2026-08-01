@@ -1,5 +1,6 @@
 # Reusable Tier-1: portable behavior suite — TS shards, nextest partitions,
-# Postgres 18 service, nix-pinned Chromium, alpha-proof, mutation-differential.
+# Postgres 18 service, nix-pinned Chromium, alpha-proof, behavior proof,
+# mutation-differential.
 # Builds release CLIs once and fans out the small artifact. Target p95 < 10 min.
 # Called from pr-tiers.yml; required via the main-merge-queue ruleset.
 name: reusable tier1
@@ -220,15 +221,65 @@ jobs:
       - name: Run mutation differential
         run: just ci tier1-mutation
 
+  behavior:
+    name: Tier 1 / behavior root cells
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: ./.github/actions/setup-itotori
+
+      - name: Execute behavior ledger and mutation proof
+        run: just ci tier1-behavior
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: behavior-proof-${{ github.sha }}
+          path: behavior-proof
+          retention-days: 14
+          if-no-files-found: error
+
+  full-matrix:
+    name: Tier 1 / behavior full matrix
+    if: ${{ always() }}
+    needs: [behavior]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: ./.github/actions/setup-itotori
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: behavior-proof-${{ github.sha }}
+          path: behavior-proof
+
+      - name: Require the complete behavior matrix
+        run: node scripts/ci/verify-behavior-gate.mjs --full-matrix
+
   required:
     name: Tier 1 / required
     if: ${{ always() }}
-    needs: [native, portable, db, browser, alpha, mutation]
+    needs: [native, portable, db, browser, alpha, mutation, behavior]
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 15
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: ./.github/actions/setup-itotori
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: behavior-proof-${{ github.sha }}
+          path: behavior-proof
+
+      - name: Verify downloaded behavior proof against this candidate
+        run: node scripts/ci/verify-behavior-gate.mjs --local-candidate
+
       - name: Aggregate Tier-1 jobs
         run: |
           set -euo pipefail
-          # All six dependency groups must succeed (portable matrix is one group).
-          test '${{ join(needs.*.result, ',') }}' = 'success,success,success,success,success,success'
+          # All seven dependency groups must succeed (portable matrix is one group).
+          test '${{ join(needs.*.result, ',') }}' = 'success,success,success,success,success,success,success'

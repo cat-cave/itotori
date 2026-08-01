@@ -1,11 +1,21 @@
 import assert from "node:assert/strict";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { parseFeature } from "./audit-behavior-catalog-gherkin.mjs";
 import { formatRoadmapResult, validateRoadmap } from "./audit-behavior-roadmap.mjs";
+import { buildBehaviorCaseSelection } from "./behavior-case-selection.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
@@ -16,6 +26,7 @@ const validatorFiles = [
   "audit-behavior-roadmap.mjs",
   "audit-behavior-roadmap-graph.mjs",
   "audit-behavior-roadmap.test.mjs",
+  "behavior-case-selection.mjs",
 ];
 
 after(() => {
@@ -70,6 +81,27 @@ function readRows(path) {
     .map((line) => JSON.parse(line));
 }
 
+function readSelectionInputs() {
+  const errors = [];
+  const featureDirectory = join(repoRoot, "docs", "behaviors", "features");
+  const scenarios = readdirSync(featureDirectory)
+    .filter((name) => name.endsWith(".feature"))
+    .toSorted()
+    .flatMap((name) => parseFeature(join(featureDirectory, name), errors));
+  assert.deepEqual(errors, []);
+  return {
+    scenarios,
+    engines: readRows(join(repoRoot, "docs", "behaviors", "engine-families.jsonl")),
+    classifications: readRows(join(repoRoot, "docs", "roadmap", "classification.jsonl")),
+  };
+}
+
+function findScenario(inputs, behavior) {
+  const scenario = inputs.scenarios.find(({ id }) => id === behavior);
+  assert.ok(scenario, `missing scenario ${behavior}`);
+  return scenario;
+}
+
 function writeRows(path, rows) {
   writeFileSync(path, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
 }
@@ -117,6 +149,137 @@ test("committed roadmap has the exact reduced classification and expansion", () 
   assert.equal(relationships, 381);
   assert.equal(maxOutgoingLinks, 47);
   assert.equal(maxIncomingLinks, 2);
+});
+
+test("the shared selector enumerates every authored row, case, cell, and N/A pair", () => {
+  const result = buildBehaviorCaseSelection(readSelectionInputs());
+  assert.equal(result.ok, true, result.errors.join("\n"));
+  assert.deepEqual(result.summary, {
+    outlines: 47,
+    authoredCases: 570,
+    selectedCases: 3400,
+    partialCases: 2940,
+    partialOutlines: 14,
+    canonicalEngines: 47,
+    productionEngines: 39,
+    nativeEngines: 35,
+    webEngines: 5,
+    plainEngines: 9,
+    applicableCells: 687,
+    nonApplicablePairs: 96,
+  });
+  assert.equal(new Set(result.cases.map(({ id }) => id)).size, 3400);
+  assert.equal(new Set(result.cases.map(({ cell }) => cell)).size, 687);
+  assert.deepEqual(result.applicableCells, result.applicableCells.toSorted());
+  assert.deepEqual(
+    result.nonApplicablePairs,
+    result.nonApplicablePairs.toSorted((left, right) =>
+      `${left.behavior}\0${left.subject}`.localeCompare(`${right.behavior}\0${right.subject}`),
+    ),
+  );
+
+  const distribution = new Map();
+  for (const selectedCase of result.cases) {
+    const selector = selectedCase.selector.startsWith("canonical:")
+      ? selectedCase.partial
+        ? "literal"
+        : "canonical"
+      : selectedCase.selector;
+    distribution.set(selector, (distribution.get(selector) ?? 0) + 1);
+  }
+  assert.deepEqual(Object.fromEntries([...distribution].toSorted()), {
+    canonical: 188,
+    literal: 11,
+    production: 2301,
+    "production-trait:mixed": 39,
+    "production-trait:native": 525,
+    "production-trait:plain": 9,
+    "production-trait:web": 40,
+    shared: 287,
+  });
+});
+
+test("mixed-family comparison peers never replace the selected cell subject", () => {
+  const inputs = readSelectionInputs();
+  const result = buildBehaviorCaseSelection(inputs);
+  assert.equal(result.ok, true, result.errors.join("\n"));
+  const production = inputs.engines
+    .filter(({ supportRole }) => supportRole === "production-target")
+    .map(({ sourceCapability }) => sourceCapability)
+    .toSorted();
+  const mixed = result.cases.filter(({ selector }) => selector === "production-trait:mixed");
+  assert.equal(mixed.length, 39);
+  for (const [index, selectedCase] of mixed.entries()) {
+    assert.equal(selectedCase.subject, production[index]);
+    assert.equal(selectedCase.comparisonSubject, production[(index + 1) % production.length]);
+    assert.equal(selectedCase.cell, `cell::${selectedCase.behavior}::${selectedCase.subject}`);
+    assert.notEqual(selectedCase.subject, selectedCase.comparisonSubject);
+  }
+
+  const changed = structuredClone(inputs);
+  findScenario(
+    changed,
+    "quality.same-inputs-reproduce-equivalent-results",
+  ).exampleRows[0].comparison_source = "Fixture/reference";
+  const changedResult = buildBehaviorCaseSelection(changed);
+  assert.equal(changedResult.ok, true, changedResult.errors.join("\n"));
+  const ids = (selection) =>
+    selection.cases
+      .filter(({ behavior }) => behavior === "quality.same-inputs-reproduce-equivalent-results")
+      .map(({ id }) => id);
+  assert.deepEqual(ids(changedResult), ids(result));
+});
+
+test("an unknown or non-production literal cannot select a production cell", () => {
+  const unknown = readSelectionInputs();
+  findScenario(unknown, "play.control-reproducible-session").exampleRows[7].engine_family =
+    "Unknown family";
+  const unknownResult = buildBehaviorCaseSelection(unknown);
+  assert.equal(unknownResult.ok, false);
+  assert.match(unknownResult.errors.join("\n"), /unknown literal engine family "Unknown family"/u);
+
+  const wrongRole = readSelectionInputs();
+  findScenario(wrongRole, "play.control-reproducible-session").exampleRows[7].engine_family =
+    "Fixture/reference";
+  const wrongRoleResult = buildBehaviorCaseSelection(wrongRole);
+  assert.equal(wrongRoleResult.ok, false);
+  assert.match(
+    wrongRoleResult.errors.join("\n"),
+    /literal Fixture\/reference is not a production target/u,
+  );
+});
+
+test("a generic selector change fails the reviewed positional rule", () => {
+  const inputs = readSelectionInputs();
+  findScenario(inputs, "source.prepare-owned-content").exampleRows[0].engine_family =
+    "registered web family";
+  const result = buildBehaviorCaseSelection(inputs);
+  assert.equal(result.ok, false);
+  assert.match(
+    result.errors.join("\n"),
+    /selector is production-trait:web; expected production-trait:native/u,
+  );
+});
+
+test("trait-role drift and duplicate canonical identities fail selection", () => {
+  const traitDrift = readSelectionInputs();
+  const renpy = traitDrift.engines.find(
+    ({ sourceCapability }) => sourceCapability === "decode.engine.renpy",
+  );
+  assert.ok(renpy);
+  renpy.supportRole = "research-only";
+  const traitResult = buildBehaviorCaseSelection(traitDrift);
+  assert.equal(traitResult.ok, false);
+  assert.match(
+    traitResult.errors.join("\n"),
+    /web trait member decode\.engine\.renpy is not a production registry row/u,
+  );
+
+  const duplicate = readSelectionInputs();
+  duplicate.engines[1].sourceCapability = duplicate.engines[2].sourceCapability;
+  const duplicateResult = buildBehaviorCaseSelection(duplicate);
+  assert.equal(duplicateResult.ok, false);
+  assert.match(duplicateResult.errors.join("\n"), /duplicate sourceCapability/u);
 });
 
 test("a missing classification file is reported instead of throwing", () => {

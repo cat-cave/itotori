@@ -1,6 +1,7 @@
 export {
   AssetLocalizationDecisionRepositoryError,
   AuthorizationError,
+  explicitFailurePublicMessage,
   ProjectScopeNotFoundError,
   RuntimeRunNotFoundError,
   assetLocalizationDecisionAssetKindList,
@@ -52,6 +53,10 @@ export {
   type TerminologySearchInput,
   type TerminologySearchReadModel,
 } from "@itotori/db";
+export {
+  classifyApplicationFailure as classifyExplicitFailure,
+  hasApplicationFailureEvidence as hasExplicitFailureEvidence,
+} from "./explicit-failure/index.js";
 export { assertBridgeBundleV02, type BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 export { resolveStudioCapabilityPermissionView, type ItotoriAuthorizationPort } from "./auth.js";
 export { databaseUnreachableMessage } from "./database-unreachable.js";

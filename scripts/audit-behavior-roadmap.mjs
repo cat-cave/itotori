@@ -27,6 +27,7 @@ const SCRIPT_FILES = [
   "audit-behavior-roadmap.mjs",
   "audit-behavior-roadmap-graph.mjs",
   "audit-behavior-roadmap.test.mjs",
+  "behavior-case-selection.mjs",
 ];
 const CLASSIFICATION_FIELDS = [
   "behavior",

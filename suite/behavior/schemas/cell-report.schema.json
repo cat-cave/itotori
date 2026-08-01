@@ -1,0 +1,258 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "itotori.behavior-cell-report.v1",
+  "title": "Itotori behavior cell report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "candidateTreeDigest",
+    "candidateBuildDigest",
+    "selectionPlanDigest",
+    "classificationDigest",
+    "runner",
+    "laneFragments",
+    "caseResultsDigest",
+    "mutationResultsDigest",
+    "artifacts",
+    "cells",
+    "notApplicablePairs",
+    "summary"
+  ],
+  "definitions": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "behavior": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$"
+    },
+    "subject": {
+      "type": "string",
+      "pattern": "^(?:all|[a-z0-9]+(?:[.-][a-z0-9]+)*)$"
+    },
+    "cellIdentity": {
+      "type": "string",
+      "pattern": "^cell::[a-z0-9]+(?:[.-][a-z0-9]+)*::(?:all|[a-z0-9]+(?:[.-][a-z0-9]+)*)$"
+    },
+    "caseIdentity": {
+      "type": "string",
+      "pattern": "^case::[A-Za-z0-9._:-]+$"
+    },
+    "lane": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "profile": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "relativePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[A-Za-z0-9._/-]+$"
+    },
+    "reasonCode": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "stringSet": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string" }
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cell",
+        "behavior",
+        "subject",
+        "status",
+        "requiredCaseIds",
+        "executedCaseIds",
+        "assertedCaseIds",
+        "requiredLanes",
+        "receivedLanes",
+        "requiredProfiles",
+        "executedProfiles",
+        "messageFragmentDigests",
+        "verifiedReceiptDigest",
+        "reasonCodes"
+      ],
+      "properties": {
+        "cell": { "$ref": "#/definitions/cellIdentity" },
+        "behavior": { "$ref": "#/definitions/behavior" },
+        "subject": { "$ref": "#/definitions/subject" },
+        "status": { "enum": ["pass", "fail"] },
+        "requiredCaseIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/caseIdentity" }
+        },
+        "executedCaseIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/caseIdentity" }
+        },
+        "assertedCaseIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/caseIdentity" }
+        },
+        "requiredLanes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/lane" }
+        },
+        "receivedLanes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/lane" }
+        },
+        "requiredProfiles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/profile" }
+        },
+        "executedProfiles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/profile" }
+        },
+        "messageFragmentDigests": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/digest" }
+        },
+        "verifiedReceiptDigest": {
+          "oneOf": [{ "$ref": "#/definitions/digest" }, { "type": "null" }]
+        },
+        "reasonCodes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/reasonCode" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "pass" } } },
+          "then": {
+            "properties": {
+              "verifiedReceiptDigest": { "$ref": "#/definitions/digest" },
+              "reasonCodes": { "type": "array", "maxItems": 0 },
+              "requiredLanes": { "type": "array", "minItems": 1 }
+            }
+          },
+          "else": {
+            "properties": {
+              "verifiedReceiptDigest": { "type": "null" },
+              "reasonCodes": { "type": "array", "minItems": 1 }
+            }
+          }
+        }
+      ]
+    },
+    "nonApplicablePair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["behavior", "subject", "status", "classificationDigest", "reason"],
+      "properties": {
+        "behavior": { "$ref": "#/definitions/behavior" },
+        "subject": { "$ref": "#/definitions/subject" },
+        "status": { "const": "not-applicable" },
+        "classificationDigest": { "$ref": "#/definitions/digest" },
+        "reason": { "const": "production-target-only" }
+      }
+    }
+  },
+  "properties": {
+    "schema": { "const": "itotori.behavior-cell-report.v1" },
+    "candidateTreeDigest": { "$ref": "#/definitions/digest" },
+    "candidateBuildDigest": { "$ref": "#/definitions/digest" },
+    "selectionPlanDigest": { "$ref": "#/definitions/digest" },
+    "classificationDigest": { "$ref": "#/definitions/digest" },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package", "version"],
+      "properties": {
+        "package": { "const": "@cucumber/cucumber" },
+        "version": { "const": "13.2.0" }
+      }
+    },
+    "laneFragments": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "lane",
+          "shard",
+          "shardCount",
+          "messagePath",
+          "messageDigest",
+          "junitPath",
+          "junitDigest"
+        ],
+        "properties": {
+          "lane": { "$ref": "#/definitions/lane" },
+          "shard": { "type": "integer", "minimum": 1 },
+          "shardCount": { "type": "integer", "minimum": 1 },
+          "messagePath": { "$ref": "#/definitions/relativePath" },
+          "messageDigest": { "$ref": "#/definitions/digest" },
+          "junitPath": { "$ref": "#/definitions/relativePath" },
+          "junitDigest": { "$ref": "#/definitions/digest" }
+        }
+      }
+    },
+    "caseResultsDigest": { "$ref": "#/definitions/digest" },
+    "mutationResultsDigest": { "$ref": "#/definitions/digest" },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cellReport", "cellJunit", "mutations", "summary"],
+      "properties": {
+        "cellReport": { "$ref": "#/definitions/relativePath" },
+        "cellJunit": { "$ref": "#/definitions/relativePath" },
+        "mutations": { "$ref": "#/definitions/relativePath" },
+        "summary": { "$ref": "#/definitions/relativePath" }
+      }
+    },
+    "cells": {
+      "type": "array",
+      "minItems": 687,
+      "maxItems": 687,
+      "items": { "$ref": "#/definitions/cell" }
+    },
+    "notApplicablePairs": {
+      "type": "array",
+      "minItems": 96,
+      "maxItems": 96,
+      "items": { "$ref": "#/definitions/nonApplicablePair" }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "applicableCellCount",
+        "passingCellCount",
+        "failingCellCount",
+        "notApplicablePairCount",
+        "passBasisPoints",
+        "displayPercent"
+      ],
+      "properties": {
+        "applicableCellCount": { "const": 687 },
+        "passingCellCount": { "type": "integer", "minimum": 0, "maximum": 687 },
+        "failingCellCount": { "type": "integer", "minimum": 0, "maximum": 687 },
+        "notApplicablePairCount": { "const": 96 },
+        "passBasisPoints": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "displayPercent": { "type": "string", "pattern": "^(?:0|[1-9][0-9]*)\\.[0-9]{2}$" }
+      }
+    }
+  }
+}

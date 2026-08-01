@@ -109,6 +109,12 @@ node scripts/audit-llm-loc-budget.mjs
 node --test scripts/ci/assert-renderer-contract.test.mjs
 node --test scripts/ci/public-lane-coverage.test.mjs
 node scripts/ci/public-lane-coverage.mjs --check
+node --test scripts/ci/behavior-gate-mode.test.mjs
+node --test scripts/ci/behavior-workflow-contract.test.mjs
+node --test scripts/ci/build-cell-report.test.mjs
+node --test scripts/ci/run-behavior-proof.test.mjs
+node --test scripts/ci/run-behavior-proof-output.test.mjs
+node --test scripts/ci/verify-behavior-gate.test.mjs
 node --test scripts/ci/private-real-byte-proof.test.mjs
 pnpm --filter @itotori/db exec vitest run test/migrations-parity.test.ts --exclude '**/.direnv/**'
 node --test scripts/generate-engine-capability-matrix.test.mjs
@@ -253,6 +259,7 @@ function ci(lane, forwarded) {
     "tier1-db",
     "tier1-browser",
     "tier1-mutation",
+    "tier1-behavior",
     "private-real-bytes",
   ];
   oneOf("CI lane", lane, lanes);
@@ -267,10 +274,10 @@ function ci(lane, forwarded) {
   if (lane === "tier0-meta") return check("meta", forwarded);
   if (lane === "tier0-ts") return check("ts", forwarded);
   if (lane === "tier0-rust") return check("rust", forwarded);
-  if (lane === "tier0-manifest")
-    return shell(
-      "if [ -f scripts/ci/lane-manifest-gate.mjs ]; then node scripts/ci/lane-manifest-gate.mjs; else echo 'manifest gate pending'; fi",
-    );
+  if (lane === "tier0-manifest") {
+    run("node", ["scripts/test-collection-guard.mjs"]);
+    return run("node", ["scripts/ci/lane-manifest-gate.mjs", ...forwarded]);
+  }
   if (lane === "tier1-ts-public-1of2")
     return shell(
       "pnpm exec vp run ts:build\npnpm --filter @itotori/localization-bridge-schema test\npnpm --filter @itotori/runtime-web-review test\npnpm --filter @itotori/ds test:dom\npnpm --filter @itotori/app exec vitest run --shard=1/2 --exclude '**/.direnv/**'",
@@ -298,7 +305,11 @@ function ci(lane, forwarded) {
       "node scripts/ci/assert-renderer-contract.mjs\nnode scripts/developer-command.mjs test browser\npnpm --filter @itotori/ds visual:test",
     );
   if (lane === "tier1-mutation") return test("mutation-differential", forwarded);
-  return run("node", ["scripts/ci/private-real-byte-proof.mjs", "--preflight", ...forwarded]);
+  if (lane === "tier1-behavior")
+    return shell(
+      "node scripts/ci/run-behavior-proof.mjs\nnode scripts/ci/verify-behavior-gate.mjs --local-candidate\npnpm exec vp run private-input-contract:test",
+    );
+  return run("node", ["scripts/ci/private-real-byte-proof.mjs", "--accepted", ...forwarded]);
 }
 
 function runScaleHarness(profile, forwarded) {

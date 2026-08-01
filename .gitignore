@@ -10,6 +10,7 @@ storybook-static/
 .turbo/
 .cache/
 .tmp/
+/behavior-proof/
 coverage/
 *.log
 # Local secrets. Provider credentials may exist here, but repo tools must not

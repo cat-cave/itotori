@@ -5,9 +5,7 @@
  * Alpha encrypted-readiness evidence integration. COMPOSES the already-generated
  * encrypted-readiness EVIDENCE of the prerequisite slices (the relevant capability packed
  * -engine readiness surface + the relevant capability alpha-encrypted readiness evidence)
- * into an alpha-readiness composed-evidence artifact, and — the key deliverable
- * — emits a deterministic REDACTED no-corpus artifact when NO private encrypted
- * corpus is configured.
+ * into an alpha-readiness composed-evidence artifact.
  *
  * This is a FIRST-CLASS LOCAL workflow, intentionally ABSENT from public/per
  * -gate CI (no `just check`/`ci` lane and no affected.mjs
@@ -15,35 +13,42 @@
  * HASH; it never re-owns a prerequisite slice, never re-derives readiness, and
  * never shells out.
  *
- * Inputs (all optional; default is the no-corpus path):
- *   --no-corpus                 Force the deterministic redacted no-corpus
- *                               artifact (private encrypted corpus absent).
+ * Inputs:
+ *   --no-corpus                 Exercise the explicit absent-input failure path.
  *   --private-manifest <path>   Aggregate an operator's already-redacted
  *                               private-encrypted-corpus manifest.
  *   --prerequisites <path>      Prerequisites manifest override (default the
  *                               committed prerequisites.manifest.json).
  *   --out <path>                Output path override.
  *
- * Outputs (under .tmp/kaifuu-private-local/):
- *   no-corpus  -> encrypted-readiness-no-corpus-skipped.json  (status skipped)
- *   report     -> encrypted-readiness-report.json             (status ok/failed)
+ * Output: .tmp/kaifuu-private-local/encrypted-readiness-report.json.
+ * Missing or empty private input emits a typed content-free diagnostic,
+ * creates no evidence artifact, and exits nonzero.
  *
  * A missing/tampered/unsupported prerequisite makes the artifact status
  * `failed` with structured semantic diagnostics — never a hidden success.
  */
 "use strict";
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   buildComposedReport,
-  buildNoCorpusArtifact,
   composePrerequisites,
   normalizePrivateManifest,
   stableStringify,
 } from "./compose.mjs";
+import {
+  claimPrivateOption,
+  PrivateInputContractError,
+  privateInputFailure,
+  privateInputFailureFromError,
+  rejectPrivateHelpConflict,
+  rejectPrivateSelectorConflict,
+  requirePrivateOptionValue,
+} from "../kaifuu-private-local-triage/triage.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "..", "..", "..");
@@ -55,10 +60,11 @@ const DEFAULT_PREREQUISITES = join(
   "prerequisites.manifest.json",
 );
 const OUTPUT_DIR = join(".tmp", "kaifuu-private-local");
-const NO_CORPUS_OUTPUT = join(OUTPUT_DIR, "encrypted-readiness-no-corpus-skipped.json");
 const REPORT_OUTPUT = join(OUTPUT_DIR, "encrypted-readiness-report.json");
 
 export function parseArgs(argv) {
+  const seen = new Set();
+  const selectors = new Set();
   const options = {
     noCorpus: false,
     privateManifest: null,
@@ -71,19 +77,30 @@ export function parseArgs(argv) {
       continue;
     }
     if (arg === "--no-corpus") {
+      claimPrivateOption(seen, arg);
+      selectors.add("absent");
       options.noCorpus = true;
     } else if (arg === "--private-manifest") {
-      options.privateManifest = argv[(i += 1)];
+      claimPrivateOption(seen, arg);
+      selectors.add("manifest");
+      options.privateManifest = requirePrivateOptionValue(argv, i);
+      i += 1;
     } else if (arg === "--prerequisites") {
-      options.prerequisites = argv[(i += 1)];
+      claimPrivateOption(seen, arg);
+      options.prerequisites = requirePrivateOptionValue(argv, i);
+      i += 1;
     } else if (arg === "--out") {
-      options.out = argv[(i += 1)];
+      claimPrivateOption(seen, arg);
+      options.out = requirePrivateOptionValue(argv, i);
+      i += 1;
     } else if (arg === "--help" || arg === "-h") {
       options.help = true;
     } else {
       throw new Error(`unknown argument: ${arg}`);
     }
   }
+  rejectPrivateHelpConflict(argv, options.help === true);
+  rejectPrivateSelectorConflict(selectors);
   return options;
 }
 
@@ -91,8 +108,8 @@ function readJsonFile(path) {
   const text = readFileSync(path, "utf8");
   try {
     return JSON.parse(text);
-  } catch (error) {
-    throw new Error(`invalid JSON in ${path}: ${error instanceof Error ? error.message : error}`);
+  } catch {
+    throw new PrivateInputContractError("private-input-invalid");
   }
 }
 
@@ -112,26 +129,39 @@ export function compose(options, root = REPO_ROOT) {
   return composePrerequisites(manifest, readArtifact);
 }
 
-// Produce the artifact (no-corpus OR aggregate report) for the given options.
+// Produce an aggregate report or a typed failure for the given options.
 export function integrate(options, root = REPO_ROOT) {
-  const composed = compose(options, root);
-
-  // Private encrypted corpus present ONLY when an operator manifest is given and
-  // resolves; otherwise (default, or --no-corpus) the private inputs are absent.
-  const wantsPrivate = !options.noCorpus && options.privateManifest;
-  const privatePath = wantsPrivate ? resolve(root, options.privateManifest) : null;
-  if (privatePath && existsSync(privatePath)) {
-    const entries = normalizePrivateManifest(readJsonFile(privatePath));
-    return { kind: "report", artifact: buildComposedReport(entries, { composed }) };
+  const task = "kaifuu:encrypted-readiness";
+  if (options.noCorpus) {
+    return privateInputFailure(task, "private-input-explicitly-absent");
   }
-  return { kind: "no-corpus", artifact: buildNoCorpusArtifact({ composed }) };
+  if (!options.privateManifest) {
+    return privateInputFailure(task, "private-input-manifest-missing");
+  }
+  const privatePath = resolve(root, options.privateManifest);
+  if (!existsSync(privatePath)) {
+    return privateInputFailure(task, "private-input-manifest-missing");
+  }
+  const file = statSync(privatePath);
+  if (!file.isFile()) {
+    return privateInputFailure(task, "private-input-manifest-not-file");
+  }
+  if (file.size === 0) {
+    return privateInputFailure(task, "private-input-zero-bytes");
+  }
+  const entries = normalizePrivateManifest(readJsonFile(privatePath));
+  if (entries.length === 0) {
+    return privateInputFailure(task, "private-input-selection-empty");
+  }
+  const composed = compose(options, root);
+  return { kind: "report", artifact: buildComposedReport(entries, { composed }) };
 }
 
 function usage() {
   return [
     "usage: pnpm exec vp run kaifuu:encrypted-readiness -- [options]",
     "",
-    "  --no-corpus                emit the deterministic redacted no-corpus artifact",
+    "  --no-corpus                fail with the typed absent-input diagnostic",
     "  --private-manifest <path>  aggregate an already-redacted private-encrypted-corpus manifest",
     "  --prerequisites <path>     prerequisites manifest override",
     "  --out <path>               output path override",
@@ -144,13 +174,18 @@ export function main(argv = process.argv.slice(2), root = REPO_ROOT) {
     process.stdout.write(`${usage()}\n`);
     return 0;
   }
-  const { kind, artifact } = integrate(options, root);
-  const defaultOut = kind === "no-corpus" ? NO_CORPUS_OUTPUT : REPORT_OUTPUT;
+  const result = integrate(options, root);
+  if (result.kind === "failure") {
+    process.stderr.write(stableStringify(result.diagnostic));
+    return 1;
+  }
+  const { kind, artifact } = result;
+  const defaultOut = REPORT_OUTPUT;
   const outPath = resolve(root, options.out ?? defaultOut);
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, stableStringify(artifact), "utf8");
   process.stdout.write(
-    `kaifuu-encrypted-readiness: ${kind} -> ${options.out ?? defaultOut} ` +
+    `kaifuu-encrypted-readiness: ${kind} written ` +
       `(status=${artifact.status}, prerequisiteArtifacts=${artifact.composes.artifacts.length}, ` +
       `prerequisiteFindings=${artifact.prerequisiteFindings.length}, ` +
       `composedEvidenceHash=${artifact.composedEvidenceHash})\n`,
@@ -164,7 +199,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   try {
     process.exit(main());
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    const failure = privateInputFailureFromError("kaifuu:encrypted-readiness", error);
+    process.stderr.write(stableStringify(failure.diagnostic));
     process.exit(1);
   }
 }

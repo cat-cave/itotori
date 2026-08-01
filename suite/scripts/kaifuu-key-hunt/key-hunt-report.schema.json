@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "itotori.kaifuu-key-hunt-report.v0.1",
   "title": "Kaifuu private-local key-hunt report",
-  "description": "The SAFE AGGREGATE redacted report emitted by the kaifuu:key-hunt workflow, or the deterministic REDACTED no-corpus artifact. Carries ONLY aggregate outcome counts, per-engine and overall outcome bins, logical key-profile ids, proof hashes, tool versions, and redacted command lines. It NEVER carries raw keys, local-secret refs, decrypted bytes, or absolute local paths.",
+  "description": "The SAFE AGGREGATE redacted report emitted by the kaifuu:key-hunt workflow after non-empty private input is selected. Carries ONLY aggregate outcome counts, per-engine and overall outcome bins, logical key-profile ids, proof hashes, tool versions, and redacted command lines. It NEVER carries raw keys, local-secret refs, decrypted bytes, or absolute local paths.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -20,16 +20,10 @@
   ],
   "properties": {
     "schemaVersion": { "const": "itotori.kaifuu-key-hunt-report.v0.1" },
-    "status": { "enum": ["ok", "skipped"] },
-    "reason": {
-      "oneOf": [{ "type": "null" }, { "const": "private_inputs_absent" }]
-    },
+    "status": { "const": "ok" },
+    "reason": { "type": "null" },
     "command": { "type": "string" },
     "generatedBy": { "const": "suite/scripts/kaifuu-key-hunt/run.mjs" },
-    "checkedPaths": {
-      "type": "array",
-      "items": { "$ref": "#/definitions/logicalId" }
-    },
     "aggregateCounts": {
       "type": "object",
       "additionalProperties": false,
@@ -70,6 +64,7 @@
     },
     "helperAttempts": {
       "type": "array",
+      "minItems": 1,
       "items": { "$ref": "#/definitions/reportAttempt" }
     }
   },

@@ -59,6 +59,23 @@ export function assertItotoriApiErrorResponse(
   const response = asStrictRecord(value, label, STRICT_API_BODY_KEYS.ApiErrorResponse);
   assertString(response.error, `${label}.error`);
   assertEnum(response.code, API_ERROR_RESPONSE_CODES, `${label}.code`);
+  if (
+    response.remainingAllowanceMicrosUsd !== undefined &&
+    (typeof response.remainingAllowanceMicrosUsd !== "number" ||
+      !Number.isSafeInteger(response.remainingAllowanceMicrosUsd) ||
+      response.remainingAllowanceMicrosUsd < 0)
+  ) {
+    throw new Error(`${label}.remainingAllowanceMicrosUsd must be a nonnegative safe integer`);
+  }
+  if (
+    response.incidentReference !== undefined &&
+    (typeof response.incidentReference !== "string" ||
+      !/^incident:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+        response.incidentReference,
+      ))
+  ) {
+    throw new Error(`${label}.incidentReference must be an opaque incident UUID`);
+  }
 }
 
 export type ApiProjectsResponse = {

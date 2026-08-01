@@ -1,5 +1,6 @@
 export { createDatabaseContext, databaseUrlFromEnv, withDatabase } from "./connection.js";
 export type { DatabaseContext, ItotoriDatabase } from "./connection.js";
+export * from "./explicit-failure.js";
 export {
   AuthorizationError,
   allPermissions,
@@ -320,6 +321,7 @@ export type {
   SaveLocalizationPassRunConfigInput,
 } from "./repositories/localization-pass-run-config-repository.js";
 export {
+  ItotoriProjectRunCostCapError,
   ItotoriProjectRunRepository,
   ItotoriProjectRunRepositoryError,
 } from "./repositories/project-run-repository.js";

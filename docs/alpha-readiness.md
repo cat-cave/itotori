@@ -61,7 +61,7 @@ retail bytes. It fails unless every artifact agrees on the same fixture id,
 source revision, locale branch, and content hashes — there is no success-string
 shortcut. See [`alpha-proof.md`](alpha-proof.md).
 
-The alpha proof is exercised by `just alpha-demo`; it is not a copy-paste
+The alpha proof is exercised by `just test alpha`; it is not a copy-paste
 real-corpus CLI localize invocation. The real-corpus public CLI boundary is
 documented in [`localize-reallive.md`](localize-reallive.md).
 
@@ -75,14 +75,14 @@ requirements.
 The claims below are **re-derived from the generated engine capability matrix**
 ([`../apps/itotori/src/engine-capability/engine-capability-matrix.v0.1.json`](../apps/itotori/src/engine-capability/engine-capability-matrix.v0.1.json),
 produced by [`scripts/generate-engine-capability-matrix.mjs`](../scripts/generate-engine-capability-matrix.mjs)
-and drift-guarded by its `--check` mode). `just check alpha-readiness`
-re-derives these blocks from that matrix and fails if the text here has drifted,
-so this section cannot silently overstate coverage. `positive_adapter` means an
-adapter is exercised end-to-end on a fixture; `readiness_only` means detection /
-key-posture evidence only, not an end-to-end extract/patch claim.
+and drift-guarded by its `--check` mode, which is included in `just check meta`).
+The block below is a point-in-time projection of that generated matrix.
+`positive_adapter` means an adapter is exercised end-to-end on a fixture;
+`readiness_only` means detection / key-posture evidence only, not an end-to-end
+extract/patch claim.
 
 <!-- ALPHA-READINESS-CAPABILITY-CLAIMS:START -->
-<!-- generated from apps/itotori/src/engine-capability/engine-capability-matrix.v0.1.json; edit that generator, not this block -->
+<!-- point-in-time projection of apps/itotori/src/engine-capability/engine-capability-matrix.v0.1.json -->
 
 Engine families in the generated capability matrix: **9**.
 
@@ -101,7 +101,7 @@ Engine families in the generated capability matrix: **9**.
 <!-- ALPHA-READINESS-CAPABILITY-CLAIMS:END -->
 
 <!-- ALPHA-READINESS-EXCLUSION-CLAIMS:START -->
-<!-- generated from apps/itotori/src/engine-capability/engine-capability-matrix.v0.1.json; edit that generator, not this block -->
+<!-- point-in-time projection of apps/itotori/src/engine-capability/engine-capability-matrix.v0.1.json -->
 
 Engine families explicitly EXCLUDED from the capability breadth: **2**.
 
@@ -129,24 +129,22 @@ hash (`composedEvidenceHash`). A missing or unsupported prerequisite becomes a
 structured **semantic diagnostic** (`status: failed`) — never a hidden success.
 
 Like the related private-local workflows this is a
-FIRST-CLASS LOCAL lane, intentionally absent from per-gate CI. When **no private
-encrypted corpus is configured** (the public/default case, or `--no-corpus`) it
-emits the deterministic REDACTED no-corpus artifact
-`.tmp/kaifuu-private-local/encrypted-readiness-no-corpus-skipped.json` with
-`status: skipped`, `reason: private_inputs_absent`, redacted (empty) corpus ids,
-zero aggregate counts, and no local paths — byte-stable and matching the committed
-[`no-corpus-skipped.example.json`](../suite/scripts/kaifuu-encrypted-readiness-integration/examples/no-corpus-skipped.example.json).
-With an operator's already-redacted private-corpus manifest it instead emits the
-safe aggregate readiness report. No raw keys, encrypted bytes, or decrypted
-content ever reach any artifact.
+FIRST-CLASS LOCAL lane, intentionally absent from per-gate CI. A missing,
+empty, zero-byte, or non-file private manifest, a missing option value, or an
+explicit `--no-corpus` request emits a typed content-free diagnostic, writes no
+evidence artifact, and exits nonzero. With an operator's already-redacted,
+non-empty private-corpus manifest it emits the safe aggregate readiness report.
+No raw keys, encrypted bytes, decrypted content, private paths, or rejected
+values reach an artifact or command diagnostic.
 
 ```sh
+# Expected to fail closed without creating evidence.
 pnpm exec vp run kaifuu:encrypted-readiness -- --no-corpus
 ```
 
 ## 5. Required gates (CI + workflows)
 
-| gate        | command / workflow                                                                | scope                                                                  |
-| ----------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| CI          | `.github/workflows/pr-tiers.yml` → `_tier0.yml` / `_tier1.yml` (`just ci <lane>`) | tiered TypeScript, Rust, database, browser, alpha, and mutation gates. |
-| Alpha proof | `_tier1.yml` `alpha` job → `just test alpha`                                      | public-fixture vertical + independent linkage validator.               |
+| gate        | command / workflow                                                                | scope                                                                            |
+| ----------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| CI          | `.github/workflows/pr-tiers.yml` → `_tier0.yml` / `_tier1.yml` (`just ci <lane>`) | tiered TypeScript, Rust, database, browser, alpha, behavior, and mutation gates. |
+| Alpha proof | `_tier1.yml` `alpha` job → `just test alpha`                                      | public-fixture vertical + independent linkage validator.                         |

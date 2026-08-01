@@ -26,14 +26,13 @@ Siglus-specific content categories.
   the emitted artifact is deep-scanned; a leak **throws before anything is
   written** (fail-loud, emit nothing — never silently redacts).
 - Output is byte-deterministic (sorted keys, no timestamps, no absolute paths),
-  so the committed public-safe fixture and the no-corpus artifact are stable and
-  validate in public CI **without any private local assets**.
+  so the committed public-safe fixture is stable and validates without private
+  local assets.
 
 ## Command
 
 ```sh
-# Public/default case: no private inputs present -> deterministic redacted
-# no-corpus artifact at .tmp/siglus-private-local/no-corpus-skipped.json.
+# Explicitly exercise the content-free absent-input failure (exit nonzero).
 pnpm exec vp run siglus:private-local-validation-render -- --no-corpus
 
 # Render a single operator validation manifest.
@@ -52,11 +51,10 @@ Source: [`suite/scripts/siglus-private-local-validation-renderer/`](../suite/scr
 The render command is a private-local-only workflow. It is intentionally **not**
 selected by any per-gate CI lane: `just check`/`ci` never invoke it, and neither
 `scripts/affected.mjs` nor the CI workflows reference
-`siglus:private-local-validation-render`. Any non-private run produces the
-deterministic redacted no-corpus artifact, so no private corpora are ever a CI
-dependency. The hermetic test
-(`siglus:private-local-validation-render-test`) seeds its own mock manifests and
-needs no private inputs.
+`siglus:private-local-validation-render`. Public CI therefore never selects
+private work. The hermetic test
+(`siglus:private-local-validation-render-test`) uses mock manifests and
+absent-input cases and needs no private inputs.
 
 ## Private-local validation manifest conventions
 
@@ -95,7 +93,7 @@ remains a skeleton stub (`siglus-04`/`siglus-06`). An aggregate can therefore
 
 The command aggregates validated runs into a safe summary. Schema:
 [`validation-summary.schema.json`](../suite/scripts/siglus-private-local-validation-renderer/validation-summary.schema.json).
-Top-level fields: `schemaVersion`, `status` (`ok`/`skipped`), `reason`,
+Top-level fields: `schemaVersion`, `status` (`ok`), `reason`,
 `command` (canonical redacted command string), `generatedBy`, `engineFamily`
 (`siglus`), `aggregateCounts` (`profiles`, `runs`, `scenesValidated`,
 `unitsValidated`, `gameexeEntriesValidated`, `filesProcessed`),
@@ -103,19 +101,13 @@ Top-level fields: `schemaVersion`, `status` (`ok`/`skipped`), `reason`,
 `failureCategoryBins`, and `runs` (redacted per-run rows). Public-safe example:
 [`examples/validation-summary.example.json`](../suite/scripts/siglus-private-local-validation-renderer/examples/validation-summary.example.json).
 
-## Deterministic redacted no-corpus artifact
+## Missing input is a typed failure
 
-When private inputs are absent (or `--no-corpus`), the command writes
-`.tmp/siglus-private-local/no-corpus-skipped.json`:
-
-- `status: "skipped"`, `reason: "private_inputs_absent"`.
-- `command` — the canonical redacted command string.
-- `checkedPaths` — checked inputs redacted to logical ids (e.g.
-  `["private-local-root"]`).
-- `aggregateCounts` — all zero; all bins — all zero.
-
-Committed reference:
-[`examples/no-corpus-skipped.example.json`](../suite/scripts/siglus-private-local-validation-renderer/examples/no-corpus-skipped.example.json).
+A missing root or manifest, empty directory or selection, zero-byte or non-file
+manifest, missing option value, or explicit `--no-corpus` request emits only a
+typed content-free diagnostic, writes no summary, and exits nonzero. The
+diagnostic never includes private paths, filenames, rejected values, parser
+messages, or manifest content.
 
 ## What a summary may / must not contain
 
@@ -144,9 +136,8 @@ Siglus-specific extensions.
 
 The renderer distinguishes the four acceptance diagnostics:
 
-- **Missing private corpus** — the deterministic skipped no-corpus artifact
-  (`status: "skipped"`, `reason: "private_inputs_absent"`); absence is never a
-  failure.
+- **Missing private corpus** — a typed content-free failure with no evidence
+  effect and a nonzero exit.
 - **Redaction violation** — a `siglus-redaction-violation (<category>) at <path>`
   **throw**; the summary is never emitted.
 - **Unknown profile** — the `unknown_profile` validation-status bin.
@@ -156,8 +147,8 @@ The renderer distinguishes the four acceptance diagnostics:
 
 [`render.test.mjs`](../suite/scripts/siglus-private-local-validation-renderer/render.test.mjs)
 is hermetic (`node --test`, no network/DB/build/private corpora). It proves
-no-corpus determinism, the redacted aggregate summary matches the committed
-example, per-category seeded-secret rejection (raw key, decrypted script, story
-filename, helper dump, absolute path — each throws before emit), the four
-distinct diagnostics, and that the committed examples validate against the
-committed schemas.
+absent-input failure with no effects, the redacted aggregate summary matches
+the committed example, rejected private values do not leak through command
+diagnostics, per-category seeded-secret rejection, the four distinct
+diagnostics, and committed-schema validation. A nested per-run `skipped` value
+remains a truthful non-success observation; it is never a top-level success.

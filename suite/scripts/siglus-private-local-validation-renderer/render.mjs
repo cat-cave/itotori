@@ -6,8 +6,8 @@
  * workflow. It turns operator-authored, ALREADY-REDACTED private-local Siglus
  * VALIDATION manifests (describing local known-key / decrypt / patch-verify
  * runs — the the relevant capability known-key smoke and the broader Scene.pck / Gameexe.dat
- * stack) into a SAFE AGGREGATE validation summary, and produces a deterministic
- * REDACTED no-corpus artifact when no private inputs exist.
+ * stack) into a SAFE AGGREGATE validation summary. Missing or empty private
+ * input is handled by the command as a typed failure, never as a summary.
  *
  * This is the SIGLUS analogue of the relevant capability's private-local encrypted corpus
  * triage: it REUSES that redaction boundary (`findSecretLeak` structural scan +
@@ -31,8 +31,7 @@
  *     FILENAMES (asset extensions), helper raw dumps (control chars / newlines),
  *     `local-secret:` refs, and absolute local paths.
  *   - Output is byte-deterministic (sorted keys, no timestamps, no absolute
- *     paths), so the committed public-safe fixture and the no-corpus artifact
- *     are stable and diffable and validate in public CI without private assets.
+ *     paths), so the committed public-safe fixture is stable and diffable.
  */
 "use strict";
 
@@ -64,10 +63,8 @@ export const CAPABILITY_LEVELS = [
   "broad-unsupported",
 ];
 
-// Validation statuses. `skipped`/`private_inputs_absent` is the missing-corpus
-// diagnostic; `redaction_violation` is surfaced by a THROW (never a status),
-// `unknown_profile` and `helper_required` are first-class statuses so the four
-// acceptance diagnostics stay distinct.
+// Validation statuses describe recorded runs. Command-level missing input is a
+// separate typed failure diagnostic; it is never represented by this list.
 export const VALIDATION_STATUSES = [
   "passed",
   "helper_required",
@@ -112,7 +109,6 @@ export const COUNT_KEYS = [
 // Canonical redacted command strings. The real argv is NEVER recorded (it can
 // carry local absolute paths); the mode maps to a fixed logical command.
 export const COMMANDS = {
-  noCorpus: "vp run siglus:private-local-validation-render -- --no-corpus",
   manifest: "vp run siglus:private-local-validation-render -- --manifest <private-manifest>",
   corpusDir:
     "vp run siglus:private-local-validation-render -- --corpus-dir <private-corpus-directory>",
@@ -311,6 +307,9 @@ function emptyAggregateCounts() {
 // (profileId, capabilityLevel, validationStatus) for determinism; the secret
 // scan runs last (throws on any leak before the summary is returned/written).
 export function buildValidationSummary(runs, { command = COMMANDS.manifest } = {}) {
+  if (runs.length === 0) {
+    throw new Error("validation summary requires at least one selected private input");
+  }
   const sorted = [...runs].sort((a, b) => {
     if (a.profileId !== b.profileId) {
       return a.profileId < b.profileId ? -1 : 1;
@@ -361,36 +360,4 @@ export function buildValidationSummary(runs, { command = COMMANDS.manifest } = {
   };
   assertNoSecrets(summary);
   return summary;
-}
-
-// The deterministic REDACTED no-corpus artifact. Zeroed aggregate counts + empty
-// bins, checked paths reduced to logical ids, no timestamp. Absence of a private
-// corpus is NEVER a failure — it renders this skipped summary and exits clean.
-export function buildNoCorpusArtifact({
-  command = COMMANDS.noCorpus,
-  checkedPaths = ["private-local-root"],
-} = {}) {
-  const logicalIds = [...new Set(checkedPaths)].sort();
-  for (const id of logicalIds) {
-    if (!LOGICAL_ID_RE.test(id)) {
-      throw new Error(`no-corpus checkedPaths must be logical ids, got ${JSON.stringify(id)}`);
-    }
-  }
-  const artifact = {
-    schemaVersion: SUMMARY_SCHEMA_VERSION,
-    status: "skipped",
-    reason: "private_inputs_absent",
-    command,
-    generatedBy: GENERATOR_PATH,
-    engineFamily: ENGINE_FAMILY,
-    checkedPaths: logicalIds,
-    aggregateCounts: emptyAggregateCounts(),
-    capabilityLevelBins: emptyBins(CAPABILITY_LEVELS),
-    helperOutcomeBins: emptyBins(HELPER_OUTCOME_CATEGORIES),
-    validationStatusBins: emptyBins(VALIDATION_STATUSES),
-    failureCategoryBins: emptyBins(FAILURE_CATEGORIES),
-    runs: [],
-  };
-  assertNoSecrets(artifact);
-  return artifact;
 }

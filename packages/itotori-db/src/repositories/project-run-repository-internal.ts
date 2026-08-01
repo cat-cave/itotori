@@ -39,6 +39,26 @@ export class ItotoriProjectRunRepositoryError extends Error {
   }
 }
 
+/** Exact spend facts retained by a cap refusal after the account row is locked. */
+export class ItotoriProjectRunCostCapError extends ItotoriProjectRunRepositoryError {
+  readonly remainingMicrosUsd: number;
+
+  constructor(
+    readonly capMicrosUsd: number,
+    readonly spentMicrosUsd: number,
+    readonly reservedMicrosUsd: number,
+    readonly requestedMicrosUsd: number,
+  ) {
+    const remainingMicrosUsd = Math.max(0, capMicrosUsd - spentMicrosUsd - reservedMicrosUsd);
+    super(
+      "cost_cap_exceeded",
+      `project run cost cap refuses ${requestedMicrosUsd} micros; ${remainingMicrosUsd} micros remain`,
+    );
+    this.name = "ItotoriProjectRunCostCapError";
+    this.remainingMicrosUsd = remainingMicrosUsd;
+  }
+}
+
 export async function requireCurrentLease(
   executor: SqlExecutor,
   lease: ProjectRunLeaseFence,
@@ -296,13 +316,13 @@ function nullableTextOf(row: Row, name: string): string | null {
   return row[name] === null ? null : textOf(row, name);
 }
 
-function numberOf(row: Row, name: string): number {
+export function numberOf(row: Row, name: string): number {
   const value = Number(row[name]);
   if (!Number.isSafeInteger(value)) throw new Error(`database row ${name} is not a safe integer`);
   return value;
 }
 
-function nullableNumberOf(row: Row, name: string): number | null {
+export function nullableNumberOf(row: Row, name: string): number | null {
   return row[name] === null ? null : numberOf(row, name);
 }
 

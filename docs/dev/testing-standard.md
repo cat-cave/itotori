@@ -50,8 +50,9 @@ unavailable; its report names the missing dependency and a remediation.
 `ci-lanes.md` is the complete lane map. In short:
 
 - `just ci tier0` runs the static meta, TypeScript, Rust, and manifest lanes.
-- Tier-1 selectors split public TypeScript, Rust, database, browser, and
-  mutation work. `just ci private-real-bytes` preflights the private proof lane.
+- Tier-1 selectors split public TypeScript, Rust, database, browser, behavior,
+  and mutation work. `just ci private-real-bytes` runs the local preflight but
+  cannot pass while the protected external evidence agent is unavailable.
 - `just test browser` requires a runnable browser binary. `just test
 real-bytes` and the oracle selectors require their private inputs. Missing
   required inputs must fail rather than turn into an implied pass.
@@ -89,15 +90,15 @@ neither database behavior nor test success; use `just test db` for that.
 The repository’s structural guards are intentionally narrow claims:
 
 - The line-cap guard enforces a 500-line maximum for tracked `.js`, `.mjs`,
-  `.rs`, `.ts`, and `.tsx` source files; on this tree it scans 3,134 files and
+  `.rs`, `.ts`, and `.tsx` source files; on this tree it scans 3,131 files and
   all are at or below the cap. It counts newline characters and prints both its
   extension counts and limits. It cannot inspect untracked or ignored files,
   untracked generated output, or source files with other extensions.
 - The test-collection guard compares conventional `*.test.*` files on disk
   under `packages/` and `apps/` with every configured Vitest project plus the
-  DB Node-runner manifest. It currently reports `296 on disk, 296 collected,
-0 uncollected`. It verifies configured discovery only: a collected suite can
-  still fail when its test bodies run.
+  DB Node-runner manifest. It currently reports
+  `307 on disk, 307 collected, 0 uncollected`. It verifies configured discovery
+  only: a collected suite can still fail when its test bodies run.
 - The game-name guard scans tracked UTF-8 text using structural identity shapes,
   not a title list, and checks a limited Shift-JIS byte-literal form. It cannot
   reliably identify arbitrary prose names, opaque bytes, non-UTF-8 files, or

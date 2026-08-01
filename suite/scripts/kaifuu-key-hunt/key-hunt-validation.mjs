@@ -271,6 +271,9 @@ function emptyAggregateCounts() {
 // sorted by (corpusId, engine, attemptKind, outcome) for determinism; the secret
 // scan runs last (throws on any leak before the report is returned/written).
 export function buildKeyHuntReport(attempts, { command = COMMANDS.manifest } = {}) {
+  if (attempts.length === 0) {
+    throw new Error("key-hunt report requires at least one selected private input");
+  }
   const sorted = [...attempts].sort((a, b) => {
     if (a.corpusId !== b.corpusId) return a.corpusId < b.corpusId ? -1 : 1;
     if (a.engine !== b.engine) return a.engine < b.engine ? -1 : 1;
@@ -329,35 +332,4 @@ export function buildKeyHuntReport(attempts, { command = COMMANDS.manifest } = {
   };
   assertNoSecrets(report);
   return report;
-}
-
-// The deterministic REDACTED no-corpus artifact. Zeroed aggregate counts + empty
-// bins, `helperAttempts: []`, checked paths reduced to logical ids, no timestamp.
-// Absence of a private corpus is NEVER a failure — it emits this and exits clean.
-export function buildNoCorpusArtifact({
-  command = COMMANDS.noCorpus,
-  checkedPaths = ["private-local-root"],
-} = {}) {
-  const logicalIds = [...new Set(checkedPaths)].sort();
-  for (const id of logicalIds) {
-    if (!LOGICAL_ID_RE.test(id)) {
-      throw new Error(`no-corpus checkedPaths must be logical ids, got ${JSON.stringify(id)}`);
-    }
-  }
-  const artifact = {
-    schemaVersion: REPORT_SCHEMA_VERSION,
-    status: "skipped",
-    reason: "private_inputs_absent",
-    command,
-    generatedBy: GENERATOR_PATH,
-    checkedPaths: logicalIds,
-    aggregateCounts: emptyAggregateCounts(),
-    outcomeBins: emptyOutcomeBins(),
-    engineOutcomeBins: emptyEngineOutcomeBins(),
-    toolVersions: [],
-    commandLines: [],
-    helperAttempts: [],
-  };
-  assertNoSecrets(artifact);
-  return artifact;
 }

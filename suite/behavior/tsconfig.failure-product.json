@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "outDir": "../../.tmp/behavior-proof/glue/failure-product",
+    "noEmit": false,
+    "paths": {
+      "@itotori/db": ["../../packages/itotori-db/src/index.ts"],
+      "@itotori/ds": ["../../packages/itotori-ds/src/index.ts"],
+      "@itotori/localization-bridge-schema": [
+        "../../packages/localization-bridge-schema/src/index.ts"
+      ]
+    }
+  },
+  "include": ["../../apps/itotori/src/explicit-failure/**/*.ts", "product/explicit-failure-*.ts"]
+}

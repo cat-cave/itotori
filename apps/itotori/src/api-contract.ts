@@ -59,8 +59,12 @@ const ERROR_STATUS_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "403": "Permission denied (forbidden).",
   "404": "Route or resource not found (not_found).",
   "405": "Method not allowed (method_not_allowed).",
-  "503": "Database is unreachable (database_unreachable).",
+  "409": "Workflow conflicts with the current state (workflow_failed).",
+  "422": "Workflow input or operation cannot be processed (workflow_failed).",
+  "429": "Exact cost allowance is exhausted (workflow_failed).",
   "500": "Internal error (internal_error).",
+  "503": "Service unavailable (database_unreachable or workflow_failed).",
+  "504": "Declared provider deadline reached (workflow_failed).",
 };
 
 function openApiErrorResponses(): Record<string, JsonValue> {

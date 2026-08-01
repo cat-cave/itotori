@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "itotori.siglus-private-local-validation-report.v0.1",
   "title": "Siglus private-local redacted validation summary",
-  "description": "SAFE AGGREGATE Siglus validation evidence emitted by the siglus:private-local-validation-render workflow. Publicly citable by aggregate/hash metadata. Contains ONLY redacted fields: logical profile ids, capability-level bins, helper OUTCOME CATEGORY bins, validation STATUS bins, failure CATEGORY bins, aggregate COUNTS (scenes/units/gameexe-entries validated, files processed), and proof HASHES. The `skipped` status is the deterministic REDACTED no-corpus artifact emitted when no private inputs exist.",
+  "description": "SAFE AGGREGATE Siglus validation evidence emitted by the siglus:private-local-validation-render workflow after non-empty private input is selected. Publicly citable by aggregate/hash metadata. Contains ONLY redacted fields: logical profile ids, capability-level bins, helper OUTCOME CATEGORY bins, validation STATUS bins, failure CATEGORY bins, aggregate COUNTS (scenes/units/gameexe-entries validated, files processed), and proof HASHES.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -21,20 +21,13 @@
   ],
   "properties": {
     "schemaVersion": { "const": "itotori.siglus-private-local-validation-report.v0.1" },
-    "status": { "enum": ["ok", "skipped"] },
-    "reason": {
-      "oneOf": [{ "const": "private_inputs_absent" }, { "type": "null" }]
-    },
+    "status": { "const": "ok" },
+    "reason": { "type": "null" },
     "command": { "type": "string" },
     "generatedBy": {
       "const": "suite/scripts/siglus-private-local-validation-renderer/run.mjs"
     },
     "engineFamily": { "const": "siglus" },
-    "checkedPaths": {
-      "type": "array",
-      "description": "Present only on the no-corpus artifact: checked inputs redacted to logical ids.",
-      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
-    },
     "aggregateCounts": {
       "type": "object",
       "additionalProperties": false,
@@ -130,6 +123,7 @@
     },
     "runs": {
       "type": "array",
+      "minItems": 1,
       "items": {
         "type": "object",
         "additionalProperties": false,
