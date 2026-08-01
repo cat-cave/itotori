@@ -63,6 +63,40 @@ export {
   planManagedArtifactCleanup,
   redactPrivateLocalManagedArtifactRef,
 } from "./managed-artifact-refs.js";
+export {
+  ArtifactAuthorizationError,
+  ArtifactIncompatibleVersionError,
+  ArtifactIdentityCollisionError,
+  ArtifactStoreIntegrityError,
+  assertImmutableArtifactFormatVersion,
+  artifactIdForBytes,
+  immutableArtifactFormatVersion,
+  immutableArtifactSnapshotVersion,
+} from "./immutable-artifact-store.js";
+export type {
+  ArtifactAuditAction,
+  ArtifactAuditEvent,
+  ArtifactAuditOutcome,
+  ArtifactDescriptor,
+  ArtifactPruneDecision,
+  ArtifactPruneReceipt,
+  ArtifactReference,
+  ArtifactRetentionBasis,
+  ArtifactRetentionPolicy,
+  ArtifactSnapshotExport,
+  ImmutableArtifactSnapshot,
+} from "./immutable-artifact-store.js";
+export {
+  ArtifactRepositoryConflictError,
+  openLocalImmutableArtifactRepository,
+} from "./immutable-artifact-repository.js";
+export type { ImmutableArtifactRepository } from "./immutable-artifact-repository.js";
+export {
+  DatabaseImmutableArtifactRepository,
+  openDatabaseImmutableArtifactRepository,
+} from "./immutable-artifact-database-repository.js";
+export { ItotoriImmutableArtifactRetentionRepository } from "./immutable-artifact-retention-repository.js";
+export type { ImmutableArtifactRetentionReport } from "./immutable-artifact-retention-repository.js";
 export type {
   BenchmarkManagedArtifactKind,
   BenchmarkManagedArtifactRef,

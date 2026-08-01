@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
@@ -6,13 +7,111 @@ import { resolve } from "node:path";
 
 import { runMutationProof } from "./run-behavior-proof.mjs";
 
-test("cell_transition_rejects_fixed_empty_driver", async () => {
+test("cell_transition_kills_an_unsupported-version-acceptance_mutation", async () => {
   const root = resolve(new URL("../..", import.meta.url).pathname);
   const { mutant, baseline, baselinePlan } = await runMutationProof({ root });
-  assert.equal(mutant.caseResults.length, 24);
-  assert.equal(baseline.caseResults.length, 24);
+  const noDatabaseEnvironment = { ...process.env };
+  delete noDatabaseEnvironment.DATABASE_URL;
+  const missingDatabase = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `
+        import { observeDatabaseArtifactRepository } from "./packages/itotori-db/scripts/immutable-artifact-database-probes.mjs";
+        try {
+          await observeDatabaseArtifactRepository({ userId: "local-user" }, new TextEncoder());
+          process.exitCode = 1;
+        } catch (error) {
+          process.stdout.write(JSON.stringify({
+            name: error instanceof Error ? error.name : undefined,
+            message: error instanceof Error ? error.message : undefined,
+            inputName:
+              typeof error === "object" && error !== null && "inputName" in error
+                ? error.inputName
+                : undefined,
+          }));
+        }
+      `,
+    ],
+    { cwd: root, encoding: "utf8", env: noDatabaseEnvironment },
+  );
+  assert.equal(missingDatabase.status, 0, missingDatabase.stderr);
+  assert.deepEqual(JSON.parse(missingDatabase.stdout), {
+    name: "MissingRequiredInputError",
+    message: "required input is absent: DATABASE_URL",
+    inputName: "DATABASE_URL",
+  });
+  const missingDatabaseBoundary = spawnSync(
+    process.execPath,
+    ["packages/itotori-db/scripts/immutable-artifact-behavior-boundary.mjs"],
+    { cwd: root, encoding: "utf8", env: noDatabaseEnvironment },
+  );
+  assert.notEqual(missingDatabaseBoundary.status, 0);
+  assert.match(missingDatabaseBoundary.stderr, /MissingRequiredInputError/u);
+  assert.match(missingDatabaseBoundary.stderr, /DATABASE_URL/u);
+  const missingDatabaseDriver = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `
+        import { observeImmutableArtifactBehavior } from "./.tmp/behavior-proof/glue/drivers/immutable-artifact.js";
+        try {
+          await observeImmutableArtifactBehavior(${JSON.stringify(root)});
+          process.exitCode = 1;
+        } catch (error) {
+          process.stdout.write(JSON.stringify({
+            name: error instanceof Error ? error.name : undefined,
+            message: error instanceof Error ? error.message : undefined,
+            inputName:
+              typeof error === "object" && error !== null && "inputName" in error
+                ? error.inputName
+                : undefined,
+          }));
+        }
+      `,
+    ],
+    { cwd: root, encoding: "utf8", env: noDatabaseEnvironment },
+  );
+  assert.equal(missingDatabaseDriver.status, 0, missingDatabaseDriver.stderr);
+  assert.deepEqual(JSON.parse(missingDatabaseDriver.stdout), {
+    name: "ArtifactBehaviorDatabaseConfigurationError",
+    message: "required input is absent: DATABASE_URL",
+    inputName: "DATABASE_URL",
+  });
+  const missingDatabaseProof = spawnSync(process.execPath, ["scripts/ci/run-behavior-proof.mjs"], {
+    cwd: root,
+    encoding: "utf8",
+    env: noDatabaseEnvironment,
+  });
+  assert.notEqual(missingDatabaseProof.status, 0);
+  assert.match(missingDatabaseProof.stderr, /MissingRequiredInputError/u);
+  assert.match(missingDatabaseProof.stderr, /DATABASE_URL/u);
+  assert.equal(mutant.caseResults.length, 32);
+  assert.equal(baseline.caseResults.length, 32);
   assert.deepEqual(new Set(mutant.caseResults.map(({ status }) => status)), new Set(["fail"]));
-  assert.deepEqual(new Set(baseline.caseResults.map(({ status }) => status)), new Set(["pass"]));
+  assert.equal(baseline.caseResults.filter(({ status }) => status === "pass").length, 32);
+  assert.equal(baseline.caseResults.filter(({ status }) => status === "fail").length, 0);
+  assert.ok(
+    baseline.caseResults
+      .filter(
+        ({ behavior }) => behavior === "platform.artifacts-are-immutable-and-retained-by-policy",
+      )
+      .every(({ status }) => status === "pass"),
+  );
+  assert.ok(
+    mutant.caseResults
+      .filter(
+        ({ behavior }) => behavior === "platform.artifacts-are-immutable-and-retained-by-policy",
+      )
+      .every(
+        ({ status, observationCount, reasonCodes }) =>
+          status === "fail" &&
+          observationCount > 0 &&
+          reasonCodes.includes("artifact-incompatible-version-not-typed"),
+      ),
+  );
 
   const driver = await import(
     pathToFileURL(resolve(root, ".tmp/behavior-proof/glue/drivers/explicit-failure.js")).href

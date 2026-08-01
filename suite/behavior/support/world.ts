@@ -8,6 +8,12 @@ import {
   observeFailure,
   type FailureObservation,
 } from "../drivers/explicit-failure.js";
+import {
+  artifactActionResult,
+  artifactConditionResult,
+  observeImmutableArtifactBehavior,
+  type ImmutableArtifactObservation,
+} from "../drivers/immutable-artifact.js";
 import { observeEvidence, type EvidenceObservation } from "../drivers/portable-evidence.js";
 
 interface WorldParameters {
@@ -110,10 +116,12 @@ export class BehaviorWorld extends World<WorldParameters> {
   private selected?: SelectedCase;
   private failure?: FailureObservation;
   private evidence?: EvidenceObservation;
+  private artifact?: ImmutableArtifactObservation;
   private stepIndex = -1;
   private assertions = 0;
   private observations = 0;
   private readonly reasonCodes: string[] = [];
+  private deferredFailure: string | undefined;
 
   constructor(options: IWorldOptions<WorldParameters>) {
     super(options);
@@ -130,7 +138,7 @@ export class BehaviorWorld extends World<WorldParameters> {
     this.selected = selected;
   }
 
-  execute(text: string): void {
+  async execute(text: string): Promise<void> {
     const selected = this.selected;
     if (selected === undefined) throw new Error("case-not-started");
     const protectedMatch = PROTECTED_STEP.exec(text);
@@ -149,6 +157,10 @@ export class BehaviorWorld extends World<WorldParameters> {
     }
     if (selected.behavior === "quality.evidence-is-traceable-and-portable") {
       this.executeEvidenceStep(selected, originalStep, text);
+      return;
+    }
+    if (selected.behavior === "platform.artifacts-are-immutable-and-retained-by-policy") {
+      await this.executeArtifactStep(selected, originalStep, text);
       return;
     }
     this.reasonCodes.push("missing-execution");
@@ -266,11 +278,98 @@ export class BehaviorWorld extends World<WorldParameters> {
     this.assertions += 1;
   }
 
+  private async executeArtifactStep(
+    selected: SelectedCase,
+    index: number,
+    text: string,
+  ): Promise<void> {
+    if (index === 0) {
+      check(
+        text ===
+          `${requireValue(selected.values, "actor")} handles ${requireValue(
+            selected.values,
+            "artifact_kind",
+          )} with ${requireValue(selected.values, "privacy_class")} classification and ${requireValue(
+            selected.values,
+            "retention_policy",
+          )}`,
+        "artifact-given-mismatch",
+      );
+      this.artifact = await observeImmutableArtifactBehavior(
+        this.repositoryRoot,
+        this.plan.mode === "fixed-success",
+      );
+      this.observations = this.artifact.observedFields;
+      return;
+    }
+    const artifact = this.artifact;
+    if (artifact === undefined) throw new Error("artifact-not-observed");
+    if (index === 1) {
+      check(
+        text === `the actor performs ${requireValue(selected.values, "artifact_action")}`,
+        "artifact-when-mismatch",
+      );
+      return;
+    }
+    if (index === 2) {
+      check(
+        text ===
+          `hash identity, immutability, and authorization end as ${requireValue(
+            selected.values,
+            "expected_outcome",
+          )}`,
+        "artifact-outcome-mismatch",
+      );
+      this.recordArtifactResult(
+        artifactActionResult(artifact, requireValue(selected.values, "artifact_action")),
+      );
+      this.recordArtifactResult(artifactConditionResult(artifact, "authorized-retention"));
+    } else if (index === 3) {
+      check(
+        text === "expiry removes only unreferenced eligible content",
+        "artifact-expiry-mismatch",
+      );
+      this.recordArtifactResult(artifactConditionResult(artifact, "expiry"));
+    } else if (index === 4) {
+      check(
+        text ===
+          "any authorized prune records its exact scope and preserves required referential evidence",
+        "artifact-prune-mismatch",
+      );
+      this.recordArtifactResult(artifactConditionResult(artifact, "prune"));
+    } else if (index === 5) {
+      check(
+        text === "retained lineage never points to missing content as if it were available",
+        "artifact-lineage-mismatch",
+      );
+      this.recordArtifactResult(artifactConditionResult(artifact, "lineage"));
+    } else if (index === 6) {
+      check(
+        text ===
+          "every retained audit event preserves its actor, target, outcome, and append order",
+        "artifact-audit-mismatch",
+      );
+      this.recordArtifactResult(artifactConditionResult(artifact, "audit"));
+      this.recordArtifactResult(artifactConditionResult(artifact, "incompatible-version"));
+    } else {
+      throw new Error("unbound-immutable-artifact-step");
+    }
+    this.assertions += 1;
+    if (index === 6 && this.reasonCodes.length > 0) {
+      this.deferredFailure = `immutable-artifact-conditions-failed:${this.reasonCodes.join(",")}`;
+    }
+  }
+
+  private recordArtifactResult(result: { passed: boolean; reason: string }): void {
+    if (!result.passed) this.reasonCodes.push(result.reason);
+  }
+
   finish(cucumberPassed: boolean): void {
     const selected = this.selected;
     if (selected === undefined) throw new Error("finished-case-not-selected");
     const pass =
       cucumberPassed &&
+      this.deferredFailure === undefined &&
       this.assertions === selected.requiredAssertionCount &&
       this.observations > 0;
     const reasonCodes = pass
@@ -293,5 +392,6 @@ export class BehaviorWorld extends World<WorldParameters> {
       CASE_RESULT_MEDIA_TYPE,
     );
     appendFileSync(this.resultsPath, `${JSON.stringify(result)}\n`, "utf8");
+    if (this.deferredFailure !== undefined) throw new Error(this.deferredFailure);
   }
 }

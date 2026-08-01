@@ -11,6 +11,7 @@ import { rootLaneFragments } from "./behavior-proof-fragments.mjs";
 
 const EXPECTED_IDENTITY_DIGEST = "48777d244fafe26e8ba834ed6b456b1756217380ef6a4af17ef27b42a942bcb3";
 const OWNED_BEHAVIORS = new Set([
+  "platform.artifacts-are-immutable-and-retained-by-policy",
   "quality.failures-stay-explicit",
   "quality.evidence-is-traceable-and-portable",
 ]);

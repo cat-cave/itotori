@@ -23,8 +23,22 @@ function namedStep(body, name) {
   return match[0];
 }
 
+function postgresService(body) {
+  const match = /^    services:\n([\s\S]*?)^    env:\n      DATABASE_URL: ([^\n]+)$/mu.exec(body);
+  assert.notEqual(match, null, "missing Postgres service or DATABASE_URL");
+  return { service: match[1], databaseUrl: match[2] };
+}
+
 test("behavior job publishes a nonempty candidate proof with pinned artifact code", () => {
   const body = job("behavior");
+  const database = postgresService(body);
+  assert.deepEqual(database, postgresService(job("db")));
+  assert.match(
+    database.service,
+    /image: postgres:18@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a/u,
+  );
+  assert.match(database.service, /--health-cmd "pg_isready -U itotori -d itotori"/u);
+  assert.equal(database.databaseUrl, "postgres://itotori:itotori@127.0.0.1:5432/itotori");
   assert.match(body, /run: just ci tier1-behavior/u);
   assert.match(body, /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/u);
   assert.match(body, /name: behavior-proof-\$\{\{ github\.sha \}\}/u);

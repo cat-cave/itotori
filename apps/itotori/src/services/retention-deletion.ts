@@ -1,4 +1,9 @@
-import { ItotoriLlmRetentionRepository, withDatabase } from "@itotori/db";
+import {
+  ItotoriImmutableArtifactRetentionRepository,
+  ItotoriLlmRetentionRepository,
+  localUserId,
+  withDatabase,
+} from "@itotori/db";
 import { createFieldMemoCipher } from "../composition/live/field-cipher.js";
 import {
   createRetentionScheduler,
@@ -14,9 +19,14 @@ export function createProductionRetentionScheduler(input: {
 }): RetentionScheduler {
   const schedulerInput = {
     deleteExpired: async () =>
-      await withDatabase(async ({ pool }) => {
+      await withDatabase(async ({ pool, db }) => {
         const cipher = createFieldMemoCipher(process.env);
-        return await new ItotoriLlmRetentionRepository(pool, cipher).deleteExpired();
+        const llm = await new ItotoriLlmRetentionRepository(pool, cipher).deleteExpired();
+        const immutableArtifacts = await new ItotoriImmutableArtifactRetentionRepository(
+          { pool, db },
+          cipher,
+        ).deleteExpired({ userId: localUserId });
+        return { ...llm, immutableArtifacts };
       }, input.databaseUrl),
   };
   return input.observe === undefined

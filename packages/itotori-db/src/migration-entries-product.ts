@@ -239,4 +239,12 @@ export const productMigrationEntries = [
     id: "0117_release_terminal_project_run_cost_reservations",
     file: "0117_release_terminal_project_run_cost_reservations.sql",
   },
+  {
+    id: "0118_immutable_artifact_repository",
+    file: "0118_immutable_artifact_repository.sql",
+  },
+  {
+    id: "0119_immutable_artifact_database_enforcement",
+    file: "0119_immutable_artifact_database_enforcement.sql",
+  },
 ] as const;
