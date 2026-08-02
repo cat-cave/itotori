@@ -39,15 +39,17 @@ interface CaseResult {
 }
 
 interface DriverModule {
+  readonly cell: string;
   readonly executeCellStep: BehaviorCellStepExecutor;
 }
 
 const plans = new Map<string, LoadedPlan>();
-const cellDriverExecutors = new Map<string, Promise<BehaviorCellStepExecutor>>();
+const cellDriverModules = new Map<string, Promise<DriverModule>>();
 const CASE_RESULT_MEDIA_TYPE = "application/vnd.itotori.behavior-case-result+json";
 const CASE_NAME = /\[(case::[^\]]+)\]$/u;
 const PROTECTED_STEP = /^the protected behavior case "([^"]+)" selects "([^"]+)"$/u;
-const DRIVER_MODULE = /^drivers\/behavior-cells\/[a-z0-9-]+\.js$/u;
+const DRIVER_MODULE =
+  /^capsules\/[a-z0-9]+(?:[.-][a-z0-9]+)*--[a-z0-9]+(?:[.-][a-z0-9]+)*\/driver\.js$/u;
 const MUTATION_MANIFEST_SCHEMA = "itotori.behavior-fixed-success-mutations.v1";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -142,20 +144,31 @@ function loadPlan(path: string): LoadedPlan {
 }
 
 function isDriverModule(value: unknown): value is DriverModule {
-  return isRecord(value) && typeof value.executeCellStep === "function";
+  return (
+    isRecord(value) && typeof value.cell === "string" && typeof value.executeCellStep === "function"
+  );
 }
 
-async function loadCellDriverExecutor(driverModule: string): Promise<BehaviorCellStepExecutor> {
-  const cached = cellDriverExecutors.get(driverModule);
-  if (cached !== undefined) return await cached;
+async function loadCellDriverExecutor(
+  driverModule: string,
+  cell: string,
+): Promise<BehaviorCellStepExecutor> {
+  const cached = cellDriverModules.get(driverModule);
+  if (cached !== undefined) {
+    const loaded = await cached;
+    if (loaded.cell !== cell) throw new Error("registered-cell-driver-identity-mismatch");
+    return loaded.executeCellStep;
+  }
   const pending = import(new URL(`../${driverModule}`, import.meta.url).href).then(
     (loaded: unknown) => {
       if (!isDriverModule(loaded)) throw new Error("registered-cell-driver-export-invalid");
-      return loaded.executeCellStep;
+      return loaded;
     },
   );
-  cellDriverExecutors.set(driverModule, pending);
-  return await pending;
+  cellDriverModules.set(driverModule, pending);
+  const loaded = await pending;
+  if (loaded.cell !== cell) throw new Error("registered-cell-driver-identity-mismatch");
+  return loaded.executeCellStep;
 }
 
 function isStepResult(value: unknown): value is BehaviorCellStepResult {
@@ -218,7 +231,7 @@ export class BehaviorWorld extends World<WorldParameters> {
       this.reasonCodes.push("missing-execution");
       throw new Error(`missing-execution:${selected.cell}`);
     }
-    const executeCellStep = await loadCellDriverExecutor(selected.driverModule);
+    const executeCellStep = await loadCellDriverExecutor(selected.driverModule, selected.cell);
     const result: unknown = await executeCellStep({
       execution: this,
       selected,

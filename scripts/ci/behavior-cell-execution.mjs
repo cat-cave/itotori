@@ -7,6 +7,7 @@ import { validateFixedSuccessMutationArtifact } from "./behavior-fixed-success-m
 
 const FIXED_SUCCESS_MUTATION_MANIFEST_SCHEMA = "itotori.behavior-fixed-success-mutations.v1";
 const registeredCells = new Set(behaviorCells.map(({ cell }) => cell));
+const lexical = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -76,6 +77,7 @@ export async function validateCompiledRegisteredCellDrivers(glueRoot, cells = be
     if (!isRecord(loaded) || typeof loaded.executeCellStep !== "function") {
       throw new Error(`registered-cell-driver-export-invalid:${cell}`);
     }
+    if (loaded.cell !== cell) throw new Error(`registered-cell-driver-identity-mismatch:${cell}`);
     validated.push(cell);
   }
   return validated;
@@ -86,13 +88,14 @@ export async function prepareFixedSuccessMutations(root, workRoot, cells = behav
   for (const { cell, mutationModule } of cells) {
     let loaded;
     try {
-      loaded = await import(new URL(mutationModule, import.meta.url).href);
+      loaded = await import(pathToFileURL(resolve(root, mutationModule)).href);
     } catch {
       throw new Error(`registered-cell-mutation-module-unavailable:${cell}`);
     }
     if (!isRecord(loaded) || typeof loaded.prepareFixedSuccessMutation !== "function") {
       throw new Error(`registered-cell-mutation-export-invalid:${cell}`);
     }
+    if (loaded.cell !== cell) throw new Error(`registered-cell-mutation-identity-mismatch:${cell}`);
     const prepared = await loaded.prepareFixedSuccessMutation(root, workRoot);
     mutations.push(validPreparedMutation(prepared, workRoot, cell));
   }
@@ -104,7 +107,7 @@ export async function prepareFixedSuccessMutations(root, workRoot, cells = behav
     `${JSON.stringify(
       {
         schema: FIXED_SUCCESS_MUTATION_MANIFEST_SCHEMA,
-        mutations: mutations.toSorted((left, right) => left.cell.localeCompare(right.cell)),
+        mutations: mutations.toSorted((left, right) => lexical(left.cell, right.cell)),
       },
       null,
       2,

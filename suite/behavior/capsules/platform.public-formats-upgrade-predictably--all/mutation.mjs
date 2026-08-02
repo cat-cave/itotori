@@ -2,9 +2,9 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { writeFixedSuccessMutationArtifact } from "./behavior-fixed-success-mutation-contract.mjs";
+import { writeFixedSuccessMutationArtifact } from "../../../../scripts/ci/behavior-fixed-success-mutation-contract.mjs";
 
-const CELL = "cell::platform.public-formats-upgrade-predictably::all";
+export const cell = "cell::platform.public-formats-upgrade-predictably::all";
 
 function replaceOnce(source, find, replacement, label) {
   const parts = source.split(find);
@@ -67,6 +67,6 @@ export function prepareFixedSuccessMutation(root, workRoot) {
   const mutationRoot = preparePublicFormatFixedSuccessMutation(root, workRoot);
   return {
     mutationRoot,
-    mutationArtifactPath: writeFixedSuccessMutationArtifact(mutationRoot, CELL),
+    mutationArtifactPath: writeFixedSuccessMutationArtifact(mutationRoot, cell),
   };
 }

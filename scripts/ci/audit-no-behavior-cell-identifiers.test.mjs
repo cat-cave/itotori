@@ -29,7 +29,7 @@ test("derives behavior and cell identifiers from registry entries", () => {
 test("finds a registered identifier in a prohibited shared harness", () => {
   const identifiers = ["cell::domain.synthetic-behavior::all", "domain.synthetic-behavior"];
   const found = findBehaviorCellIdentifierViolations(
-    SHARED_BEHAVIOR_HARNESS_FILES[1],
+    SHARED_BEHAVIOR_HARNESS_FILES[2],
     "const behavior = 'domain.synthetic-behavior';\n",
     identifiers,
   );
@@ -41,10 +41,8 @@ test("finds a registered identifier in a prohibited shared harness", () => {
 
 test("CLI fails when a registered behavior or cell returns to a shared harness", () => {
   const entry = behaviorCells[0];
-  for (const [file, identifier] of [
-    [SHARED_BEHAVIOR_HARNESS_FILES[0], entry.behavior],
-    [SHARED_BEHAVIOR_HARNESS_FILES[1], entry.cell],
-  ]) {
+  for (const [index, file] of SHARED_BEHAVIOR_HARNESS_FILES.entries()) {
+    const identifier = index % 2 === 0 ? entry.behavior : entry.cell;
     const root = createIdentifierFreeSharedHarnessRoot();
     writeFileSync(join(root, file), `const named = "${identifier}";\n`);
 
@@ -55,7 +53,7 @@ test("CLI fails when a registered behavior or cell returns to a shared harness",
   }
 });
 
-test("CLI passes when both shared harnesses are identifier-free", () => {
+test("CLI passes when all shared discovery and harness files are identifier-free", () => {
   const passed = runCli("--root", createIdentifierFreeSharedHarnessRoot());
   assert.equal(passed.code, 0, passed.stderr);
   assert.match(passed.stdout, /0 references/u);

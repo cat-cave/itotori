@@ -2,15 +2,17 @@ import {
   isExplicitNonSuccess,
   observeFailure,
   type FailureObservation,
-} from "../explicit-failure.js";
+} from "../../drivers/explicit-failure.js";
 import {
   check,
   requireCaseValue,
   type BehaviorCellStepContext,
   type BehaviorCellStepExecutor,
   type BehaviorCellStepResult,
-} from "./step-contract.js";
-import { fixedSuccessEnabled } from "./fixed-success-mutation.js";
+} from "../../drivers/behavior-cells/step-contract.js";
+import { fixedSuccessEnabled } from "../../drivers/behavior-cells/fixed-success-mutation.js";
+
+export const cell = "cell::quality.failures-stay-explicit::all";
 
 const observations = new WeakMap<object, FailureObservation>();
 

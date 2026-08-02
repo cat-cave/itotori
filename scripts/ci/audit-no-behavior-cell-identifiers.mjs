@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // CI guard: shared behavior harnesses must not name registered cells.
 //
-// Cell identity belongs in behavior-cell-registry.mjs. Keeping the two shared
+// Cell identity belongs in a proof capsule. Keeping the shared discovery and
 // harness files below identifier-free means a new cell does not create a
-// concurrent edit hotspot. The prohibited identifiers are derived from that
-// registry, rather than copied here.
+// concurrent edit hotspot. The prohibited identifiers are derived from the
+// discovered capsules, rather than copied here.
 //
-// Scope: exactly the two shared behavior harness files. Limit: this detects
-// literal registered identifiers only; dynamically assembled, encoded, or
-// unregistered identifiers are outside its reach.
+// Scope: exactly the three shared discovery and behavior-harness files below.
+// Limit: this detects literal discovered identifiers only; dynamically
+// assembled, encoded, or undiscovered identifiers are outside its reach.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -20,6 +20,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../..");
 
 export const SHARED_BEHAVIOR_HARNESS_FILES = [
+  "scripts/ci/behavior-cell-registry.mjs",
   "scripts/ci/run-behavior-proof.mjs",
   "suite/behavior/support/world.ts",
 ];
@@ -114,7 +115,7 @@ function main() {
   }
   const violations = scanSharedBehaviorHarnesses(options.root);
   const limit =
-    "Limit: literal registered identifiers only; dynamically assembled, encoded, or unregistered identifiers are not detected.\n";
+    "Limit: literal discovered identifiers only; dynamically assembled, encoded, or undiscovered identifiers are not detected.\n";
   if (violations.length === 0) {
     process.stdout.write(
       `behavior-cell identifier guard: passed. 0 references across ${SHARED_BEHAVIOR_HARNESS_FILES.length} shared files.\n${limit}`,

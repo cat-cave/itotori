@@ -2,9 +2,9 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { writeFixedSuccessMutationArtifact } from "./behavior-fixed-success-mutation-contract.mjs";
+import { writeFixedSuccessMutationArtifact } from "../../../../scripts/ci/behavior-fixed-success-mutation-contract.mjs";
 
-const CELL = "cell::platform.artifacts-are-immutable-and-retained-by-policy::all";
+export const cell = "cell::platform.artifacts-are-immutable-and-retained-by-policy::all";
 
 function replaceOnce(source, find, replacement, label) {
   const parts = source.split(find);
@@ -69,6 +69,6 @@ export function prepareFixedSuccessMutation(root, workRoot) {
   const mutationRoot = prepareImmutableArtifactFixedSuccessMutation(root, workRoot);
   return {
     mutationRoot,
-    mutationArtifactPath: writeFixedSuccessMutationArtifact(mutationRoot, CELL),
+    mutationArtifactPath: writeFixedSuccessMutationArtifact(mutationRoot, cell),
   };
 }

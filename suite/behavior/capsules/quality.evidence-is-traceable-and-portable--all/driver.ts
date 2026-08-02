@@ -1,12 +1,14 @@
-import { observeEvidence, type EvidenceObservation } from "../portable-evidence.js";
+import { observeEvidence, type EvidenceObservation } from "../../drivers/portable-evidence.js";
 import {
   check,
   requireCaseValue,
   type BehaviorCellStepContext,
   type BehaviorCellStepExecutor,
   type BehaviorCellStepResult,
-} from "./step-contract.js";
-import { fixedSuccessEnabled } from "./fixed-success-mutation.js";
+} from "../../drivers/behavior-cells/step-contract.js";
+import { fixedSuccessEnabled } from "../../drivers/behavior-cells/fixed-success-mutation.js";
+
+export const cell = "cell::quality.evidence-is-traceable-and-portable::all";
 
 const observations = new WeakMap<object, EvidenceObservation>();
 

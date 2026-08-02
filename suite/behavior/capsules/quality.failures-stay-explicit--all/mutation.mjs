@@ -1,9 +1,9 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { writeFixedSuccessMutationArtifact } from "./behavior-fixed-success-mutation-contract.mjs";
+import { writeFixedSuccessMutationArtifact } from "../../../../scripts/ci/behavior-fixed-success-mutation-contract.mjs";
 
-const CELL = "cell::quality.failures-stay-explicit::all";
+export const cell = "cell::quality.failures-stay-explicit::all";
 
 /**
  * Prepares the fixed-success driver mutation as a separately bound artifact.
@@ -16,6 +16,6 @@ export function prepareFixedSuccessMutation(_root, workRoot) {
   mkdirSync(mutationRoot, { recursive: true });
   return {
     mutationRoot,
-    mutationArtifactPath: writeFixedSuccessMutationArtifact(mutationRoot, CELL),
+    mutationArtifactPath: writeFixedSuccessMutationArtifact(mutationRoot, cell),
   };
 }

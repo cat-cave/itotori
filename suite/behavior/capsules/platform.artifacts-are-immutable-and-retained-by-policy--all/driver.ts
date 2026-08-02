@@ -4,15 +4,17 @@ import {
   observeImmutableArtifactBehavior,
   type ArtifactConditionResult,
   type ImmutableArtifactObservation,
-} from "../immutable-artifact.js";
+} from "../../drivers/immutable-artifact.js";
 import {
   check,
   requireCaseValue,
   type BehaviorCellStepContext,
   type BehaviorCellStepExecutor,
   type BehaviorCellStepResult,
-} from "./step-contract.js";
-import { fixedSuccessEnabled } from "./fixed-success-mutation.js";
+} from "../../drivers/behavior-cells/step-contract.js";
+import { fixedSuccessEnabled } from "../../drivers/behavior-cells/fixed-success-mutation.js";
+
+export const cell = "cell::platform.artifacts-are-immutable-and-retained-by-policy::all";
 
 interface ArtifactExecution {
   readonly observation: ImmutableArtifactObservation;

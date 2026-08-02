@@ -4,15 +4,17 @@ import {
   publicFormatOutcomeResult,
   type PublicFormatConditionResult,
   type PublicFormatObservation,
-} from "../public-format.js";
+} from "../../drivers/public-format.js";
 import {
   check,
   requireCaseValue,
   type BehaviorCellStepContext,
   type BehaviorCellStepExecutor,
   type BehaviorCellStepResult,
-} from "./step-contract.js";
-import { fixedSuccessEnabled } from "./fixed-success-mutation.js";
+} from "../../drivers/behavior-cells/step-contract.js";
+import { fixedSuccessEnabled } from "../../drivers/behavior-cells/fixed-success-mutation.js";
+
+export const cell = "cell::platform.public-formats-upgrade-predictably::all";
 
 interface PublicFormatExecution {
   readonly observation: PublicFormatObservation;
