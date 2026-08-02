@@ -114,6 +114,9 @@ node scripts/ci/public-lane-coverage.mjs --check
 node --test scripts/ci/behavior-gate-mode.test.mjs
 node --test scripts/ci/behavior-workflow-contract.test.mjs
 node --test scripts/ci/build-cell-report.test.mjs
+node --test scripts/ci/behavior-cell-registry.test.mjs
+node --test scripts/ci/audit-no-behavior-cell-identifiers.test.mjs
+node scripts/ci/audit-no-behavior-cell-identifiers.mjs
 node --test scripts/ci/run-behavior-proof-output.test.mjs
 node --test scripts/ci/private-real-byte-proof.test.mjs
 pnpm --filter @itotori/db exec vitest run test/migrations-parity.test.ts --exclude '**/.direnv/**'

@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.behavior-proof-capsule.v1",
+  "cell": "cell::quality.failures-stay-explicit::all",
+  "behavior": "quality.failures-stay-explicit",
+  "subject": "all",
+  "lane": "public-ts",
+  "driver": "driver.ts",
+  "mutation": "mutation.mjs"
+}

@@ -5,5 +5,5 @@
     "outDir": "../../.tmp/behavior-proof/glue",
     "noEmit": false
   },
-  "include": ["drivers/**/*.ts", "steps/**/*.ts", "support/**/*.ts"]
+  "include": ["capsules/**/*.ts", "drivers/**/*.ts", "steps/**/*.ts", "support/**/*.ts"]
 }

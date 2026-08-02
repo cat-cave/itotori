@@ -2,6 +2,10 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { writeFixedSuccessMutationArtifact } from "../../../../scripts/ci/behavior-fixed-success-mutation-contract.mjs";
+
+export const cell = "cell::platform.artifacts-are-immutable-and-retained-by-policy::all";
+
 function replaceOnce(source, find, replacement, label) {
   const parts = source.split(find);
   if (parts.length !== 2) {
@@ -59,4 +63,12 @@ export function prepareImmutableArtifactFixedSuccessMutation(root, workRoot) {
     throw new Error("immutable-artifact-mutation-build-marker-missing");
   }
   return mutationRoot;
+}
+
+export function prepareFixedSuccessMutation(root, workRoot) {
+  const mutationRoot = prepareImmutableArtifactFixedSuccessMutation(root, workRoot);
+  return {
+    mutationRoot,
+    mutationArtifactPath: writeFixedSuccessMutationArtifact(mutationRoot, cell),
+  };
 }

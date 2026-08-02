@@ -17,10 +17,10 @@ import {
   restrictedProjectionEntry,
   validateProjection,
 } from "./portable-evidence-projection.mjs";
+import { behaviorCells } from "./behavior-cell-registry.mjs";
 
 export { portableEvidenceTreeDigest } from "./portable-evidence-layout.mjs";
 
-const BEHAVIOR = "quality.evidence-is-traceable-and-portable";
 const INDEX_SCHEMA = "itotori.portable-evidence-index.v1";
 const RECEIPT_SCHEMA = "itotori.portable-evidence-audit.v2";
 const RECEIPT_FIELDS = [
@@ -103,11 +103,29 @@ function caseKey(caseId) {
   return digest(caseId).slice(0, 20);
 }
 
+function portableEvidenceRegistration() {
+  const registered = behaviorCells.filter(({ portableEvidence }) => portableEvidence !== undefined);
+  if (registered.length !== 1) {
+    throw new Error(`portable-evidence-registry-entry-count:${registered.length}/1`);
+  }
+  const [entry] = registered;
+  const expectedCaseCount = entry.portableEvidence?.expectedCaseCount;
+  if (!Number.isInteger(expectedCaseCount) || expectedCaseCount < 1) {
+    throw new Error("portable-evidence-registry-case-count-invalid");
+  }
+  return { cell: entry.cell, expectedCaseCount };
+}
+
 function selectedCases(plan) {
+  const registration = portableEvidenceRegistration();
   const cases = plan.cases
-    .filter(({ behavior }) => behavior === BEHAVIOR)
+    .filter(({ cell }) => cell === registration.cell)
     .toSorted((left, right) => lexical(left.id, right.id));
-  if (cases.length !== 8) throw new Error(`portable-evidence-plan-case-count:${cases.length}/8`);
+  if (cases.length !== registration.expectedCaseCount) {
+    throw new Error(
+      `portable-evidence-plan-case-count:${cases.length}/${registration.expectedCaseCount}`,
+    );
+  }
   if (new Set(cases.map(({ id }) => caseKey(id))).size !== cases.length) {
     throw new Error("portable-evidence-case-key-collision");
   }

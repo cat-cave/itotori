@@ -12,35 +12,24 @@ import {
 import { expectedFragmentFileNames, fragmentArtifactPaths } from "./behavior-proof-fragments.mjs";
 
 const digest = (character) => character.repeat(64);
-const artifactCell = "cell::platform.artifacts-are-immutable-and-retained-by-policy::all";
-const baselineGreenCells = new Set(OWNED_CELLS.filter((cell) => cell !== artifactCell));
-const subjects = Array.from(
-  { length: 47 },
-  (_, index) => `decode.engine.subject-${String(index).padStart(2, "0")}`,
-);
-const sharedBehaviors = [
-  "platform.artifacts-are-immutable-and-retained-by-policy",
-  "platform.public-formats-upgrade-predictably",
-  "quality.evidence-is-traceable-and-portable",
-  "quality.failures-stay-explicit",
-  ...Array.from({ length: 27 }, (_, index) => `proof.shared-${String(index).padStart(2, "0")}`),
-];
-const canonicalBehaviors = Array.from(
-  { length: 4 },
-  (_, index) => `proof.canonical-${String(index).padStart(2, "0")}`,
-);
-const productionBehaviors = Array.from(
-  { length: 12 },
-  (_, index) => `proof.production-${String(index).padStart(2, "0")}`,
-);
+const applicableCellCount = 687;
+const notApplicablePairCount = 96;
+const baselineFailureCell = OWNED_CELLS.at(0);
+if (baselineFailureCell === undefined) throw new Error("behavior-cell-report-test-no-owned-cells");
+const baselineGreenCells = new Set(OWNED_CELLS.filter((cell) => cell !== baselineFailureCell));
 
 function selectedCells() {
-  const cells = sharedBehaviors.map((behavior) => ({ behavior, subject: "all" }));
-  for (const behavior of canonicalBehaviors) {
-    for (const subject of subjects) cells.push({ behavior, subject });
+  if (OWNED_CELLS.length > applicableCellCount) {
+    throw new Error("behavior-cell-report-test-owned-cells-exceed-applicable-cells");
   }
-  for (const behavior of productionBehaviors) {
-    for (const subject of subjects.slice(0, 39)) cells.push({ behavior, subject });
+  const cells = OWNED_CELLS.map(cellParts);
+  const cellIdentities = new Set(cells.map(({ behavior, subject }) => `${behavior}\0${subject}`));
+  for (let index = 0; cells.length < applicableCellCount; index += 1) {
+    const behavior = `proof.synthetic-${String(index).padStart(3, "0")}`;
+    const key = `${behavior}\0all`;
+    if (cellIdentities.has(key)) continue;
+    cells.push({ behavior, subject: "all" });
+    cellIdentities.add(key);
   }
   return cells.map(({ behavior, subject }) => ({
     cell: `cell::${behavior}::${subject}`,
@@ -55,9 +44,17 @@ function selectedCells() {
   }));
 }
 
+function cellParts(cell) {
+  const match = /^cell::([a-z0-9.-]+)::([a-z0-9.-]+)$/u.exec(cell);
+  if (match === null || match[1] === undefined || match[2] === undefined) {
+    throw new Error(`behavior-cell-report-test-cell-invalid:${cell}`);
+  }
+  return { behavior: match[1], subject: match[2] };
+}
+
 function selectionPlan() {
   const cells = selectedCells();
-  assert.equal(cells.length, 687);
+  assert.equal(cells.length, applicableCellCount);
   const cases = Array.from({ length: 3_400 }, (_, index) => {
     const cell = cells[index % cells.length];
     const id = `case::${cell.behavior}::${String(index).padStart(4, "0")}::${cell.subject}`;
@@ -72,9 +69,14 @@ function selectionPlan() {
       requiredAssertionCount: 1,
     };
   });
-  const notApplicablePairs = productionBehaviors.flatMap((behavior) =>
-    subjects.slice(39).map((subject) => ({ behavior, subject })),
-  );
+  const selectedCellKeys = new Set(cells.map(({ behavior, subject }) => `${behavior}\0${subject}`));
+  const notApplicablePairs = [];
+  for (let index = 0; notApplicablePairs.length < notApplicablePairCount; index += 1) {
+    const behavior = `proof.not-applicable-${String(index).padStart(3, "0")}`;
+    const key = `${behavior}\0all`;
+    if (selectedCellKeys.has(key)) continue;
+    notApplicablePairs.push({ behavior, subject: "all" });
+  }
   const caseIds = cases.map(({ id }) => id).toSorted();
   return {
     schema: "itotori.behavior-selection-plan.v1",
@@ -85,8 +87,8 @@ function selectionPlan() {
       canonicalEngines: 47,
       authoredCases: 570,
       selectedCases: 3_400,
-      applicableCells: 687,
-      nonApplicablePairs: 96,
+      applicableCells: applicableCellCount,
+      nonApplicablePairs: notApplicablePairCount,
     },
     laneFragments: [{ lane: "public-ts", shard: 1, shardCount: 1, caseIds }],
     cases: cases.toReversed(),
@@ -123,16 +125,16 @@ function passingInput() {
         status: green ? "pass" : "fail",
         assertionCount: owned ? 1 : 0,
         observationCount: owned ? 1 : 0,
-        reasonCodes: green ? [] : owned ? ["artifact-substrate-gap"] : ["missing-execution"],
+        reasonCodes: green ? [] : owned ? ["baseline-substrate-gap"] : ["missing-execution"],
       };
     }),
     mutationResults: OWNED_CELLS.map((cell) => ({
       mutationId: `kill::${cell.slice("cell::".length)}`,
       cell,
-      outcome: cell === artifactCell ? "invalid" : "killed",
-      baselineStatus: cell === artifactCell ? "fail" : "pass",
+      outcome: cell === baselineFailureCell ? "invalid" : "killed",
+      baselineStatus: cell === baselineFailureCell ? "fail" : "pass",
       mutantStatus: "fail",
-      reasonCodes: cell === artifactCell ? ["baseline-failed"] : [],
+      reasonCodes: cell === baselineFailureCell ? ["baseline-failed"] : [],
     })),
     verifiedReceiptDigests: Object.fromEntries(
       [...baselineGreenCells].map((cell, index) => [cell, digest(index === 0 ? "f" : "1")]),
@@ -147,11 +149,11 @@ test("a real-scale report passes only the baseline-green owned cells", () => {
   assert.equal(report.notApplicablePairs.length, 96);
   assert.deepEqual(report.summary, {
     applicableCellCount: 687,
-    passingCellCount: 3,
-    failingCellCount: 684,
-    notApplicablePairCount: 96,
-    passBasisPoints: 43,
-    displayPercent: "0.43",
+    passingCellCount: baselineGreenCells.size,
+    failingCellCount: applicableCellCount - baselineGreenCells.size,
+    notApplicablePairCount,
+    passBasisPoints: Math.floor((baselineGreenCells.size * 10_000) / applicableCellCount),
+    displayPercent: `${(Math.floor((baselineGreenCells.size * 10_000) / applicableCellCount) / 100).toFixed(2)}`,
   });
   const passing = report.cells.filter(({ status }) => status === "pass");
   assert.deepEqual(
@@ -162,23 +164,32 @@ test("a real-scale report passes only the baseline-green owned cells", () => {
   const missing = report.cells.filter(({ cell }) => !OWNED_CELLS.includes(cell));
   assert.ok(missing.every(({ reasonCodes }) => reasonCodes.join() === "missing-execution"));
   assert.ok(missing.every(({ verifiedReceiptDigest }) => verifiedReceiptDigest === null));
-  const artifact = report.cells.find(({ cell }) => cell === artifactCell);
-  assert.equal(artifact?.status, "fail");
-  assert.ok(artifact?.reasonCodes.includes("artifact-substrate-gap"));
-  assert.ok(artifact?.reasonCodes.includes("invalid-mutation"));
+  const baselineFailure = report.cells.find(({ cell }) => cell === baselineFailureCell);
+  assert.equal(baselineFailure?.status, "fail");
+  assert.ok(baselineFailure?.reasonCodes.includes("baseline-substrate-gap"));
+  assert.ok(baselineFailure?.reasonCodes.includes("invalid-mutation"));
   assert.equal(
     formatCellReportSummary(report),
-    "3/687 cells pass (0.43%); 684 fail; 96 pairs not applicable",
+    `${baselineGreenCells.size}/687 cells pass (${report.summary.displayPercent}%); ${applicableCellCount - baselineGreenCells.size} fail; 96 pairs not applicable`,
   );
 });
 
-test("cell JUnit has exactly 687 testcases, 684 failures, and no skipped testcase", () => {
+test("cell JUnit has exactly 687 testcases, the expected failures, and no skips", () => {
   const xml = renderCellJunit(buildCellReport(passingInput()));
   assert.equal((xml.match(/<testcase /gu) ?? []).length, 687);
-  assert.equal((xml.match(/<failure /gu) ?? []).length, 684);
+  assert.equal(
+    (xml.match(/<failure /gu) ?? []).length,
+    applicableCellCount - baselineGreenCells.size,
+  );
   assert.equal((xml.match(/<system-out>/gu) ?? []).length, 687);
   assert.doesNotMatch(xml, /<skipped/u);
-  assert.match(xml, /tests="687" failures="684" skipped="0"/u);
+  assert.match(
+    xml,
+    new RegExp(
+      `tests="687" failures="${applicableCellCount - baselineGreenCells.size}" skipped="0"`,
+      "u",
+    ),
+  );
 });
 
 test("a signed plan can enumerate multiple shards for one logical lane", () => {
@@ -210,7 +221,7 @@ test("a signed plan can enumerate multiple shards for one logical lane", () => {
     },
   ];
   const report = buildCellReport(input);
-  assert.equal(report.summary.passingCellCount, 3);
+  assert.equal(report.summary.passingCellCount, baselineGreenCells.size);
   assert.deepEqual(expectedFragmentFileNames(input.selectionPlan), [
     "public-ts-1of2.ndjson",
     "public-ts-1of2.xml",

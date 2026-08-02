@@ -32,21 +32,23 @@ import {
   collectPortableEvidence,
   publishPortableEvidence,
 } from "./portable-evidence-artifacts.mjs";
+import { behaviorCells } from "./behavior-cell-registry.mjs";
 import { compileBehaviorGlue, computeBehaviorBuildDigest } from "./behavior-proof-build.mjs";
+import {
+  assertUnimplementedCasesStayExplicit,
+  prepareFixedSuccessMutations,
+  validateCompiledRegisteredCellDrivers,
+} from "./behavior-cell-execution.mjs";
+import { fixedSuccessMutationId } from "./behavior-fixed-success-mutation-contract.mjs";
 import { buildLocalArtifactReceipt } from "./local-behavior-receipt.mjs";
-import { prepareImmutableArtifactFixedSuccessMutation } from "./behavior-proof-artifact-mutation.mjs";
-import { preparePublicFormatFixedSuccessMutation } from "./behavior-proof-public-format-mutation.mjs";
 
 export { compileBehaviorGlue, computeBehaviorBuildDigest } from "./behavior-proof-build.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const defaultRoot = resolve(here, "../..");
-const OWNED_CELLS = [
-  "cell::platform.artifacts-are-immutable-and-retained-by-policy::all",
-  "cell::platform.public-formats-upgrade-predictably::all",
-  "cell::quality.evidence-is-traceable-and-portable::all",
-  "cell::quality.failures-stay-explicit::all",
-];
+const OWNED_CELLS = Object.freeze(behaviorCells.map(({ cell }) => cell));
+const ownedCellSet = new Set(OWNED_CELLS);
+
 function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
@@ -183,7 +185,7 @@ function executePlan(root, workRoot, plan, mutationOnly) {
   const fragment = fragments[0];
   prepareRun(workRoot, plan, mutationOnly, fragment);
   const selectedCases = mutationOnly
-    ? plan.cases.filter(({ cell }) => OWNED_CELLS.includes(cell))
+    ? plan.cases.filter(({ cell }) => ownedCellSet.has(cell))
     : plan.cases;
   const result = run(
     "pnpm",
@@ -237,9 +239,9 @@ export async function runMutationProof({ root = defaultRoot } = {}) {
   const workRoot = resolve(root, ".tmp", "behavior-proof");
   rmSync(workRoot, { force: true, recursive: true });
   compileBehaviorGlue(root);
+  await validateCompiledRegisteredCellDrivers(resolve(workRoot, "glue"));
   await requireDatabaseUrl(root);
-  prepareImmutableArtifactFixedSuccessMutation(root, workRoot);
-  preparePublicFormatFixedSuccessMutation(root, workRoot);
+  const preparedMutations = await prepareFixedSuccessMutations(root, workRoot);
   const { plan: mutantPlan } = await buildBehaviorProofPlan({ root, mode: "fixed-success" });
   const mutant = executePlan(root, workRoot, mutantPlan, true);
   assertCellOutcome(mutant.caseResults, "fail", "fixed-success-did-not-turn-red");
@@ -252,7 +254,7 @@ export async function runMutationProof({ root = defaultRoot } = {}) {
     "existing-real-drivers-did-not-stay-green",
     OWNED_CELLS,
   );
-  return { mutant, baseline, mutantPlan, baselinePlan, workRoot };
+  return { mutant, baseline, mutantPlan, baselinePlan, preparedMutations, workRoot };
 }
 
 export function buildMutationResults(mutantResults, baselineResults) {
@@ -270,7 +272,7 @@ export function buildMutationResults(mutantResults, baselineResults) {
     const outcome =
       baselineStatus !== "pass" ? "invalid" : mutantStatus === "fail" ? "killed" : "escaped";
     return {
-      mutationId: `kill::${cell.slice("cell::".length)}`,
+      mutationId: fixedSuccessMutationId(cell),
       cell,
       outcome,
       baselineStatus,
@@ -350,15 +352,7 @@ export async function runBehaviorProof({ root = defaultRoot, output = "behavior-
     "existing-real-drivers-did-not-stay-green",
     OWNED_CELLS,
   );
-  const missingExecutionFailures = fullRun.caseResults.filter(
-    ({ status, reasonCodes }) => status === "fail" && reasonCodes.includes("missing-execution"),
-  );
-  if (
-    missingExecutionFailures.length !== 3_363 ||
-    missingExecutionFailures.some(({ reasonCodes }) => !reasonCodes.includes("missing-execution"))
-  ) {
-    throw new Error(`unexpected-unimplemented-case-count:${missingExecutionFailures.length}/3363`);
-  }
+  assertUnimplementedCasesStayExplicit(plan, fullRun.caseResults);
   const mutations = buildMutationResults(fullMutant.caseResults, fullRun.caseResults);
   const selectionPlanDigest = canonicalDigest(plan);
   const candidateBuildDigest = computeBehaviorBuildDigest(root, proof.workRoot);
@@ -485,7 +479,7 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.a
         `Restored drivers: ${proof.baseline.caseResults.filter(({ status }) => status === "pass").length}/${proof.baseline.caseResults.length} cases passed.\n`,
       );
       process.stdout.write(
-        `Cucumber execution: 3400/3400 selected cases reported; ${fullRun.caseResults.filter(({ status }) => status === "pass").length} passed and ${fullRun.caseResults.filter(({ status }) => status === "fail").length} failed explicitly.\n`,
+        `Cucumber execution: ${fullRun.caseResults.length}/${fullRun.caseResults.length} selected cases reported; ${fullRun.caseResults.filter(({ status }) => status === "pass").length} passed and ${fullRun.caseResults.filter(({ status }) => status === "fail").length} failed explicitly.\n`,
       );
       process.stdout.write(`Fixed-success report: ${formatCellReportSummary(mutationReport)}\n`);
       process.stdout.write(`${formatCellReportSummary(report)}\n`);
