@@ -6,12 +6,11 @@ The bridge package is intentionally independent from any one subproject. Kaifuu 
 
 ## Versions
 
-- `0.1.0` remains the fixture hello-world contract exported as `BridgeBundle`,
-  `PatchExport`, `RuntimeVerificationReport`, and their existing guards. v0.1
-  bridge JSON is intentionally rejected by `assertBridgeBundleV02` and by the
-  Rust v0.2 bridge contract validator; callers must route v0.1 data through the
-  legacy guards.
-- `0.2.0` adds the bridge domain model exported as `BridgeBundleV02`,
+- `0.2.0` is the exact version accepted by current bridge-bundle, patch-export,
+  patch-result, runtime-evidence, and delta-metadata readers. Historical v0.1
+  payloads are rejected before field interpretation or persistence; they are
+  not routed through a legacy reader.
+- `0.2.0` provides the bridge domain model exported as `BridgeBundleV02`,
   enum-backed category lists, bundle-level asset reference integrity, source
   game/profile revision identity, hash strategy metadata, v0.2 patch
   export/result/delta metadata, and runtime guards.
@@ -61,8 +60,10 @@ produce. `test/examples/contract-compatibility-v0.2.json` is the compatibility
 report for the full fixture suite.
 
 Invalid fixtures live under `test/examples/invalid/` and are expected to fail
-with semantic validation errors. Migration notes from v0.1 are in
-`MIGRATING-0.2.md`.
+with semantic validation errors. A historical v0.1 artifact cannot be
+converted into v0.2 by filling in missing fields: regenerate it from the
+authoritative game source and extraction profile with a current extractor. The
+procedure and rationale are in `MIGRATING-0.2.md`.
 
 ## Full Contract Fixture Validation
 
@@ -129,7 +130,7 @@ not required just because an adapter supports trace or launch/capture evidence.
 Every trace event, capture, recording, branch point, approximation, or runtime
 finding carries a `bridgeUnitRef` when it refers to localized content. The ref
 contains `bridgeUnitId` and should include `sourceUnitKey` when available so
-legacy hello-world bridge units and v0.2 UUID7 units remain traceable.
+v0.2 bridge units remain traceable.
 
 `reference_fidelity` or `E4` reports must include at least one passed
 `referenceComparisons` record. Each comparison names either a reference runtime
@@ -177,13 +178,13 @@ When a patch entry names a different bridge unit than the current unit for its
 `sourceUnitKey`, the report uses `bridge_unit_id_mismatch` and includes
 `actualBridgeUnitId`.
 
-For protected spans whose `preserveMode` is `map`, patch exports should record
-the source identity in each `protectedSpanMappings[]` item with `sourceSpanId`
-and, when available, `sourceStartByte`/`sourceEndByte`. The target identity is
-the explicit UTF-8 byte range `targetStart`/`targetEnd` in `targetText`; tools
-must not infer target mappings by walking source spans in order. Duplicate raw
-tokens are valid only when each required occurrence maps to a distinct target
-byte range.
+For protected spans whose `preserveMode` is `map`, patch exports must record
+the complete source identity in each `protectedSpanMappings[]` item with
+`sourceSpanId`, `sourceStartByte`, and `sourceEndByte`. Raw-only mappings are
+invalid v0.2 artifacts. The target identity is the explicit UTF-8 byte range
+`targetStart`/`targetEnd` in `targetText`; tools must not infer target mappings
+by walking source spans in order. Duplicate raw tokens are valid only when each
+required occurrence maps to a distinct target byte range.
 
 Delta package metadata uses `DeltaPackageMetadataV02` to trace the package back
 to the source bridge, source bundle revision, generated patch export id/hash,

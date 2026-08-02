@@ -19,8 +19,41 @@ import {
   userPermissionGrants,
   users,
 } from "../src/schema.js";
+import { currentProjectFixture } from "./current-project-fixture.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
+const styleGuideProject = currentProjectFixture({
+  seed: "style-guide-primary",
+  projectId: "project-test",
+  localeBranchId: "locale-en-us",
+  units: [
+    {
+      sourceUnitKey: "hello.scene.001.line.001",
+      occurrenceId: "occurrence-1",
+      sourceText: "こんにちは、{player}。",
+      targetText: "Hello, {player}.",
+      spans: [{ raw: "{player}" }],
+    },
+    {
+      sourceUnitKey: "hello.scene.001.line.002",
+      occurrenceId: "occurrence-2",
+      sourceText: "もう行こう。",
+      targetText: "We should go now.",
+    },
+  ],
+});
+const [priorPolicyUnit, currentPolicyUnit] = styleGuideProject.bridge.units;
+if (priorPolicyUnit === undefined || currentPolicyUnit === undefined) {
+  throw new Error("style-guide fixture requires two units");
+}
+export const styleGuideUnitIds = {
+  priorPolicy: priorPolicyUnit.bridgeUnitId,
+  currentPolicy: currentPolicyUnit.bridgeUnitId,
+};
+export const orderedStyleGuideUnitIds = [
+  styleGuideUnitIds.priorPolicy,
+  styleGuideUnitIds.currentPolicy,
+].sort();
 
 export type StyleGuideFixture = {
   schemaVersion: string;
@@ -83,62 +116,7 @@ export function readMigrationSql(file: string): string {
 export function projectFixture(
   overrides: Partial<ItotoriProjectRecord> = {},
 ): ItotoriProjectRecord {
-  const project: ItotoriProjectRecord = {
-    projectId: "project-test",
-    engineFamily: "synthetic_fixture",
-    sourceRoot: "/workspace/source",
-    buildRoot: "/workspace/build",
-    extractProfile: { adapter: "fixture" },
-    localeBranchId: "locale-en-us",
-    targetLocale: "en-US",
-    drafts: {
-      "bridge-unit-test": "Hello, {player}.",
-      "bridge-unit-current-policy": "We should go now.",
-    },
-    bridge: {
-      schemaVersion: "0.1.0",
-      bridgeId: "bridge-test",
-      sourceBundleHash: "hash-test",
-      sourceLocale: "ja-JP",
-      extractorName: "kaifuu-fixture",
-      extractorVersion: "0.0.0",
-      units: [
-        {
-          bridgeUnitId: "bridge-unit-test",
-          sourceUnitKey: "hello.scene.001.line.001",
-          occurrenceId: "occurrence-1",
-          sourceHash: "source-hash",
-          sourceLocale: "ja-JP",
-          sourceText: "こんにちは、{player}。",
-          textSurface: "dialogue",
-          protectedSpans: [
-            { kind: "placeholder", raw: "{player}", start: 18, end: 26, preserveMode: "exact" },
-          ],
-          patchRef: {
-            assetId: "source.json",
-            writeMode: "replace",
-            sourceUnitKey: "hello.scene.001.line.001",
-          },
-        },
-        {
-          bridgeUnitId: "bridge-unit-current-policy",
-          sourceUnitKey: "hello.scene.001.line.002",
-          occurrenceId: "occurrence-2",
-          sourceHash: "source-hash-current-policy",
-          sourceLocale: "ja-JP",
-          sourceText: "もう行こう。",
-          textSurface: "dialogue",
-          protectedSpans: [],
-          patchRef: {
-            assetId: "source.json",
-            writeMode: "replace",
-            sourceUnitKey: "hello.scene.001.line.002",
-          },
-        },
-      ],
-    },
-  };
-  return { ...project, ...overrides };
+  return { ...structuredClone(styleGuideProject), ...overrides };
 }
 
 export async function seedProject(db: ItotoriDatabase): Promise<void> {
@@ -150,7 +128,7 @@ export async function seedProject(db: ItotoriDatabase): Promise<void> {
     projectFixture({
       localeBranchId: "locale-fr-fr",
       targetLocale: "fr-FR",
-      drafts: { "bridge-unit-test": "Bonjour, {player}." },
+      drafts: { [styleGuideUnitIds.priorPolicy]: "Bonjour, {player}." },
     }),
   );
 }
@@ -195,14 +173,14 @@ export async function seedAffectedWorkForPriorPolicy(
     .set({ styleGuideVersionId: input.priorStyleGuideVersionId })
     .where(
       sql`${localeBranchUnits.localeBranchId} = ${input.localeBranchId}
-        and ${localeBranchUnits.bridgeUnitId} = 'bridge-unit-test'`,
+        and ${localeBranchUnits.bridgeUnitId} = ${styleGuideUnitIds.priorPolicy}`,
     );
   await db
     .update(localeBranchUnits)
     .set({ styleGuideVersionId: input.currentStyleGuideVersionId })
     .where(
       sql`${localeBranchUnits.localeBranchId} = ${input.localeBranchId}
-        and ${localeBranchUnits.bridgeUnitId} = 'bridge-unit-current-policy'`,
+        and ${localeBranchUnits.bridgeUnitId} = ${styleGuideUnitIds.currentPolicy}`,
     );
 
   await db.insert(findings).values([

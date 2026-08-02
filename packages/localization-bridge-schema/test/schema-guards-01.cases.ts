@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { readdirSync } from "node:fs";
 import {
   assertAlphaVerticalProofManifestV02,
-  assertBridgeBundle,
   assertBridgeBundleV02,
   assertBenchmarkReportV02,
   assertContractCompatibilityReportV02,
@@ -10,10 +9,10 @@ import {
   assertContractFixtureV02,
   assertDeltaPackageMetadataV02,
   assertFindingRecordFixtureV02,
+  FormatVersionMismatchError,
   assertPatchExportV02,
   assertPatchResultV02,
   assertRuntimeEvidenceReportV02,
-  assertRuntimeReport,
 } from "../src/index.js";
 import {
   bridgeV02Example,
@@ -93,9 +92,9 @@ describe("localization bridge schema guards", () => {
     expect(() => assertBridgeBundleV02(bridge)).toThrow(/outOfBand must be a boolean/);
   });
 
-  it("accepts minimal valid bridge bundles", () => {
+  it("rejects the removed minimal v0.1 bridge shape at version negotiation", () => {
     expect(() =>
-      assertBridgeBundle({
+      assertBridgeBundleV02({
         schemaVersion: "0.1.0",
         bridgeId: "019ed000-0000-7000-8000-000000000001",
         sourceBundleHash: "hash",
@@ -104,57 +103,20 @@ describe("localization bridge schema guards", () => {
         extractorVersion: "0.0.0",
         units: [],
       }),
-    ).not.toThrow();
+    ).toThrow(FormatVersionMismatchError);
   });
 
-  it("accepts the public multi-surface bridge golden snapshot", () => {
-    const bridge = publicFixture("fixtures/hello-game/expected/bridge-v0.1.json");
+  it("rejects the committed historical bridge before interpreting its fields", () => {
+    const historical = publicFixture("fixtures/hello-game/expected/bridge-v0.1.json");
 
-    expect(() => assertBridgeBundle(bridge)).not.toThrow();
-
-    const units = bridge.units as Array<{
-      textSurface: string;
-      protectedSpans: Array<{ kind: string; raw: string }>;
-    }>;
-    expect(new Set(units.map((unit) => unit.textSurface))).toEqual(
-      new Set([
-        "choice_label",
-        "database_entry",
-        "dialogue",
-        "image_text",
-        "metadata_text",
-        "speaker_name",
-        "tutorial_text",
-        "ui_label",
-      ]),
-    );
-    expect(units).toHaveLength(11);
-
-    const spanKinds = new Set(
-      units.flatMap((unit) => unit.protectedSpans.map((span) => span.kind)),
-    );
-    expect(spanKinds).toContain("variable_placeholder");
-    expect(spanKinds).toContain("control_markup");
+    expect(() => assertBridgeBundleV02(historical)).toThrow(FormatVersionMismatchError);
   });
 
-  it("rejects malformed v0.1 protected span ranges", () => {
-    const bridge = {
+  it("does not interpret malformed legacy protected spans", () => {
+    const historical = {
       schemaVersion: "0.1.0",
-      bridgeId: "019ed000-0000-7000-8000-000000000001",
-      sourceBundleHash: "hash",
-      sourceLocale: "ja-JP",
-      extractorName: "kaifuu-fixture",
-      extractorVersion: "0.0.0",
       units: [
         {
-          bridgeUnitId: "019ed000-0000-7000-8000-bridgeun0001",
-          sourceUnitKey: "line.001",
-          occurrenceId: "occurrence-1",
-          sourceHash: "hash",
-          sourceLocale: "ja-JP",
-          sourceText: "Hello, {player}.",
-          speaker: "",
-          textSurface: "dialogue",
           protectedSpans: [
             {
               kind: "variable_placeholder",
@@ -165,16 +127,11 @@ describe("localization bridge schema guards", () => {
               variableName: "player",
             },
           ],
-          patchRef: {
-            assetId: "source.json",
-            writeMode: "replace",
-            sourceUnitKey: "line.001",
-          },
         },
       ],
     };
 
-    expect(() => assertBridgeBundle(bridge)).toThrow(/raw must match sourceText byte range/);
+    expect(() => assertBridgeBundleV02(historical)).toThrow(FormatVersionMismatchError);
   });
 
   it("accepts the public full-system hello-game v0.2 golden artifact corpus", () => {
@@ -230,7 +187,6 @@ describe("localization bridge schema guards", () => {
     expect(() => assertPatchResultV02(patchResult)).not.toThrow();
     expect(() => assertDeltaPackageMetadataV02(deltaPackage)).not.toThrow();
     expect(() => assertRuntimeEvidenceReportV02(runtimeReport)).not.toThrow();
-    expect(() => assertRuntimeReport(runtimeReport)).not.toThrow();
     expect(() => assertBenchmarkReportV02(benchmarkReport)).not.toThrow();
     expect(() => assertFindingRecordFixtureV02(finding)).not.toThrow();
 

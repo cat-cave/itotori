@@ -8,6 +8,7 @@ import { ItotoriProjectRepository } from "../src/repositories/project-repository
 import {
   localActor,
   projectFixture,
+  projectFixtureUnitId,
   runtimeEvidenceReportFixture,
 } from "./repository.test.shared.js";
 import { migratedContext } from "./repository.test.legacy.js";
@@ -99,7 +100,7 @@ describe("ItotoriProjectRepository", () => {
           {
             recordingId: "019ed003-0000-7000-8000-000000000973",
             bridgeUnitRef: {
-              bridgeUnitId: "bridge-unit-test",
+              bridgeUnitId: projectFixtureUnitId,
               sourceUnitKey: "hello.scene.001.line.001",
             },
             evidenceTier: "E3",
@@ -128,7 +129,7 @@ describe("ItotoriProjectRepository", () => {
             scope: "runtime artifact storage contract",
             coveredBridgeUnitRefs: [
               {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
             ],

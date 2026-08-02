@@ -1,17 +1,23 @@
 import { readFileSync } from "node:fs";
 import type { BenchmarkReportSummary, RuntimeDashboardStatus } from "@itotori/db";
-import type {
-  BenchmarkReportV02,
-  BridgeBundle,
-  FindingRecordV02,
-  RuntimeVerificationReport,
-} from "@itotori/localization-bridge-schema";
+import type { FindingRecordV02 } from "@itotori/localization-bridge-schema";
 import type { RuntimeIngestResult } from "../src/services/project-operations-port.js";
 import type { ProjectState } from "../src/services/project-types.js";
 import type { ProjectOverviewReadModel } from "../src/project-overview-read-model.js";
 import { costDrilldownFixture, dashboardStatusFixture } from "./api-fixtures-dashboard.js";
 import { dashboardDecisionsFixture } from "./api-fixtures-catalog.js";
 import { costReportFixture } from "./api-fixtures-settings.js";
+import {
+  benchmarkReportFixture,
+  bridgeFixture,
+  runtimeReportFixture,
+} from "./api-fixtures-public-contracts.js";
+
+export { benchmarkReportFixture, bridgeFixture, runtimeReportFixture };
+
+const bridgeFixtureUnit = requiredFixtureValue(bridgeFixture.units[0], "bridge unit");
+const bridgeUnitId = bridgeFixtureUnit.bridgeUnitId;
+const bridgeSourceUnitKey = bridgeFixtureUnit.sourceUnitKey;
 
 export const runtimeStatusFixture: RuntimeDashboardStatus = {
   finalStatus: "hello_world_failed",
@@ -29,10 +35,10 @@ export const runtimeStatusFixture: RuntimeDashboardStatus = {
     {
       runtimeEventId: "runtime-1:trace-1",
       eventKind: "text_seen",
-      bridgeUnitId: "bridge-unit-1",
-      sourceUnitKey: "hello.scene.001.line.001",
-      draftId: "locale-1:bridge-unit-1",
-      runtimeTargetId: "hello.scene.001.line.001",
+      bridgeUnitId,
+      sourceUnitKey: bridgeSourceUnitKey,
+      draftId: `locale-1:${bridgeUnitId}`,
+      runtimeTargetId: bridgeSourceUnitKey,
       evidenceTier: null,
       frame: 12,
       textPreview: "Hello, {player}.",
@@ -46,8 +52,8 @@ export const runtimeStatusFixture: RuntimeDashboardStatus = {
       severity: "error",
       message: "Observed runtime text did not match the draft text.",
       evidenceTier: "E2",
-      bridgeUnitId: "bridge-unit-1",
-      sourceUnitKey: "hello.scene.001.line.001",
+      bridgeUnitId,
+      sourceUnitKey: bridgeSourceUnitKey,
       artifactId: "runtime-1:trace-artifact-1",
     },
   ],
@@ -60,8 +66,8 @@ export const runtimeStatusFixture: RuntimeDashboardStatus = {
       hashProvenance: "content",
       mediaType: "image/png",
       byteSize: 2048,
-      bridgeUnitId: "bridge-unit-1",
-      sourceUnitKey: "hello.scene.001.line.001",
+      bridgeUnitId,
+      sourceUnitKey: bridgeSourceUnitKey,
       diagnostic: null,
     },
     {
@@ -72,8 +78,8 @@ export const runtimeStatusFixture: RuntimeDashboardStatus = {
       hashProvenance: "content",
       mediaType: "application/json",
       byteSize: 512,
-      bridgeUnitId: "bridge-unit-1",
-      sourceUnitKey: "hello.scene.001.line.001",
+      bridgeUnitId,
+      sourceUnitKey: bridgeSourceUnitKey,
       diagnostic: null,
     },
   ],
@@ -84,7 +90,7 @@ export const runtimeStatusFixture: RuntimeDashboardStatus = {
       scope: "capture",
       description: "Fixture capture approximates a host runtime frame.",
       evidenceTierCeiling: "E2",
-      bridgeUnitIds: ["bridge-unit-1"],
+      bridgeUnitIds: [bridgeUnitId],
     },
   ],
   unsupportedCapabilities: [
@@ -99,118 +105,27 @@ export const runtimeStatusFixture: RuntimeDashboardStatus = {
   limitations: ["No reference-runtime pixel comparison is performed."],
 };
 
-export const bridgeFixture: BridgeBundle = {
-  schemaVersion: "0.1.0",
-  bridgeId: "bridge-1",
-  sourceBundleHash: "hash-1",
-  sourceLocale: "ja-JP",
-  extractorName: "kaifuu-fixture",
-  extractorVersion: "0.0.0",
-  units: [
-    {
-      bridgeUnitId: "bridge-unit-1",
-      sourceUnitKey: "hello.scene.001.line.001",
-      occurrenceId: "occurrence-1",
-      sourceHash: "source-hash-1",
-      sourceLocale: "ja-JP",
-      sourceText: "こんにちは、{player}。",
-      textSurface: "dialogue",
-      protectedSpans: [
-        { kind: "placeholder", raw: "{player}", start: 18, end: 26, preserveMode: "exact" },
-      ],
-      patchRef: {
-        assetId: "source.json",
-        writeMode: "replace",
-        sourceUnitKey: "hello.scene.001.line.001",
-      },
-    },
-  ],
-};
-
 export const projectFixture: ProjectState = {
   projectId: "project-1",
   localeBranchId: "locale-1",
-  targetLocale: "en-US",
-  drafts: { "bridge-unit-1": "Hello, {player}." },
+  targetLocale: "fr-FR",
+  drafts: { [bridgeUnitId]: "Bonjour, {player}." },
   bridge: bridgeFixture,
-};
-
-export const nonJapaneseTargetProjectFixture: ProjectState = {
-  projectId: "project-de-en",
-  localeBranchId: "locale-de-en-us",
-  targetLocale: "en-US",
-  drafts: { "bridge-unit-de": "Good day, {player}." },
-  bridge: {
-    ...bridgeFixture,
-    bridgeId: "bridge-de",
-    sourceBundleHash: "hash-de",
-    sourceLocale: "de-DE",
-    units: [
-      {
-        ...bridgeFixture.units[0]!,
-        bridgeUnitId: "bridge-unit-de",
-        sourceUnitKey: "tag.scene.001.line.001",
-        occurrenceId: "occurrence-de-1",
-        sourceHash: "source-hash-de-1",
-        sourceLocale: "de-DE",
-        sourceText: "Guten Tag, {player}.",
-        protectedSpans: [
-          { kind: "placeholder", raw: "{player}", start: 11, end: 19, preserveMode: "exact" },
-        ],
-        patchRef: {
-          assetId: "source-de.json",
-          writeMode: "replace",
-          sourceUnitKey: "tag.scene.001.line.001",
-        },
-      },
-    ],
-  },
-};
-
-export const runtimeReportFixture: RuntimeVerificationReport = {
-  schemaVersion: "0.1.0",
-  runtimeReportId: "runtime-1",
-  adapterName: "utsushi-fixture",
-  fidelityTier: "layout_probe",
-  status: "passed",
-  textEvents: [
-    {
-      runtimeTextEventId: "runtime-text-1",
-      bridgeUnitId: "bridge-unit-1",
-      text: "Hello, {player}.",
-      frame: 1,
-    },
-  ],
-  frameCaptures: [
-    {
-      frameCaptureId: "frame-1",
-      bridgeUnitId: "bridge-unit-1",
-      width: 320,
-      height: 180,
-      nonZeroPixels: 57600,
-      artifactPath: "fixture://frame/1",
-    },
-  ],
-  approximations: ["fixture"],
 };
 
 export const runtimeIngestResultFixture: RuntimeIngestResult = {
   status: "hello_world_passed",
-  bridgeId: "bridge-1",
+  bridgeId: bridgeFixture.bridgeId,
   localeBranchId: "locale-1",
-  patchExportId: undefined,
-  patchResultId: "patch-result-1",
-  runtimeReportId: "runtime-1",
+  patchExportId: "019ed001-0000-7000-8000-000000000901",
+  patchResultId: "019ed001-0000-7000-8000-000000000950",
+  runtimeReportId: runtimeReportFixture.runtimeReportId,
   dashboard: dashboardStatusFixture,
 };
 
 export const findingRecordFixture = readFixture<{ finding: FindingRecordV02 }>(
   "../../../packages/localization-bridge-schema/test/examples/finding-v0.2.json",
 ).finding;
-
-export const benchmarkReportFixture = readFixture<BenchmarkReportV02>(
-  "../../../packages/localization-bridge-schema/test/examples/benchmark-report-v0.2.json",
-);
 
 // policy — the dashboard benchmark read model derived from the REAL
 // recorded benchmark report fixture (same QA calibration the workflow
@@ -305,6 +220,11 @@ export const projectOverviewFixture: ProjectOverviewReadModel = {
 
 function readFixture<T>(path: string): T {
   return JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as T;
+}
+
+function requiredFixtureValue<T>(value: T | null | undefined, label: string): T {
+  if (value === undefined || value === null) throw new Error(`fixture is missing ${label}`);
+  return value;
 }
 
 // policy — project MUTATION route fixtures.

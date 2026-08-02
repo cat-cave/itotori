@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  assertRuntimeEvidenceReportV02,
-  assertRuntimeReport,
-  assertTriageBundleV02,
-} from "../src/index.js";
+import { assertRuntimeEvidenceReportV02, assertTriageBundleV02 } from "../src/index.js";
 import {
   triageV02Example,
   runtimeEvidenceV02Example,
@@ -136,7 +132,6 @@ describe("localization bridge schema guards", () => {
     const report = runtimeEvidenceV02Example();
 
     expect(() => assertRuntimeEvidenceReportV02(report)).not.toThrow();
-    expect(() => assertRuntimeReport(report)).not.toThrow();
     expect(report.runtimeCapabilities).toMatchObject({
       capabilityClass: "instrumented_runtime",
       evidenceTierCeiling: "E3",
@@ -391,6 +386,5 @@ describe("localization bridge schema guards", () => {
     report.referenceComparisons = [passedReferenceComparison()];
 
     expect(() => assertRuntimeEvidenceReportV02(report)).not.toThrow();
-    expect(() => assertRuntimeReport(report)).not.toThrow();
   });
 });

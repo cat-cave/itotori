@@ -15,7 +15,9 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 const localActor: AuthorizationActor = { userId: localUserId };
 
 import {
+  orderedStyleGuideUnitIds,
   styleGuideFixture,
+  styleGuideUnitIds,
   readMigrationSql,
   seedProject,
   seedAffectedWorkForPriorPolicy,
@@ -259,15 +261,15 @@ describe("ItotoriStyleGuideService", () => {
       }
       expect(affectedReferences(payloads, "drafts")).toEqual([
         expect.objectContaining({
-          draftId: "locale-en-us:bridge-unit-test",
-          bridgeUnitId: "bridge-unit-test",
+          draftId: `locale-en-us:${styleGuideUnitIds.priorPolicy}`,
+          bridgeUnitId: styleGuideUnitIds.priorPolicy,
         }),
       ]);
       expect(affectedReferences(payloads, "drafts")).not.toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            draftId: "locale-en-us:bridge-unit-current-policy",
-            bridgeUnitId: "bridge-unit-current-policy",
+            draftId: `locale-en-us:${styleGuideUnitIds.currentPolicy}`,
+            bridgeUnitId: styleGuideUnitIds.currentPolicy,
           }),
         ]),
       );
@@ -321,10 +323,12 @@ describe("ItotoriStyleGuideService", () => {
         where locale_branch_id = 'locale-en-us' and target_text is not null
         order by bridge_unit_id
       `);
-      expect(preRows.rows).toEqual([
-        { bridge_unit_id: "bridge-unit-current-policy", style_guide_version_id: null },
-        { bridge_unit_id: "bridge-unit-test", style_guide_version_id: null },
-      ]);
+      expect(preRows.rows).toEqual(
+        orderedStyleGuideUnitIds.map((bridgeUnitId) => ({
+          bridge_unit_id: bridgeUnitId,
+          style_guide_version_id: null,
+        })),
+      );
 
       // Apply the REAL migration SQL against the seeded pre-provenance rows.
       await context.db.execute(
@@ -338,10 +342,12 @@ describe("ItotoriStyleGuideService", () => {
         where locale_branch_id = 'locale-en-us' and target_text is not null
         order by bridge_unit_id
       `);
-      expect(backfilled.rows).toEqual([
-        { bridge_unit_id: "bridge-unit-current-policy", style_guide_version_id: priorVersionId },
-        { bridge_unit_id: "bridge-unit-test", style_guide_version_id: priorVersionId },
-      ]);
+      expect(backfilled.rows).toEqual(
+        orderedStyleGuideUnitIds.map((bridgeUnitId) => ({
+          bridge_unit_id: bridgeUnitId,
+          style_guide_version_id: priorVersionId,
+        })),
+      );
 
       // The first approval after migration flags the once-pre-provenance drafts
       // instead of silently missing them.
@@ -358,8 +364,8 @@ describe("ItotoriStyleGuideService", () => {
       );
       expect(draftRefs).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ bridgeUnitId: "bridge-unit-test" }),
-          expect.objectContaining({ bridgeUnitId: "bridge-unit-current-policy" }),
+          expect.objectContaining({ bridgeUnitId: styleGuideUnitIds.priorPolicy }),
+          expect.objectContaining({ bridgeUnitId: styleGuideUnitIds.currentPolicy }),
         ]),
       );
       expect(draftRefs).toHaveLength(2);
@@ -400,14 +406,14 @@ describe("ItotoriStyleGuideService", () => {
         .set({ styleGuideVersionId: priorVersionId })
         .where(
           sql`${localeBranchUnits.localeBranchId} = 'locale-en-us'
-            and ${localeBranchUnits.bridgeUnitId} = 'bridge-unit-test'`,
+            and ${localeBranchUnits.bridgeUnitId} = ${styleGuideUnitIds.priorPolicy}`,
         );
       await context.db
         .update(localeBranchUnits)
         .set({ styleGuideVersionId: null })
         .where(
           sql`${localeBranchUnits.localeBranchId} = 'locale-en-us'
-            and ${localeBranchUnits.bridgeUnitId} = 'bridge-unit-current-policy'`,
+            and ${localeBranchUnits.bridgeUnitId} = ${styleGuideUnitIds.currentPolicy}`,
         );
 
       const approved = await service.approveStyleGuideVersion(localActor, {
@@ -424,8 +430,8 @@ describe("ItotoriStyleGuideService", () => {
       // Both the known-prior draft AND the unknown-provenance draft are flagged.
       expect(draftRefs).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ bridgeUnitId: "bridge-unit-test" }),
-          expect.objectContaining({ bridgeUnitId: "bridge-unit-current-policy" }),
+          expect.objectContaining({ bridgeUnitId: styleGuideUnitIds.priorPolicy }),
+          expect.objectContaining({ bridgeUnitId: styleGuideUnitIds.currentPolicy }),
         ]),
       );
       expect(draftRefs).toHaveLength(2);

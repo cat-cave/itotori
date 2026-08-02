@@ -14,10 +14,82 @@ import {
   escapeRegExp,
   localActor,
   projectFixture,
+  projectFixtureAssetId,
+  projectFixtureBridgeId,
+  projectFixtureUnitId,
+  projectFixtureUnitSourceHash,
   projectV02Fixture,
+  requiredFixtureValue,
   v02Sha256,
 } from "./repository.test.shared.js";
 import { migratedContext } from "./repository.test.legacy.js";
+
+type FixtureBridgeIdentity = {
+  bridgeId: string;
+  bundleRevisionId: string;
+  profileRevisionId: string;
+  assetId: string;
+  assetRevisionId: string;
+  unitId: string;
+  unitRevisionId: string;
+  hashLabel: string;
+};
+
+function reidentifyFixtureBridge(
+  bridge: BridgeBundleV02,
+  identity: FixtureBridgeIdentity,
+): BridgeBundleV02 {
+  const asset = requiredFixtureValue(bridge.assets[0], "bridge asset");
+  const unit = requiredFixtureValue(bridge.units[0], "bridge unit");
+  const bundleHash = v02Sha256(`${identity.hashLabel}:bundle`);
+  const assetRevision: BridgeBundleV02["assets"][number]["sourceRevision"] = {
+    revisionId: identity.assetRevisionId,
+    revisionKind: "content_hash",
+    value: asset.sourceHash,
+  };
+  const unitRevision: BridgeBundleV02["units"][number]["sourceRevision"] = {
+    revisionId: identity.unitRevisionId,
+    revisionKind: "content_hash",
+    value: unit.sourceHash,
+  };
+  return {
+    ...bridge,
+    bridgeId: identity.bridgeId,
+    sourceGame: {
+      ...bridge.sourceGame,
+      sourceProfileRevision: {
+        ...bridge.sourceGame.sourceProfileRevision,
+        revisionId: identity.profileRevisionId,
+      },
+    },
+    sourceBundleHash: bundleHash,
+    sourceBundleRevision: {
+      revisionId: identity.bundleRevisionId,
+      revisionKind: "content_hash",
+      value: bundleHash,
+    },
+    assets: [
+      {
+        ...asset,
+        assetId: identity.assetId,
+        sourceRevision: assetRevision,
+      },
+    ],
+    units: [
+      {
+        ...unit,
+        bridgeUnitId: identity.unitId,
+        sourceRevision: unitRevision,
+        sourceAssetRef: { ...unit.sourceAssetRef, assetId: identity.assetId },
+        patchRef: {
+          ...unit.patchRef,
+          assetId: identity.assetId,
+          sourceRevision: unitRevision,
+        },
+      },
+    ],
+  };
+}
 
 describe("ItotoriProjectRepository", () => {
   it("rejects reused bridge unit ids from another source bundle before mutation", async () => {
@@ -26,31 +98,37 @@ describe("ItotoriProjectRepository", () => {
       const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const firstProject = projectFixture();
-      const firstUnit = firstProject.bridge.units[0]!;
-      const conflictingProject = projectFixture({
-        bridge: {
-          ...firstProject.bridge,
-          bridgeId: "bridge-conflict",
-          sourceBundleHash: "hash-conflict",
-          units: [
-            {
-              ...firstUnit,
-              sourceUnitKey: "hello.scene.001.line.002",
-              occurrenceId: "occurrence-2",
-              sourceHash: "source-hash-conflict",
-              patchRef: {
-                ...firstUnit.patchRef,
-                assetId: "source-conflict.json",
-                sourceUnitKey: "hello.scene.001.line.002",
-              },
-            },
-          ],
-        },
+      const conflictingBridge = reidentifyFixtureBridge(firstProject.bridge, {
+        bridgeId: "019ed010-0000-7000-8000-000000000a01",
+        bundleRevisionId: "019ed010-0000-7000-8000-000000000a02",
+        profileRevisionId: "019ed010-0000-7000-8000-000000000a03",
+        assetId: "019ed010-0000-7000-8000-000000000a04",
+        assetRevisionId: "019ed010-0000-7000-8000-000000000a05",
+        unitId: projectFixtureUnitId,
+        unitRevisionId: "019ed010-0000-7000-8000-000000000a06",
+        hashLabel: "same-project-unit-conflict",
       });
+      const conflictingUnit = requiredFixtureValue(
+        conflictingBridge.units[0],
+        "conflicting bridge unit",
+      );
+      conflictingBridge.units[0] = {
+        ...conflictingUnit,
+        sourceUnitKey: "hello.scene.001.line.002",
+        occurrenceId: "occurrence-2",
+        patchRef: {
+          ...conflictingUnit.patchRef,
+          sourceUnitKey: "hello.scene.001.line.002",
+        },
+      };
+      const conflictingProject = projectFixture({ bridge: conflictingBridge });
 
       await repo.importSourceBundle(localActor, firstProject);
       await expect(repo.importSourceBundle(localActor, conflictingProject)).rejects.toThrow(
-        /bridge unit bridge-unit-test already belongs to project project-test source bundle bridge-test/,
+        new RegExp(
+          `bridge unit ${projectFixtureUnitId} already belongs to project project-test source bundle ${projectFixtureBridgeId}`,
+          "u",
+        ),
       );
 
       const counts = await context.pool.query<{
@@ -76,24 +154,26 @@ describe("ItotoriProjectRepository", () => {
       await repo.reset(localActor);
       const project = projectFixture();
       const firstImport = await repo.importSourceBundle(localActor, project);
-      const firstUnit = project.bridge.units[0]!;
+      const rekeyedUnitId = "019ed010-0000-7000-8000-000000000d06";
       const rekeyedProject = projectFixture({
-        drafts: { "bridge-unit-rekeyed": "Hello, {player}." },
-        bridge: {
-          ...project.bridge,
-          sourceBundleHash: "hash-rekeyed",
-          units: [
-            {
-              ...firstUnit,
-              bridgeUnitId: "bridge-unit-rekeyed",
-              sourceHash: "source-hash-rekeyed",
-            },
-          ],
-        },
+        drafts: { [rekeyedUnitId]: "Hello, {player}." },
+        bridge: reidentifyFixtureBridge(project.bridge, {
+          bridgeId: projectFixtureBridgeId,
+          bundleRevisionId: "019ed010-0000-7000-8000-000000000d02",
+          profileRevisionId: "019ed010-0000-7000-8000-000000000d03",
+          assetId: projectFixtureAssetId,
+          assetRevisionId: "019ed010-0000-7000-8000-000000000d05",
+          unitId: rekeyedUnitId,
+          unitRevisionId: "019ed010-0000-7000-8000-000000000d07",
+          hashLabel: "same-key-rekey",
+        }),
       });
 
       await expect(repo.importSourceBundle(localActor, rekeyedProject)).rejects.toThrow(
-        /sourceUnitKey hello\.scene\.001\.line\.001 is already linked to bridgeUnitId bridge-unit-test; reimport cannot change it to bridge-unit-rekeyed/,
+        new RegExp(
+          `sourceUnitKey hello\\.scene\\.001\\.line\\.001 is already linked to bridgeUnitId ${projectFixtureUnitId}; reimport cannot change it to ${rekeyedUnitId}`,
+          "u",
+        ),
       );
 
       const unitRows = await context.pool.query<{
@@ -109,9 +189,9 @@ describe("ItotoriProjectRepository", () => {
       );
       expect(unitRows.rows).toEqual([
         {
-          bridge_unit_id: "bridge-unit-test",
+          bridge_unit_id: projectFixtureUnitId,
           source_unit_key: "hello.scene.001.line.001",
-          source_hash: "source-hash",
+          source_hash: projectFixtureUnitSourceHash,
         },
       ]);
 
@@ -150,15 +230,23 @@ describe("ItotoriProjectRepository", () => {
       const secondProject = projectFixture({
         projectId: "project-cross-asset",
         localeBranchId: "locale-cross-asset",
-        bridge: {
-          ...firstProject.bridge,
-          bridgeId: "bridge-cross-asset",
-          sourceBundleHash: "hash-cross-asset",
-        },
+        bridge: reidentifyFixtureBridge(firstProject.bridge, {
+          bridgeId: "019ed010-0000-7000-8000-000000000b01",
+          bundleRevisionId: "019ed010-0000-7000-8000-000000000b02",
+          profileRevisionId: "019ed010-0000-7000-8000-000000000b03",
+          assetId: projectFixtureAssetId,
+          assetRevisionId: "019ed010-0000-7000-8000-000000000b05",
+          unitId: "019ed010-0000-7000-8000-000000000b06",
+          unitRevisionId: "019ed010-0000-7000-8000-000000000b07",
+          hashLabel: "cross-project-asset-conflict",
+        }),
       });
 
       await expect(repo.importSourceBundle(localActor, secondProject)).rejects.toThrow(
-        /asset source\.json already belongs to project project-test source bundle bridge-test/,
+        new RegExp(
+          `asset ${projectFixtureAssetId} already belongs to project project-test source bundle ${projectFixtureBridgeId}`,
+          "u",
+        ),
       );
 
       const counts = await context.pool.query<{
@@ -257,30 +345,28 @@ describe("ItotoriProjectRepository", () => {
       const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const firstProject = projectFixture();
-      const firstUnit = firstProject.bridge.units[0]!;
       await repo.importSourceBundle(localActor, firstProject);
 
       const secondProject = projectFixture({
         projectId: "project-cross-unit",
         localeBranchId: "locale-cross-unit",
-        bridge: {
-          ...firstProject.bridge,
-          bridgeId: "bridge-cross-unit",
-          sourceBundleHash: "hash-cross-unit",
-          units: [
-            {
-              ...firstUnit,
-              patchRef: {
-                ...firstUnit.patchRef,
-                assetId: "source-cross-unit.json",
-              },
-            },
-          ],
-        },
+        bridge: reidentifyFixtureBridge(firstProject.bridge, {
+          bridgeId: "019ed010-0000-7000-8000-000000000c01",
+          bundleRevisionId: "019ed010-0000-7000-8000-000000000c02",
+          profileRevisionId: "019ed010-0000-7000-8000-000000000c03",
+          assetId: "019ed010-0000-7000-8000-000000000c04",
+          assetRevisionId: "019ed010-0000-7000-8000-000000000c05",
+          unitId: projectFixtureUnitId,
+          unitRevisionId: "019ed010-0000-7000-8000-000000000c06",
+          hashLabel: "cross-project-unit-conflict",
+        }),
       });
 
       await expect(repo.importSourceBundle(localActor, secondProject)).rejects.toThrow(
-        /bridge unit bridge-unit-test already belongs to project project-test source bundle bridge-test/,
+        new RegExp(
+          `bridge unit ${projectFixtureUnitId} already belongs to project project-test source bundle ${projectFixtureBridgeId}`,
+          "u",
+        ),
       );
 
       const counts = await context.pool.query<{
@@ -311,28 +397,36 @@ describe("ItotoriProjectRepository", () => {
       const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
-      const prototype = project.bridge.units[0]!;
+      const prototype = requiredFixtureValue(project.bridge.units[0], "prototype bridge unit");
       const unitCount = 65_536;
       const units = Array.from({ length: unitCount }, (_, index) => {
         const suffix = String(index).padStart(5, "0");
+        const uuidSuffix = index.toString(16).padStart(12, "0");
         const sourceUnitKey = `large-import.scene.001.line.${suffix}`;
         return {
           ...prototype,
-          bridgeUnitId: `large-import-unit-${suffix}`,
+          bridgeUnitId: `019ed040-0000-7000-8000-${uuidSuffix}`,
+          surfaceId: `019ed041-0000-7000-8000-${uuidSuffix}`,
           sourceUnitKey,
           occurrenceId: `large-import-occurrence-${suffix}`,
-          sourceHash: `large-import-source-hash-${suffix}`,
+          sourceHash: v02Sha256(`large-import-source-${suffix}`),
           patchRef: { ...prototype.patchRef, sourceUnitKey },
         };
       });
+      const largeBundleHash = v02Sha256("large-import-bundle");
 
       const imported = await repo.importSourceBundle(
         localActor,
         projectFixture({
           bridge: {
             ...project.bridge,
-            bridgeId: "large-import-bridge",
-            sourceBundleHash: "large-import-hash",
+            bridgeId: "019ed040-0000-7000-8000-ffffffffffff",
+            sourceBundleHash: largeBundleHash,
+            sourceBundleRevision: {
+              revisionId: "019ed040-0000-7000-8000-fffffffffffe",
+              revisionKind: "content_hash",
+              value: largeBundleHash,
+            },
             units,
           },
         }),

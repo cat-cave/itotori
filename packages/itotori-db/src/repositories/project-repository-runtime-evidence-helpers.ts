@@ -5,54 +5,6 @@ import * as helpers from "./project-repository-helpers.js";
 export function runtimeEvidenceItemsFor(
   report: helpers.RuntimeReportInput,
 ): helpers.RuntimeEvidenceItemInput[] {
-  if (!helpers.isRuntimeEvidenceReportV02(report)) {
-    return [
-      ...report.textEvents.map((event) => ({
-        runtimeEvidenceId: helpers.runtimeChildIdFor(
-          report.runtimeReportId,
-          event.runtimeTextEventId,
-        ),
-        evidenceKind: deps.runtimeEvidenceKindValues.traceEvent,
-        bridgeUnitId: event.bridgeUnitId,
-        artifactId: undefined,
-        artifactKind: undefined,
-        portableArtifactUri: undefined,
-        evidenceTier: null,
-        frame: event.frame,
-        metadata: { adapterLocalEvidenceId: event.runtimeTextEventId, event },
-        bridgeUnitRefs: [
-          {
-            bridgeUnitId: event.bridgeUnitId,
-            refRole: deps.runtimeBridgeUnitRefRoleValues.primary,
-          },
-        ],
-      })),
-      ...report.frameCaptures.map((frame) => ({
-        runtimeEvidenceId: helpers.runtimeChildIdFor(report.runtimeReportId, frame.frameCaptureId),
-        evidenceKind: deps.runtimeEvidenceKindValues.capture,
-        bridgeUnitId: frame.bridgeUnitId,
-        artifactId: helpers.runtimeChildIdFor(report.runtimeReportId, frame.frameCaptureId),
-        artifactKind: "frame_capture",
-        portableArtifactUri: undefined,
-        evidenceTier: null,
-        frame: undefined,
-        metadata: {
-          adapterLocalEvidenceId: frame.frameCaptureId,
-          capture: frame,
-          width: frame.width,
-          height: frame.height,
-          nonZeroPixels: frame.nonZeroPixels,
-        },
-        bridgeUnitRefs: [
-          {
-            bridgeUnitId: frame.bridgeUnitId,
-            refRole: deps.runtimeBridgeUnitRefRoleValues.primary,
-          },
-        ],
-      })),
-    ];
-  }
-
   return [
     ...report.traceEvents.map((event) => {
       const artifactRef = event.artifactRef;
@@ -281,10 +233,6 @@ export function uniqueBridgeUnitLinks(
 export function runtimeValidationFindingRecords(
   report: helpers.RuntimeReportInput,
 ): helpers.RuntimeValidationFindingRecord[] {
-  if (!helpers.isRuntimeEvidenceReportV02(report)) {
-    return [];
-  }
-
   return report.validationFindings.map((finding) =>
     helpers.runtimeValidationFindingRecord(report, finding),
   );

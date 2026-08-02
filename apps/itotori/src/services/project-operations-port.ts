@@ -15,14 +15,12 @@ import type {
 } from "@itotori/db";
 import type {
   BenchmarkReportV02,
-  BridgeBundle,
   BridgeBundleV02,
   ConformanceManifestV01,
   ConformanceResultV01,
   FindingRecordV02,
   PatchResultV02,
   RuntimeEvidenceReportV02,
-  RuntimeVerificationReport,
 } from "@itotori/localization-bridge-schema";
 import type { DecodeExtractPort } from "../extract/decode-extract-runner.js";
 import type {
@@ -86,13 +84,13 @@ export type ItotoriProjectWorkflowPort = {
   getCostReport(projectId?: string): Promise<ProjectCostReport>;
   getCostDrilldown(filter?: CostDrilldownFilter): Promise<CostDrilldownPage>;
   getBenchmarkReports(projectId?: string): Promise<BenchmarkReportSummary[]>;
-  importBridge(bridge: BridgeBundle | BridgeBundleV02): Promise<ProjectState>;
+  importBridge(bridge: BridgeBundleV02): Promise<ProjectState>;
   decodeExtract(
     input: Parameters<DecodeExtractPort["runDecodeExtract"]>[0],
   ): ReturnType<DecodeExtractPort["runDecodeExtract"]>;
   ingestRuntimeReport(
     project: ProjectState,
-    runtimeReport: RuntimeVerificationReport | RuntimeEvidenceReportV02,
+    runtimeReport: RuntimeEvidenceReportV02,
   ): Promise<{ project: ProjectState; result: RuntimeIngestResult }>;
   ingestPatchResult(project: ProjectState, patchResult: PatchResultV02): Promise<void>;
   ingestConformanceReport(

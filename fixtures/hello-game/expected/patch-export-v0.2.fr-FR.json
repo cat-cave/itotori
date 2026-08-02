@@ -6,6 +6,9 @@
       "protectedSpanMappings": [
         {
           "raw": "{player}",
+          "sourceSpanId": "019ed012-0000-7000-8000-000000000800",
+          "sourceStartByte": 18,
+          "sourceEndByte": 26,
           "targetEnd": 17,
           "targetStart": 9
         }
@@ -38,6 +41,9 @@
       "protectedSpanMappings": [
         {
           "raw": "<wait=30>",
+          "sourceSpanId": "019ed012-0000-7000-8000-000000000820",
+          "sourceStartByte": 27,
+          "sourceEndByte": 36,
           "targetEnd": 40,
           "targetStart": 31
         }
@@ -96,6 +102,9 @@
       "protectedSpanMappings": [
         {
           "raw": "{confirm}",
+          "sourceSpanId": "019ed012-0000-7000-8000-000000000860",
+          "sourceStartByte": 15,
+          "sourceEndByte": 24,
           "targetEnd": 21,
           "targetStart": 12
         }

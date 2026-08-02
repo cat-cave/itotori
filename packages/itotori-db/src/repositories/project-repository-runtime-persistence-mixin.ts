@@ -17,9 +17,10 @@ export class ProjectRuntimePersistenceRepository extends ProjectRepositoryBase {
   async saveRuntimeReport(
     actor: deps.AuthorizationActor,
     project: api.ItotoriProjectRecord,
-    runtimeReport: deps.RuntimeVerificationReport | deps.RuntimeEvidenceReportV02,
+    runtimeReport: unknown,
     patchResultId: string,
   ): Promise<api.ProjectDashboardStatus> {
+    deps.assertRuntimeEvidenceReportV02(runtimeReport);
     await deps.requirePermission(this.db, actor, deps.permissionValues.runtimeIngest);
     const runtimeReportId = helpers.runtimeReportIdFor(runtimeReport);
     const adapterName = helpers.runtimeAdapterName(runtimeReport);

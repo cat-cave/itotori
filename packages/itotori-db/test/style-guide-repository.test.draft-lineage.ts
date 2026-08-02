@@ -19,7 +19,9 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 const localActor: AuthorizationActor = { userId: localUserId };
 
 import {
+  orderedStyleGuideUnitIds,
   styleGuideFixture,
+  styleGuideUnitIds,
   projectFixture,
   seedProject,
   seedDraftWriteOnlyUser,
@@ -66,13 +68,12 @@ describe("ItotoriStyleGuideService", () => {
         order by bridge_unit_id
       `);
       // Every normally-written draft carries the in-force approved provenance.
-      expect(rows.rows).toEqual([
-        {
-          bridge_unit_id: "bridge-unit-current-policy",
+      expect(rows.rows).toEqual(
+        orderedStyleGuideUnitIds.map((bridgeUnitId) => ({
+          bridge_unit_id: bridgeUnitId,
           style_guide_version_id: approvedVersionId,
-        },
-        { bridge_unit_id: "bridge-unit-test", style_guide_version_id: approvedVersionId },
-      ]);
+        })),
+      );
     } finally {
       await context.close();
     }
@@ -111,10 +112,12 @@ describe("ItotoriStyleGuideService", () => {
         where locale_branch_id = 'locale-en-us' and target_text is not null
         order by bridge_unit_id
       `);
-      expect(stamped.rows).toEqual([
-        { bridge_unit_id: "bridge-unit-current-policy", style_guide_version_id: v1 },
-        { bridge_unit_id: "bridge-unit-test", style_guide_version_id: v1 },
-      ]);
+      expect(stamped.rows).toEqual(
+        orderedStyleGuideUnitIds.map((bridgeUnitId) => ({
+          bridge_unit_id: bridgeUnitId,
+          style_guide_version_id: v1,
+        })),
+      );
 
       // Approve V2 (prior = V1): the normally-written drafts (provenance V1) are
       // targeted by approval invalidation.
@@ -139,8 +142,8 @@ describe("ItotoriStyleGuideService", () => {
       );
       expect(flaggedV2).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ bridgeUnitId: "bridge-unit-test" }),
-          expect.objectContaining({ bridgeUnitId: "bridge-unit-current-policy" }),
+          expect.objectContaining({ bridgeUnitId: styleGuideUnitIds.priorPolicy }),
+          expect.objectContaining({ bridgeUnitId: styleGuideUnitIds.currentPolicy }),
         ]),
       );
       expect(flaggedV2).toHaveLength(2);

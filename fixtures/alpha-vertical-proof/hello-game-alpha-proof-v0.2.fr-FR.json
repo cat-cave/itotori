@@ -5,7 +5,7 @@
   "fixture": {
     "fixtureId": "hello-game",
     "publicManifestUri": "fixtures/public/hello-game.manifest.json",
-    "publicManifestHash": "sha256:5ba79e0e2f2b51508a137dc3e398325cc1e253e993d031745e4173a7d196c4ac",
+    "publicManifestHash": "sha256:9102413e03f710b0aa0109307060128887aedec9bd8ddd8818bdc5c83a04c6aa",
     "publicRedistribution": "allowed"
   },
   "engineProfile": {
@@ -35,7 +35,7 @@
       "artifactId": "019ed025-0000-7000-8000-000000000302",
       "artifactKind": "public_fixture_manifest",
       "uri": "fixtures/public/hello-game.manifest.json",
-      "hash": "sha256:5ba79e0e2f2b51508a137dc3e398325cc1e253e993d031745e4173a7d196c4ac",
+      "hash": "sha256:9102413e03f710b0aa0109307060128887aedec9bd8ddd8818bdc5c83a04c6aa",
       "mediaType": "application/json",
       "byteSize": 5060
     },
@@ -51,9 +51,9 @@
       "artifactId": "019ed012-0000-7000-8000-000000000901",
       "artifactKind": "patch_export",
       "uri": "fixtures/hello-game/expected/patch-export-v0.2.fr-FR.json",
-      "hash": "sha256:e5608e2c45c26aa0414f05be3bfcafd12af0189ece174435a4d227eb49d2180a",
+      "hash": "sha256:4e398ccde1cd3e7f0e4af0ac258cc3b9fec60da5765afb2b7fc0009f3dbd8328",
       "mediaType": "application/json",
-      "byteSize": 8686
+      "byteSize": 9076
     },
     "patchResult": {
       "artifactId": "019ed012-0000-7000-8000-000000000902",
@@ -106,7 +106,7 @@
     {
       "scope": "public_fixture_manifest",
       "contentId": "fixtures/public/hello-game.manifest.json",
-      "hash": "sha256:5ba79e0e2f2b51508a137dc3e398325cc1e253e993d031745e4173a7d196c4ac"
+      "hash": "sha256:9102413e03f710b0aa0109307060128887aedec9bd8ddd8818bdc5c83a04c6aa"
     },
     {
       "scope": "source_bundle",
@@ -126,7 +126,7 @@
     {
       "scope": "patch_export",
       "contentId": "fixtures/hello-game/expected/patch-export-v0.2.fr-FR.json",
-      "hash": "sha256:e5608e2c45c26aa0414f05be3bfcafd12af0189ece174435a4d227eb49d2180a"
+      "hash": "sha256:4e398ccde1cd3e7f0e4af0ac258cc3b9fec60da5765afb2b7fc0009f3dbd8328"
     },
     {
       "scope": "patch_result",

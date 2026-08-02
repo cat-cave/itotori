@@ -10,6 +10,7 @@ import type {
 } from "@itotori/localization-bridge-schema";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { type ItotoriProjectRecord } from "../src/repositories/project-repository.js";
+import { currentProjectFixture } from "./current-project-fixture.js";
 
 import {
   feedbackTypeValues,
@@ -20,6 +21,13 @@ export const localActor: AuthorizationActor = { userId: localUserId };
 
 export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function requiredFixtureValue<T>(value: T | null | undefined, label: string): T {
+  if (value === undefined || value === null) {
+    throw new Error(`fixture is missing ${label}`);
+  }
+  return value;
 }
 
 export const invalidManagedRuntimeArtifactUriCases = [
@@ -37,10 +45,6 @@ export const invalidManagedRuntimeArtifactUriCases = [
   ["backslash path", "artifacts\\utsushi\\runtime\\capture.png"],
   ["missing managed runtime prefix", "artifacts/utsushi/schema-fixture/capture.png"],
 ] as const;
-
-export const invalidLegacyRuntimeArtifactUriCases = invalidManagedRuntimeArtifactUriCases.filter(
-  ([label]) => label !== "missing managed runtime prefix",
-);
 
 export function v02Sha256(label: string): string {
   return `sha256:${createHash("sha256").update(label).digest("hex")}`;
@@ -75,47 +79,46 @@ export function stableSerializeValue(value: unknown): string {
   return stableSerializeHashInput(value as Record<string, unknown>);
 }
 
+const sharedProjectFixture = currentProjectFixture({
+  seed: "project-test",
+  projectId: "project-test",
+  localeBranchId: "locale-en-us",
+  targetLocale: "en-US",
+  assetKey: "source.json",
+  assetPath: "source.json",
+  assetKind: "text",
+  units: [
+    {
+      sourceUnitKey: "hello.scene.001.line.001",
+      occurrenceId: "occurrence-1",
+      sourceText: "こんにちは、{player}。",
+      targetText: "Hello, {player}.",
+      context: { route: { sceneId: "hello.scene.001" } },
+      spans: [{ raw: "{player}" }],
+    },
+  ],
+});
+const sharedProjectUnit = requiredFixtureValue(
+  sharedProjectFixture.bridge.units[0],
+  "shared project bridge unit",
+);
+const sharedProjectAsset = requiredFixtureValue(
+  sharedProjectFixture.bridge.assets[0],
+  "shared project bridge asset",
+);
+
+export const projectFixtureBridgeId = sharedProjectFixture.bridge.bridgeId;
+export const projectFixtureAssetId = sharedProjectAsset.assetId;
+export const projectFixtureUnitId = sharedProjectUnit.bridgeUnitId;
+export const projectFixtureBundleRevisionId =
+  sharedProjectFixture.bridge.sourceBundleRevision.revisionId;
+export const projectFixtureUnitSourceHash = sharedProjectUnit.sourceHash;
+export const projectFixtureBundleHash = sharedProjectFixture.bridge.sourceBundleHash;
+
 export function projectFixture(
   overrides: Partial<ItotoriProjectRecord> = {},
 ): ItotoriProjectRecord {
-  const project: ItotoriProjectRecord = {
-    projectId: "project-test",
-    engineFamily: "synthetic_fixture",
-    sourceRoot: "/workspace/source",
-    buildRoot: "/workspace/build",
-    extractProfile: { adapter: "fixture" },
-    localeBranchId: "locale-en-us",
-    targetLocale: "en-US",
-    drafts: { "bridge-unit-test": "Hello, {player}." },
-    bridge: {
-      schemaVersion: "0.1.0",
-      bridgeId: "bridge-test",
-      sourceBundleHash: "hash-test",
-      sourceLocale: "ja-JP",
-      extractorName: "kaifuu-fixture",
-      extractorVersion: "0.0.0",
-      units: [
-        {
-          bridgeUnitId: "bridge-unit-test",
-          sourceUnitKey: "hello.scene.001.line.001",
-          occurrenceId: "occurrence-1",
-          sourceHash: "source-hash",
-          sourceLocale: "ja-JP",
-          sourceText: "こんにちは、{player}。",
-          textSurface: "dialogue",
-          protectedSpans: [
-            { kind: "placeholder", raw: "{player}", start: 18, end: 26, preserveMode: "exact" },
-          ],
-          patchRef: {
-            assetId: "source.json",
-            writeMode: "replace",
-            sourceUnitKey: "hello.scene.001.line.001",
-          },
-        },
-      ],
-    },
-  };
-  return { ...project, ...overrides };
+  return { ...structuredClone(sharedProjectFixture), ...overrides };
 }
 
 export function projectV02Fixture(bridge: BridgeBundleV02): ItotoriProjectRecord {
@@ -149,9 +152,15 @@ export function bridgeV02Fixture(): BridgeBundleV02 {
   ) as BridgeBundleV02;
 }
 
-export function patchExportV02Fixture(bridge: BridgeBundleV02): PatchExportV02 {
+export function patchExportV02Fixture(
+  bridge: BridgeBundleV02,
+  target: { targetLocale: string; targetText: string } = {
+    targetLocale: "fr-FR",
+    targetText: "Bonjour, {player}.",
+  },
+): PatchExportV02 {
   const unit = bridge.units[0]!;
-  const span = unit.spans[0]!;
+  const targetOccurrenceCursors = new Map<string, number>();
   return {
     schemaVersion: "0.2.0",
     patchExportId: "019ed001-0000-7000-8000-000000000901",
@@ -160,7 +169,7 @@ export function patchExportV02Fixture(bridge: BridgeBundleV02): PatchExportV02 {
     sourceBundleHash: bridge.sourceBundleHash,
     sourceBundleRevision: bridge.sourceBundleRevision,
     sourceLocale: bridge.sourceLocale,
-    targetLocale: "fr-FR",
+    targetLocale: target.targetLocale,
     hashStrategy: bridge.hashStrategy,
     entries: [
       {
@@ -169,17 +178,26 @@ export function patchExportV02Fixture(bridge: BridgeBundleV02): PatchExportV02 {
         sourceUnitKey: unit.sourceUnitKey,
         sourceHash: unit.sourceHash,
         sourceRevision: unit.sourceRevision,
-        targetText: "Bonjour, {player}.",
-        protectedSpanMappings: [
-          {
+        targetText: target.targetText,
+        protectedSpanMappings: unit.spans.map((span) => {
+          const targetStart = target.targetText.indexOf(
+            span.raw,
+            targetOccurrenceCursors.get(span.raw) ?? 0,
+          );
+          if (targetStart < 0) {
+            throw new Error(`patch fixture target text is missing protected span ${span.raw}`);
+          }
+          const targetEnd = targetStart + span.raw.length;
+          targetOccurrenceCursors.set(span.raw, targetEnd);
+          return {
             raw: span.raw,
             sourceSpanId: span.spanId,
             sourceStartByte: span.startByte,
             sourceEndByte: span.endByte,
-            targetStart: 9,
-            targetEnd: 17,
-          },
-        ],
+            targetStart,
+            targetEnd,
+          };
+        }),
       },
     ],
   };
@@ -191,7 +209,7 @@ export function manualFeedbackFixture(
   return {
     projectId: "project-test",
     localeBranchId: "locale-en-us",
-    sourceBundleId: "bridge-test",
+    sourceBundleId: projectFixtureBridgeId,
     feedbackSource: {
       sourceKind: "manual_playtest",
       label: "Manual playtest fixture",
@@ -202,7 +220,7 @@ export function manualFeedbackFixture(
     reporter: { role: "playtester", displayName: "Fixture reviewer" },
     reporterNote: "The protagonist sounds too formal in this line.",
     lineReference: {
-      bridgeUnitId: "bridge-unit-test",
+      bridgeUnitId: projectFixtureUnitId,
       sourceUnitKey: "hello.scene.001.line.001",
       path: "source.json",
       line: 1,
@@ -314,7 +332,7 @@ export function runtimeEvidenceReportFixture(
         traceEventId: "019ed003-0000-7000-8000-000000000911",
         eventKind: "text_observed",
         bridgeUnitRef: {
-          bridgeUnitId: "bridge-unit-test",
+          bridgeUnitId: projectFixtureUnitId,
           sourceUnitKey: "hello.scene.001.line.001",
         },
         frame: 1,
@@ -327,7 +345,7 @@ export function runtimeEvidenceReportFixture(
       {
         captureId: "019ed003-0000-7000-8000-000000000921",
         bridgeUnitRef: {
-          bridgeUnitId: "bridge-unit-test",
+          bridgeUnitId: projectFixtureUnitId,
           sourceUnitKey: "hello.scene.001.line.001",
         },
         evidenceTier: "E2",
@@ -352,7 +370,7 @@ export function runtimeEvidenceReportFixture(
         description: "Fixture evidence validates runtime plumbing, not engine fidelity.",
         affectedBridgeUnitRefs: [
           {
-            bridgeUnitId: "bridge-unit-test",
+            bridgeUnitId: projectFixtureUnitId,
             sourceUnitKey: "hello.scene.001.line.001",
           },
         ],

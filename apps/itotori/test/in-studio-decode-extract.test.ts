@@ -11,7 +11,7 @@
 //      engine discriminant to the matching adapter-owned source + mode shape.
 //   3. ENV-GATED real: when private inventory row is exported, the runner
 //      drives the REAL kaifuu-cli against the operator's game tree and asserts a
-//      real v0.2 BridgeBundle with text units landed. No retail bytes committed.
+//      real BridgeBundleV02 with text units landed. No retail bytes committed.
 //
 // This proves the trigger runs the REAL decode path, not a mock: the argv is the
 // real seam's, the read-back is the real file, and the env-gated proof spawns the
@@ -40,7 +40,7 @@ const IDENTITY = {
 // every extract/decode request, including the public Studio request.
 const REALLIVE = { engine: "reallive", ...IDENTITY } as const;
 
-// The canonical v0.2 BridgeBundle example — the same shape kaifuu writes.
+// The canonical BridgeBundleV02 example — the same shape kaifuu writes.
 const EXAMPLE_BUNDLE = readFileSync(
   new URL(
     "../../../packages/localization-bridge-schema/test/examples/bridge-v0.2.json",

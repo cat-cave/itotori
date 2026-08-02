@@ -3,7 +3,6 @@ import {
   BenchmarkRecordResult,
   BenchmarkReportSummary,
   BenchmarkReportV02,
-  BridgeBundle,
   BridgeBundleV02,
   CandidateAssetRecord,
   CatalogBenchmarkSeedFinderReadModel,
@@ -29,7 +28,6 @@ import {
   QueueHealthReadModel,
   RuntimeEvidenceReportV02,
   RuntimeIngestResult,
-  RuntimeVerificationReport,
   TerminologySearchReadModel,
   WikiApplyReceipt,
   WikiDependentView,
@@ -186,7 +184,7 @@ export type ApiCandidateAssetsResponse = {
 };
 
 export type ApiProjectImportRequest = {
-  bridge: BridgeBundle | BridgeBundleV02;
+  bridge: BridgeBundleV02;
   bootstrapSelection?: ApiBootstrapCatalogSelection;
 };
 
@@ -198,7 +196,7 @@ export type ApiProjectImportRequest = {
 export type ApiProjectDecodeExtractRequest = ExtractSource;
 
 /**
- * The produced v0.2 BridgeBundle (read back from the file kaifuu wrote), the
+ * The produced BridgeBundleV02 (read back from the file kaifuu wrote), the
  * resolved decode mode, and the exact kaifuu-cli invocation. The bridge feeds
  * the SAME `imports.bridge` ingestion path the manual upload used.
  */
@@ -275,7 +273,7 @@ export type ApiRecordBenchmarkResponse = BenchmarkRecordResult;
 
 export type ApiRuntimeEvidenceRequest = {
   project: ProjectState;
-  runtimeReport: RuntimeVerificationReport | RuntimeEvidenceReportV02;
+  runtimeReport: RuntimeEvidenceReportV02;
 };
 
 export type ApiRuntimeEvidenceResponse = RuntimeIngestResult;

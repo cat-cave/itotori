@@ -1,8 +1,6 @@
 import { createHash } from "node:crypto";
 import type {
-  BridgeBundle,
   BridgeBundleV02,
-  BridgeUnit,
   FindingRecordV02,
   LocalizationUnitV02,
 } from "@itotori/localization-bridge-schema";
@@ -161,14 +159,12 @@ export function runDeterministicPreExportQa(project: ProjectState): {
   };
 }
 
-function unitsForBridge(
-  bridge: BridgeBundle | BridgeBundleV02,
-): Array<BridgeUnit | LocalizationUnitV02> {
+function unitsForBridge(bridge: BridgeBundleV02): LocalizationUnitV02[] {
   return bridge.units;
 }
 
 function failure(
-  unit: BridgeUnit | LocalizationUnitV02,
+  unit: LocalizationUnitV02,
   targetText: string,
   checkCode: DeterministicPreExportQaCheckCode,
   details: Omit<
@@ -186,11 +182,8 @@ function failure(
   };
 }
 
-function protectedSpanRaws(unit: BridgeUnit | LocalizationUnitV02): string[] {
-  if ("spans" in unit) {
-    return unit.spans.map((span) => span.raw);
-  }
-  return unit.protectedSpans.map((span) => span.raw);
+function protectedSpanRaws(unit: LocalizationUnitV02): string[] {
+  return unit.spans.map((span) => span.raw);
 }
 
 function firstCharsetProblem(targetText: string): { label: string; observed: string } | undefined {
@@ -228,9 +221,8 @@ function codePointLabel(codeUnit: number): string {
   return `U+${codeUnit.toString(16).toUpperCase().padStart(4, "0")}`;
 }
 
-function lineLengthLimit(unit: BridgeUnit | LocalizationUnitV02): number {
-  const surface = "surfaceKind" in unit ? unit.surfaceKind : unit.textSurface;
-  switch (surface) {
+function lineLengthLimit(unit: LocalizationUnitV02): number {
+  switch (unit.surfaceKind) {
     case "speaker_name":
       return 32;
     case "choice_label":
@@ -295,13 +287,11 @@ function glossaryTermsForProject(project: ProjectState): GlossaryTerm[] {
   return terms;
 }
 
-function isGlossaryUnit(unit: BridgeUnit | LocalizationUnitV02): boolean {
+function isGlossaryUnit(unit: LocalizationUnitV02): boolean {
   if (unit.sourceUnitKey.includes(".glossary.") || unit.sourceUnitKey.includes("/glossary/")) {
     return true;
   }
-  return (
-    "context" in unit && "database" in unit.context && unit.context.database.fieldKey === "term"
-  );
+  return "database" in unit.context && unit.context.database.fieldKey === "term";
 }
 
 function findingForFailure(

@@ -8,8 +8,6 @@
 //        - any asset decision is unresolved;
 //        - any protected span is missing from a draft.
 //   3. Honors the no-partial-bundle invariant.
-//   4. The Kaifuu handoff helper produces an engine-agnostic payload
-//      that mirrors the bundle.
 
 import { describe, expect, it } from "vitest";
 import type { AssetDecisionRecord, AuthorizationActor } from "@itotori/db";
@@ -28,7 +26,6 @@ import {
   type SourceBridgeViewLoaderPort,
 } from "../src/patch-export/exporter.js";
 import { PatchExportPreflight } from "../src/patch-export/preflight.js";
-import { prepareKaifuuPatchPayload } from "../src/patch-export/kaifuu-handoff.js";
 import type { SourceBridgeUnit, SourceBridgeView } from "../src/patch-export/source-bridge-view.js";
 
 const ACTOR: AuthorizationActor = { userId: "exporter-test-actor" };
@@ -465,7 +462,7 @@ describe("PatchExporter", () => {
     ).rejects.toThrow(/engine-visible source text/u);
   });
 
-  it("preserves bundle integrity when all checks pass; Kaifuu handoff mirrors the bundle", async () => {
+  it("preserves the complete Itotori export bundle when all checks pass", async () => {
     const exporter = makeExporter();
     const result = await exporter.export(ACTOR, {
       projectId: PROJECT_ID,
@@ -476,17 +473,16 @@ describe("PatchExporter", () => {
     if ("kind" in result && result.kind === "preflight_failure") {
       throw new Error("unexpected failure");
     }
-    const payload = prepareKaifuuPatchPayload(result);
-    expect(payload.schemaVersion).toBe(PATCH_EXPORT_BUNDLE_SCHEMA_VERSION);
-    expect(payload.units).toHaveLength(1);
-    expect(payload.assetDirectives).toHaveLength(1);
-    expect(payload.units[0]).toMatchObject({
+    expect(result.schemaVersion).toBe(PATCH_EXPORT_BUNDLE_SCHEMA_VERSION);
+    expect(result.drafts).toHaveLength(1);
+    expect(result.assetDecisions).toHaveLength(1);
+    expect(result.drafts[0]).toMatchObject({
       sourceUnitId: "unit-001",
       sourceText: "こんにちは、{player}。",
       draftText: "Hello, {player}.",
     });
-    expect(payload.provenance.draftArtifactBundleId).toBe(DRAFT_JOB_ID);
-    expect(payload.provenance.exportedByUserId).toBe("exporter-test-actor");
-    expect(payload.provenance.exportedAt).toBe(FIXED_NOW.toISOString());
+    expect(result.provenance.draftArtifactBundleId).toBe(DRAFT_JOB_ID);
+    expect(result.provenance.exportedByUserId).toBe("exporter-test-actor");
+    expect(result.provenance.exportedAt).toBe(FIXED_NOW.toISOString());
   });
 });

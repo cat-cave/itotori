@@ -20,9 +20,10 @@ const subjects = Array.from(
 );
 const sharedBehaviors = [
   "platform.artifacts-are-immutable-and-retained-by-policy",
+  "platform.public-formats-upgrade-predictably",
   "quality.evidence-is-traceable-and-portable",
   "quality.failures-stay-explicit",
-  ...Array.from({ length: 28 }, (_, index) => `proof.shared-${String(index).padStart(2, "0")}`),
+  ...Array.from({ length: 27 }, (_, index) => `proof.shared-${String(index).padStart(2, "0")}`),
 ];
 const canonicalBehaviors = Array.from(
   { length: 4 },
@@ -146,11 +147,11 @@ test("a real-scale report passes only the baseline-green owned cells", () => {
   assert.equal(report.notApplicablePairs.length, 96);
   assert.deepEqual(report.summary, {
     applicableCellCount: 687,
-    passingCellCount: 2,
-    failingCellCount: 685,
+    passingCellCount: 3,
+    failingCellCount: 684,
     notApplicablePairCount: 96,
-    passBasisPoints: 29,
-    displayPercent: "0.29",
+    passBasisPoints: 43,
+    displayPercent: "0.43",
   });
   const passing = report.cells.filter(({ status }) => status === "pass");
   assert.deepEqual(
@@ -167,17 +168,17 @@ test("a real-scale report passes only the baseline-green owned cells", () => {
   assert.ok(artifact?.reasonCodes.includes("invalid-mutation"));
   assert.equal(
     formatCellReportSummary(report),
-    "2/687 cells pass (0.29%); 685 fail; 96 pairs not applicable",
+    "3/687 cells pass (0.43%); 684 fail; 96 pairs not applicable",
   );
 });
 
-test("cell JUnit has exactly 687 testcases, 685 failures, and no skipped testcase", () => {
+test("cell JUnit has exactly 687 testcases, 684 failures, and no skipped testcase", () => {
   const xml = renderCellJunit(buildCellReport(passingInput()));
   assert.equal((xml.match(/<testcase /gu) ?? []).length, 687);
-  assert.equal((xml.match(/<failure /gu) ?? []).length, 685);
+  assert.equal((xml.match(/<failure /gu) ?? []).length, 684);
   assert.equal((xml.match(/<system-out>/gu) ?? []).length, 687);
   assert.doesNotMatch(xml, /<skipped/u);
-  assert.match(xml, /tests="687" failures="685" skipped="0"/u);
+  assert.match(xml, /tests="687" failures="684" skipped="0"/u);
 });
 
 test("a signed plan can enumerate multiple shards for one logical lane", () => {
@@ -209,7 +210,7 @@ test("a signed plan can enumerate multiple shards for one logical lane", () => {
     },
   ];
   const report = buildCellReport(input);
-  assert.equal(report.summary.passingCellCount, 2);
+  assert.equal(report.summary.passingCellCount, 3);
   assert.deepEqual(expectedFragmentFileNames(input.selectionPlan), [
     "public-ts-1of2.ndjson",
     "public-ts-1of2.xml",
@@ -355,7 +356,7 @@ test("digest bindings and AJV-backed summary validation reject tampering", () =>
   input.selectionPlanDigest = digest("9");
   assert.throws(() => buildCellReport(input), /selectionPlanDigest does not match/u);
   const report = buildCellReport(passingInput());
-  report.summary.passingCellCount = 3;
+  report.summary.passingCellCount = 4;
   assert.throws(() => assertValidCellReport(report), /summary arithmetic mismatch/u);
   const fresh = buildCellReport(passingInput());
   fresh.extra = true;

@@ -27,6 +27,9 @@ import {
   assertBridgeBundleV02,
   assertDeltaPackageMetadataV02,
   assertFormatVersion,
+  assertPatchExportV02,
+  assertPatchResultV02,
+  assertRuntimeEvidenceReportV02,
   isKnownLegacyVersion,
   negotiateFormatVersion,
 } from "../src/index.js";
@@ -159,6 +162,22 @@ describe("assertBridgeBundleV02 + assertDeltaPackageMetadataV02 route through ve
   it("a current v0.2 delta metadata record loads", () => {
     const metadata = fixture("./examples/delta-package-v0.2.json");
     expect(() => assertDeltaPackageMetadataV02(metadata)).not.toThrow();
+  });
+
+  it("bridge-family readers reject v0.1 before interpreting non-version fields", () => {
+    for (const reader of [
+      assertPatchExportV02,
+      assertPatchResultV02,
+      assertRuntimeEvidenceReportV02,
+    ]) {
+      const err = capture(() => reader({ schemaVersion: "0.1.0", malformed: true }));
+      expect(err).toBeInstanceOf(FormatVersionMismatchError);
+      if (!(err instanceof FormatVersionMismatchError)) throw new Error("unreachable");
+      expect(err.observed).toBe("0.1.0");
+      expect(err.supported).toBe("0.2.0");
+      expect(err.migrationPath).toBe(BRIDGE_FORMAT_STABILITY.migrationPath);
+      expect(err.message).not.toContain("must be a UUID7");
+    }
   });
 
   it("a prior-version (v0.1) bridge bundle fails with FormatVersionMismatchError + migration path, not silently", () => {

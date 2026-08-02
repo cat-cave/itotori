@@ -1,4 +1,4 @@
-import { BRIDGE_SCHEMA_VERSION_V02, RuntimeVerificationReport } from "./bridge-core-types.js";
+import { BRIDGE_SCHEMA_VERSION_V02 } from "./bridge-core-types.js";
 import { LocalizationUnitV02 } from "./localization-triage-types.js";
 import {
   PatchExportEntryV02,
@@ -7,8 +7,6 @@ import {
 } from "./patch-and-runtime-types.js";
 import { assertBridgeBundleV02 } from "./bridge-bundle-validation.js";
 import { assertPatchExportV02 } from "./benchmark-and-patch-validation.js";
-import { asRecord, assertArray, assertString } from "./fixture-utility-validation.js";
-import { assertEqual } from "./validation-primitives.js";
 
 export function evaluatePatchExportCompatibilityV02(
   patchExport: unknown,
@@ -130,30 +128,21 @@ export function patchEntrySpanMappingsCompatible(
       return false;
     }
 
-    const hasSourceIdentity =
-      mapping.sourceSpanId !== undefined ||
-      mapping.sourceStartByte !== undefined ||
-      mapping.sourceEndByte !== undefined;
-    if ((requiredCounts.get(mapping.raw) ?? 0) > 1 && !hasSourceIdentity) {
+    const sourceSpan = unit.spans.find(
+      (span) =>
+        span.raw === mapping.raw &&
+        span.spanId === mapping.sourceSpanId &&
+        span.startByte === mapping.sourceStartByte &&
+        span.endByte === mapping.sourceEndByte,
+    );
+    if (sourceSpan === undefined) {
       return false;
     }
-    if (hasSourceIdentity) {
-      const sourceSpan = unit.spans.find(
-        (span) =>
-          span.raw === mapping.raw &&
-          (mapping.sourceSpanId === undefined || span.spanId === mapping.sourceSpanId) &&
-          (mapping.sourceStartByte === undefined || span.startByte === mapping.sourceStartByte) &&
-          (mapping.sourceEndByte === undefined || span.endByte === mapping.sourceEndByte),
-      );
-      if (sourceSpan === undefined) {
-        return false;
-      }
-      const sourceKey = `${sourceSpan.spanId}:${sourceSpan.startByte}:${sourceSpan.endByte}`;
-      if (explicitSourceKeys.has(sourceKey)) {
-        return false;
-      }
-      explicitSourceKeys.add(sourceKey);
+    const sourceKey = `${sourceSpan.spanId}:${sourceSpan.startByte}:${sourceSpan.endByte}`;
+    if (explicitSourceKeys.has(sourceKey)) {
+      return false;
     }
+    explicitSourceKeys.add(sourceKey);
 
     if (requiredCounts.has(mapping.raw)) {
       const ranges = targetRangesByRaw.get(mapping.raw) ?? new Set<string>();
@@ -181,14 +170,4 @@ export function targetByteRangeMatchesRaw(
     return false;
   }
   return targetBytes.subarray(targetStart, targetEnd).toString("utf8") === raw;
-}
-
-export function assertRuntimeVerificationReport(
-  value: unknown,
-): asserts value is RuntimeVerificationReport {
-  const report = asRecord(value, "RuntimeVerificationReport");
-  assertEqual(report.schemaVersion, "0.1.0", "RuntimeVerificationReport.schemaVersion");
-  assertString(report.runtimeReportId, "RuntimeVerificationReport.runtimeReportId");
-  assertArray(report.textEvents, "RuntimeVerificationReport.textEvents");
-  assertArray(report.frameCaptures, "RuntimeVerificationReport.frameCaptures");
 }

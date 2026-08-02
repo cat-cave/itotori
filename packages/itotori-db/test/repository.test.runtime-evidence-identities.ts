@@ -8,6 +8,7 @@ import { ItotoriProjectRepository } from "../src/repositories/project-repository
 import {
   localActor,
   projectFixture,
+  projectFixtureUnitId,
   runtimeEvidenceReportFixture,
 } from "./repository.test.shared.js";
 import { migratedContext } from "./repository.test.legacy.js";
@@ -48,7 +49,7 @@ describe("ItotoriProjectRepository", () => {
               traceEventId,
               eventKind: "text_observed",
               bridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
               frame: 1,
@@ -60,7 +61,7 @@ describe("ItotoriProjectRepository", () => {
             {
               branchEventId,
               bridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
               frame: 2,
@@ -71,7 +72,7 @@ describe("ItotoriProjectRepository", () => {
                   optionId: branchOptionId,
                   label: "Shared local option",
                   labelBridgeUnitRef: {
-                    bridgeUnitId: "bridge-unit-test",
+                    bridgeUnitId: projectFixtureUnitId,
                     sourceUnitKey: "hello.scene.001.line.001",
                   },
                 },
@@ -83,7 +84,7 @@ describe("ItotoriProjectRepository", () => {
             {
               captureId,
               bridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
               evidenceTier: "E2",
@@ -103,7 +104,7 @@ describe("ItotoriProjectRepository", () => {
             {
               recordingId,
               bridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
               evidenceTier: "E3",
@@ -128,7 +129,7 @@ describe("ItotoriProjectRepository", () => {
               description: "Fixture evidence validates runtime plumbing, not engine fidelity.",
               affectedBridgeUnitRefs: [
                 {
-                  bridgeUnitId: "bridge-unit-test",
+                  bridgeUnitId: projectFixtureUnitId,
                   sourceUnitKey: "hello.scene.001.line.001",
                 },
               ],
@@ -143,7 +144,7 @@ describe("ItotoriProjectRepository", () => {
               scope: "shared local comparison",
               coveredBridgeUnitRefs: [
                 {
-                  bridgeUnitId: "bridge-unit-test",
+                  bridgeUnitId: projectFixtureUnitId,
                   sourceUnitKey: "hello.scene.001.line.001",
                 },
               ],
@@ -161,7 +162,7 @@ describe("ItotoriProjectRepository", () => {
               findingKind: "text_mismatch",
               severity: "P2",
               bridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
               message: `Runtime text mismatch for ${runtimeReportId}.`,

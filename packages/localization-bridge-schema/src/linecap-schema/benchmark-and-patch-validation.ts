@@ -1,5 +1,5 @@
-import { createHash } from "./dependencies.js";
-import { BRIDGE_SCHEMA_VERSION_V02, PatchExport, Uuid7 } from "./bridge-core-types.js";
+import { BRIDGE_FORMAT_STABILITY, assertFormatVersion, createHash } from "./dependencies.js";
+import { BRIDGE_SCHEMA_VERSION_V02, Uuid7 } from "./bridge-core-types.js";
 import {
   BENCHMARK_RUN_STATUSES,
   LOCALIZATION_ADJUDICATION_STATES,
@@ -60,7 +60,6 @@ import {
 import {
   asArray,
   asRecord,
-  assertArray,
   assertHashStringV02,
   assertOptionalHashStringV02,
   assertOptionalRfc3339Instant,
@@ -400,18 +399,9 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
   assertStringArray(report.knownBlindSpots, "BenchmarkReportV02.knownBlindSpots");
 }
 
-export function assertPatchExport(value: unknown): asserts value is PatchExport {
-  const patch = asRecord(value, "PatchExport");
-  assertEqual(patch.schemaVersion, "0.1.0", "PatchExport.schemaVersion");
-  assertString(patch.patchExportId, "PatchExport.patchExportId");
-  assertString(patch.sourceBridgeId, "PatchExport.sourceBridgeId");
-  assertString(patch.targetLocale, "PatchExport.targetLocale");
-  assertArray(patch.entries, "PatchExport.entries");
-}
-
 export function assertPatchExportV02(value: unknown): asserts value is PatchExportV02 {
   const patch = asRecord(value, "PatchExportV02");
-  assertEqual(patch.schemaVersion, BRIDGE_SCHEMA_VERSION_V02, "PatchExportV02.schemaVersion");
+  assertFormatVersion(BRIDGE_FORMAT_STABILITY, patch.schemaVersion, "PatchExportV02.schemaVersion");
   assertUuid7(patch.patchExportId, "PatchExportV02.patchExportId");
   assertUuid7(patch.sourceBridgeId, "PatchExportV02.sourceBridgeId");
   assertSourceGameRevisionV02(patch.sourceGame, "PatchExportV02.sourceGame");

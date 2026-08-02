@@ -35,6 +35,7 @@ import {
 import { compileBehaviorGlue, computeBehaviorBuildDigest } from "./behavior-proof-build.mjs";
 import { buildLocalArtifactReceipt } from "./local-behavior-receipt.mjs";
 import { prepareImmutableArtifactFixedSuccessMutation } from "./behavior-proof-artifact-mutation.mjs";
+import { preparePublicFormatFixedSuccessMutation } from "./behavior-proof-public-format-mutation.mjs";
 
 export { compileBehaviorGlue, computeBehaviorBuildDigest } from "./behavior-proof-build.mjs";
 
@@ -42,15 +43,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const defaultRoot = resolve(here, "../..");
 const OWNED_CELLS = [
   "cell::platform.artifacts-are-immutable-and-retained-by-policy::all",
+  "cell::platform.public-formats-upgrade-predictably::all",
   "cell::quality.evidence-is-traceable-and-portable::all",
   "cell::quality.failures-stay-explicit::all",
 ];
-const BASELINE_GREEN_CELLS = [
-  "cell::platform.artifacts-are-immutable-and-retained-by-policy::all",
-  "cell::quality.evidence-is-traceable-and-portable::all",
-  "cell::quality.failures-stay-explicit::all",
-];
-
 function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
@@ -243,6 +239,7 @@ export async function runMutationProof({ root = defaultRoot } = {}) {
   compileBehaviorGlue(root);
   await requireDatabaseUrl(root);
   prepareImmutableArtifactFixedSuccessMutation(root, workRoot);
+  preparePublicFormatFixedSuccessMutation(root, workRoot);
   const { plan: mutantPlan } = await buildBehaviorProofPlan({ root, mode: "fixed-success" });
   const mutant = executePlan(root, workRoot, mutantPlan, true);
   assertCellOutcome(mutant.caseResults, "fail", "fixed-success-did-not-turn-red");
@@ -253,7 +250,7 @@ export async function runMutationProof({ root = defaultRoot } = {}) {
     baseline.caseResults,
     "pass",
     "existing-real-drivers-did-not-stay-green",
-    BASELINE_GREEN_CELLS,
+    OWNED_CELLS,
   );
   return { mutant, baseline, mutantPlan, baselinePlan, workRoot };
 }
@@ -351,16 +348,16 @@ export async function runBehaviorProof({ root = defaultRoot, output = "behavior-
     fullRun.caseResults,
     "pass",
     "existing-real-drivers-did-not-stay-green",
-    BASELINE_GREEN_CELLS,
+    OWNED_CELLS,
   );
   const missingExecutionFailures = fullRun.caseResults.filter(
     ({ status, reasonCodes }) => status === "fail" && reasonCodes.includes("missing-execution"),
   );
   if (
-    missingExecutionFailures.length !== 3_368 ||
+    missingExecutionFailures.length !== 3_363 ||
     missingExecutionFailures.some(({ reasonCodes }) => !reasonCodes.includes("missing-execution"))
   ) {
-    throw new Error(`unexpected-unimplemented-case-count:${missingExecutionFailures.length}/3368`);
+    throw new Error(`unexpected-unimplemented-case-count:${missingExecutionFailures.length}/3363`);
   }
   const mutations = buildMutationResults(fullMutant.caseResults, fullRun.caseResults);
   const selectionPlanDigest = canonicalDigest(plan);

@@ -2,7 +2,11 @@ import { testProjectEngineFamilyRegistry } from "./project-engine-family-registr
 
 import { describe, expect, it } from "vitest";
 
-import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
+import {
+  FormatVersionMismatchError,
+  assertBridgeBundleV02,
+  type BridgeBundleV02,
+} from "@itotori/localization-bridge-schema";
 
 import {
   ItotoriProjectRepository,
@@ -12,8 +16,14 @@ import {
 import {
   bridgeV02Fixture,
   localActor,
+  patchExportV02Fixture,
   projectFixture,
+  projectFixtureBridgeId,
+  projectFixtureBundleRevisionId,
+  projectFixtureUnitId,
   projectV02Fixture,
+  requiredFixtureValue,
+  runtimeEvidenceReportFixture,
 } from "./repository.test.shared.js";
 import { migratedContext } from "./repository.test.legacy.js";
 
@@ -24,62 +34,32 @@ describe("ItotoriProjectRepository", () => {
       const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
+      assertBridgeBundleV02(project.bridge);
+      const unit = requiredFixtureValue(project.bridge.units[0], "project bridge unit");
 
       await repo.importSourceBundle(localActor, project);
       await repo.saveDrafts(localActor, project);
-      await repo.savePatchExport(localActor, project, {
-        schemaVersion: "0.1.0",
-        patchExportId: "patch-test",
-        sourceBridgeId: "bridge-test",
-        sourceBundleHash: "hash-test",
-        sourceLocale: "ja-JP",
-        targetLocale: "en-US",
-        entries: [
-          {
-            entryId: "entry-test",
-            bridgeUnitId: "bridge-unit-test",
-            sourceUnitKey: "hello.scene.001.line.001",
-            sourceHash: "source-hash",
-            targetText: "Hello, {player}.",
-            protectedSpanMappings: [{ raw: "{player}", targetStart: 7, targetEnd: 15 }],
-          },
-        ],
-      });
+      await repo.savePatchExport(
+        localActor,
+        project,
+        patchExportV02Fixture(project.bridge, {
+          targetLocale: project.targetLocale,
+          targetText: requiredFixtureValue(
+            project.drafts[unit.bridgeUnitId],
+            "project target draft",
+          ),
+        }),
+      );
       const status = await repo.saveRuntimeReport(
         localActor,
         project,
-        {
-          schemaVersion: "0.1.0",
-          runtimeReportId: "runtime-test",
-          adapterName: "utsushi-fixture",
-          fidelityTier: "layout_probe",
-          status: "passed",
-          textEvents: [
-            {
-              runtimeTextEventId: "runtime-text-test",
-              bridgeUnitId: "bridge-unit-test",
-              text: "Hello, {player}.",
-              frame: 1,
-            },
-          ],
-          frameCaptures: [
-            {
-              frameCaptureId: "frame-test",
-              bridgeUnitId: "bridge-unit-test",
-              width: 320,
-              height: 180,
-              nonZeroPixels: 57600,
-              artifactPath: "fixture://frame/1",
-            },
-          ],
-          approximations: ["fixture"],
-        },
+        runtimeEvidenceReportFixture({ createdAt: new Date().toISOString() }),
         "patch-result-test",
       );
 
       expect(status.status).toBe("runtime_ingested");
-      expect(status.sourceBundleId).toBe("bridge-test");
-      expect(status.sourceBundleRevisionId).toBe("bridge-test:bundle-revision");
+      expect(status.sourceBundleId).toBe(projectFixtureBridgeId);
+      expect(status.sourceBundleRevisionId).toBe(projectFixtureBundleRevisionId);
       expect(status.unitCount).toBe(1);
       expect(status.branchCount).toBe(1);
       expect(status.localeBranches[0]?.translatedUnitCount).toBe(1);
@@ -87,9 +67,9 @@ describe("ItotoriProjectRepository", () => {
       expect(status.latestEventKind).toBe("patch_result_recorded");
       expect(status.importStatus).toMatchObject({
         projectId: "project-test",
-        bridgeId: "bridge-test",
-        sourceBundleId: "bridge-test",
-        sourceBundleRevisionId: "bridge-test:bundle-revision",
+        bridgeId: projectFixtureBridgeId,
+        sourceBundleId: projectFixtureBridgeId,
+        sourceBundleRevisionId: projectFixtureBundleRevisionId,
         unitCount: 1,
         assetCount: 1,
         sourceRevisionCount: 4,
@@ -109,49 +89,87 @@ describe("ItotoriProjectRepository", () => {
       const runtimeStatus = await repo.getRuntimeStatus(localActor);
       expect(runtimeStatus).toEqual({
         finalStatus: "hello_world_passed",
-        runtimeRunId: "runtime-test",
-        runtimeReportId: "runtime-test",
+        runtimeRunId: "019ed003-0000-7000-8000-000000000901",
+        runtimeReportId: "019ed003-0000-7000-8000-000000000901",
         runtimeStatus: "passed",
         fidelityTier: "layout_probe",
-        evidenceTier: null,
+        evidenceTier: "E2",
         textEventCount: 1,
-        frameCaptureCount: 1,
-        screenshotArtifactCount: 0,
+        frameCaptureCount: 0,
+        screenshotArtifactCount: 1,
         recordingArtifactCount: 0,
         validationFindingCount: 0,
         traceEvents: [
           {
-            runtimeEventId: "runtime-test:runtime-text-test",
-            eventKind: "trace_event",
-            bridgeUnitId: "bridge-unit-test",
-            sourceUnitKey: "hello.scene.001.line.001",
-            draftId: "locale-en-us:bridge-unit-test",
-            runtimeTargetId: null,
+            runtimeEventId:
+              "019ed003-0000-7000-8000-000000000901:019ed003-0000-7000-8000-000000000911",
+            eventKind: "text_observed",
+            bridgeUnitId: projectFixtureUnitId,
+            sourceUnitKey: unit.sourceUnitKey,
+            draftId: `locale-en-us:${projectFixtureUnitId}`,
+            runtimeTargetId: "hello.line.001",
             evidenceTier: null,
             frame: 1,
-            textPreview: null,
+            textPreview: "Hello, {player}.",
             artifactIds: [],
           },
         ],
         findings: [],
         artifacts: [
           {
-            artifactId: "runtime-test:frame-test",
-            artifactKind: "frame_capture",
-            uri: "fixture://frame/1",
-            hash: null,
-            hashProvenance: null,
-            mediaType: null,
+            artifactId: "019ed003-0000-7000-8000-000000000901:019ed003-0000-7000-8000-000000000931",
+            artifactKind: "screenshot",
+            uri: "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000901/screenshots/019ed003-0000-7000-8000-000000000931.png",
+            hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
+            hashProvenance: "repository_fallback",
+            mediaType: "image/png",
             byteSize: null,
-            bridgeUnitId: "bridge-unit-test",
-            sourceUnitKey: "hello.scene.001.line.001",
-            diagnostic:
-              "blocked unmanaged artifact link: runtime artifact uri must be a portable relative artifact path: fixture://frame/1",
+            bridgeUnitId: projectFixtureUnitId,
+            sourceUnitKey: unit.sourceUnitKey,
+            diagnostic: null,
           },
         ],
-        approximations: [],
-        unsupportedCapabilities: [],
-        limitations: [],
+        approximations: [
+          {
+            approximationId: "019ed003-0000-7000-8000-000000000941",
+            approximationTier: "deterministic_fixture",
+            scope: "fixture runtime",
+            description: "Fixture evidence validates runtime plumbing, not engine fidelity.",
+            evidenceTierCeiling: "E2",
+            bridgeUnitIds: [projectFixtureUnitId],
+          },
+        ],
+        unsupportedCapabilities: [
+          {
+            feature: "jump",
+            status: "unsupported",
+            fidelityTierCeiling: null,
+            evidenceTierCeiling: null,
+            limitations: [],
+          },
+          {
+            feature: "snapshot",
+            status: "unsupported",
+            fidelityTierCeiling: null,
+            evidenceTierCeiling: null,
+            limitations: [],
+          },
+          {
+            feature: "screenshot",
+            status: "unsupported",
+            fidelityTierCeiling: null,
+            evidenceTierCeiling: null,
+            limitations: [],
+          },
+          {
+            feature: "recording",
+            status: "unsupported",
+            fidelityTierCeiling: null,
+            evidenceTierCeiling: null,
+            limitations: [],
+          },
+        ],
+        limitations: ["No reference-runtime pixel comparison is performed."],
       });
 
       await expect(repo.getRuntimeStatus(localActor, "runtime-run-stale")).rejects.toEqual(
@@ -167,16 +185,18 @@ describe("ItotoriProjectRepository", () => {
       const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
-      const unit = project.bridge.units[0]!;
+      assertBridgeBundleV02(project.bridge);
+      const unit = requiredFixtureValue(project.bridge.units[0], "project bridge unit");
+      const span = requiredFixtureValue(unit.spans[0], "project bridge span");
       const invalidProject = projectFixture({
         bridge: {
           ...project.bridge,
           units: [
             {
               ...unit,
-              protectedSpans: [
+              spans: [
                 {
-                  ...unit.protectedSpans[0]!,
+                  ...span,
                   raw: "{missing}",
                 },
               ],
@@ -214,10 +234,11 @@ describe("ItotoriProjectRepository", () => {
       const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const bridge = bridgeV02Fixture();
+      const firstUnit = requiredFixtureValue(bridge.units[0], "first bridge unit");
       const duplicateBridge: BridgeBundleV02 = {
         ...bridge,
         units: bridge.units.map((unit, index) =>
-          index === 1 ? { ...unit, bridgeUnitId: bridge.units[0]!.bridgeUnitId } : unit,
+          index === 1 ? { ...unit, bridgeUnitId: firstUnit.bridgeUnitId } : unit,
         ),
       };
 
@@ -371,17 +392,42 @@ describe("ItotoriProjectRepository", () => {
       await context.close();
     }
   });
-  it("persists legacy bundle revisions without a module qualifier", async () => {
+  it("rejects v0.1 bridge imports with the typed migration requirement and no writes", async () => {
     const context = await migratedContext();
     try {
       const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
-      const project = projectFixture();
+      const legacyProject = projectFixture({
+        bridge: {
+          schemaVersion: "0.1.0",
+          bridgeId: "legacy-bridge-test",
+          sourceBundleHash: "legacy-hash-test",
+          sourceLocale: "ja-JP",
+          extractorName: "legacy-fixture",
+          extractorVersion: "0.1.0",
+          units: [],
+        },
+      });
 
-      const imported = await repo.importSourceBundle(localActor, project);
+      const rejection = repo.importSourceBundle(localActor, legacyProject);
+      await expect(rejection).rejects.toBeInstanceOf(FormatVersionMismatchError);
+      await expect(rejection).rejects.toThrow(/Migration path:/u);
 
-      expect(imported.sourceBundleRevisionId).toBe(`${project.bridge.bridgeId}:bundle-revision`);
-      expect(imported.sourceBundleRevisionId).not.toContain("helpers.");
+      const counts = await context.pool.query<{
+        projects: number;
+        source_revisions: number;
+        bridge_imports: number;
+      }>(`
+        select
+          (select count(*)::int from itotori_projects) as projects,
+          (select count(*)::int from itotori_source_revisions) as source_revisions,
+          (select count(*)::int from itotori_bridge_imports) as bridge_imports
+      `);
+      expect(counts.rows[0]).toEqual({
+        projects: 0,
+        source_revisions: 0,
+        bridge_imports: 0,
+      });
     } finally {
       await context.close();
     }

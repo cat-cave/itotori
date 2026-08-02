@@ -15,6 +15,12 @@ import {
   type ImmutableArtifactObservation,
 } from "../drivers/immutable-artifact.js";
 import { observeEvidence, type EvidenceObservation } from "../drivers/portable-evidence.js";
+import {
+  observePublicFormatBehavior,
+  publicFormatConditionResult,
+  publicFormatOutcomeResult,
+  type PublicFormatObservation,
+} from "../drivers/public-format.js";
 
 interface WorldParameters {
   planPath: string;
@@ -117,6 +123,7 @@ export class BehaviorWorld extends World<WorldParameters> {
   private failure?: FailureObservation;
   private evidence?: EvidenceObservation;
   private artifact?: ImmutableArtifactObservation;
+  private publicFormat?: PublicFormatObservation;
   private stepIndex = -1;
   private assertions = 0;
   private observations = 0;
@@ -161,6 +168,10 @@ export class BehaviorWorld extends World<WorldParameters> {
     }
     if (selected.behavior === "platform.artifacts-are-immutable-and-retained-by-policy") {
       await this.executeArtifactStep(selected, originalStep, text);
+      return;
+    }
+    if (selected.behavior === "platform.public-formats-upgrade-predictably") {
+      this.executePublicFormatStep(selected, originalStep, text);
       return;
     }
     this.reasonCodes.push("missing-execution");
@@ -362,6 +373,63 @@ export class BehaviorWorld extends World<WorldParameters> {
 
   private recordArtifactResult(result: { passed: boolean; reason: string }): void {
     if (!result.passed) this.reasonCodes.push(result.reason);
+  }
+
+  private executePublicFormatStep(selected: SelectedCase, index: number, text: string): void {
+    if (index === 0) {
+      check(
+        text ===
+          `${requireValue(selected.values, "consumer")} holds ${requireValue(
+            selected.values,
+            "format_kind",
+          )} at ${requireValue(selected.values, "from_version")}`,
+        "public-format-given-mismatch",
+      );
+      this.publicFormat = observePublicFormatBehavior(
+        this.repositoryRoot,
+        this.plan.mode === "fixed-success",
+      );
+      this.observations = this.publicFormat.observedFields;
+      return;
+    }
+    const observation = this.publicFormat;
+    if (observation === undefined) throw new Error("public-format-not-observed");
+    if (index === 1) {
+      check(
+        text ===
+          `version ${requireValue(selected.values, "to_version")} reads or migrates ${requireValue(
+            selected.values,
+            "compatibility_case",
+          )}`,
+        "public-format-when-mismatch",
+      );
+      return;
+    }
+    const clauses = [
+      `every exposed boundary returns ${requireValue(selected.values, "expected_outcome")}`,
+      "an incompatible case names the exact migration or version requirement",
+      "no boundary silently interprets the same version differently",
+      "rejected requests create no persisted effect",
+      "package, command, service, and produced-artifact versions agree without placeholder values",
+    ];
+    const clause = clauses[index - 2];
+    if (clause === undefined) throw new Error("unbound-public-format-step");
+    check(text === clause, `public-format-step-${index - 1}-mismatch`);
+    const result =
+      index === 2
+        ? publicFormatOutcomeResult(observation, requireValue(selected.values, "expected_outcome"))
+        : index === 3
+          ? publicFormatConditionResult(observation, "typed-incompatibility")
+          : index === 4
+            ? publicFormatConditionResult(observation, "one-negotiated-meaning")
+            : index === 5
+              ? publicFormatConditionResult(observation, "no-persisted-effect")
+              : publicFormatConditionResult(observation, "version-agreement");
+    this.recordArtifactResult(result);
+    this.assertions += 1;
+    if (index === 6 && this.reasonCodes.length > 0) {
+      this.deferredFailure = `public-format-conditions-failed:${this.reasonCodes.join(",")}`;
+    }
   }
 
   finish(cucumberPassed: boolean): void {

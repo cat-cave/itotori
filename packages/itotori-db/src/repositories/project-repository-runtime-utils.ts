@@ -210,13 +210,6 @@ export function assertPortableRuntimeSchemaArtifactUri(uri: string): void {
   });
 }
 
-export function assertPortableLegacyRuntimeArtifactUri(uri: string): void {
-  helpers.assertPortableRuntimeArtifactUri(uri, {
-    allowFixtureUri: true,
-    requireManagedRoot: false,
-  });
-}
-
 export function assertPortableRuntimeArtifactUri(
   uri: string,
   options: { allowFixtureUri: boolean; requireManagedRoot: boolean },
@@ -245,12 +238,6 @@ export function assertPortableRuntimeArtifactUri(
       `runtime artifact uri must be under managed runtime artifact root ${helpers.RUNTIME_MANAGED_ARTIFACT_URI_ROOT}/: ${uri}`,
     );
   }
-}
-
-export function isRuntimeEvidenceReportV02(
-  report: helpers.RuntimeReportInput,
-): report is deps.RuntimeEvidenceReportV02 {
-  return report.schemaVersion === "0.2.0";
 }
 
 export function nullableString(value: unknown): string | null {
@@ -331,22 +318,16 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function validatePatchExportContract(
-  patchExport: deps.PatchExport | deps.PatchExportV02,
-  bridge: deps.BridgeBundle | deps.BridgeBundleV02,
+  patchExport: deps.PatchExportV02,
+  bridge: deps.BridgeBundleV02,
 ): void {
-  if (patchExport.schemaVersion === deps.BRIDGE_SCHEMA_VERSION_V02) {
-    deps.assertPatchExportV02(patchExport);
-    if (bridge.schemaVersion !== deps.BRIDGE_SCHEMA_VERSION_V02) {
-      throw new Error("PatchExportV02 requires a v0.2 source bridge");
-    }
-    const report = deps.evaluatePatchExportCompatibilityV02(patchExport, bridge);
-    if (report.status !== "compatible") {
-      const reasons = report.incompatibleUnits.map((unit) => unit.reason ?? "unknown").join(", ");
-      throw new Error(`PatchExportV02 source compatibility failed: ${reasons}`);
-    }
-    return;
+  deps.assertPatchExportV02(patchExport);
+  deps.assertBridgeBundleV02(bridge);
+  const report = deps.evaluatePatchExportCompatibilityV02(patchExport, bridge);
+  if (report.status !== "compatible") {
+    const reasons = report.incompatibleUnits.map((unit) => unit.reason ?? "unknown").join(", ");
+    throw new Error(`PatchExportV02 source compatibility failed: ${reasons}`);
   }
-  deps.assertPatchExport(patchExport);
 }
 
 export function stableJsonStringify(value: unknown): string {

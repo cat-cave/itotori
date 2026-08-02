@@ -7,6 +7,7 @@ import { ItotoriProjectRepository } from "../src/repositories/project-repository
 import {
   localActor,
   projectFixture,
+  projectFixtureUnitId,
   runtimeEvidenceReportFixture,
 } from "./repository.test.shared.js";
 import { migratedContext } from "./repository.test.legacy.js";
@@ -29,7 +30,7 @@ describe("ItotoriProjectRepository", () => {
           {
             captureId: "019ed003-0000-7000-8000-000000000a21",
             bridgeUnitRef: {
-              bridgeUnitId: "bridge-unit-test",
+              bridgeUnitId: projectFixtureUnitId,
               sourceUnitKey: "hello.scene.001.line.001",
             },
             evidenceTier: "E2",
@@ -47,7 +48,7 @@ describe("ItotoriProjectRepository", () => {
           {
             captureId: "019ed003-0000-7000-8000-000000000a22",
             bridgeUnitRef: {
-              bridgeUnitId: "bridge-unit-test",
+              bridgeUnitId: projectFixtureUnitId,
               sourceUnitKey: "hello.scene.001.line.001",
             },
             evidenceTier: "E2",
@@ -67,7 +68,7 @@ describe("ItotoriProjectRepository", () => {
           {
             branchEventId: "019ed003-0000-7000-8000-000000000a41",
             bridgeUnitRef: {
-              bridgeUnitId: "bridge-unit-test",
+              bridgeUnitId: projectFixtureUnitId,
               sourceUnitKey: "hello.scene.001.line.001",
             },
             frame: 3,
@@ -78,7 +79,7 @@ describe("ItotoriProjectRepository", () => {
                 optionId: "019ed003-0000-7000-8000-000000000a42",
                 label: "Old route",
                 labelBridgeUnitRef: {
-                  bridgeUnitId: "bridge-unit-test",
+                  bridgeUnitId: projectFixtureUnitId,
                   sourceUnitKey: "hello.scene.001.line.001",
                 },
               },
@@ -94,7 +95,7 @@ describe("ItotoriProjectRepository", () => {
             scope: "stale comparison",
             coveredBridgeUnitRefs: [
               {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
             ],
@@ -112,7 +113,7 @@ describe("ItotoriProjectRepository", () => {
             findingKind: "text_mismatch",
             severity: "P2",
             bridgeUnitRef: {
-              bridgeUnitId: "bridge-unit-test",
+              bridgeUnitId: projectFixtureUnitId,
               sourceUnitKey: "hello.scene.001.line.001",
             },
             artifactRef: {
@@ -126,10 +127,10 @@ describe("ItotoriProjectRepository", () => {
           },
           {
             findingId: "019ed003-0000-7000-8000-000000000a63",
-            findingKind: "capture_missing",
+            findingKind: "missing_capture",
             severity: "P3",
             bridgeUnitRef: {
-              bridgeUnitId: "bridge-unit-test",
+              bridgeUnitId: projectFixtureUnitId,
               sourceUnitKey: "hello.scene.001.line.001",
             },
             message: "Stale capture validation finding.",

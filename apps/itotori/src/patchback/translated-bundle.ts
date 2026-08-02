@@ -1,4 +1,4 @@
-// Materialize the translated v0.2 BridgeBundle that `kaifuu patch --bundle`
+// Materialize the translated BridgeBundleV02 that `kaifuu patch --bundle`
 // consumes, STRICTLY from a PatchExportV02.
 //
 // The translated bundle is the source-side v0.2 bridge augmented with a per-unit

@@ -1,7 +1,6 @@
 import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import type { BridgeBundle } from "@itotori/localization-bridge-schema";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import {
   ItotoriExactSearchDocumentRepository,
@@ -14,9 +13,63 @@ import {
   type ItotoriProjectRecord,
 } from "../src/repositories/project-repository.js";
 import { exactSearchDocuments } from "../src/schema.js";
+import { currentProjectFixture } from "./current-project-fixture.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
+const exactSearchProject = currentProjectFixture({
+  seed: "exact-search-primary",
+  projectId: "project-search",
+  localeBranchId: "locale-en-us",
+  units: [
+    {
+      sourceUnitKey: "scene.001.hero",
+      occurrenceId: "occurrence-hero",
+      sourceText: "Hero",
+    },
+    {
+      sourceUnitKey: "scene.002.heroine",
+      occurrenceId: "occurrence-heroine",
+      sourceText: "Heroine",
+    },
+    {
+      sourceUnitKey: "scene.003.hero-arrives",
+      occurrenceId: "occurrence-hero-arrives",
+      sourceText: "Hero arrives",
+    },
+  ],
+});
+const exactSearchUpdatedProject = currentProjectFixture({
+  seed: "exact-search-updated",
+  projectId: "project-search",
+  localeBranchId: "locale-en-us",
+  units: [
+    {
+      sourceUnitKey: "scene.001.hero",
+      occurrenceId: "occurrence-hero",
+      sourceText: "Champion",
+    },
+    {
+      sourceUnitKey: "scene.002.sidekick",
+      occurrenceId: "occurrence-sidekick",
+      sourceText: "Sidekick",
+    },
+  ],
+});
+const [heroUnit, heroineUnit, heroArrivesUnit] = exactSearchProject.bridge.units;
+const [championUnit, sidekickUnit] = exactSearchUpdatedProject.bridge.units;
+if (
+  heroUnit === undefined ||
+  heroineUnit === undefined ||
+  heroArrivesUnit === undefined ||
+  championUnit === undefined ||
+  sidekickUnit === undefined
+) {
+  throw new Error("exact-search fixtures require three primary and two updated units");
+}
+const exactSearchRevisionId = exactSearchProject.bridge.sourceBundleRevision.revisionId;
+const exactSearchUpdatedRevisionId =
+  exactSearchUpdatedProject.bridge.sourceBundleRevision.revisionId;
 
 describe("ItotoriExactSearchDocumentRepository", () => {
   it("refreshes stable source-unit documents idempotently and search.exact never substring matches", async () => {
@@ -28,7 +81,7 @@ describe("ItotoriExactSearchDocumentRepository", () => {
       const firstRefresh = await repository.refreshDocuments(localActor, {
         projectId: "project-search",
         localeBranchId: "locale-en-us",
-        expectedSourceRevisionId: "bridge-search:bundle-revision",
+        expectedSourceRevisionId: exactSearchRevisionId,
       });
       const firstRows = await exactSearchRows(context.db);
 
@@ -36,7 +89,7 @@ describe("ItotoriExactSearchDocumentRepository", () => {
       const secondRefresh = await repository.refreshDocuments(localActor, {
         projectId: "project-search",
         localeBranchId: "locale-en-us",
-        expectedSourceRevisionId: "bridge-search:bundle-revision",
+        expectedSourceRevisionId: exactSearchRevisionId,
       });
       const secondRows = await exactSearchRows(context.db);
 
@@ -44,7 +97,7 @@ describe("ItotoriExactSearchDocumentRepository", () => {
         status: "completed",
         toolName: exactSearchToolName,
         toolVersion: exactSearchToolVersion,
-        sourceRevisionId: "bridge-search:bundle-revision",
+        sourceRevisionId: exactSearchRevisionId,
         documentCount: 3,
         diagnostics: [],
       });
@@ -61,7 +114,7 @@ describe("ItotoriExactSearchDocumentRepository", () => {
       const exact = await repository.searchExact(localActor, {
         projectId: "project-search",
         localeBranchId: "locale-en-us",
-        sourceRevisionId: "bridge-search:bundle-revision",
+        sourceRevisionId: exactSearchRevisionId,
         query: "  hero  ",
       });
       expect(exact).toMatchObject({
@@ -71,16 +124,16 @@ describe("ItotoriExactSearchDocumentRepository", () => {
         normalizedQuery: "hero",
         diagnostics: [],
       });
-      expect(exact.matches.map((match) => match.sourceArtifactId)).toEqual(["unit-hero"]);
+      expect(exact.matches.map((match) => match.sourceArtifactId)).toEqual([heroUnit.bridgeUnitId]);
       expect(exact.matches[0]?.provenance).toMatchObject({
         toolName: "search.exact",
         toolVersion: "1.0.0",
         searchDocumentId: exact.matches[0]?.searchDocumentId,
         sourceArtifactType: "source_unit",
-        sourceArtifactId: "unit-hero",
-        sourceRevisionId: "bridge-search:bundle-revision",
-        sourceUnitRevisionId: "bridge-search:unit:unit-hero",
-        sourceHash: "hash:hero",
+        sourceArtifactId: heroUnit.bridgeUnitId,
+        sourceRevisionId: exactSearchRevisionId,
+        sourceUnitRevisionId: heroUnit.sourceRevision.revisionId,
+        sourceHash: heroUnit.sourceHash,
       });
 
       await expect(
@@ -98,7 +151,7 @@ describe("ItotoriExactSearchDocumentRepository", () => {
         }),
       ).resolves.toMatchObject({
         status: "completed",
-        matches: [expect.objectContaining({ sourceArtifactId: "unit-hero-arrives" })],
+        matches: [expect.objectContaining({ sourceArtifactId: heroArrivesUnit.bridgeUnitId })],
       });
     } finally {
       await context.close();
@@ -115,36 +168,17 @@ describe("ItotoriExactSearchDocumentRepository", () => {
         localeBranchId: "locale-en-us",
       });
 
-      await seedExactSearchProject(context.db, {
-        bridgeId: "bridge-search-v2",
-        sourceBundleHash: "hash:bundle-v2",
-        units: [
-          {
-            bridgeUnitId: "unit-champion",
-            sourceUnitKey: "scene.001.hero",
-            occurrenceId: "occurrence-hero",
-            sourceText: "Champion",
-            sourceHash: "hash:champion",
-          },
-          {
-            bridgeUnitId: "unit-sidekick",
-            sourceUnitKey: "scene.002.sidekick",
-            occurrenceId: "occurrence-sidekick",
-            sourceText: "Sidekick",
-            sourceHash: "hash:sidekick",
-          },
-        ],
-      });
+      await seedExactSearchProject(context.db, exactSearchUpdatedProject);
 
       await expect(
         repository.refreshDocuments(localActor, {
           projectId: "project-search",
           localeBranchId: "locale-en-us",
-          expectedSourceRevisionId: "bridge-search:bundle-revision",
+          expectedSourceRevisionId: exactSearchRevisionId,
         }),
       ).resolves.toMatchObject({
         status: "failed",
-        sourceRevisionId: "bridge-search-v2:bundle-revision",
+        sourceRevisionId: exactSearchUpdatedRevisionId,
         diagnostics: [
           expect.objectContaining({
             code: exactSearchDiagnosticCodeValues.staleSourceRevision,
@@ -155,11 +189,11 @@ describe("ItotoriExactSearchDocumentRepository", () => {
       const refreshed = await repository.refreshDocuments(localActor, {
         projectId: "project-search",
         localeBranchId: "locale-en-us",
-        expectedSourceRevisionId: "bridge-search-v2:bundle-revision",
+        expectedSourceRevisionId: exactSearchUpdatedRevisionId,
       });
       expect(refreshed).toMatchObject({
         status: "completed",
-        sourceRevisionId: "bridge-search-v2:bundle-revision",
+        sourceRevisionId: exactSearchUpdatedRevisionId,
         documentCount: 2,
       });
       await expect(exactSearchRows(context.db)).resolves.toHaveLength(2);
@@ -178,8 +212,8 @@ describe("ItotoriExactSearchDocumentRepository", () => {
         }),
       ).resolves.toMatchObject({
         status: "completed",
-        sourceRevisionId: "bridge-search-v2:bundle-revision",
-        matches: [expect.objectContaining({ sourceArtifactId: "unit-champion" })],
+        sourceRevisionId: exactSearchUpdatedRevisionId,
+        matches: [expect.objectContaining({ sourceArtifactId: championUnit.bridgeUnitId })],
       });
     } finally {
       await context.close();
@@ -247,7 +281,7 @@ describe("ItotoriExactSearchDocumentRepository", () => {
       ).resolves.toMatchObject({
         status: "failed",
         matches: [],
-        sourceRevisionId: "bridge-search:bundle-revision",
+        sourceRevisionId: exactSearchRevisionId,
         diagnostics: [
           expect.objectContaining({ code: exactSearchDiagnosticCodeValues.staleSourceRevision }),
         ],
@@ -277,84 +311,10 @@ describe("ItotoriExactSearchDocumentRepository", () => {
 
 async function seedExactSearchProject(
   db: ConstructorParameters<typeof ItotoriProjectRepository>[0],
-  overrides: ExactSearchBridgeOverrides = {},
+  project: ItotoriProjectRecord = exactSearchProject,
 ): Promise<void> {
   const repository = new ItotoriProjectRepository(db, testProjectEngineFamilyRegistry);
-  await repository.importSourceBundle(localActor, exactSearchProjectFixture(overrides));
-}
-
-function exactSearchProjectFixture(
-  overrides: ExactSearchBridgeOverrides = {},
-): ItotoriProjectRecord {
-  return {
-    projectId: "project-search",
-    engineFamily: "synthetic_fixture",
-    sourceRoot: "/workspace/source",
-    buildRoot: "/workspace/build",
-    extractProfile: { adapter: "fixture" },
-    localeBranchId: "locale-en-us",
-    targetLocale: "en-US",
-    drafts: {},
-    bridge: exactSearchBridgeFixture(overrides),
-  };
-}
-
-function exactSearchBridgeFixture(overrides: ExactSearchBridgeOverrides = {}): BridgeBundle {
-  const bridgeId = overrides.bridgeId ?? "bridge-search";
-  const sourceBundleHash = overrides.sourceBundleHash ?? "hash:bundle-v1";
-  const assetId = `${bridgeId}:scenario.ks`;
-  const units = overrides.units ?? [
-    {
-      bridgeUnitId: "unit-hero",
-      sourceUnitKey: "scene.001.hero",
-      occurrenceId: "occurrence-hero",
-      sourceText: "Hero",
-      sourceHash: "hash:hero",
-    },
-    {
-      bridgeUnitId: "unit-heroine",
-      sourceUnitKey: "scene.002.heroine",
-      occurrenceId: "occurrence-heroine",
-      sourceText: "Heroine",
-      sourceHash: "hash:heroine",
-    },
-    {
-      bridgeUnitId: "unit-hero-arrives",
-      sourceUnitKey: "scene.003.hero-arrives",
-      occurrenceId: "occurrence-hero-arrives",
-      sourceText: "Hero arrives",
-      sourceHash: "hash:hero-arrives",
-    },
-  ];
-  return {
-    schemaVersion: "0.1.0",
-    bridgeId,
-    sourceBundleHash,
-    sourceLocale: "ja-JP",
-    extractorName: "kaifuu-fixture",
-    extractorVersion: "0.0.0",
-    units: units.map((unit) => exactSearchUnit({ ...unit, assetId })),
-  };
-}
-
-function exactSearchUnit(
-  input: ExactSearchUnitFixture & { assetId: string },
-): BridgeBundle["units"][number] {
-  return {
-    bridgeUnitId: input.bridgeUnitId,
-    sourceUnitKey: input.sourceUnitKey,
-    occurrenceId: input.occurrenceId,
-    sourceHash: input.sourceHash,
-    sourceLocale: "ja-JP",
-    sourceText: input.sourceText,
-    textSurface: "dialogue",
-    protectedSpans: [],
-    patchRef: {
-      assetId: input.assetId,
-      writeMode: "replace",
-      sourceUnitKey: input.sourceUnitKey,
-    },
-  };
+  await repository.importSourceBundle(localActor, structuredClone(project));
 }
 
 async function exactSearchRows(db: ConstructorParameters<typeof ItotoriProjectRepository>[0]) {
@@ -364,17 +324,3 @@ async function exactSearchRows(db: ConstructorParameters<typeof ItotoriProjectRe
     .where(eq(exactSearchDocuments.projectId, "project-search"))
     .orderBy(exactSearchDocuments.sourceArtifactId);
 }
-
-type ExactSearchBridgeOverrides = {
-  bridgeId?: string;
-  sourceBundleHash?: string;
-  units?: ExactSearchUnitFixture[];
-};
-
-type ExactSearchUnitFixture = {
-  bridgeUnitId: string;
-  sourceUnitKey: string;
-  occurrenceId: string;
-  sourceText: string;
-  sourceHash: string;
-};

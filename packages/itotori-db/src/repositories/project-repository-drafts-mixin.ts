@@ -169,7 +169,7 @@ export class ProjectDraftRepository extends ProjectRepositoryBase {
   async savePatchExport(
     actor: deps.AuthorizationActor,
     project: api.ItotoriProjectRecord,
-    patchExport: deps.PatchExport | deps.PatchExportV02,
+    patchExport: deps.PatchExportV02,
   ): Promise<void> {
     await deps.requirePermission(this.db, actor, deps.permissionValues.patchExport);
     helpers.validatePatchExportContract(patchExport, project.bridge);
@@ -183,7 +183,7 @@ export class ProjectDraftRepository extends ProjectRepositoryBase {
           localeBranchId: project.localeBranchId,
           sourceBundleId,
           artifactKind: "patch_export",
-          hash: "patchExportHash" in patchExport ? (patchExport.patchExportHash ?? null) : null,
+          hash: patchExport.patchExportHash ?? null,
           metadata: {
             schemaVersion: patchExport.schemaVersion,
             sourceBridgeId: patchExport.sourceBridgeId,
@@ -196,7 +196,7 @@ export class ProjectDraftRepository extends ProjectRepositoryBase {
           set: {
             localeBranchId: project.localeBranchId,
             sourceBundleId,
-            hash: "patchExportHash" in patchExport ? (patchExport.patchExportHash ?? null) : null,
+            hash: patchExport.patchExportHash ?? null,
             metadata: {
               schemaVersion: patchExport.schemaVersion,
               sourceBridgeId: patchExport.sourceBridgeId,

@@ -11,6 +11,7 @@ export { assertValidCellReport } from "./cell-report-validation.mjs";
 export const REPORT_SCHEMA = "itotori.behavior-cell-report.v1";
 export const OWNED_CELLS = Object.freeze([
   "cell::platform.artifacts-are-immutable-and-retained-by-policy::all",
+  "cell::platform.public-formats-upgrade-predictably::all",
   "cell::quality.evidence-is-traceable-and-portable::all",
   "cell::quality.failures-stay-explicit::all",
 ]);

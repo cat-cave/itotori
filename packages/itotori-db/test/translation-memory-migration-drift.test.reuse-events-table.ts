@@ -30,8 +30,6 @@ import { testProjectEngineFamilyRegistry } from "./project-engine-family-registr
 
 import { getTableName, isTable, sql, type Table } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import type { BridgeBundle } from "@itotori/localization-bridge-schema";
-
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import {
   ItotoriProjectRepository,
@@ -39,6 +37,7 @@ import {
 } from "../src/repositories/project-repository.js";
 import { translationMemoryReuseEvents } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
+import { currentProjectFixture } from "./current-project-fixture.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
@@ -146,49 +145,17 @@ async function seedTranslationMemoryProject(
   await repository.importSourceBundle(localActor, translationMemoryProjectFixture());
 }
 
-function translationMemoryProjectFixture(): ItotoriProjectRecord {
-  return {
-    projectId: "project-tm-drift-145",
-    engineFamily: "synthetic_fixture",
-    sourceRoot: "/workspace/source",
-    buildRoot: "/workspace/build",
-    extractProfile: { adapter: "fixture" },
-    localeBranchId: "locale-en-us-drift-145",
-    targetLocale: "en-US",
-    drafts: {},
-    bridge: translationMemoryBridgeFixture(),
-  };
-}
+const driftProject = currentProjectFixture({
+  seed: "translation-memory-drift",
+  projectId: "project-tm-drift-145",
+  localeBranchId: "locale-en-us-drift-145",
+  units: [{ sourceUnitKey: "scene.drift-145", sourceText: "おはようございます。" }],
+});
+const driftUnit = driftProject.bridge.units[0];
+if (driftUnit === undefined) throw new Error("translation memory drift fixture requires one unit");
 
-function translationMemoryBridgeFixture(): BridgeBundle {
-  const bridgeId = "bridge-tm-drift-145";
-  const sourceBundleHash = "hash:bundle-drift-145";
-  const assetId = `${bridgeId}:scenario.ks`;
-  return {
-    schemaVersion: "0.1.0",
-    bridgeId,
-    sourceBundleHash,
-    sourceLocale: "ja-JP",
-    extractorName: "kaifuu-fixture",
-    extractorVersion: "0.0.0",
-    units: [
-      {
-        bridgeUnitId: "unit-tm-drift-145",
-        sourceUnitKey: "scene.drift-145",
-        occurrenceId: "occurrence-drift-145",
-        sourceHash: "hash:drift-145",
-        sourceLocale: "ja-JP",
-        sourceText: "おはようございます。",
-        textSurface: "dialogue",
-        protectedSpans: [],
-        patchRef: {
-          assetId,
-          writeMode: "replace",
-          sourceUnitKey: "scene.drift-145",
-        },
-      },
-    ],
-  };
+function translationMemoryProjectFixture(): ItotoriProjectRecord {
+  return structuredClone(driftProject);
 }
 
 // --- helpers: raw INSERTs that intentionally target a single CHECK -----------
@@ -240,11 +207,11 @@ function reuseEventInsert(columns: ReuseEventInsertColumns) {
     `'${reuseEventId}'`,
     "'project-tm-drift-145'",
     "'locale-en-us-drift-145'",
-    "'unit-tm-drift-145'",
-    "'bridge-tm-drift-145:bundle-revision'",
+    `'${driftUnit.bridgeUnitId}'`,
+    `'${driftProject.bridge.sourceBundleRevision.revisionId}'`,
     "'tm-drift-base'",
-    "'hash:drift-145'",
-    "'hash:drift-145'",
+    `'${driftUnit.sourceHash}'`,
+    `'${driftUnit.sourceHash}'`,
     "'Good morning.'",
     "'exact'",
     "1000",
@@ -321,8 +288,8 @@ describe("translation memory migration drift", () => {
             source_text, target_locale, target_text, status)
          values
            ('tm-drift-base', 'project-tm-drift-145', 'locale-en-us-drift-145',
-            'bridge-tm-drift-145:bundle-revision', 'scene.drift-145', 'occurrence-drift-145',
-            'hash:drift-145', 'fingerprint:drift-145', 'おはようございます。',
+            '${driftProject.bridge.sourceBundleRevision.revisionId}', 'scene.drift-145', '${driftUnit.occurrenceId}',
+            '${driftUnit.sourceHash}', 'fingerprint:drift-145', 'おはようございます。',
             'en-US', 'Good morning.', 'reusable')`,
       );
     }

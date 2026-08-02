@@ -1,14 +1,10 @@
 import {
   BRIDGE_SCHEMA_VERSION_V02,
-  BridgeBundle,
   BridgeBundleV02,
   FindingRecordV02,
-  PatchExport,
   PatchExportV02,
-  assertBridgeBundle,
   assertBridgeBundleV02,
   assertFindingRecordFixtureV02,
-  assertPatchExport,
   assertPatchExportV02,
 } from "./dependencies.js";
 import {
@@ -255,25 +251,15 @@ export function parseAuthSessionPolicy(value: unknown, label: string): ApiAuthSe
   };
 }
 
-export function assertBridgeInput(value: unknown): asserts value is BridgeBundle | BridgeBundleV02 {
-  const bridge = asRecord(value, "BridgeInput");
-  if (bridge.schemaVersion === BRIDGE_SCHEMA_VERSION_V02) {
-    assertBridgeBundleV02(value);
-    return;
-  }
-  assertBridgeBundle(value);
+export function assertBridgeInput(value: unknown): asserts value is BridgeBundleV02 {
+  assertBridgeBundleV02(value);
 }
 
 export function assertPatchExportInput(
   value: unknown,
-  label: string,
-): asserts value is PatchExport | PatchExportV02 {
-  const patch = asRecord(value, label);
-  if (patch.schemaVersion === BRIDGE_SCHEMA_VERSION_V02) {
-    assertPatchExportV02(value);
-    return;
-  }
-  assertPatchExport(value);
+  _label: string,
+): asserts value is PatchExportV02 {
+  assertPatchExportV02(value);
 }
 
 export function assertFindingRecordInput(

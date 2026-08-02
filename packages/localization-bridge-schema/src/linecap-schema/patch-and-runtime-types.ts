@@ -47,9 +47,9 @@ export type PatchExportEntryV02 = {
   targetText: string;
   protectedSpanMappings: Array<{
     raw: string;
-    sourceSpanId?: Uuid7;
-    sourceStartByte?: number;
-    sourceEndByte?: number;
+    sourceSpanId: Uuid7;
+    sourceStartByte: number;
+    sourceEndByte: number;
     targetStart: number;
     targetEnd: number;
   }>;

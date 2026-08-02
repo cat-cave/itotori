@@ -286,9 +286,7 @@ describe("localization bridge schema guards", () => {
       { raw: "{name}", targetStart: 11, targetEnd: 17 },
     ];
 
-    expect(evaluatePatchExportCompatibilityV02(noIdentityPatchExport, bridge).status).toBe(
-      "incompatible",
-    );
+    expect(() => assertPatchExportV02(noIdentityPatchExport)).toThrow(/sourceSpanId/);
   });
 
   it("rejects duplicate source-identity protected spans (strict v0.2 identity)", () => {
@@ -323,21 +321,37 @@ describe("localization bridge schema guards", () => {
     );
   });
 
-  it("accepts legacy raw-only duplicate protected spans (compatibility-preserving)", () => {
+  it.each(["sourceSpanId", "sourceStartByte", "sourceEndByte"] as const)(
+    "rejects a protected-span mapping missing required source identity field %s",
+    (missingField) => {
+      const bridge = bridgeV02Example();
+      const patchExport = patchExportV02Example(bridge, 1);
+      const entry = asTestRecord(
+        (patchExport.entries as Array<Record<string, unknown>>)[0],
+        "first v0.2 patch export entry",
+      );
+      const mappings = entry.protectedSpanMappings;
+      if (!Array.isArray(mappings)) throw new Error("test fixture mappings must be an array");
+      const mapping = asTestRecord(mappings[0], "first v0.2 protected-span mapping");
+      delete mapping[missingField];
+
+      expect(() => assertPatchExportV02(patchExport)).toThrow(new RegExp(missingField));
+    },
+  );
+
+  it("rejects raw-only protected-span mappings", () => {
     const bridge = bridgeV02Example();
     const patchExport = patchExportV02Example(bridge, 1);
     const entry = asTestRecord(
       (patchExport.entries as Array<Record<string, unknown>>)[0],
       "first v0.2 patch export entry",
     );
-    // Legacy raw-only spans (no sourceSpanId): duplicate `raw` stays allowed,
-    // disambiguated by distinct target ranges.
     entry.protectedSpanMappings = [
       { raw: "{name}", targetStart: 0, targetEnd: 6 },
       { raw: "{name}", targetStart: 11, targetEnd: 17 },
     ];
 
-    expect(() => assertPatchExportV02(patchExport)).not.toThrow();
+    expect(() => assertPatchExportV02(patchExport)).toThrow(/sourceSpanId/);
   });
 
   it("reports protected span mapping mismatches for wrong source identity or collapsed duplicates", () => {
@@ -370,14 +384,13 @@ describe("localization bridge schema guards", () => {
       "first v0.2 patch export entry",
     );
     entry.targetText = "{name} and {name}";
-    // Collapsed duplicates: both mappings resolve to the SAME source span (851,
-    // bytes 0..6) via explicit byte-range identity. This stays schema-valid
-    // (the strict identity check only rejects duplicate `sourceSpanId`, which
-    // is absent here), so it reaches the compatibility evaluator, which flags
-    // the collapse.
+    // The second mapping carries a unique id but combines it with the first
+    // span's byte range, so the schema-valid identity tuple names no source
+    // span and the compatibility evaluator rejects it.
     entry.protectedSpanMappings = [
       {
         raw: "{name}",
+        sourceSpanId: "019ed001-0000-7000-8000-000000000851",
         sourceStartByte: 0,
         sourceEndByte: 6,
         targetStart: 0,
@@ -385,6 +398,7 @@ describe("localization bridge schema guards", () => {
       },
       {
         raw: "{name}",
+        sourceSpanId: "019ed001-0000-7000-8000-000000000852",
         sourceStartByte: 0,
         sourceEndByte: 6,
         targetStart: 11,

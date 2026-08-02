@@ -1,11 +1,94 @@
 import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 
 import { describe, expect, it } from "vitest";
+import type { LocalizationUnitV02 } from "@itotori/localization-bridge-schema";
 
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
 
-import { localActor, projectFixture } from "./repository.test.shared.js";
+import {
+  localActor,
+  projectFixture,
+  projectFixtureAssetId,
+  projectFixtureUnitId,
+  v02Sha256,
+} from "./repository.test.shared.js";
 import { migratedContext } from "./repository.test.legacy.js";
+
+const branchLabelUnitId = "019ed003-0000-7000-8000-000000000801";
+const branchTargetUnitId = "019ed003-0000-7000-8000-000000000811";
+
+const branchLabelSourceHash = v02Sha256("runtime-evidence-branch-label");
+const branchTargetSourceHash = v02Sha256("runtime-evidence-branch-target");
+
+const branchLabelUnit: LocalizationUnitV02 = {
+  bridgeUnitId: branchLabelUnitId,
+  surfaceId: "019ed003-0000-7000-8000-000000000802",
+  surfaceKind: "dialogue",
+  sourceUnitKey: "hello.scene.001.choice.001.label",
+  occurrenceId: "occurrence-branch-label",
+  sourceHash: branchLabelSourceHash,
+  sourceRevision: {
+    revisionId: "019ed003-0000-7000-8000-000000000803",
+    revisionKind: "content_hash",
+    value: branchLabelSourceHash,
+  },
+  sourceLocale: "ja-JP",
+  sourceText: "Stay label source.",
+  sourceAssetRef: { assetId: projectFixtureAssetId, assetKey: "source.json" },
+  sourceLocation: {
+    containerKey: "source.json",
+    entryPath: ["hello", "scene", "001", "choice", "001", "label"],
+  },
+  speaker: { knowledgeState: "not_applicable" },
+  context: { route: { sceneId: "hello.scene.001" } },
+  spans: [],
+  patchRef: {
+    assetId: projectFixtureAssetId,
+    writeMode: "replace",
+    sourceUnitKey: "hello.scene.001.choice.001.label",
+    sourceRevision: {
+      revisionId: "019ed003-0000-7000-8000-000000000803",
+      revisionKind: "content_hash",
+      value: branchLabelSourceHash,
+    },
+  },
+  runtimeExpectation: { expectationKind: "trace_text" },
+};
+
+const branchTargetUnit: LocalizationUnitV02 = {
+  bridgeUnitId: branchTargetUnitId,
+  surfaceId: "019ed003-0000-7000-8000-000000000812",
+  surfaceKind: "dialogue",
+  sourceUnitKey: "hello.scene.001.route.stay.001",
+  occurrenceId: "occurrence-branch-target",
+  sourceHash: branchTargetSourceHash,
+  sourceRevision: {
+    revisionId: "019ed003-0000-7000-8000-000000000813",
+    revisionKind: "content_hash",
+    value: branchTargetSourceHash,
+  },
+  sourceLocale: "ja-JP",
+  sourceText: "Stayed route source.",
+  sourceAssetRef: { assetId: projectFixtureAssetId, assetKey: "source.json" },
+  sourceLocation: {
+    containerKey: "source.json",
+    entryPath: ["hello", "scene", "001", "route", "stay", "001"],
+  },
+  speaker: { knowledgeState: "not_applicable" },
+  context: { route: { sceneId: "hello.scene.001" } },
+  spans: [],
+  patchRef: {
+    assetId: projectFixtureAssetId,
+    writeMode: "replace",
+    sourceUnitKey: "hello.scene.001.route.stay.001",
+    sourceRevision: {
+      revisionId: "019ed003-0000-7000-8000-000000000813",
+      revisionKind: "content_hash",
+      value: branchTargetSourceHash,
+    },
+  },
+  runtimeExpectation: { expectationKind: "trace_text" },
+};
 
 describe("ItotoriProjectRepository", () => {
   it("persists v0.2 runtime evidence tiers and bridge-linked evidence artifacts", async () => {
@@ -14,44 +97,15 @@ describe("ItotoriProjectRepository", () => {
       const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
+      if (project.bridge.schemaVersion !== "0.2.0") {
+        throw new Error("project fixture must use bridge schema v0.2");
+      }
       project.drafts = {
         ...project.drafts,
-        "bridge-unit-branch-label": "Stay",
-        "bridge-unit-branch-target": "Stayed route starts.",
+        [branchLabelUnitId]: "Stay",
+        [branchTargetUnitId]: "Stayed route starts.",
       };
-      project.bridge.units = [
-        ...project.bridge.units,
-        {
-          bridgeUnitId: "bridge-unit-branch-label",
-          sourceUnitKey: "hello.scene.001.choice.001.label",
-          occurrenceId: "occurrence-branch-label",
-          sourceHash: "source-hash-branch-label",
-          sourceLocale: "ja-JP",
-          sourceText: "Stay label source.",
-          textSurface: "dialogue",
-          protectedSpans: [],
-          patchRef: {
-            assetId: "source.json",
-            writeMode: "replace",
-            sourceUnitKey: "hello.scene.001.choice.001.label",
-          },
-        },
-        {
-          bridgeUnitId: "bridge-unit-branch-target",
-          sourceUnitKey: "hello.scene.001.route.stay.001",
-          occurrenceId: "occurrence-branch-target",
-          sourceHash: "source-hash-branch-target",
-          sourceLocale: "ja-JP",
-          sourceText: "Stayed route source.",
-          textSurface: "dialogue",
-          protectedSpans: [],
-          patchRef: {
-            assetId: "source.json",
-            writeMode: "replace",
-            sourceUnitKey: "hello.scene.001.route.stay.001",
-          },
-        },
-      ];
+      project.bridge.units = [...project.bridge.units, branchLabelUnit, branchTargetUnit];
       await repo.importSourceBundle(localActor, project);
 
       await repo.saveRuntimeReport(
@@ -130,7 +184,7 @@ describe("ItotoriProjectRepository", () => {
             adapterName: "utsushi-fixture",
             adapterVersion: "0.0.0",
             capabilityClass: "launch_capture",
-            requestedOperation: "capture",
+            requestedOperation: "smoke_validation",
             status: "passed",
             fidelityTier: "layout_probe",
             evidenceTier: "E2",
@@ -144,7 +198,7 @@ describe("ItotoriProjectRepository", () => {
               traceEventId: "019ed003-0000-7000-8000-000000000101",
               eventKind: "text_observed",
               bridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
               frame: 1,
@@ -156,7 +210,7 @@ describe("ItotoriProjectRepository", () => {
             {
               branchEventId: "019ed003-0000-7000-8000-000000000201",
               bridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
               frame: 2,
@@ -167,12 +221,12 @@ describe("ItotoriProjectRepository", () => {
                   optionId: "019ed003-0000-7000-8000-000000000211",
                   label: "Stay",
                   labelBridgeUnitRef: {
-                    bridgeUnitId: "bridge-unit-branch-label",
+                    bridgeUnitId: branchLabelUnitId,
                     sourceUnitKey: "hello.scene.001.choice.001.label",
                   },
                   targetRouteKey: "hello.stay",
                   targetBridgeUnitRef: {
-                    bridgeUnitId: "bridge-unit-branch-target",
+                    bridgeUnitId: branchTargetUnitId,
                     sourceUnitKey: "hello.scene.001.route.stay.001",
                   },
                 },
@@ -184,7 +238,7 @@ describe("ItotoriProjectRepository", () => {
             {
               captureId: "019ed003-0000-7000-8000-000000000301",
               bridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
               evidenceTier: "E2",
@@ -209,7 +263,7 @@ describe("ItotoriProjectRepository", () => {
               description: "Fixture evidence validates runtime plumbing, not engine fidelity.",
               affectedBridgeUnitRefs: [
                 {
-                  bridgeUnitId: "bridge-unit-test",
+                  bridgeUnitId: projectFixtureUnitId,
                   sourceUnitKey: "hello.scene.001.line.001",
                 },
               ],
@@ -239,9 +293,9 @@ describe("ItotoriProjectRepository", () => {
             runtimeEventId:
               "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000101",
             eventKind: "text_observed",
-            bridgeUnitId: "bridge-unit-test",
+            bridgeUnitId: projectFixtureUnitId,
             sourceUnitKey: "hello.scene.001.line.001",
-            draftId: "locale-en-us:bridge-unit-test",
+            draftId: `${project.localeBranchId}:${projectFixtureUnitId}`,
             runtimeTargetId: "hello.line.001",
             evidenceTier: null,
             frame: 1,
@@ -252,9 +306,9 @@ describe("ItotoriProjectRepository", () => {
             runtimeEventId:
               "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000201",
             eventKind: "branch_event",
-            bridgeUnitId: "bridge-unit-test",
+            bridgeUnitId: projectFixtureUnitId,
             sourceUnitKey: "hello.scene.001.line.001",
-            draftId: "locale-en-us:bridge-unit-test",
+            draftId: `${project.localeBranchId}:${projectFixtureUnitId}`,
             runtimeTargetId: "hello.choice.001",
             evidenceTier: null,
             frame: 2,
@@ -270,7 +324,7 @@ describe("ItotoriProjectRepository", () => {
             hash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
             mediaType: "image/png",
             byteSize: null,
-            bridgeUnitId: "bridge-unit-test",
+            bridgeUnitId: projectFixtureUnitId,
             sourceUnitKey: "hello.scene.001.line.001",
             diagnostic: null,
           }),
@@ -293,7 +347,7 @@ describe("ItotoriProjectRepository", () => {
         evidenceTierCeiling: "E2",
       });
       expect(runtimeReportArtifact.rows[0]?.metadata.controlledPlaybackSession).toMatchObject({
-        requestedOperation: "capture",
+        requestedOperation: "smoke_validation",
         evidenceTier: "E2",
       });
 
@@ -335,7 +389,7 @@ describe("ItotoriProjectRepository", () => {
       expect(branchEventEvidence.rows[0]?.metadata.event).toEqual({
         branchEventId: "019ed003-0000-7000-8000-000000000201",
         bridgeUnitRef: {
-          bridgeUnitId: "bridge-unit-test",
+          bridgeUnitId: projectFixtureUnitId,
           sourceUnitKey: "hello.scene.001.line.001",
         },
         frame: 2,
@@ -347,12 +401,12 @@ describe("ItotoriProjectRepository", () => {
             optionId: "019ed003-0000-7000-8000-000000000211",
             label: "Stay",
             labelBridgeUnitRef: {
-              bridgeUnitId: "bridge-unit-branch-label",
+              bridgeUnitId: branchLabelUnitId,
               sourceUnitKey: "hello.scene.001.choice.001.label",
             },
             targetRouteKey: "hello.stay",
             targetBridgeUnitRef: {
-              bridgeUnitId: "bridge-unit-branch-target",
+              bridgeUnitId: branchTargetUnitId,
               sourceUnitKey: "hello.scene.001.route.stay.001",
             },
           },
@@ -376,19 +430,19 @@ describe("ItotoriProjectRepository", () => {
       expect(branchUnitRefs.rows).toEqual([
         {
           ref_role: "branch_label",
-          bridge_unit_id: "bridge-unit-branch-label",
+          bridge_unit_id: branchLabelUnitId,
           source_unit_key: "hello.scene.001.choice.001.label",
           metadata: { optionId: "019ed003-0000-7000-8000-000000000211" },
         },
         {
           ref_role: "branch_target",
-          bridge_unit_id: "bridge-unit-branch-target",
+          bridge_unit_id: branchTargetUnitId,
           source_unit_key: "hello.scene.001.route.stay.001",
           metadata: { optionId: "019ed003-0000-7000-8000-000000000211" },
         },
         {
           ref_role: "primary",
-          bridge_unit_id: "bridge-unit-test",
+          bridge_unit_id: projectFixtureUnitId,
           source_unit_key: "hello.scene.001.line.001",
           metadata: {},
         },

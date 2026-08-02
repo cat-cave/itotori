@@ -19,7 +19,7 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
-import { seedProject } from "./terminology-repository.test.support.js";
+import { seedProject, terminologyFixture } from "./terminology-repository.test.support.js";
 
 describe("ItotoriTerminologyRepository", () => {
   it("persists locale-branch scoped preferred terms with aliases, citations, and lexical indexes", async () => {
@@ -54,8 +54,8 @@ describe("ItotoriTerminologyRepository", () => {
         sourceReferences: [
           {
             sourceRefId: "source-ref-crimson-moon",
-            sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-            bridgeUnitId: "bridge-unit-term",
+            sourceRevisionId: terminologyFixture.sourceRevisionId,
+            bridgeUnitId: terminologyFixture.unitId,
             referenceKind: terminologySourceReferenceKindValues.sourceUnit,
             citation: "terminology.scene.001.line.001",
             context: "Opening narration names the recurring moon motif.",
@@ -91,8 +91,8 @@ describe("ItotoriTerminologyRepository", () => {
         sourceReferences: [
           expect.objectContaining({
             sourceRefId: "source-ref-crimson-moon",
-            sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-            bridgeUnitId: "bridge-unit-term",
+            sourceRevisionId: terminologyFixture.sourceRevisionId,
+            bridgeUnitId: terminologyFixture.unitId,
             referenceKind: terminologySourceReferenceKindValues.sourceUnit,
           }),
         ],
@@ -210,8 +210,8 @@ describe("ItotoriTerminologyRepository", () => {
         termKind: terminologyTermKindValues.characterName,
         sourceReferences: [
           {
-            sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-            bridgeUnitId: "bridge-unit-term",
+            sourceRevisionId: terminologyFixture.sourceRevisionId,
+            bridgeUnitId: terminologyFixture.unitId,
             referenceKind: terminologySourceReferenceKindValues.sourceUnit,
             citation: "terminology.scene.001.line.001",
           },
@@ -276,7 +276,7 @@ describe("ItotoriTerminologyRepository", () => {
       const ranked = await service.searchGlossary(localActor, {
         projectId: "project-terminology",
         localeBranchId: "locale-en-us",
-        sourceRevisionId: "bridge-terminology:bundle-revision",
+        sourceRevisionId: terminologyFixture.bundleRevisionId,
         query: "chosen champion",
         limit: 2,
         minScore: 0.1,
@@ -313,7 +313,7 @@ describe("ItotoriTerminologyRepository", () => {
           citations: [
             expect.objectContaining({
               citation: "terminology.scene.001.line.001",
-              bridgeUnitId: "bridge-unit-term",
+              bridgeUnitId: terminologyFixture.unitId,
             }),
           ],
         }),

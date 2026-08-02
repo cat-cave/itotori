@@ -9,10 +9,11 @@ import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-rep
 
 import { styleGuides, styleGuideVersions, styleGuideVersionStatusValues } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
+import { currentProjectFixture } from "./current-project-fixture.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
-import { projectFixture, seedProject } from "./style-guide-repository.test.support.js";
+import { seedProject } from "./style-guide-repository.test.support.js";
 
 describe("ItotoriStyleGuideService", () => {
   describe("version reference integrity constraints", () => {
@@ -193,44 +194,20 @@ describe("ItotoriStyleGuideService", () => {
         // distinct bridgeId/hash so it does not collide with project-test's).
         await projectRepo.importSourceBundle(
           localActor,
-          projectFixture({
+          currentProjectFixture({
+            seed: "style-guide-other-project",
             projectId: "project-test-2",
             localeBranchId: "locale-de-de",
             targetLocale: "de-DE",
-            drafts: { "bridge-unit-de": "Hallo, {player}." },
-            bridge: {
-              schemaVersion: "0.1.0",
-              bridgeId: "bridge-test-2",
-              sourceBundleHash: "hash-test-2",
-              sourceLocale: "ja-JP",
-              extractorName: "kaifuu-fixture",
-              extractorVersion: "0.0.0",
-              units: [
-                {
-                  bridgeUnitId: "bridge-unit-de",
-                  sourceUnitKey: "hello.scene.001.line.001",
-                  occurrenceId: "occurrence-1",
-                  sourceHash: "source-hash-de",
-                  sourceLocale: "ja-JP",
-                  sourceText: "こんにちは、{player}。",
-                  textSurface: "dialogue",
-                  protectedSpans: [
-                    {
-                      kind: "placeholder",
-                      raw: "{player}",
-                      start: 18,
-                      end: 26,
-                      preserveMode: "exact",
-                    },
-                  ],
-                  patchRef: {
-                    assetId: "source-de.json",
-                    writeMode: "replace",
-                    sourceUnitKey: "hello.scene.001.line.001",
-                  },
-                },
-              ],
-            },
+            units: [
+              {
+                sourceUnitKey: "hello.scene.001.line.001",
+                occurrenceId: "occurrence-1",
+                sourceText: "こんにちは、{player}。",
+                targetText: "Hallo, {player}.",
+                spans: [{ raw: "{player}" }],
+              },
+            ],
           }),
         );
 

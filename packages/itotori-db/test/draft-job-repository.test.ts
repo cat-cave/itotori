@@ -7,9 +7,11 @@ import {
 } from "../src/repositories/draft-job-repository.js";
 import {
   cancelledDraftJobFixture,
+  draftJobFixtureFirstUnitId,
   draftJobFixtureInput,
   draftJobFixtureLocaleBranchId,
   draftJobFixtureProjectId,
+  draftJobFixtureSecondUnitId,
   failedDraftJobFixture,
   provisionDraftJobFixtureProject,
   queuedDraftJobFixture,
@@ -51,7 +53,7 @@ describe("ItotoriDraftJobRepository", () => {
         localActor,
         draftJobFixtureInput({
           protectedSpanRefs: [
-            { bridgeUnitId: "unit-draft-1", spanIndex: 0, spanKind: "honorific" },
+            { bridgeUnitId: draftJobFixtureFirstUnitId, spanIndex: 0, spanKind: "honorific" },
           ],
           contextRefs: [
             {
@@ -66,11 +68,11 @@ describe("ItotoriDraftJobRepository", () => {
       expect(job.status).toBe(draftJobStatusValues.queued);
       expect(job.projectId).toBe(draftJobFixtureProjectId);
       expect(job.localeBranchId).toBe(draftJobFixtureLocaleBranchId);
-      expect(job.bridgeUnitIds).toEqual(["unit-draft-1", "unit-draft-2"]);
+      expect(job.bridgeUnitIds).toEqual([draftJobFixtureFirstUnitId, draftJobFixtureSecondUnitId]);
       expect(job.styleGuideVersion).toBe("style-guide-v1");
       expect(job.glossaryVersion).toBe("glossary-v1");
       expect(job.protectedSpanRefs).toEqual([
-        { bridgeUnitId: "unit-draft-1", spanIndex: 0, spanKind: "honorific" },
+        { bridgeUnitId: draftJobFixtureFirstUnitId, spanIndex: 0, spanKind: "honorific" },
       ]);
       expect(job.policyVersions.promptTemplateVersion).toBe("itotori-draft-v1");
       expect(job.contextRefs).toHaveLength(1);

@@ -10,49 +10,54 @@ import {
 import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
 
 import { styleGuideVersionStatusValues } from "../src/schema.js";
+import { currentProjectFixture } from "./current-project-fixture.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
+const terminologyProject = currentProjectFixture({
+  seed: "terminology-primary",
+  projectId: "project-terminology",
+  localeBranchId: "locale-en-us",
+  units: [
+    {
+      sourceUnitKey: "terminology.scene.001.line.001",
+      sourceText: "紅月{player}が昇る。",
+      targetText: "The Crimson Moon rises.",
+      spans: [{ raw: "{player}" }],
+    },
+  ],
+});
+const terminologyUnit = terminologyProject.bridge.units[0];
+if (terminologyUnit === undefined) throw new Error("terminology fixture requires one unit");
+const otherTerminologyProject = currentProjectFixture({
+  seed: "terminology-other",
+  projectId: "project-terminology-other",
+  localeBranchId: "locale-en-us-other",
+  units: [
+    {
+      sourceUnitKey: "other.scene.001.line.001",
+      sourceText: "門が開く。",
+      targetText: "The other gate opens.",
+    },
+  ],
+});
+const otherTerminologyUnit = otherTerminologyProject.bridge.units[0];
+if (otherTerminologyUnit === undefined)
+  throw new Error("other terminology fixture requires one unit");
+
+export const terminologyFixture = {
+  unitId: terminologyUnit.bridgeUnitId,
+  sourceRevisionId: terminologyUnit.sourceRevision.revisionId,
+  sourceBundleId: terminologyProject.bridge.bridgeId,
+  bundleRevisionId: terminologyProject.bridge.sourceBundleRevision.revisionId,
+};
+export const otherTerminologyFixture = {
+  unitId: otherTerminologyUnit.bridgeUnitId,
+  sourceRevisionId: otherTerminologyUnit.sourceRevision.revisionId,
+  sourceBundleId: otherTerminologyProject.bridge.bridgeId,
+};
 
 export function projectFixture(): ItotoriProjectRecord {
-  return {
-    projectId: "project-terminology",
-    engineFamily: "synthetic_fixture",
-    sourceRoot: "/workspace/source",
-    buildRoot: "/workspace/build",
-    extractProfile: { adapter: "fixture" },
-    localeBranchId: "locale-en-us",
-    targetLocale: "en-US",
-    drafts: {
-      "bridge-unit-term": "The Crimson Moon rises.",
-    },
-    bridge: {
-      schemaVersion: "0.1.0",
-      bridgeId: "bridge-terminology",
-      sourceBundleHash: "hash-terminology",
-      sourceLocale: "ja-JP",
-      extractorName: "kaifuu-fixture",
-      extractorVersion: "0.0.0",
-      units: [
-        {
-          bridgeUnitId: "bridge-unit-term",
-          sourceUnitKey: "terminology.scene.001.line.001",
-          occurrenceId: "occurrence-term-1",
-          sourceHash: "source-hash-term",
-          sourceLocale: "ja-JP",
-          sourceText: "紅月{player}が昇る。",
-          textSurface: "dialogue",
-          protectedSpans: [
-            { kind: "placeholder", raw: "{player}", start: 6, end: 14, preserveMode: "exact" },
-          ],
-          patchRef: {
-            assetId: "source.json",
-            writeMode: "replace",
-            sourceUnitKey: "terminology.scene.001.line.001",
-          },
-        },
-      ],
-    },
-  };
+  return structuredClone(terminologyProject);
 }
 
 export function siblingLocaleProjectFixture(): ItotoriProjectRecord {
@@ -60,50 +65,12 @@ export function siblingLocaleProjectFixture(): ItotoriProjectRecord {
     ...projectFixture(),
     localeBranchId: "locale-fr-fr",
     targetLocale: "fr-FR",
-    drafts: {
-      "bridge-unit-term": "La lune cramoisie se leve.",
-    },
+    drafts: { [terminologyFixture.unitId]: "La lune cramoisie se leve." },
   };
 }
 
 export function otherProjectFixture(): ItotoriProjectRecord {
-  return {
-    projectId: "project-terminology-other",
-    engineFamily: "synthetic_fixture",
-    sourceRoot: "/workspace/source",
-    buildRoot: "/workspace/build",
-    extractProfile: { adapter: "fixture" },
-    localeBranchId: "locale-en-us-other",
-    targetLocale: "en-US",
-    drafts: {
-      "bridge-unit-other": "The other gate opens.",
-    },
-    bridge: {
-      schemaVersion: "0.1.0",
-      bridgeId: "bridge-terminology-other",
-      sourceBundleHash: "hash-terminology-other",
-      sourceLocale: "ja-JP",
-      extractorName: "kaifuu-fixture",
-      extractorVersion: "0.0.0",
-      units: [
-        {
-          bridgeUnitId: "bridge-unit-other",
-          sourceUnitKey: "other.scene.001.line.001",
-          occurrenceId: "occurrence-other-1",
-          sourceHash: "source-hash-other",
-          sourceLocale: "ja-JP",
-          sourceText: "門が開く。",
-          textSurface: "dialogue",
-          protectedSpans: [],
-          patchRef: {
-            assetId: "other-source.json",
-            writeMode: "replace",
-            sourceUnitKey: "other.scene.001.line.001",
-          },
-        },
-      ],
-    },
-  };
+  return structuredClone(otherTerminologyProject);
 }
 
 export async function seedProject(db: ItotoriDatabase): Promise<void> {
@@ -128,14 +95,14 @@ export async function seedApprovedGlossaryPolicy(db: ItotoriDatabase): Promise<v
             sourceTerm: "紅月",
             preferredTranslation: "Crimson Moon",
             provenance: {
-              sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+              sourceRevisionId: terminologyFixture.sourceRevisionId,
               citation: "terminology.scene.001.line.001",
             },
           },
         ],
         protectedSpans: [
           {
-            bridgeUnitId: "bridge-unit-term",
+            bridgeUnitId: terminologyFixture.unitId,
             raw: "{player}",
             preserveMode: "exact",
           },
@@ -146,7 +113,7 @@ export async function seedApprovedGlossaryPolicy(db: ItotoriDatabase): Promise<v
       {
         code: "glossary_policy.fixture.ready",
         severity: "info",
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+        sourceRevisionId: terminologyFixture.sourceRevisionId,
       },
     ],
   });

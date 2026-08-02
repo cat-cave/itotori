@@ -19,14 +19,12 @@ import type {
 } from "@itotori/db";
 import type {
   BenchmarkReportV02,
-  BridgeBundle,
   BridgeBundleV02,
   ConformanceManifestV01,
   ConformanceResultV01,
   FindingRecordV02,
   PatchResultV02,
   RuntimeEvidenceReportV02,
-  RuntimeVerificationReport,
 } from "@itotori/localization-bridge-schema";
 import {
   createDecodeExtractRunner,
@@ -262,7 +260,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     return await this.deps.projects.requireProjectScope(projectId);
   }
 
-  async importBridge(bridge: BridgeBundle | BridgeBundleV02): Promise<ProjectState> {
+  async importBridge(bridge: BridgeBundleV02): Promise<ProjectState> {
     const project = projectForBridge(bridge, this.deps.defaultTargetLocale);
     const importStatus = await this.deps.projects.importSourceBundle(this.deps.actor, project);
     return { ...project, importStatus };
@@ -274,7 +272,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
 
   async ingestRuntimeReport(
     project: ProjectState,
-    runtimeReport: RuntimeVerificationReport | RuntimeEvidenceReportV02,
+    runtimeReport: RuntimeEvidenceReportV02,
   ): Promise<{ project: ProjectState; result: RuntimeIngestResult }> {
     const nextProject = { ...project, runtimeReport };
     const dashboard = await this.deps.projects.saveRuntimeReport(
@@ -398,11 +396,8 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
   }
 }
 
-function projectForBridge(
-  bridge: BridgeBundle | BridgeBundleV02,
-  targetLocale: string,
-): ProjectState {
-  const projectId = bridge.schemaVersion === "0.2.0" ? bridge.sourceGame.gameId : bridge.bridgeId;
+function projectForBridge(bridge: BridgeBundleV02, targetLocale: string): ProjectState {
+  const projectId = bridge.sourceGame.gameId;
   const localeBranchId = `${projectId}:${targetLocale}`;
   // The bridge import API predates explicit engine-binding fields.
   // Preserve its real source-bundle write; engine-aware onboarding supplies a

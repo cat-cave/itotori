@@ -1,5 +1,4 @@
 import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
-import type { BridgeBundle } from "@itotori/localization-bridge-schema";
 import type { AuthorizationActor } from "../src/authorization.js";
 import type { ItotoriDatabase } from "../src/connection.js";
 import {
@@ -13,9 +12,38 @@ import {
 } from "../src/repositories/draft-job-repository.js";
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
 import type { ItotoriProjectRecord } from "../src/repositories/project-repository.js";
+import { currentProjectFixture } from "./current-project-fixture.js";
 
 export const draftJobFixtureProjectId = "project-draft-job";
 export const draftJobFixtureLocaleBranchId = "locale-draft-job";
+const draftJobProject = currentProjectFixture({
+  seed: "draft-job-fixture",
+  projectId: draftJobFixtureProjectId,
+  localeBranchId: draftJobFixtureLocaleBranchId,
+  targetLocale: "en-US",
+  assetKey: "asset.json",
+  assetPath: "asset.json",
+  units: [
+    {
+      sourceUnitKey: "scene.001.line.001",
+      occurrenceId: "occ-draft-1",
+      sourceText: "こんにちは",
+      context: { route: { sceneId: "draft-job-scene" } },
+    },
+    {
+      sourceUnitKey: "scene.001.line.002",
+      occurrenceId: "occ-draft-2",
+      sourceText: "さようなら",
+      context: { route: { sceneId: "draft-job-scene" } },
+    },
+  ],
+});
+const [draftJobFirstUnit, draftJobSecondUnit] = draftJobProject.bridge.units;
+if (draftJobFirstUnit === undefined || draftJobSecondUnit === undefined) {
+  throw new Error("draft job fixture requires two current bridge units");
+}
+export const draftJobFixtureFirstUnitId = draftJobFirstUnit.bridgeUnitId;
+export const draftJobFixtureSecondUnitId = draftJobSecondUnit.bridgeUnitId;
 
 export const draftJobFixturePolicyVersions: DraftJobPolicyVersions = {
   promptTemplateVersion: "itotori-draft-v1",
@@ -24,64 +52,14 @@ export const draftJobFixturePolicyVersions: DraftJobPolicyVersions = {
 };
 
 export function draftJobFixtureProject(): ItotoriProjectRecord {
-  const bridge: BridgeBundle = {
-    schemaVersion: "0.1.0",
-    bridgeId: "bridge-draft-job",
-    sourceBundleHash: "hash-draft-job",
-    sourceLocale: "ja-JP",
-    extractorName: "kaifuu-fixture",
-    extractorVersion: "0.0.0",
-    units: [
-      {
-        bridgeUnitId: "unit-draft-1",
-        sourceUnitKey: "scene.001.line.001",
-        occurrenceId: "occ-draft-1",
-        sourceHash: "hash-draft-1",
-        sourceLocale: "ja-JP",
-        sourceText: "こんにちは",
-        textSurface: "dialogue",
-        protectedSpans: [],
-        patchRef: {
-          assetId: "asset.json",
-          writeMode: "replace",
-          sourceUnitKey: "scene.001.line.001",
-        },
-      },
-      {
-        bridgeUnitId: "unit-draft-2",
-        sourceUnitKey: "scene.001.line.002",
-        occurrenceId: "occ-draft-2",
-        sourceHash: "hash-draft-2",
-        sourceLocale: "ja-JP",
-        sourceText: "さようなら",
-        textSurface: "dialogue",
-        protectedSpans: [],
-        patchRef: {
-          assetId: "asset.json",
-          writeMode: "replace",
-          sourceUnitKey: "scene.001.line.002",
-        },
-      },
-    ],
-  };
-  return {
-    projectId: draftJobFixtureProjectId,
-    engineFamily: "synthetic_fixture",
-    sourceRoot: "/workspace/source",
-    buildRoot: "/workspace/build",
-    extractProfile: { adapter: "fixture" },
-    localeBranchId: draftJobFixtureLocaleBranchId,
-    targetLocale: "en-US",
-    drafts: {},
-    bridge,
-  };
+  return structuredClone(draftJobProject);
 }
 
 export function draftJobFixtureInput(overrides: Partial<DraftJobInput> = {}): DraftJobInput {
   return {
     projectId: draftJobFixtureProjectId,
     localeBranchId: draftJobFixtureLocaleBranchId,
-    sourceUnitIds: ["unit-draft-1", "unit-draft-2"],
+    sourceUnitIds: [draftJobFixtureFirstUnitId, draftJobFixtureSecondUnitId],
     styleGuideVersion: "style-guide-v1",
     glossaryVersion: "glossary-v1",
     policyVersions: draftJobFixturePolicyVersions,

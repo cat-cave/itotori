@@ -1,21 +1,18 @@
 export { createHash } from "node:crypto";
 export { and, eq, inArray, isNull, not, sql } from "drizzle-orm";
 export {
-  assertPatchExport,
   assertPatchExportV02,
-  assertBridgeBundle,
   assertBridgeBundleV02,
+  assertRuntimeEvidenceReportV02,
   BRIDGE_SCHEMA_VERSION_V02,
   evaluatePatchExportCompatibilityV02,
   RUNTIME_ARTIFACT_KINDS_V02,
 } from "@itotori/localization-bridge-schema";
 export type {
   BridgeAssetV02,
-  BridgeBundle,
   BridgeBundleV02,
   FindingRecordV02,
   LocalizationUnitV02,
-  PatchExport,
   PatchExportV02,
   PatchResultV02,
   RuntimeArtifactRefV02,
@@ -23,7 +20,6 @@ export type {
   RuntimeBridgeUnitRefV02,
   RuntimeEvidenceReportV02,
   RuntimeValidationFindingV02,
-  RuntimeVerificationReport,
   SourceRevisionV02,
   TriageEventV02,
 } from "@itotori/localization-bridge-schema";

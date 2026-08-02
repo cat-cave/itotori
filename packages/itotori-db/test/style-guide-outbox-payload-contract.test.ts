@@ -8,6 +8,7 @@ import { createUuid7 } from "../src/repositories/event-queue-repository.js";
 import { styleGuideVersionChangedPayloadSchemaVersion } from "../src/repositories/style-guide-repository.js";
 import { eventOutbox, outboxEventTypeValues, outboxStatusValues } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
+import { currentProjectFixture } from "./current-project-fixture.js";
 
 /**
  * The StyleGuideVersionChanged outbox payload contract is enforced at the DB
@@ -73,37 +74,21 @@ async function rawInsertStyleGuideVersionChanged(
 async function seedProject(db: ItotoriDatabase): Promise<void> {
   const repo = new ItotoriProjectRepository(db, testProjectEngineFamilyRegistry);
   await repo.reset(localActor);
-  await repo.importSourceBundle(localActor, {
-    projectId: PROJECT_ID,
-    localeBranchId: LOCALE_BRANCH_ID,
-    targetLocale: "en-US",
-    drafts: { "bridge-unit-test": "Hello." },
-    bridge: {
-      schemaVersion: "0.1.0",
-      bridgeId: "bridge-test",
-      sourceBundleHash: "hash-test",
-      sourceLocale: "ja-JP",
-      extractorName: "kaifuu-fixture",
-      extractorVersion: "0.0.0",
+  await repo.importSourceBundle(
+    localActor,
+    currentProjectFixture({
+      seed: "style-guide-outbox",
+      projectId: PROJECT_ID,
+      localeBranchId: LOCALE_BRANCH_ID,
       units: [
         {
-          bridgeUnitId: "bridge-unit-test",
           sourceUnitKey: "hello.scene.001.line.001",
-          occurrenceId: "occurrence-1",
-          sourceHash: "source-hash",
-          sourceLocale: "ja-JP",
           sourceText: "こんにちは。",
-          textSurface: "dialogue",
-          protectedSpans: [],
-          patchRef: {
-            assetId: "source.json",
-            writeMode: "replace",
-            sourceUnitKey: "hello.scene.001.line.001",
-          },
+          targetText: "Hello.",
         },
       ],
-    },
-  });
+    }),
+  );
 }
 
 describe("StyleGuideVersionChanged outbox payload DB contract", () => {

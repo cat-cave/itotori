@@ -1,6 +1,5 @@
 import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { describe, expect, it } from "vitest";
-import type { BridgeBundle } from "@itotori/localization-bridge-schema";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import {
   ItotoriProjectRepository,
@@ -15,6 +14,7 @@ import {
   translationBatchContextRefKindValues,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
+import { currentProjectFixture } from "./current-project-fixture.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
@@ -41,7 +41,7 @@ describe("ItotoriTranslationBatchRepository", () => {
       expect(loaded).toHaveLength(2);
       expect(loaded.map((batch) => batch.batchOrdinal)).toEqual([1, 2]);
       const first = loaded[0]!;
-      expect(first.units.map((unit) => unit.bridgeUnitId)).toEqual(["unit-1"]);
+      expect(first.units.map((unit) => unit.bridgeUnitId)).toEqual([batchUnitOne.bridgeUnitId]);
       expect(
         first.contextRefs.find(
           (ref) => ref.refKind === translationBatchContextRefKindValues.glossaryTerm,
@@ -106,65 +106,29 @@ describe("ItotoriTranslationBatchRepository", () => {
   });
 });
 
+const translationBatchProject = currentProjectFixture({
+  seed: "translation-batch",
+  projectId: "project-tbatch",
+  localeBranchId: "locale-tbatch",
+  units: [
+    { sourceUnitKey: "scene.001.line.001", sourceText: "こんにちは" },
+    { sourceUnitKey: "scene.002.line.001", sourceText: "さようなら" },
+  ],
+});
+const [batchUnitOne, batchUnitTwo] = translationBatchProject.bridge.units;
+if (batchUnitOne === undefined || batchUnitTwo === undefined) {
+  throw new Error("translation batch fixture requires two current bridge units");
+}
+
 function fixtureProject(): ItotoriProjectRecord {
-  const bridge: BridgeBundle = {
-    schemaVersion: "0.1.0",
-    bridgeId: "bridge-tbatch",
-    sourceBundleHash: "hash-tbatch",
-    sourceLocale: "ja-JP",
-    extractorName: "kaifuu-fixture",
-    extractorVersion: "0.0.0",
-    units: [
-      {
-        bridgeUnitId: "unit-1",
-        sourceUnitKey: "scene.001.line.001",
-        occurrenceId: "occ-1",
-        sourceHash: "hash-1",
-        sourceLocale: "ja-JP",
-        sourceText: "こんにちは",
-        textSurface: "dialogue",
-        protectedSpans: [],
-        patchRef: {
-          assetId: "asset.json",
-          writeMode: "replace",
-          sourceUnitKey: "scene.001.line.001",
-        },
-      },
-      {
-        bridgeUnitId: "unit-2",
-        sourceUnitKey: "scene.002.line.001",
-        occurrenceId: "occ-2",
-        sourceHash: "hash-2",
-        sourceLocale: "ja-JP",
-        sourceText: "さようなら",
-        textSurface: "dialogue",
-        protectedSpans: [],
-        patchRef: {
-          assetId: "asset.json",
-          writeMode: "replace",
-          sourceUnitKey: "scene.002.line.001",
-        },
-      },
-    ],
-  };
-  return {
-    projectId: "project-tbatch",
-    engineFamily: "synthetic_fixture",
-    sourceRoot: "/workspace/source",
-    buildRoot: "/workspace/build",
-    extractProfile: { adapter: "fixture" },
-    localeBranchId: "locale-tbatch",
-    targetLocale: "en-US",
-    drafts: {},
-    bridge,
-  };
+  return structuredClone(translationBatchProject);
 }
 
 function batchesFixture(): SaveTranslationBatchesInput {
   return {
     projectId: "project-tbatch",
     localeBranchId: "locale-tbatch",
-    sourceRevisionId: "bridge-tbatch:bundle-revision",
+    sourceRevisionId: translationBatchProject.bridge.sourceBundleRevision.revisionId,
     batches: [
       {
         batchId: "019ed018-0000-7000-8000-000000000201",
@@ -186,7 +150,7 @@ function batchesFixture(): SaveTranslationBatchesInput {
         generatedAt: new Date("2026-06-23T00:00:00Z"),
         units: [
           {
-            bridgeUnitId: "unit-1",
+            bridgeUnitId: batchUnitOne.bridgeUnitId,
             sourceUnitKey: "scene.001.line.001",
             sourceHash: "hash-1",
             unitOrdinal: 1,
@@ -198,7 +162,7 @@ function batchesFixture(): SaveTranslationBatchesInput {
             refId: "term-1",
             refSecondaryId: "",
             inclusionReason: translationBatchContextRefInclusionReasonValues.hit,
-            hitBridgeUnitIds: ["unit-1"],
+            hitBridgeUnitIds: [batchUnitOne.bridgeUnitId],
             details: { termKey: "test", preferredSourceForm: "こんにちは" },
           },
         ],
@@ -223,7 +187,7 @@ function batchesFixture(): SaveTranslationBatchesInput {
         generatedAt: new Date("2026-06-23T00:00:00Z"),
         units: [
           {
-            bridgeUnitId: "unit-2",
+            bridgeUnitId: batchUnitTwo.bridgeUnitId,
             sourceUnitKey: "scene.002.line.001",
             sourceHash: "hash-2",
             unitOrdinal: 1,

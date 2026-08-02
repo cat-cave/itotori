@@ -64,7 +64,7 @@ export type NarrativeChoice = {
   sourceAsset?: SourceAssetRef;
   engineEvidence?: NarrativeEngineEvidence | undefined;
   /** `runtime_only` marks a displayed runtime prompt option that has NO static
-   * BridgeUnit (a system/flow menu such as "continue playing / save for later")
+   * v0.2 bridge unit (a system/flow menu such as "continue playing / save for later")
    * — it is not part of the translatable script and the join skips it, exactly
    * as it skips a runtime-only message. `bridge_linked` (or absent) is a
    * translatable choice that must bind to a bridge unit. */

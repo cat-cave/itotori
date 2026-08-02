@@ -70,7 +70,6 @@ import {
   assertEqual,
   assertNoMutableEventBucketFields,
   assertNonNegativeInteger,
-  assertOptionalNonNegativeInteger,
   assertOptionalUuid7,
   assertPixelRegionV02,
   assertUuid7,
@@ -286,45 +285,40 @@ export function assertPatchExportEntryV02(
   assertSourceRevisionV02(entry.sourceRevision, `${label}.sourceRevision`);
   assertString(entry.targetText, `${label}.targetText`);
   const mappings = asArray(entry.protectedSpanMappings, `${label}.protectedSpanMappings`);
-  // v0.2 source identities (`sourceSpanId`) must be unique within an
-  // entry (strict identity). Legacy raw-only spans carry no identity and are
-  // intentionally NOT tracked, so duplicate `raw` stays compatibility-preserving.
+  // Every v0.2 mapping names one source span. Reusing that identity would make
+  // two target ranges claim the same source occurrence.
   const seenSourceSpanIds = new Set<string>();
   for (const [index, mapping] of mappings.entries()) {
     const mappingLabel = `${label}.protectedSpanMappings[${index}]`;
     assertProtectedSpanMappingV02(mapping, mappingLabel);
-    const sourceSpanId = (mapping as { sourceSpanId?: unknown }).sourceSpanId;
-    if (typeof sourceSpanId === "string") {
-      if (seenSourceSpanIds.has(sourceSpanId)) {
-        throw new Error(
-          `${mappingLabel}.sourceSpanId duplicates an earlier protected-span source identity within ${label}: kaifuu.patch_export.duplicate_source_span_identity`,
-        );
-      }
-      seenSourceSpanIds.add(sourceSpanId);
+    if (seenSourceSpanIds.has(mapping.sourceSpanId)) {
+      throw new Error(
+        `${mappingLabel}.sourceSpanId duplicates an earlier protected-span source identity within ${label}: kaifuu.patch_export.duplicate_source_span_identity`,
+      );
     }
+    seenSourceSpanIds.add(mapping.sourceSpanId);
   }
 }
 
-export function assertProtectedSpanMappingV02(value: unknown, label: string): void {
+export function assertProtectedSpanMappingV02(
+  value: unknown,
+  label: string,
+): asserts value is PatchExportEntryV02["protectedSpanMappings"][number] {
   const mapping = asRecord(value, label);
   assertString(mapping.raw, `${label}.raw`);
-  assertOptionalUuid7(mapping.sourceSpanId, `${label}.sourceSpanId`);
-  assertOptionalNonNegativeInteger(mapping.sourceStartByte, `${label}.sourceStartByte`);
-  assertOptionalNonNegativeInteger(mapping.sourceEndByte, `${label}.sourceEndByte`);
-  if ((mapping.sourceStartByte === undefined) !== (mapping.sourceEndByte === undefined)) {
-    throw new Error(
-      `${label}.sourceStartByte and ${label}.sourceEndByte must be provided together`,
-    );
-  }
-  if (
-    mapping.sourceStartByte !== undefined &&
-    (mapping.sourceEndByte as number) <= (mapping.sourceStartByte as number)
-  ) {
+  assertUuid7(mapping.sourceSpanId, `${label}.sourceSpanId`);
+  const sourceStartByte = mapping.sourceStartByte;
+  const sourceEndByte = mapping.sourceEndByte;
+  assertNonNegativeInteger(sourceStartByte, `${label}.sourceStartByte`);
+  assertNonNegativeInteger(sourceEndByte, `${label}.sourceEndByte`);
+  if (sourceEndByte <= sourceStartByte) {
     throw new Error(`${label}.sourceEndByte must be greater than ${label}.sourceStartByte`);
   }
-  assertNonNegativeInteger(mapping.targetStart, `${label}.targetStart`);
-  assertNonNegativeInteger(mapping.targetEnd, `${label}.targetEnd`);
-  if ((mapping.targetEnd as number) <= mapping.targetStart) {
+  const targetStart = mapping.targetStart;
+  const targetEnd = mapping.targetEnd;
+  assertNonNegativeInteger(targetStart, `${label}.targetStart`);
+  assertNonNegativeInteger(targetEnd, `${label}.targetEnd`);
+  if (targetEnd <= targetStart) {
     throw new Error(`${label}.targetEnd must be greater than ${label}.targetStart`);
   }
 }

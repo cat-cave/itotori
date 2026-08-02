@@ -1,9 +1,7 @@
 import {
-  BRIDGE_SCHEMA_VERSION_V02,
-  BridgeBundle,
   BridgeBundleV02,
   assertBenchmarkReportV02,
-  assertRuntimeReport,
+  assertRuntimeEvidenceReportV02,
   parseExtractApiRequest,
 } from "./dependencies.js";
 import { STRICT_API_BODY_KEYS } from "./api-strict-body-keys.js";
@@ -85,7 +83,7 @@ export function parseDraftBranchRequest(body: unknown): ApiDraftBranchRequest {
 
 export function parseBootstrapCatalogSelection(
   value: unknown,
-  bridge: BridgeBundle | BridgeBundleV02,
+  bridge: BridgeBundleV02,
 ): ApiBootstrapCatalogSelection {
   const selection = asStrictRecord(value, "ApiBootstrapCatalogSelection", [
     "selectedWorkId",
@@ -132,17 +130,13 @@ export function parseBootstrapCatalogCandidates(
 
 export function assertBootstrapSelectionMatchesBridge(
   selection: ApiBootstrapCatalogSelection,
-  bridge: BridgeBundle | BridgeBundleV02,
+  bridge: BridgeBundleV02,
 ): void {
   const selected = selection.candidates.find(
     (candidate) => candidate.workId === selection.selectedWorkId,
   );
   if (selected === undefined) {
     throw new Error("ApiBootstrapCatalogSelection.selectedWorkId must identify a candidate");
-  }
-
-  if (bridge.schemaVersion !== BRIDGE_SCHEMA_VERSION_V02) {
-    return;
   }
 
   const bridgeIdentity = bridgeSourceIdentityValues(bridge);
@@ -223,7 +217,7 @@ export function parseRuntimeEvidenceRequest(body: unknown): ApiRuntimeEvidenceRe
   return parseRequest("ApiRuntimeEvidenceRequest", () => {
     const request = asRecord(body, "ApiRuntimeEvidenceRequest");
     assertProjectState(request.project, "ApiRuntimeEvidenceRequest.project");
-    assertRuntimeReport(request.runtimeReport);
+    assertRuntimeEvidenceReportV02(request.runtimeReport);
     return { project: request.project, runtimeReport: request.runtimeReport };
   });
 }

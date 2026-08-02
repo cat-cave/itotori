@@ -7,6 +7,8 @@ import { ItotoriProjectRepository } from "../src/repositories/project-repository
 import {
   localActor,
   projectFixture,
+  projectFixtureBundleRevisionId,
+  projectFixtureUnitId,
   runtimeEvidenceReportFixture,
 } from "./repository.test.shared.js";
 import { migratedContext } from "./repository.test.legacy.js";
@@ -39,7 +41,7 @@ describe("ItotoriProjectRepository", () => {
               traceEventId: "019ed003-0000-7000-8000-000000000912",
               eventKind: "text_observed",
               bridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
               frame: 2,
@@ -57,7 +59,7 @@ describe("ItotoriProjectRepository", () => {
             {
               captureId: "019ed003-0000-7000-8000-000000000922",
               bridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
               evidenceTier: "E2",
@@ -81,7 +83,7 @@ describe("ItotoriProjectRepository", () => {
               description: "Fixture evidence validates runtime plumbing, not engine fidelity.",
               affectedBridgeUnitRefs: [
                 {
-                  bridgeUnitId: "bridge-unit-test",
+                  bridgeUnitId: projectFixtureUnitId,
                   sourceUnitKey: "hello.scene.001.line.001",
                 },
               ],
@@ -94,7 +96,7 @@ describe("ItotoriProjectRepository", () => {
               findingKind: "text_mismatch",
               severity: "P2",
               bridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
               artifactRef: {
@@ -135,7 +137,7 @@ describe("ItotoriProjectRepository", () => {
         {
           runtime_run_id: "019ed003-0000-7000-8000-000000000901",
           status: "passed",
-          source_bundle_revision_id: "bridge-test:bundle-revision",
+          source_bundle_revision_id: projectFixtureBundleRevisionId,
           runtime_report_artifact_id: "019ed003-0000-7000-8000-000000000901",
           patch_result_artifact_id: "019ed003-0000-7000-8000-000000000981",
           validation_finding_count: 0,
@@ -143,7 +145,7 @@ describe("ItotoriProjectRepository", () => {
         {
           runtime_run_id: "019ed003-0000-7000-8000-000000000902",
           status: "failed",
-          source_bundle_revision_id: "bridge-test:bundle-revision",
+          source_bundle_revision_id: projectFixtureBundleRevisionId,
           runtime_report_artifact_id: "019ed003-0000-7000-8000-000000000902",
           patch_result_artifact_id: "019ed003-0000-7000-8000-000000000982",
           validation_finding_count: 1,
@@ -226,7 +228,7 @@ describe("ItotoriProjectRepository", () => {
           runtime_evidence_id:
             "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000942",
           evidence_kind: "approximation",
-          bridge_unit_id: "bridge-unit-test",
+          bridge_unit_id: projectFixtureUnitId,
           artifact_id: null,
           portable_artifact_uri: null,
         },
@@ -234,7 +236,7 @@ describe("ItotoriProjectRepository", () => {
           runtime_evidence_id:
             "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000922",
           evidence_kind: "capture",
-          bridge_unit_id: "bridge-unit-test",
+          bridge_unit_id: projectFixtureUnitId,
           artifact_id: "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000933",
           portable_artifact_uri:
             "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000902/screenshots/019ed003-0000-7000-8000-000000000933.png",
@@ -243,7 +245,7 @@ describe("ItotoriProjectRepository", () => {
           runtime_evidence_id:
             "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000912",
           evidence_kind: "trace_event",
-          bridge_unit_id: "bridge-unit-test",
+          bridge_unit_id: projectFixtureUnitId,
           artifact_id: "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000932",
           portable_artifact_uri:
             "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000902/traces/019ed003-0000-7000-8000-000000000932.json",
@@ -264,9 +266,9 @@ describe("ItotoriProjectRepository", () => {
         ],
       );
       expect(refs.rows).toEqual([
-        { ref_role: "affected", bridge_unit_id: "bridge-unit-test" },
-        { ref_role: "primary", bridge_unit_id: "bridge-unit-test" },
-        { ref_role: "primary", bridge_unit_id: "bridge-unit-test" },
+        { ref_role: "affected", bridge_unit_id: projectFixtureUnitId },
+        { ref_role: "primary", bridge_unit_id: projectFixtureUnitId },
+        { ref_role: "primary", bridge_unit_id: projectFixtureUnitId },
       ]);
 
       const validation = await context.pool.query<{
@@ -303,7 +305,7 @@ describe("ItotoriProjectRepository", () => {
         finding_kind: "text_mismatch",
         severity: "P2",
         message: "Observed runtime text differed from the drafted locale branch text.",
-        bridge_unit_id: "bridge-unit-test",
+        bridge_unit_id: projectFixtureUnitId,
         artifact_id: "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000961",
         finding_status: "open",
         quality_category: "runtime_validation",

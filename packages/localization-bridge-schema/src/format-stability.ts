@@ -106,10 +106,11 @@ export interface FormatStabilityDeclaration {
 // ---------------------------------------------------------------------------
 
 /**
- * The bridge bundle + delta-metadata v0.2 format. Carries
- * `schemaVersion: "0.2.0"`; v0.1 is the known-legacy literal kept alive ONLY
- * for the hello-world fixture pipeline via the separate `assertBridgeBundle`
- * guard (the v0.2 guard rejects it loudly with a migration path).
+ * The bridge bundle, patch export, patch result, runtime report, and delta
+ * metadata v0.2 format. Carries `schemaVersion: "0.2.0"`; v0.1 is a known
+ * legacy literal that current readers reject with a typed mismatch and
+ * regeneration path before interpreting its fields. There is no v0.1
+ * converter or compatibility reader.
  */
 export const BRIDGE_FORMAT_STABILITY: FormatStabilityDeclaration = {
   formatId: "localization-bridge-schema",

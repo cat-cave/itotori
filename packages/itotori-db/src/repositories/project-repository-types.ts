@@ -1,12 +1,9 @@
 import type {
-  BridgeBundle,
   BridgeBundleV02,
   FindingRecordV02,
-  PatchExport,
   PatchExportV02,
   PatchResultV02,
   RuntimeEvidenceReportV02,
-  RuntimeVerificationReport,
   TriageEventV02,
 } from "@itotori/localization-bridge-schema";
 import type { ProjectCostReport, ProviderRunLedgerInput } from "./model-ledger-repository.js";
@@ -90,14 +87,14 @@ export function assertProjectEngineBinding(
 
 export type ItotoriProjectRecord = ProjectEngineBinding & {
   projectId: string;
-  bridge: BridgeBundle | BridgeBundleV02;
+  bridge: BridgeBundleV02;
   localeBranchId: string;
   targetLocale: string;
   drafts: Record<string, string>;
   importStatus?: BridgeImportStatus;
-  patchExport?: PatchExport | PatchExportV02;
+  patchExport?: PatchExportV02;
   patchResult?: PatchResultV02;
-  runtimeReport?: RuntimeVerificationReport | RuntimeEvidenceReportV02;
+  runtimeReport?: RuntimeEvidenceReportV02;
 };
 
 /** Narrow persisted-draft projection used by durable rerun verification. */

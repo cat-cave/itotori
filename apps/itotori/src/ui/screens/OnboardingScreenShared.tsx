@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { CatalogOpportunityRow } from "@itotori/db";
 import { Badge } from "@itotori/ds";
-import type { BridgeBundle, BridgeBundleV02 } from "@itotori/localization-bridge-schema";
+import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import type { ApiCallSettledState, ApiClientError, ApiRouteResponse } from "../../api-client.js";
 import type { ApiProjectDecodeExtractRequest, ApiProjectImportRequest } from "../../api-schema.js";
 import {
@@ -247,7 +247,7 @@ export function projectStateForBranch(
   return bridgeHasUnits(project.bridge) ? { ...project, targetLocale } : null;
 }
 
-function bridgeHasUnits(bridge: BridgeBundle | BridgeBundleV02): boolean {
+function bridgeHasUnits(bridge: BridgeBundleV02): boolean {
   return bridge.units.length > 0;
 }
 

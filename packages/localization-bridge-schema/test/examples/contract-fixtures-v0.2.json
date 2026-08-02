@@ -126,7 +126,7 @@
       "kind": "bridge-v0.2",
       "path": "./invalid/bridge-v0.2-schema-version-0.1.json",
       "expectedSemanticError": "schemaVersion must be 0\\.2\\.0",
-      "description": "v0.1 bridge payloads must route through legacy guards."
+      "description": "v0.1 bridge payloads must be rejected with the v0.2 migration error."
     },
     {
       "kind": "delta-package-v0.2",

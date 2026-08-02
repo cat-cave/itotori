@@ -2,7 +2,7 @@ import {
   ProjectState,
   RUNTIME_ARTIFACT_HASH_PROVENANCES,
   RuntimeDashboardStatus,
-  assertRuntimeReport,
+  assertRuntimeEvidenceReportV02,
   isExtractModeForEngine,
 } from "./dependencies.js";
 import {
@@ -174,7 +174,7 @@ export function assertProjectState(
     assertPatchExportInput(project.patchExport, `${label}.patchExport`);
   }
   if (project.runtimeReport !== undefined) {
-    assertRuntimeReport(project.runtimeReport);
+    assertRuntimeEvidenceReportV02(project.runtimeReport);
   }
 }
 

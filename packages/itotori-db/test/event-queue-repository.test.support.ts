@@ -9,48 +9,25 @@ import {
 } from "../src/repositories/project-repository.js";
 
 import { outboxEventTypeValues } from "../src/schema.js";
+import { currentProjectFixture } from "./current-project-fixture.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
 function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriProjectRecord {
-  const project: ItotoriProjectRecord = {
+  const project = currentProjectFixture({
+    seed: "event-queue",
     projectId: "project-test",
-    engineFamily: "synthetic_fixture",
-    sourceRoot: "/workspace/source",
-    buildRoot: "/workspace/build",
-    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-en-us",
-    targetLocale: "en-US",
-    drafts: { "bridge-unit-test": "Hello, {player}." },
-    bridge: {
-      schemaVersion: "0.1.0",
-      bridgeId: "bridge-test",
-      sourceBundleHash: "hash-test",
-      sourceLocale: "ja-JP",
-      extractorName: "kaifuu-fixture",
-      extractorVersion: "0.0.0",
-      units: [
-        {
-          bridgeUnitId: "bridge-unit-test",
-          sourceUnitKey: "hello.scene.001.line.001",
-          occurrenceId: "occurrence-1",
-          sourceHash: "source-hash",
-          sourceLocale: "ja-JP",
-          sourceText: "こんにちは、{player}。",
-          textSurface: "dialogue",
-          protectedSpans: [
-            { kind: "placeholder", raw: "{player}", start: 18, end: 26, preserveMode: "exact" },
-          ],
-          patchRef: {
-            assetId: "source.json",
-            writeMode: "replace",
-            sourceUnitKey: "hello.scene.001.line.001",
-          },
-        },
-      ],
-    },
-  };
+    units: [
+      {
+        sourceUnitKey: "hello.scene.001.line.001",
+        sourceText: "こんにちは、{player}。",
+        targetText: "Hello, {player}.",
+        spans: [{ raw: "{player}" }],
+      },
+    ],
+  });
   return { ...project, ...overrides };
 }
 

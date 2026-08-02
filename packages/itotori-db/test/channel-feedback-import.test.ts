@@ -22,48 +22,29 @@ import {
   type GitHubIssuesExport,
 } from "../src/channel-feedback/index.js";
 import { feedbackReportEvidence, feedbackReports, feedbackSources } from "../src/schema.js";
+import { currentProjectFixture } from "./current-project-fixture.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
-function projectFixture(): ItotoriProjectRecord {
-  return {
-    projectId: "project-test",
-    engineFamily: "synthetic_fixture",
-    sourceRoot: "/workspace/source",
-    buildRoot: "/workspace/build",
-    extractProfile: { adapter: "fixture" },
-    localeBranchId: "locale-en-us",
-    targetLocale: "en-US",
-    drafts: { "bridge-unit-test": "Hello, {player}." },
-    bridge: {
-      schemaVersion: "0.1.0",
-      bridgeId: "bridge-test",
-      sourceBundleHash: "hash-test",
-      sourceLocale: "ja-JP",
-      extractorName: "kaifuu-fixture",
-      extractorVersion: "0.0.0",
-      units: [
-        {
-          bridgeUnitId: "bridge-unit-test",
-          sourceUnitKey: "hello.scene.001.line.001",
-          occurrenceId: "occurrence-1",
-          sourceHash: "source-hash",
-          sourceLocale: "ja-JP",
-          sourceText: "こんにちは、{player}。",
-          textSurface: "dialogue",
-          protectedSpans: [
-            { kind: "placeholder", raw: "{player}", start: 18, end: 26, preserveMode: "exact" },
-          ],
-          patchRef: {
-            assetId: "source.json",
-            writeMode: "replace",
-            sourceUnitKey: "hello.scene.001.line.001",
-          },
-        },
-      ],
+const channelProjectFixture = currentProjectFixture({
+  seed: "channel-feedback",
+  projectId: "project-test",
+  localeBranchId: "locale-en-us",
+  units: [
+    {
+      sourceUnitKey: "hello.scene.001.line.001",
+      sourceText: "こんにちは、{player}。",
+      targetText: "Hello, {player}.",
+      spans: [{ raw: "{player}" }],
     },
-  };
+  ],
+});
+const channelUnit = channelProjectFixture.bridge.units[0];
+if (channelUnit === undefined) throw new Error("channel feedback fixture requires one unit");
+
+function projectFixture(): ItotoriProjectRecord {
+  return structuredClone(channelProjectFixture);
 }
 
 function githubIssuesExport(): GitHubIssuesExport {
@@ -75,16 +56,30 @@ function githubIssuesExport(): GitHubIssuesExport {
 
 function communityFormsExport(): CommunityFormsExport {
   const here = dirname(fileURLToPath(import.meta.url));
-  return JSON.parse(
+  const loaded = JSON.parse(
     readFileSync(join(here, "fixtures", "community-forms-export.json"), "utf8"),
   ) as CommunityFormsExport;
+  return {
+    ...loaded,
+    responses: loaded.responses.map((response) =>
+      response.lineReference === undefined
+        ? response
+        : {
+            ...response,
+            lineReference: {
+              ...response.lineReference,
+              bridgeUnitId: channelUnit.bridgeUnitId,
+            },
+          },
+    ),
+  };
 }
 
 const importOptions = {
   projectId: "project-test",
   localeBranchId: "locale-en-us",
-  bridgeUnitId: "bridge-unit-test",
-  sourceBundleId: "bridge-test",
+  bridgeUnitId: channelUnit.bridgeUnitId,
+  sourceBundleId: channelProjectFixture.bridge.bridgeId,
 } as const;
 
 const ISSUE_41_EXTERNAL_ID = "example-org/example-localization#41";
@@ -105,7 +100,7 @@ describe("GitHubIssuesImporter (pure mapping)", () => {
       url: "https://github.com/example-org/example-localization/issues/41",
     });
     expect(first.input.dedupeKey).toBe(ISSUE_41_EXTERNAL_ID);
-    expect(first.input.lineReference).toEqual({ bridgeUnitId: "bridge-unit-test" });
+    expect(first.input.lineReference).toEqual({ bridgeUnitId: importOptions.bridgeUnitId });
     expect(first.input.feedbackSource?.sourceChannel).toBe("github_issues");
     expect(first.input.feedbackSource?.sourceKind).toBe(feedbackSourceKindValues.communityChannel);
     expect(first.input.metadata).toMatchObject({
@@ -184,7 +179,7 @@ describe("CommunityFormsImporter (pure mapping)", () => {
       tags: ["glossary", "hero-name"],
     });
     expect(first.input.lineReference).toEqual({
-      bridgeUnitId: "bridge-unit-test",
+      bridgeUnitId: importOptions.bridgeUnitId,
       sourceUnitKey: "hello.scene.001.line.001",
     });
   });

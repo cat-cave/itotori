@@ -1,6 +1,7 @@
 import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 
 import { describe, expect, it } from "vitest";
+import { FormatVersionMismatchError } from "@itotori/localization-bridge-schema";
 
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
 
@@ -9,6 +10,7 @@ import {
   invalidManagedRuntimeArtifactUriCases,
   localActor,
   projectFixture,
+  projectFixtureUnitId,
   runtimeEvidenceReportFixture,
   stableSerializeHashInput,
   v02Sha256,
@@ -41,7 +43,7 @@ describe("ItotoriProjectRepository", () => {
           {
             captureId: "019ed003-0000-7000-8000-000000000926",
             bridgeUnitRef: {
-              bridgeUnitId: "bridge-unit-test",
+              bridgeUnitId: projectFixtureUnitId,
               sourceUnitKey: "hello.scene.001.line.001",
             },
             evidenceTier: "E2",
@@ -60,7 +62,7 @@ describe("ItotoriProjectRepository", () => {
           {
             captureId: "019ed003-0000-7000-8000-000000000927",
             bridgeUnitRef: {
-              bridgeUnitId: "bridge-unit-test",
+              bridgeUnitId: projectFixtureUnitId,
               sourceUnitKey: "hello.scene.001.line.001",
             },
             evidenceTier: "E2",
@@ -166,12 +168,7 @@ describe("ItotoriProjectRepository", () => {
       await context.close();
     }
   });
-  it("marks legacy v0.1 frame captures with null hash provenance", async () => {
-    // Legacy v0.1 RuntimeVerificationReport frame captures carry no adapter
-    // hash and no repository fallback (the managed-hash contract is
-    // v0.2-only). Their provenance must surface as null so the dashboard
-    // renders the existing missing-hash diagnostic rather than misclassifying
-    // them as content or fallback.
+  it("rejects v0.1 runtime reports version-first at the repository boundary without writes", async () => {
     const context = await migratedContext();
     try {
       const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
@@ -179,40 +176,63 @@ describe("ItotoriProjectRepository", () => {
       const project = projectFixture();
       await repo.importSourceBundle(localActor, project);
 
-      await repo.saveRuntimeReport(
-        localActor,
-        project,
-        {
-          schemaVersion: "0.1.0",
-          runtimeReportId: "runtime-legacy-provenance",
-          adapterName: "utsushi-fixture",
-          fidelityTier: "layout_probe",
-          status: "passed",
-          textEvents: [],
-          frameCaptures: [
-            {
-              frameCaptureId: "frame-legacy-provenance",
-              bridgeUnitId: "bridge-unit-test",
-              width: 320,
-              height: 180,
-              nonZeroPixels: 57600,
-              artifactPath:
-                "artifacts/utsushi/runtime/runtime-legacy-provenance/frame-captures/frame-legacy-provenance.png",
-            },
-          ],
-          approximations: [],
+      const countSql = `
+        select
+          (select count(*)::int from itotori_artifacts) as artifacts,
+          (select count(*)::int from itotori_runtime_evidence_runs) as runtime_runs,
+          (select count(*)::int from itotori_runtime_evidence_items) as runtime_items,
+          (select count(*)::int from itotori_runtime_evidence_bridge_unit_refs) as runtime_refs,
+          (select count(*)::int from itotori_runtime_validation_findings) as runtime_findings,
+          (select count(*)::int from itotori_findings) as findings,
+          (select count(*)::int from itotori_events) as events
+      `;
+      type RuntimeWriteCounts = {
+        artifacts: number;
+        runtime_runs: number;
+        runtime_items: number;
+        runtime_refs: number;
+        runtime_findings: number;
+        findings: number;
+        events: number;
+      };
+      const before = await context.pool.query<RuntimeWriteCounts>(countSql);
+      const currentReport = runtimeEvidenceReportFixture({
+        runtimeReportId: "019ed003-0000-7000-8000-000000000908",
+      });
+      let siblingFieldReads = 0;
+      const legacyReport: Record<string, unknown> = {
+        ...currentReport,
+        schemaVersion: "0.1.0",
+      };
+      Object.defineProperty(legacyReport, "traceEvents", {
+        enumerable: true,
+        get: () => {
+          siblingFieldReads += 1;
+          return currentReport.traceEvents;
         },
-        "patch-result-legacy-provenance",
-      );
+      });
 
-      const status = await repo.getRuntimeStatus(localActor);
-      const frameArtifact = status.artifacts.find(
-        (artifact) => artifact.artifactId === "runtime-legacy-provenance:frame-legacy-provenance",
-      );
-      expect(frameArtifact).toBeDefined();
-      expect(frameArtifact?.hash).toBeNull();
-      expect(frameArtifact?.hashProvenance).toBeNull();
-      expect(frameArtifact?.diagnostic).toBe("managed artifact link missing content hash");
+      let rejection: unknown;
+      try {
+        await repo.saveRuntimeReport(
+          localActor,
+          project,
+          legacyReport,
+          "019ed003-0000-7000-8000-000000000988",
+        );
+      } catch (error: unknown) {
+        rejection = error;
+      }
+
+      expect(rejection).toBeInstanceOf(FormatVersionMismatchError);
+      expect(rejection).toMatchObject({
+        observed: "0.1.0",
+        supported: "0.2.0",
+        message: expect.stringMatching(/Migration path:/u),
+      });
+      expect(siblingFieldReads).toBe(0);
+      const after = await context.pool.query<RuntimeWriteCounts>(countSql);
+      expect(after.rows).toEqual(before.rows);
     } finally {
       await context.close();
     }
@@ -236,30 +256,6 @@ describe("ItotoriProjectRepository", () => {
       await repo.importSourceBundle(localActor, project);
 
       for (const [_label, uri] of invalidRuntimeArtifactUris) {
-        const runtimeReport = {
-          schemaVersion: "0.1.0" as const,
-          runtimeReportId: "runtime-path-test",
-          adapterName: "utsushi-fixture",
-          fidelityTier: "layout_probe",
-          status: "passed" as const,
-          textEvents: [],
-          frameCaptures: [
-            {
-              frameCaptureId: "frame-path-test",
-              bridgeUnitId: "bridge-unit-test",
-              width: 320,
-              height: 180,
-              nonZeroPixels: 57600,
-              artifactPath: uri,
-            },
-          ],
-          approximations: [],
-        };
-
-        await expect(
-          repo.saveRuntimeReport(localActor, project, runtimeReport, "patch-result-traversal"),
-        ).rejects.toThrow(new RegExp(`portable relative artifact path.*${escapeRegExp(uri)}`));
-
         await expect(
           repo.saveRuntimeReport(
             localActor,

@@ -7,21 +7,21 @@ import { ItotoriProjectRepository } from "../src/repositories/project-repository
 import {
   localActor,
   projectFixture,
+  projectFixtureUnitId,
+  requiredFixtureValue,
   runtimeEvidenceReportFixture,
 } from "./repository.test.shared.js";
 import { migratedContext } from "./repository.test.legacy.js";
 
 describe("ItotoriProjectRepository", () => {
-  it("returns distinct per-artifactKind runtime capture scalars (frame-capture vs screenshot, not double-counted)", async () => {
+  it("returns current screenshot counts without populating the retired frame-capture scalar", async () => {
     // DAG-node-runtime-status-double-counted-capture-scalars-on-wire: the
     // runtime status API scalars historically resolved both
     // frameCaptureCount and screenshotArtifactCount to the SAME
     // capture_count column on itotori_runtime_evidence_runs, so a single
     // capture was reported as BOTH a frame-capture AND a screenshot on the
-    // wire. Each capture is in fact ONE artifact with a single
-    // artifact_kind (legacy RuntimeVerificationReport -> frame_capture;
-    // RuntimeEvidenceReportV02 -> screenshot). This fixture proves the
-    // repository now returns the REAL per-artifactKind counts.
+    // wire. Each current capture is one screenshot artifact. This fixture
+    // proves the repository returns the real per-artifactKind counts.
     const context = await migratedContext();
     try {
       const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
@@ -41,7 +41,7 @@ describe("ItotoriProjectRepository", () => {
             {
               captureId: "019ed003-0000-7000-8000-000000000b11",
               bridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
               evidenceTier: "E2",
@@ -59,7 +59,7 @@ describe("ItotoriProjectRepository", () => {
             {
               captureId: "019ed003-0000-7000-8000-000000000b12",
               bridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
               evidenceTier: "E2",
@@ -77,7 +77,7 @@ describe("ItotoriProjectRepository", () => {
             {
               captureId: "019ed003-0000-7000-8000-000000000b13",
               bridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
               evidenceTier: "E2",
@@ -122,57 +122,52 @@ describe("ItotoriProjectRepository", () => {
       );
       expect(v02ArtifactCounts.rows[0]).toEqual({ screenshot: 3, frame_capture: 0 });
 
-      // Legacy run with 2 frameCaptures -> 2 frame_capture artifacts, 0
-      // screenshot artifacts. After this second save the latest run is the
-      // legacy one, so getRuntimeStatus must switch to the legacy counts.
-      const legacyReportId = "019ed003-0000-7000-8000-000000000c01";
+      // A second current run with two captures remains screenshot-only. After
+      // this save the latest run switches to the new current report.
+      const secondReportId = "019ed003-0000-7000-8000-000000000c01";
+      const capture = requiredFixtureValue(
+        runtimeEvidenceReportFixture().captures[0],
+        "runtime capture",
+      );
       await repo.saveRuntimeReport(
         localActor,
         project,
-        {
-          schemaVersion: "0.1.0",
-          runtimeReportId: legacyReportId,
-          adapterName: "utsushi-fixture",
-          fidelityTier: "layout_probe",
-          status: "passed",
-          textEvents: [
+        runtimeEvidenceReportFixture({
+          runtimeReportId: secondReportId,
+          createdAt: "2026-06-17T00:45:00.000Z",
+          captures: [
             {
-              runtimeTextEventId: `${legacyReportId}:text-1`,
-              bridgeUnitId: "bridge-unit-test",
-              text: "Hello, {player}.",
+              ...capture,
+              captureId: "019ed003-0000-7000-8000-000000000c11",
               frame: 1,
-            },
-          ],
-          frameCaptures: [
-            {
-              frameCaptureId: `${legacyReportId}:frame-1`,
-              bridgeUnitId: "bridge-unit-test",
-              width: 320,
-              height: 180,
-              nonZeroPixels: 57600,
-              artifactPath: `artifacts/utsushi/runtime/${legacyReportId}/frames/${legacyReportId}-frame-1.png`,
+              artifactRef: {
+                ...capture.artifactRef,
+                artifactId: "019ed003-0000-7000-8000-000000000c21",
+                uri: `artifacts/utsushi/runtime/${secondReportId}/screenshots/019ed003-0000-7000-8000-000000000c21.png`,
+              },
             },
             {
-              frameCaptureId: `${legacyReportId}:frame-2`,
-              bridgeUnitId: "bridge-unit-test",
-              width: 320,
-              height: 180,
-              nonZeroPixels: 57600,
-              artifactPath: `artifacts/utsushi/runtime/${legacyReportId}/frames/${legacyReportId}-frame-2.png`,
+              ...capture,
+              captureId: "019ed003-0000-7000-8000-000000000c12",
+              frame: 2,
+              artifactRef: {
+                ...capture.artifactRef,
+                artifactId: "019ed003-0000-7000-8000-000000000c22",
+                uri: `artifacts/utsushi/runtime/${secondReportId}/screenshots/019ed003-0000-7000-8000-000000000c22.png`,
+              },
             },
           ],
-          approximations: ["fixture"],
-        },
+        }),
         "019ed003-0000-7000-8000-000000000c91",
       );
 
       await expect(repo.getRuntimeStatus(localActor)).resolves.toMatchObject({
-        runtimeRunId: legacyReportId,
-        frameCaptureCount: 2,
-        screenshotArtifactCount: 0,
+        runtimeRunId: secondReportId,
+        frameCaptureCount: 0,
+        screenshotArtifactCount: 2,
       });
 
-      const legacyArtifactCounts = await context.pool.query<{
+      const secondArtifactCounts = await context.pool.query<{
         screenshot: number;
         frame_capture: number;
       }>(
@@ -183,9 +178,9 @@ describe("ItotoriProjectRepository", () => {
         from itotori_artifacts
         where metadata->>'runtimeReportId' = $1
       `,
-        [legacyReportId],
+        [secondReportId],
       );
-      expect(legacyArtifactCounts.rows[0]).toEqual({ screenshot: 0, frame_capture: 2 });
+      expect(secondArtifactCounts.rows[0]).toEqual({ screenshot: 2, frame_capture: 0 });
     } finally {
       await context.close();
     }
