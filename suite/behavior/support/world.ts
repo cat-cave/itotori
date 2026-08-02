@@ -1,26 +1,14 @@
 import { appendFileSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
 import { World, type IWorldOptions } from "@cucumber/cucumber";
 
-import {
-  isExplicitNonSuccess,
-  observeFailure,
-  type FailureObservation,
-} from "../drivers/explicit-failure.js";
-import {
-  artifactActionResult,
-  artifactConditionResult,
-  observeImmutableArtifactBehavior,
-  type ImmutableArtifactObservation,
-} from "../drivers/immutable-artifact.js";
-import { observeEvidence, type EvidenceObservation } from "../drivers/portable-evidence.js";
-import {
-  observePublicFormatBehavior,
-  publicFormatConditionResult,
-  publicFormatOutcomeResult,
-  type PublicFormatObservation,
-} from "../drivers/public-format.js";
+import type {
+  BehaviorCellStepExecutor,
+  BehaviorCellStepResult,
+  BehaviorProofMode,
+  SelectedBehaviorCase,
+} from "../drivers/behavior-cells/step-contract.js";
 
 interface WorldParameters {
   planPath: string;
@@ -28,36 +16,39 @@ interface WorldParameters {
   repositoryRoot: string;
 }
 
-interface SelectedCase {
-  id: string;
-  behavior: string;
-  subject: string;
-  cell: string;
-  requiredAssertionCount: number;
-  values: Readonly<Record<string, string>>;
+interface SelectedCase extends SelectedBehaviorCase {
+  readonly driverModule: string | null;
 }
 
 interface LoadedPlan {
-  candidateTreeDigest: string;
-  mode: "normal" | "fixed-success";
-  cases: ReadonlyMap<string, SelectedCase>;
+  readonly candidateTreeDigest: string;
+  readonly mode: BehaviorProofMode;
+  readonly cases: ReadonlyMap<string, SelectedCase>;
+  readonly mutationArtifacts: ReadonlyMap<string, string>;
 }
 
 interface CaseResult {
-  caseId: string;
-  behavior: string;
-  subject: string;
-  cell: string;
-  status: "pass" | "fail";
-  assertionCount: number;
-  observationCount: number;
-  reasonCodes: readonly string[];
+  readonly caseId: string;
+  readonly behavior: string;
+  readonly subject: string;
+  readonly cell: string;
+  readonly status: "pass" | "fail";
+  readonly assertionCount: number;
+  readonly observationCount: number;
+  readonly reasonCodes: readonly string[];
+}
+
+interface DriverModule {
+  readonly executeCellStep: BehaviorCellStepExecutor;
 }
 
 const plans = new Map<string, LoadedPlan>();
+const cellDriverExecutors = new Map<string, Promise<BehaviorCellStepExecutor>>();
 const CASE_RESULT_MEDIA_TYPE = "application/vnd.itotori.behavior-case-result+json";
 const CASE_NAME = /\[(case::[^\]]+)\]$/u;
 const PROTECTED_STEP = /^the protected behavior case "([^"]+)" selects "([^"]+)"$/u;
+const DRIVER_MODULE = /^drivers\/behavior-cells\/[a-z0-9-]+\.js$/u;
+const MUTATION_MANIFEST_SCHEMA = "itotori.behavior-fixed-success-mutations.v1";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -69,12 +60,14 @@ function strings(value: unknown): value is Record<string, string> {
 
 function parseCase(value: unknown): SelectedCase {
   if (!isRecord(value)) throw new Error("selection-plan-case-not-object");
-  const { id, behavior, subject, cell, requiredAssertionCount, values } = value;
+  const { id, behavior, subject, cell, driverModule, requiredAssertionCount, values } = value;
   if (
     typeof id !== "string" ||
     typeof behavior !== "string" ||
     typeof subject !== "string" ||
     typeof cell !== "string" ||
+    (driverModule !== null &&
+      (typeof driverModule !== "string" || !DRIVER_MODULE.test(driverModule))) ||
     typeof requiredAssertionCount !== "number" ||
     !Number.isInteger(requiredAssertionCount) ||
     requiredAssertionCount <= 0 ||
@@ -82,7 +75,43 @@ function parseCase(value: unknown): SelectedCase {
   ) {
     throw new Error("selection-plan-case-invalid");
   }
-  return { id, behavior, subject, cell, requiredAssertionCount, values };
+  return { id, behavior, subject, cell, driverModule, requiredAssertionCount, values };
+}
+
+function loadMutationArtifacts(
+  planPath: string,
+  mode: BehaviorProofMode,
+): ReadonlyMap<string, string> {
+  if (mode === "normal") return new Map();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(
+      readFileSync(resolve(dirname(planPath), "fixed-success-mutations.json"), "utf8"),
+    );
+  } catch {
+    throw new Error("fixed-success-mutation-manifest-unreadable");
+  }
+  if (
+    !isRecord(parsed) ||
+    parsed.schema !== MUTATION_MANIFEST_SCHEMA ||
+    !Array.isArray(parsed.mutations)
+  ) {
+    throw new Error("fixed-success-mutation-manifest-invalid");
+  }
+  const artifacts = new Map<string, string>();
+  for (const entry of parsed.mutations) {
+    if (
+      !isRecord(entry) ||
+      typeof entry.cell !== "string" ||
+      typeof entry.mutationArtifactPath !== "string" ||
+      entry.mutationArtifactPath.length === 0 ||
+      artifacts.has(entry.cell)
+    ) {
+      throw new Error("fixed-success-mutation-manifest-entry-invalid");
+    }
+    artifacts.set(entry.cell, entry.mutationArtifactPath);
+  }
+  return artifacts;
 }
 
 function loadPlan(path: string): LoadedPlan {
@@ -100,30 +129,55 @@ function loadPlan(path: string): LoadedPlan {
   const selected = parsed.cases.map(parseCase);
   const cases = new Map(selected.map((entry) => [entry.id, entry]));
   if (cases.size !== selected.length) throw new Error("selection-plan-duplicate-case");
-  const plan: LoadedPlan = { candidateTreeDigest, mode, cases };
+  const mutationArtifacts = loadMutationArtifacts(path, mode);
+  if (
+    mode === "fixed-success" &&
+    selected.some(({ cell, driverModule }) => driverModule !== null && !mutationArtifacts.has(cell))
+  ) {
+    throw new Error("fixed-success-mutation-manifest-missing-registered-cell");
+  }
+  const plan: LoadedPlan = { candidateTreeDigest, mode, cases, mutationArtifacts };
   plans.set(path, plan);
   return plan;
 }
 
-function requireValue(values: Readonly<Record<string, string>>, name: string): string {
-  const value = values[name];
-  if (value === undefined || value.length === 0) throw new Error(`missing-case-value:${name}`);
-  return value;
+function isDriverModule(value: unknown): value is DriverModule {
+  return isRecord(value) && typeof value.executeCellStep === "function";
 }
 
-function check(condition: boolean, code: string): void {
-  if (!condition) throw new Error(code);
+async function loadCellDriverExecutor(driverModule: string): Promise<BehaviorCellStepExecutor> {
+  const cached = cellDriverExecutors.get(driverModule);
+  if (cached !== undefined) return await cached;
+  const pending = import(new URL(`../${driverModule}`, import.meta.url).href).then(
+    (loaded: unknown) => {
+      if (!isDriverModule(loaded)) throw new Error("registered-cell-driver-export-invalid");
+      return loaded.executeCellStep;
+    },
+  );
+  cellDriverExecutors.set(driverModule, pending);
+  return await pending;
+}
+
+function isStepResult(value: unknown): value is BehaviorCellStepResult {
+  if (!isRecord(value)) return false;
+  const countIsValid = (count: unknown) =>
+    count === undefined || (typeof count === "number" && Number.isSafeInteger(count) && count >= 0);
+  return (
+    countIsValid(value.observationCount) &&
+    countIsValid(value.assertionCount) &&
+    (value.reasonCodes === undefined ||
+      (Array.isArray(value.reasonCodes) &&
+        value.reasonCodes.every((code) => typeof code === "string"))) &&
+    (value.deferredFailure === undefined || typeof value.deferredFailure === "string")
+  );
 }
 
 export class BehaviorWorld extends World<WorldParameters> {
   private readonly plan: LoadedPlan;
   private readonly resultsPath: string;
   private readonly repositoryRoot: string;
+  private readonly workRoot: string;
   private selected?: SelectedCase;
-  private failure?: FailureObservation;
-  private evidence?: EvidenceObservation;
-  private artifact?: ImmutableArtifactObservation;
-  private publicFormat?: PublicFormatObservation;
   private stepIndex = -1;
   private assertions = 0;
   private observations = 0;
@@ -132,9 +186,11 @@ export class BehaviorWorld extends World<WorldParameters> {
 
   constructor(options: IWorldOptions<WorldParameters>) {
     super(options);
-    this.plan = loadPlan(resolve(options.parameters.planPath));
+    const planPath = resolve(options.parameters.planPath);
+    this.plan = loadPlan(planPath);
     this.resultsPath = resolve(options.parameters.resultsPath);
     this.repositoryRoot = resolve(options.parameters.repositoryRoot);
+    this.workRoot = resolve(dirname(planPath), "work");
   }
 
   begin(pickleName: string): void {
@@ -150,286 +206,35 @@ export class BehaviorWorld extends World<WorldParameters> {
     if (selected === undefined) throw new Error("case-not-started");
     const protectedMatch = PROTECTED_STEP.exec(text);
     if (protectedMatch !== null) {
-      check(protectedMatch[1] === selected.id, "protected-case-id-mismatch");
-      check(protectedMatch[2] === selected.subject, "protected-subject-mismatch");
+      if (protectedMatch[1] !== selected.id) throw new Error("protected-case-id-mismatch");
+      if (protectedMatch[2] !== selected.subject) throw new Error("protected-subject-mismatch");
       this.stepIndex = 0;
       return;
     }
     if (this.stepIndex < 0) throw new Error("protected-selector-not-first");
-    const originalStep = this.stepIndex;
+    const index = this.stepIndex;
     this.stepIndex += 1;
-    if (selected.behavior === "quality.failures-stay-explicit") {
-      this.executeFailureStep(selected, originalStep, text);
-      return;
+    if (selected.driverModule === null) {
+      this.reasonCodes.push("missing-execution");
+      throw new Error(`missing-execution:${selected.cell}`);
     }
-    if (selected.behavior === "quality.evidence-is-traceable-and-portable") {
-      this.executeEvidenceStep(selected, originalStep, text);
-      return;
-    }
-    if (selected.behavior === "platform.artifacts-are-immutable-and-retained-by-policy") {
-      await this.executeArtifactStep(selected, originalStep, text);
-      return;
-    }
-    if (selected.behavior === "platform.public-formats-upgrade-predictably") {
-      this.executePublicFormatStep(selected, originalStep, text);
-      return;
-    }
-    this.reasonCodes.push("missing-execution");
-    throw new Error(`missing-execution:${selected.cell}`);
-  }
-
-  private executeFailureStep(selected: SelectedCase, index: number, text: string): void {
-    if (index === 0) {
-      const operation = requireValue(selected.values, "operation");
-      const failureCase = requireValue(selected.values, "failure_case");
-      const entrypoint = requireValue(selected.values, "entrypoint");
-      check(
-        text === `${operation} receives ${failureCase} through ${entrypoint}`,
-        "failure-given-mismatch",
-      );
-      this.failure = observeFailure(
-        {
-          operation,
-          failureCase,
-          entrypoint,
-          repositoryRoot: this.repositoryRoot,
-          workRoot: resolve(".tmp", "behavior-proof", "work"),
-        },
-        this.plan.mode === "fixed-success",
-      );
-      this.observations = this.failure.observedFields;
-      return;
-    }
-    if (index === 1) {
-      check(text === "the request settles", "failure-when-mismatch");
-      check(this.failure !== undefined, "failure-not-observed");
-      return;
-    }
-    const failure = this.failure;
-    if (failure === undefined) throw new Error("failure-not-observed");
-    if (index === 2) {
-      const expected = requireValue(selected.values, "failure_class");
-      check(text === `the caller receives ${expected}`, "failure-class-step-mismatch");
-      check(failure.failureClass === expected, "failure-class-mismatch");
-    } else if (index === 3) {
-      const expected = requireValue(selected.values, "diagnostic_outcome");
-      check(text === `the outcome contains ${expected}`, "failure-diagnostic-step-mismatch");
-      check(failure.diagnostic === expected, "failure-diagnostic-mismatch");
-    } else if (index === 4) {
-      check(
-        text === "no successful, skipped, defaulted, or fixed-empty result is reported",
-        "failure-final-step-mismatch",
-      );
-      check(isExplicitNonSuccess(failure), "empty-or-successful-failure-result");
-    } else {
-      throw new Error("unbound-explicit-failure-step");
-    }
-    this.assertions += 1;
-  }
-
-  private executeEvidenceStep(selected: SelectedCase, index: number, text: string): void {
-    if (index === 0) {
-      const evidenceKind = requireValue(selected.values, "evidence_kind");
-      const sourceClass = requireValue(selected.values, "source_class");
-      const privacyClass = requireValue(selected.values, "privacy_class");
-      const contentCase = requireValue(selected.values, "content_case");
-      check(
-        text ===
-          `${evidenceKind} from ${sourceClass} has ${privacyClass} visibility and ${contentCase}`,
-        "evidence-given-mismatch",
-      );
-      this.evidence = observeEvidence(
-        {
-          caseId: selected.id,
-          evidenceKind,
-          sourceClass,
-          privacyClass,
-          contentCase,
-          referenceKind: requireValue(selected.values, "reference_kind"),
-          candidateRevision: this.plan.candidateTreeDigest,
-          repositoryRoot: this.repositoryRoot,
-          workRoot: resolve(".tmp", "behavior-proof", "work"),
-        },
-        this.plan.mode === "fixed-success",
-      );
-      this.observations = this.evidence.observedFields;
-      return;
-    }
-    const evidence = this.evidence;
-    if (evidence === undefined) throw new Error("evidence-not-observed");
-    if (index === 1) {
-      check(
-        text ===
-          `an independent auditor resolves its ${requireValue(selected.values, "reference_kind")} in a fresh environment`,
-        "evidence-when-mismatch",
-      );
-      return;
-    }
-    const expected = requireValue(selected.values, "audit_outcome");
-    const clauses = [
-      "producer, source revision, input and output hashes, privacy class, and outcome are present",
-      `resolution ends as ${expected}`,
-      "reference expectations identify a producer independent from the output under evaluation",
-      "copying evaluated output into expected data invalidates provenance",
-      "every accepted artifact set belongs to one coherent source lineage and regenerates all dependents deterministically after a source change",
-      "tampering, stale revision, or environment-local location makes the evidence invalid",
-    ];
-    check(text === clauses[index - 2], `portable-evidence-step-${index - 1}-mismatch`);
-    const conditions = [
-      evidence.metadataComplete && evidence.restrictedPublicationWithheld,
-      evidence.auditOutcome === expected && evidence.freshResolution,
-      evidence.independentProducer,
-      evidence.copiedExpectationRejected,
-      evidence.coherentLineage && evidence.deterministicDependents,
-      evidence.tamperRejected && evidence.staleRevisionRejected && evidence.localLocationRejected,
-    ];
-    const condition = conditions[index - 2];
-    if (condition === undefined) throw new Error("unbound-portable-evidence-step");
-    check(condition, `portable-evidence-assertion-${index - 1}`);
-    this.assertions += 1;
-  }
-
-  private async executeArtifactStep(
-    selected: SelectedCase,
-    index: number,
-    text: string,
-  ): Promise<void> {
-    if (index === 0) {
-      check(
-        text ===
-          `${requireValue(selected.values, "actor")} handles ${requireValue(
-            selected.values,
-            "artifact_kind",
-          )} with ${requireValue(selected.values, "privacy_class")} classification and ${requireValue(
-            selected.values,
-            "retention_policy",
-          )}`,
-        "artifact-given-mismatch",
-      );
-      this.artifact = await observeImmutableArtifactBehavior(
-        this.repositoryRoot,
-        this.plan.mode === "fixed-success",
-      );
-      this.observations = this.artifact.observedFields;
-      return;
-    }
-    const artifact = this.artifact;
-    if (artifact === undefined) throw new Error("artifact-not-observed");
-    if (index === 1) {
-      check(
-        text === `the actor performs ${requireValue(selected.values, "artifact_action")}`,
-        "artifact-when-mismatch",
-      );
-      return;
-    }
-    if (index === 2) {
-      check(
-        text ===
-          `hash identity, immutability, and authorization end as ${requireValue(
-            selected.values,
-            "expected_outcome",
-          )}`,
-        "artifact-outcome-mismatch",
-      );
-      this.recordArtifactResult(
-        artifactActionResult(artifact, requireValue(selected.values, "artifact_action")),
-      );
-      this.recordArtifactResult(artifactConditionResult(artifact, "authorized-retention"));
-    } else if (index === 3) {
-      check(
-        text === "expiry removes only unreferenced eligible content",
-        "artifact-expiry-mismatch",
-      );
-      this.recordArtifactResult(artifactConditionResult(artifact, "expiry"));
-    } else if (index === 4) {
-      check(
-        text ===
-          "any authorized prune records its exact scope and preserves required referential evidence",
-        "artifact-prune-mismatch",
-      );
-      this.recordArtifactResult(artifactConditionResult(artifact, "prune"));
-    } else if (index === 5) {
-      check(
-        text === "retained lineage never points to missing content as if it were available",
-        "artifact-lineage-mismatch",
-      );
-      this.recordArtifactResult(artifactConditionResult(artifact, "lineage"));
-    } else if (index === 6) {
-      check(
-        text ===
-          "every retained audit event preserves its actor, target, outcome, and append order",
-        "artifact-audit-mismatch",
-      );
-      this.recordArtifactResult(artifactConditionResult(artifact, "audit"));
-      this.recordArtifactResult(artifactConditionResult(artifact, "incompatible-version"));
-    } else {
-      throw new Error("unbound-immutable-artifact-step");
-    }
-    this.assertions += 1;
-    if (index === 6 && this.reasonCodes.length > 0) {
-      this.deferredFailure = `immutable-artifact-conditions-failed:${this.reasonCodes.join(",")}`;
-    }
-  }
-
-  private recordArtifactResult(result: { passed: boolean; reason: string }): void {
-    if (!result.passed) this.reasonCodes.push(result.reason);
-  }
-
-  private executePublicFormatStep(selected: SelectedCase, index: number, text: string): void {
-    if (index === 0) {
-      check(
-        text ===
-          `${requireValue(selected.values, "consumer")} holds ${requireValue(
-            selected.values,
-            "format_kind",
-          )} at ${requireValue(selected.values, "from_version")}`,
-        "public-format-given-mismatch",
-      );
-      this.publicFormat = observePublicFormatBehavior(
-        this.repositoryRoot,
-        this.plan.mode === "fixed-success",
-      );
-      this.observations = this.publicFormat.observedFields;
-      return;
-    }
-    const observation = this.publicFormat;
-    if (observation === undefined) throw new Error("public-format-not-observed");
-    if (index === 1) {
-      check(
-        text ===
-          `version ${requireValue(selected.values, "to_version")} reads or migrates ${requireValue(
-            selected.values,
-            "compatibility_case",
-          )}`,
-        "public-format-when-mismatch",
-      );
-      return;
-    }
-    const clauses = [
-      `every exposed boundary returns ${requireValue(selected.values, "expected_outcome")}`,
-      "an incompatible case names the exact migration or version requirement",
-      "no boundary silently interprets the same version differently",
-      "rejected requests create no persisted effect",
-      "package, command, service, and produced-artifact versions agree without placeholder values",
-    ];
-    const clause = clauses[index - 2];
-    if (clause === undefined) throw new Error("unbound-public-format-step");
-    check(text === clause, `public-format-step-${index - 1}-mismatch`);
-    const result =
-      index === 2
-        ? publicFormatOutcomeResult(observation, requireValue(selected.values, "expected_outcome"))
-        : index === 3
-          ? publicFormatConditionResult(observation, "typed-incompatibility")
-          : index === 4
-            ? publicFormatConditionResult(observation, "one-negotiated-meaning")
-            : index === 5
-              ? publicFormatConditionResult(observation, "no-persisted-effect")
-              : publicFormatConditionResult(observation, "version-agreement");
-    this.recordArtifactResult(result);
-    this.assertions += 1;
-    if (index === 6 && this.reasonCodes.length > 0) {
-      this.deferredFailure = `public-format-conditions-failed:${this.reasonCodes.join(",")}`;
-    }
+    const executeCellStep = await loadCellDriverExecutor(selected.driverModule);
+    const result: unknown = await executeCellStep({
+      execution: this,
+      selected,
+      index,
+      text,
+      repositoryRoot: this.repositoryRoot,
+      workRoot: this.workRoot,
+      candidateTreeDigest: this.plan.candidateTreeDigest,
+      mutationArtifactPath: this.plan.mutationArtifacts.get(selected.cell) ?? null,
+      mode: this.plan.mode,
+    });
+    if (!isStepResult(result)) throw new Error("registered-cell-driver-result-invalid");
+    this.assertions += result.assertionCount ?? 0;
+    this.observations += result.observationCount ?? 0;
+    if (result.reasonCodes !== undefined) this.reasonCodes.push(...result.reasonCodes);
+    if (result.deferredFailure !== undefined) this.deferredFailure = result.deferredFailure;
   }
 
   finish(cucumberPassed: boolean): void {

@@ -2,6 +2,10 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { writeFixedSuccessMutationArtifact } from "./behavior-fixed-success-mutation-contract.mjs";
+
+const CELL = "cell::platform.public-formats-upgrade-predictably::all";
+
 function replaceOnce(source, find, replacement, label) {
   const parts = source.split(find);
   if (parts.length !== 2) {
@@ -57,4 +61,12 @@ export function preparePublicFormatFixedSuccessMutation(root, workRoot) {
     throw new Error("public-format-mutation-build-marker-missing");
   }
   return mutationRoot;
+}
+
+export function prepareFixedSuccessMutation(root, workRoot) {
+  const mutationRoot = preparePublicFormatFixedSuccessMutation(root, workRoot);
+  return {
+    mutationRoot,
+    mutationArtifactPath: writeFixedSuccessMutationArtifact(mutationRoot, CELL),
+  };
 }

@@ -7,15 +7,19 @@ import { loadSources } from "@cucumber/cucumber/api";
 
 import { parseFeature } from "../audit-behavior-catalog-gherkin.mjs";
 import { buildBehaviorCaseSelection } from "../behavior-case-selection.mjs";
+import { behaviorCells } from "./behavior-cell-registry.mjs";
 import { rootLaneFragments } from "./behavior-proof-fragments.mjs";
 
 const EXPECTED_IDENTITY_DIGEST = "48777d244fafe26e8ba834ed6b456b1756217380ef6a4af17ef27b42a942bcb3";
-const OWNED_BEHAVIORS = new Set([
-  "platform.artifacts-are-immutable-and-retained-by-policy",
-  "platform.public-formats-upgrade-predictably",
-  "quality.failures-stay-explicit",
-  "quality.evidence-is-traceable-and-portable",
-]);
+
+function registeredCellsByIdentity() {
+  const registered = new Map();
+  for (const entry of behaviorCells) {
+    if (registered.has(entry.cell)) throw new Error(`duplicate-registered-cell:${entry.cell}`);
+    registered.set(entry.cell, entry);
+  }
+  return registered;
+}
 
 function digest(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
@@ -161,9 +165,11 @@ export async function buildBehaviorProofPlan({ root = process.cwd(), mode = "nor
   const selection = buildBehaviorCaseSelection({ scenarios, engines, classifications });
   if (!selection.ok) throw new Error(selection.errors.join("; "));
   const scenarioByBehavior = new Map(scenarios.map((scenario) => [scenario.id, scenario]));
+  const registered = registeredCellsByIdentity();
   const cases = selection.cases.map((selectedCase) => {
     const scenario = scenarioByBehavior.get(selectedCase.behavior);
     if (scenario === undefined) throw new Error(`missing scenario ${selectedCase.behavior}`);
+    const registration = registered.get(selectedCase.cell);
     return {
       id: selectedCase.id,
       behavior: selectedCase.behavior,
@@ -173,8 +179,9 @@ export async function buildBehaviorProofPlan({ root = process.cwd(), mode = "nor
       comparisonSubject: selectedCase.comparisonSubject,
       authoredRow: selectedCase.authoredRow,
       sourcePath: relative(root, selectedCase.sourcePath),
-      lane: OWNED_BEHAVIORS.has(selectedCase.behavior) ? "public-ts" : null,
-      laneResolution: OWNED_BEHAVIORS.has(selectedCase.behavior) ? "assigned" : "unclassified",
+      lane: registration?.lane ?? null,
+      laneResolution: registration === undefined ? "unclassified" : "assigned",
+      driverModule: registration?.driverModule ?? null,
       values: selectedCase.arguments,
       title: scenario.title,
       requiredAssertionCount: requiredAssertionCount(scenario.steps),
@@ -184,6 +191,10 @@ export async function buildBehaviorProofPlan({ root = process.cwd(), mode = "nor
       })),
     };
   });
+  const selectedCells = new Set(cases.map(({ cell }) => cell));
+  for (const { cell } of behaviorCells) {
+    if (!selectedCells.has(cell)) throw new Error(`registered-cell-not-selected:${cell}`);
+  }
   const classificationPath = resolve(root, "docs", "roadmap", "classification.jsonl");
   const candidateTreeDigest = trackedCandidateDigest(root);
   const plan = {
@@ -225,8 +236,9 @@ export async function buildBehaviorProofPlan({ root = process.cwd(), mode = "nor
 }
 
 export function renderSelectedFeature(plan, { mutationOnly = false } = {}) {
+  const registered = registeredCellsByIdentity();
   const selectedCases = mutationOnly
-    ? plan.cases.filter(({ behavior }) => OWNED_BEHAVIORS.has(behavior))
+    ? plan.cases.filter(({ cell }) => registered.has(cell))
     : plan.cases;
   const lines = [
     "Feature: Execute the protected behavior selection plan",
