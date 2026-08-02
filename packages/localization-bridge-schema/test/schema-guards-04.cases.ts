@@ -286,7 +286,10 @@ describe("localization bridge schema guards", () => {
       { raw: "{name}", targetStart: 11, targetEnd: 17 },
     ];
 
-    expect(() => assertPatchExportV02(noIdentityPatchExport)).toThrow(/sourceSpanId/);
+    expect(() => assertPatchExportV02(noIdentityPatchExport)).not.toThrow();
+    expect(evaluatePatchExportCompatibilityV02(noIdentityPatchExport, bridge).status).toBe(
+      "incompatible",
+    );
   });
 
   it("rejects duplicate source-identity protected spans (strict v0.2 identity)", () => {
@@ -321,8 +324,8 @@ describe("localization bridge schema guards", () => {
     );
   });
 
-  it.each(["sourceSpanId", "sourceStartByte", "sourceEndByte"] as const)(
-    "rejects a protected-span mapping missing required source identity field %s",
+  it.each(["sourceStartByte", "sourceEndByte"] as const)(
+    "rejects an incomplete optional source-coordinate pair missing %s",
     (missingField) => {
       const bridge = bridgeV02Example();
       const patchExport = patchExportV02Example(bridge, 1);
@@ -339,19 +342,17 @@ describe("localization bridge schema guards", () => {
     },
   );
 
-  it("rejects raw-only protected-span mappings", () => {
+  it("accepts raw-only v0.2 protected-span mappings when their raw text is unambiguous", () => {
     const bridge = bridgeV02Example();
     const patchExport = patchExportV02Example(bridge, 1);
     const entry = asTestRecord(
       (patchExport.entries as Array<Record<string, unknown>>)[0],
       "first v0.2 patch export entry",
     );
-    entry.protectedSpanMappings = [
-      { raw: "{name}", targetStart: 0, targetEnd: 6 },
-      { raw: "{name}", targetStart: 11, targetEnd: 17 },
-    ];
+    entry.protectedSpanMappings = [{ raw: "{player}", targetStart: 9, targetEnd: 17 }];
 
-    expect(() => assertPatchExportV02(patchExport)).toThrow(/sourceSpanId/);
+    expect(() => assertPatchExportV02(patchExport)).not.toThrow();
+    expect(evaluatePatchExportCompatibilityV02(patchExport, bridge).status).toBe("compatible");
   });
 
   it("reports protected span mapping mismatches for wrong source identity or collapsed duplicates", () => {
@@ -384,13 +385,12 @@ describe("localization bridge schema guards", () => {
       "first v0.2 patch export entry",
     );
     entry.targetText = "{name} and {name}";
-    // The second mapping carries a unique id but combines it with the first
-    // span's byte range, so the schema-valid identity tuple names no source
-    // span and the compatibility evaluator rejects it.
+    // Both mappings resolve to the same source span through optional source
+    // byte coordinates. The schema accepts the paired coordinates, then the
+    // compatibility evaluator rejects the collapsed source identity.
     entry.protectedSpanMappings = [
       {
         raw: "{name}",
-        sourceSpanId: "019ed001-0000-7000-8000-000000000851",
         sourceStartByte: 0,
         sourceEndByte: 6,
         targetStart: 0,
@@ -398,7 +398,6 @@ describe("localization bridge schema guards", () => {
       },
       {
         raw: "{name}",
-        sourceSpanId: "019ed001-0000-7000-8000-000000000852",
         sourceStartByte: 0,
         sourceEndByte: 6,
         targetStart: 11,
@@ -406,6 +405,7 @@ describe("localization bridge schema guards", () => {
       },
     ];
 
+    expect(() => assertPatchExportV02(patchExport)).not.toThrow();
     const report = evaluatePatchExportCompatibilityV02(patchExport, bridge);
 
     expect(report.status).toBe("incompatible");

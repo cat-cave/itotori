@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
 
 import {
+  failedRuntimeEvidenceReportFixture,
   localActor,
   projectFixture,
   projectFixtureBundleRevisionId,
@@ -32,9 +33,8 @@ describe("ItotoriProjectRepository", () => {
       await repo.saveRuntimeReport(
         localActor,
         project,
-        runtimeEvidenceReportFixture({
+        failedRuntimeEvidenceReportFixture({
           runtimeReportId: "019ed003-0000-7000-8000-000000000902",
-          status: "failed",
           createdAt: "2026-06-17T00:10:00.000Z",
           traceEvents: [
             {

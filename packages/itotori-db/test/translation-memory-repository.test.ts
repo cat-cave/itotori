@@ -99,6 +99,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
         localeBranchId: "locale-en-us",
         requestedTargetLocale: "en-US",
         targetBridgeUnitId: targetExact.bridgeUnitId,
+        includeFuzzy: true,
         candidateLimit: 5,
       });
       expect(matchSet?.matches.map((match) => match.memorySegmentId)).toEqual([

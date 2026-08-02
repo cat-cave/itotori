@@ -70,6 +70,7 @@ import {
   assertEqual,
   assertNoMutableEventBucketFields,
   assertNonNegativeInteger,
+  assertOptionalNonNegativeInteger,
   assertOptionalUuid7,
   assertPixelRegionV02,
   assertUuid7,
@@ -285,33 +286,43 @@ export function assertPatchExportEntryV02(
   assertSourceRevisionV02(entry.sourceRevision, `${label}.sourceRevision`);
   assertString(entry.targetText, `${label}.targetText`);
   const mappings = asArray(entry.protectedSpanMappings, `${label}.protectedSpanMappings`);
-  // Every v0.2 mapping names one source span. Reusing that identity would make
-  // two target ranges claim the same source occurrence.
+  // Optional v0.2 source identities identify one source occurrence when they
+  // are supplied. Reusing an identity would make two target ranges claim that
+  // occurrence; raw-only mappings intentionally carry no identity to track.
   const seenSourceSpanIds = new Set<string>();
   for (const [index, mapping] of mappings.entries()) {
     const mappingLabel = `${label}.protectedSpanMappings[${index}]`;
+    const sourceSpanId = asRecord(mapping, mappingLabel).sourceSpanId;
     assertProtectedSpanMappingV02(mapping, mappingLabel);
-    if (seenSourceSpanIds.has(mapping.sourceSpanId)) {
-      throw new Error(
-        `${mappingLabel}.sourceSpanId duplicates an earlier protected-span source identity within ${label}: kaifuu.patch_export.duplicate_source_span_identity`,
-      );
+    if (typeof sourceSpanId === "string") {
+      if (seenSourceSpanIds.has(sourceSpanId)) {
+        throw new Error(
+          `${mappingLabel}.sourceSpanId duplicates an earlier protected-span source identity within ${label}: kaifuu.patch_export.duplicate_source_span_identity`,
+        );
+      }
+      seenSourceSpanIds.add(sourceSpanId);
     }
-    seenSourceSpanIds.add(mapping.sourceSpanId);
   }
 }
 
-export function assertProtectedSpanMappingV02(
-  value: unknown,
-  label: string,
-): asserts value is PatchExportEntryV02["protectedSpanMappings"][number] {
+export function assertProtectedSpanMappingV02(value: unknown, label: string): void {
   const mapping = asRecord(value, label);
   assertString(mapping.raw, `${label}.raw`);
-  assertUuid7(mapping.sourceSpanId, `${label}.sourceSpanId`);
+  assertOptionalUuid7(mapping.sourceSpanId, `${label}.sourceSpanId`);
   const sourceStartByte = mapping.sourceStartByte;
   const sourceEndByte = mapping.sourceEndByte;
-  assertNonNegativeInteger(sourceStartByte, `${label}.sourceStartByte`);
-  assertNonNegativeInteger(sourceEndByte, `${label}.sourceEndByte`);
-  if (sourceEndByte <= sourceStartByte) {
+  assertOptionalNonNegativeInteger(sourceStartByte, `${label}.sourceStartByte`);
+  assertOptionalNonNegativeInteger(sourceEndByte, `${label}.sourceEndByte`);
+  if ((sourceStartByte === undefined) !== (sourceEndByte === undefined)) {
+    throw new Error(
+      `${label}.sourceStartByte and ${label}.sourceEndByte must be provided together`,
+    );
+  }
+  if (
+    sourceStartByte !== undefined &&
+    sourceEndByte !== undefined &&
+    sourceEndByte <= sourceStartByte
+  ) {
     throw new Error(`${label}.sourceEndByte must be greater than ${label}.sourceStartByte`);
   }
   const targetStart = mapping.targetStart;

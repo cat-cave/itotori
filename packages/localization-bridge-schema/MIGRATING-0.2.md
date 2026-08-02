@@ -77,15 +77,15 @@ Do not collapse unknown speakers into a single string or boolean.
   source unit, and unit-level `sourceHash`. A bundle hash change must be
   reported for traceability, but it must not invalidate unchanged units whose
   unit hash still matches.
-- For `preserveMode: "map"` spans, every `protectedSpanMappings[]` item carries
-  `sourceSpanId`, `sourceStartByte`, and `sourceEndByte` so reordered or
-  duplicate raw spans are matched by source identity and explicit target byte
-  range, not by source span order. Raw-only mappings are not a v0.2 shape and
-  are rejected. A `sourceSpanId` names exactly one source span, so reusing it
-  within an entry is rejected with
-  `kaifuu.patch_export.duplicate_source_span_identity`. Two mappings with the
-  same `raw` but distinct source identities remain allowed; their explicit
-  target ranges disambiguate the occurrences.
+- For `preserveMode: "map"` spans, `protectedSpanMappings[]` can carry optional
+  `sourceSpanId` and/or paired `sourceStartByte`/`sourceEndByte` coordinates so
+  reordered or duplicate raw spans are matched by source identity and explicit
+  target byte range, not source span order. Raw-only mappings remain a valid
+  v0.2 shape when their raw occurrence is unambiguous. A supplied
+  `sourceSpanId` names exactly one source span, so reusing it within an entry is
+  rejected with `kaifuu.patch_export.duplicate_source_span_identity`. Two
+  mappings with the same `raw` need distinct source identities and explicit
+  target ranges.
 - `evaluatePatchExportCompatibilityV02` returns compatible and incompatible
   unit lists. `source_hash_mismatch` includes both expected and actual source
   hashes so stale patches cannot pass silently. `bridge_unit_id_mismatch`

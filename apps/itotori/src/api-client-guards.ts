@@ -23,6 +23,8 @@ const API_ERROR_RESPONSE_CODES = [
   "internal_error",
 ] as const satisfies readonly ApiErrorResponse["code"][];
 
+const BROWSER_BRIDGE_SCHEMA_VERSION = "0.2.0";
+
 const REQUIRED_RESPONSE_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, readonly string[]>>> = {
   "auth.capabilities": ["schemaVersion", "actorUserId", "denials"],
   "projects.list": ["projects"],
@@ -77,6 +79,10 @@ export function assertBrowserItotoriApiResponse(
 ): asserts body is BrowserCatalogContextPanelResponse;
 export function assertBrowserItotoriApiResponse(routeId: ItotoriApiRouteId, body: unknown): void;
 export function assertBrowserItotoriApiResponse(routeId: ItotoriApiRouteId, body: unknown): void {
+  if (routeId === "projects.decodeExtract") {
+    const response = assertRecord(body, "response for projects.decodeExtract");
+    assertBrowserBridgeInput(response.bridge);
+  }
   const record = assertRecord(body, `response for ${routeId}`);
   for (const key of REQUIRED_RESPONSE_KEYS[routeId] ?? []) {
     if (!(key in record)) {
@@ -85,6 +91,13 @@ export function assertBrowserItotoriApiResponse(routeId: ItotoriApiRouteId, body
   }
   if (routeId === "catalog.contextPanel") {
     assertBrowserCatalogContextPanelResponse(body);
+  }
+}
+
+export function assertBrowserItotoriApiRequest(routeId: ItotoriApiRouteId, body: unknown): void {
+  if (routeId === "imports.bridge") {
+    const request = assertRecord(body, "request for imports.bridge");
+    assertBrowserBridgeInput(request.bridge);
   }
 }
 
@@ -407,7 +420,7 @@ function assertLiteral(value: unknown, expected: string, label: string): void {
  */
 export function assertBrowserBridgeInput(value: unknown): asserts value is Record<string, unknown> {
   const bridge = assertRecord(value, "BridgeInput");
-  if (typeof bridge.schemaVersion !== "string" || bridge.schemaVersion.length === 0) {
-    throw new Error("BridgeInput.schemaVersion is required");
+  if (bridge.schemaVersion !== BROWSER_BRIDGE_SCHEMA_VERSION) {
+    throw new Error("BridgeInput.schemaVersion must be 0.2.0; migrate before import");
   }
 }

@@ -23,6 +23,16 @@ export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+export function runtimeArtifactUriRejectionError(uri: string): RegExp {
+  return new RegExp(
+    [
+      "RuntimeEvidenceReportV02\\.captures\\[0\\]\\.artifactRef\\.uri must (?:be a portable relative runtime artifact path|reference an artifact, not embed artifact bytes|be portable and must not be an absolute local path|use portable forward-slash artifact paths)",
+      `runtime artifact uri must be a portable relative artifact path: ${escapeRegExp(uri)}`,
+    ].join("|"),
+    "u",
+  );
+}
+
 export function requiredFixtureValue<T>(value: T | null | undefined, label: string): T {
   if (value === undefined || value === null) {
     throw new Error(`fixture is missing ${label}`);
@@ -380,5 +390,19 @@ export function runtimeEvidenceReportFixture(
     validationFindings: [],
     limitations: ["No reference-runtime pixel comparison is performed."],
     ...overrides,
+  };
+}
+
+export function failedRuntimeEvidenceReportFixture(
+  overrides: Partial<RuntimeEvidenceReportV02> = {},
+): RuntimeEvidenceReportV02 {
+  const report = runtimeEvidenceReportFixture({ ...overrides, status: "failed" });
+  const controlledPlaybackSession = requiredFixtureValue(
+    report.controlledPlaybackSession,
+    "failed runtime controlled playback session",
+  );
+  return {
+    ...report,
+    controlledPlaybackSession: { ...controlledPlaybackSession, status: "failed" },
   };
 }

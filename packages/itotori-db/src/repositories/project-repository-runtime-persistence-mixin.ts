@@ -20,8 +20,8 @@ export class ProjectRuntimePersistenceRepository extends ProjectRepositoryBase {
     runtimeReport: unknown,
     patchResultId: string,
   ): Promise<api.ProjectDashboardStatus> {
-    deps.assertRuntimeEvidenceReportV02(runtimeReport);
     await deps.requirePermission(this.db, actor, deps.permissionValues.runtimeIngest);
+    deps.assertRuntimeEvidenceReportV02(runtimeReport);
     const runtimeReportId = helpers.runtimeReportIdFor(runtimeReport);
     const adapterName = helpers.runtimeAdapterName(runtimeReport);
     const adapterVersion = helpers.runtimeAdapterVersion(runtimeReport);

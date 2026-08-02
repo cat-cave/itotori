@@ -48,8 +48,8 @@
       "path": "fixtures/hello-game/expected/patch-export-v0.2.fr-FR.json",
       "role": "patch-export",
       "mediaType": "application/json",
-      "sha256": "4e398ccde1cd3e7f0e4af0ac258cc3b9fec60da5765afb2b7fc0009f3dbd8328",
-      "bytes": 9076,
+      "sha256": "e5608e2c45c26aa0414f05be3bfcafd12af0189ece174435a4d227eb49d2180a",
+      "bytes": 8686,
       "redistributable": true
     },
     {

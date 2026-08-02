@@ -183,25 +183,19 @@ pub fn validate_contract_compatibility_report_v02(value: &Value) -> BridgeContra
 /// # Duplicate protected-span policy
 /// A `protectedSpanMappings` entry may be one of two shapes, and the two are
 /// deliberately governed by different duplicate rules:
-/// - **Legacy (v0.1-shaped) spans** carry only `raw` plus a target byte range
-///   and no source identity (`sourceSpanId`/`sourceStartByte`/`sourceEndByte`).
-///   These are **compatibility-preserving**: a duplicate `raw` value is
-///   ALLOWED. The same protected literal (a variable token, a markup tag, a
-///   glossary term) legitimately recurs inside one unit, and the distinct
-///   target byte ranges disambiguate the occurrences. Rejecting duplicate raw
-///   would drop faithful coverage of repeated tokens and break patches emitted
-///   by older exporters that never populated source identity.
-/// - **v0.2 source-identity spans** additionally carry a `sourceSpanId`
-///   (UUID7). A `sourceSpanId` names exactly one source span, so it is held to
-///   a **strict identity requirement**: a duplicate `sourceSpanId` within an
-///   entry is an identity collision and is REJECTED with the typed diagnostic
-///   `kaifuu.patch_export.duplicate_source_span_identity`. Two identity spans
-///   with the SAME `raw` but DISTINCT `sourceSpanId`s stay allowed — that is
-///   exactly the reordered/duplicate-raw case source identity exists to carry
+/// - **Raw-only v0.2 mappings** carry only `raw` plus a target byte range and
+///   no source metadata (`sourceSpanId`/`sourceStartByte`/`sourceEndByte`). A
+///   duplicate `raw` value is valid at this structural boundary because the
+///   target byte ranges remain explicit. Source compatibility later verifies
+///   that each raw occurrence is unambiguous before an adapter applies it.
+/// - **v0.2 source-metadata mappings** additionally carry a `sourceSpanId`
+///   (UUID7) and/or source byte coordinates. A supplied `sourceSpanId` names
+///   exactly one source span, so a duplicate `sourceSpanId` within an entry is
+///   an identity collision and is REJECTED with the typed diagnostic
+///   `kaifuu.patch_export.duplicate_source_span_identity`. Two metadata
+///   mappings with the SAME `raw` but DISTINCT `sourceSpanId`s stay allowed —
+///   that is the reordered/duplicate-raw case source metadata can represent
 ///   (see `MIGRATING-0.2.md`).
-///   This keeps legacy v0.1 raw-only exports genuinely distinct from v0.2
-///   identity-carrying exports: the former preserve duplicates, the latter reject
-///   duplicate identities.
 fn validate_contract_fixture_manifest_entry(
     value: &Value,
     label: &str,

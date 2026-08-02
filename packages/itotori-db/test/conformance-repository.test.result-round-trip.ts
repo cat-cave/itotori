@@ -18,7 +18,6 @@ function projectFixture(projectId: string): ItotoriProjectRecord {
     seed: `conformance:${projectId}`,
     projectId,
     localeBranchId: `${projectId}-branch`,
-    units: [],
   });
 }
 

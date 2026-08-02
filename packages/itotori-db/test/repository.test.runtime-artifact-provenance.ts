@@ -6,11 +6,11 @@ import { FormatVersionMismatchError } from "@itotori/localization-bridge-schema"
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
 
 import {
-  escapeRegExp,
   invalidManagedRuntimeArtifactUriCases,
   localActor,
   projectFixture,
   projectFixtureUnitId,
+  runtimeArtifactUriRejectionError,
   runtimeEvidenceReportFixture,
   stableSerializeHashInput,
   v02Sha256,
@@ -276,7 +276,7 @@ describe("ItotoriProjectRepository", () => {
             }),
             "019ed003-0000-7000-8000-000000000983",
           ),
-        ).rejects.toThrow(new RegExp(`portable relative artifact path.*${escapeRegExp(uri)}`));
+        ).rejects.toThrow(runtimeArtifactUriRejectionError(uri));
       }
     } finally {
       await context.close();

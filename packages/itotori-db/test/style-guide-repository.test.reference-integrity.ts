@@ -201,8 +201,8 @@ describe("ItotoriStyleGuideService", () => {
             targetLocale: "de-DE",
             units: [
               {
-                sourceUnitKey: "hello.scene.001.line.001",
-                occurrenceId: "occurrence-1",
+                sourceUnitKey: "other-project.scene.001.line.001",
+                occurrenceId: "other-project-occurrence-1",
                 sourceText: "こんにちは、{player}。",
                 targetText: "Hallo, {player}.",
                 spans: [{ raw: "{player}" }],

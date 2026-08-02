@@ -6,9 +6,11 @@ import type { RuntimeEvidenceReportV02 } from "@itotori/localization-bridge-sche
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
 
 import {
+  failedRuntimeEvidenceReportFixture,
   localActor,
   projectFixture,
   projectFixtureUnitId,
+  requiredFixtureValue,
   runtimeEvidenceReportFixture,
 } from "./repository.test.shared.js";
 import { migratedContext } from "./repository.test.legacy.js";
@@ -35,15 +37,73 @@ describe("ItotoriProjectRepository", () => {
       const comparisonArtifactId = "019ed003-0000-7000-8000-000000000b33";
       const approximationId = "019ed003-0000-7000-8000-000000000b41";
       const validationFindingId = "019ed003-0000-7000-8000-000000000b51";
+      const baseReport = runtimeEvidenceReportFixture();
+      const baseCapabilities = requiredFixtureValue(
+        baseReport.runtimeCapabilities,
+        "runtime capability contract",
+      );
+      const baseSession = requiredFixtureValue(
+        baseReport.controlledPlaybackSession,
+        "runtime controlled playback session",
+      );
+      const replayCapabilities = {
+        ...baseCapabilities,
+        capabilityClass: "partial_vm",
+        fidelityTierCeiling: "replay_review",
+        evidenceTierCeiling: "E3",
+        features: [
+          ...baseCapabilities.features.filter((feature) => feature.feature !== "recording"),
+          {
+            feature: "branch_discovery",
+            status: "supported",
+            evidenceTierCeiling: "E3",
+            description: "Discovers fixture branch metadata.",
+            limitations: [],
+          },
+          {
+            feature: "recording",
+            status: "supported",
+            evidenceTierCeiling: "E3",
+            description: "Records fixture playback evidence.",
+            limitations: [],
+          },
+          {
+            feature: "reference_comparison",
+            status: "partial",
+            evidenceTierCeiling: "E3",
+            description: "Compares fixture runtime evidence.",
+            limitations: ["No reference-fidelity claim is made."],
+          },
+        ],
+      } satisfies NonNullable<RuntimeEvidenceReportV02["runtimeCapabilities"]>;
+      const replaySession = {
+        ...baseSession,
+        capabilityClass: "partial_vm",
+        requestedOperation: "smoke_validation",
+        status: "failed",
+        fidelityTier: "replay_review",
+        evidenceTier: "E3",
+        featuresUsed: [
+          "static_trace",
+          "text_trace",
+          "branch_discovery",
+          "frame_capture",
+          "recording",
+          "reference_comparison",
+        ],
+      } satisfies NonNullable<RuntimeEvidenceReportV02["controlledPlaybackSession"]>;
 
       const reportWithLocalIds = (
         runtimeReportId: string,
         createdAt: string,
       ): RuntimeEvidenceReportV02 =>
-        runtimeEvidenceReportFixture({
+        failedRuntimeEvidenceReportFixture({
           runtimeReportId,
           createdAt,
-          status: "failed",
+          fidelityTier: "replay_review",
+          evidenceTier: "E3",
+          runtimeCapabilities: replayCapabilities,
+          controlledPlaybackSession: replaySession,
           traceEvents: [
             {
               traceEventId,

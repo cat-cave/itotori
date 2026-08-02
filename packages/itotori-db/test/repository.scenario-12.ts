@@ -9,7 +9,6 @@ import { ItotoriProjectRepository } from "../src/repositories/project-repository
 import { artifacts } from "../src/schema.js";
 
 import {
-  escapeRegExp,
   invalidManagedRuntimeArtifactUriCases,
   localActor,
   patchExportV02Fixture,
@@ -17,6 +16,7 @@ import {
   projectFixtureBundleRevisionId,
   projectFixtureUnitId,
   requiredFixtureValue,
+  runtimeArtifactUriRejectionError,
   runtimeEvidenceReportFixture,
 } from "./repository.test.shared.js";
 import { migratedContext } from "./repository.test.legacy.js";
@@ -59,7 +59,7 @@ describe("ItotoriProjectRepository", () => {
             }),
             "019ed003-0000-7000-8000-000000000d91",
           ),
-        ).rejects.toThrow(new RegExp(`portable relative artifact path.*${escapeRegExp(uri)}`));
+        ).rejects.toThrow(runtimeArtifactUriRejectionError(uri));
 
         await expect(
           context.pool.query(
