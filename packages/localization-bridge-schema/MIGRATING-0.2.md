@@ -1,10 +1,17 @@
-# Migrating Bridge Bundles From 0.1.0 To 0.2.0
+# Regenerating Bridge Bundles From 0.1.0 To 0.2.0
 
 Bridge schema `0.2.0` is a versioned expansion, not an in-place mutation of
-the fixture-only `0.1.0` contract. The existing `BridgeBundle`,
-`PatchExport`, `RuntimeVerificationReport`, and v0.1 guard exports remain for
-the hello-world pipeline. New bridge inventory producers should emit
-`BridgeBundleV02` and validate with `assertBridgeBundleV02`.
+the historical `0.1.0` contract. Current readers accept exactly v0.2 and reject
+v0.1 with `FormatVersionMismatchError` before interpreting fields or causing a
+persisted effect. There is no public v0.1 reader, converter, or compatibility
+shim.
+
+The supported upgrade is authoritative-source regeneration: run a current
+extractor against the original game source with its real extraction profile,
+emit `BridgeBundleV02`, and validate it with `assertBridgeBundleV02` before
+import. Do not manufacture v0.2 identities, provenance, hashes, asset
+inventory, or runtime expectations from a v0.1 JSON document; that document
+does not contain enough authority to derive them truthfully.
 
 ## Authority
 
@@ -22,31 +29,25 @@ of:
 - `test/examples/bridge-v0.2.json` as the JSON compatibility example.
 - Schema package tests that validate positive and negative v0.2 payloads.
 
-## Field Mapping
+## Regeneration Procedure
 
-| 0.1.0 field                                      | 0.2.0 field                            | Migration note                                                                                                       |
-| ------------------------------------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `schemaVersion: "0.1.0"`                         | `schemaVersion: "0.2.0"`               | Versioned readers must dispatch explicitly.                                                                          |
-| `bridgeId`                                       | `bridgeId`                             | Must be a valid UUID7 string.                                                                                        |
-| none                                             | `sourceGame`                           | Identifies the source game version and extraction profile revision used for this bundle.                             |
-| `sourceBundleHash`                               | `sourceBundleHash`                     | Must be a canonical lowercase `sha256:` hash with a 64-hex SHA-256 digest.                                           |
-| none                                             | `sourceBundleRevision`                 | Mirrors the bundle content hash when `revisionKind` is `content_hash`; delta metadata traces back to this revision.  |
-| none                                             | `hashStrategy`                         | Declares per-scope hash rules for source profile, bundle, asset, unit, patch export, and delta package hashes.       |
-| `extractorName`, `extractorVersion`              | `extractor.name`, `extractor.version`  | Removes fixture-specific extractor naming from the shared shape.                                                     |
-| none                                             | `assets[]`                             | Assets are first-class and carry UUID7 ids, neutral `assetKind`, source hash, and `sourceRevision`.                  |
-| `units[].bridgeUnitId`                           | `units[].bridgeUnitId`                 | Must be a valid UUID7 string.                                                                                        |
-| none                                             | `units[].surfaceId`                    | Stable UUID7 id for the reviewable surface.                                                                          |
-| `units[].textSurface`                            | `units[].surfaceKind`                  | Uses the v0.2 `SURFACE_KINDS` enum. `dialogue` and `narration` are distinct.                                         |
-| `units[].speaker?: string`                       | `units[].speaker?: SpeakerContextV02`  | Raw speaker strings are invalid. Use `known`, `parser_unknown`, `reader_unknown`, or `not_applicable`.               |
-| `units[].protectedSpans[]`                       | `units[].spans[]`                      | Uses `spanKind`, UUID7 `spanId`, UTF-8 `startByte`/`endByte`, and enum `preserveMode`.                               |
-| `protectedSpans[].start`, `protectedSpans[].end` | `spans[].startByte`, `spans[].endByte` | Offsets are UTF-8 byte offsets into `sourceText`, half-open `[startByte, endByte)`.                                  |
-| none                                             | `units[].sourceRevision`               | Required for stale patch/export rejection.                                                                           |
-| `patchRef.assetId: string`                       | `patchRef.assetId: UUID7`              | References a bridge asset, not an engine-private path.                                                               |
-| `patchRef.writeMode`                             | `patchRef.writeMode`                   | Uses `PATCH_WRITE_MODES`, including asset and metadata write modes.                                                  |
-| none                                             | `units[].context`                      | Holds route, choice, UI, tutorial, database, song, image text, metadata, and speaker-name context.                   |
-| none                                             | `units[].runtimeExpectation`           | Tells Utsushi whether to trace text, probe layout, inspect a screenshot region, or treat a surface as metadata-only. |
-| none                                             | `policyRecords[]`                      | Locale-scoped romanization and do-not-translate decisions use enum-backed policy categories.                         |
-| none                                             | `policyRecords[].scope`                | Optional surface-category scope from `POLICY_SCOPES`; use `targetLocale` or `localeBranchId` for locale scope.       |
+1. Locate the original game source and the extraction-profile revision that
+   define the intended inventory. A v0.1 JSON artifact is not an authoritative
+   substitute for either input.
+2. Run a v0.2-capable Kaifuu extractor against those inputs. The extractor must
+   derive source-unit and asset identities, hashes, provenance, protected-span
+   semantics, and runtime expectations from the source.
+3. Validate the newly emitted artifact with `assertBridgeBundleV02`. Any
+   version other than exact `0.2.0`, including historical `0.1.0`, is a typed
+   refusal.
+4. Import only the validated v0.2 artifact. Preserve the historical artifact
+   separately if an audit trail requires it; do not rewrite it in place.
+
+The v0.2 shape includes required facts that v0.1 never recorded, including
+`sourceGame`, `sourceBundleRevision`, `hashStrategy`, asset inventory,
+`surfaceId`, per-unit source revision, structured speaker context, and runtime
+expectations. Any generic field-mapping converter would have to guess those
+facts, so none is supported.
 
 ## Speaker Unknown States
 
@@ -63,8 +64,8 @@ Do not collapse unknown speakers into a single string or boolean.
 
 ## Compatibility Notes
 
-- v0.1 hello-world payloads should keep using the existing v0.1 guard until the
-  Kaifuu, Itotori, and Utsushi fixture pipeline is intentionally versioned.
+- Historical v0.1 payloads are useful only as rejection/regeneration fixtures;
+  current product readers do not accept them.
 - v0.2 hashes use canonical lowercase `sha256:` strings plus `hashStrategy` to
   name the algorithm, normalization, and source scope. The current source-unit
   text strategy is `utf8-lf-json-stable-v1` with explicit source fields;
@@ -76,21 +77,15 @@ Do not collapse unknown speakers into a single string or boolean.
   source unit, and unit-level `sourceHash`. A bundle hash change must be
   reported for traceability, but it must not invalidate unchanged units whose
   unit hash still matches.
-- For `preserveMode: "map"` spans, `protectedSpanMappings[]` can carry
-  `sourceSpanId` plus `sourceStartByte`/`sourceEndByte` so reordered or
-  duplicate raw spans are matched by source identity and explicit target byte
-  range, not by source span order.
-- Duplicate protected-span policy (the relevant capability): the two span shapes are governed
-  by different duplicate rules. **Legacy raw-only spans** (only `raw` plus a
-  target range, no source identity) are compatibility-preserving — a duplicate
-  `raw` is ALLOWED, because the same protected literal legitimately recurs in a
-  unit and its distinct target range disambiguates it, and older exporters that
-  never populated source identity must keep patching. **v0.2 source-identity
-  spans** (carrying `sourceSpanId`) are strict — a `sourceSpanId` names exactly
-  one source span, so a duplicate `sourceSpanId` within an entry is rejected
-  with `kaifuu.patch_export.duplicate_source_span_identity`. Two identity spans
-  with the same `raw` but distinct `sourceSpanId`s remain allowed (that is the
-  reordered/duplicate-raw case source identity exists to carry).
+- For `preserveMode: "map"` spans, `protectedSpanMappings[]` can carry optional
+  `sourceSpanId` and/or paired `sourceStartByte`/`sourceEndByte` coordinates so
+  reordered or duplicate raw spans are matched by source identity and explicit
+  target byte range, not source span order. Raw-only mappings remain a valid
+  v0.2 shape when their raw occurrence is unambiguous. A supplied
+  `sourceSpanId` names exactly one source span, so reusing it within an entry is
+  rejected with `kaifuu.patch_export.duplicate_source_span_identity`. Two
+  mappings with the same `raw` need distinct source identities and explicit
+  target ranges.
 - `evaluatePatchExportCompatibilityV02` returns compatible and incompatible
   unit lists. `source_hash_mismatch` includes both expected and actual source
   hashes so stale patches cannot pass silently. `bridge_unit_id_mismatch`

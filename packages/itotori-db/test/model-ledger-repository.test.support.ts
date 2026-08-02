@@ -8,12 +8,35 @@ import {
 import { type ItotoriProjectRecord } from "../src/repositories/project-repository.js";
 import { costLedgerEntries } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
+import { currentProjectFixture } from "./current-project-fixture.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
+const modelLedgerProject = currentProjectFixture({
+  seed: "model-ledger",
+  projectId: "project-test",
+  localeBranchId: "locale-en-us",
+  units: [
+    {
+      sourceUnitKey: "hello.scene.001.line.001",
+      sourceText: "こんにちは、{player}。",
+      spans: [{ raw: "{player}" }],
+    },
+  ],
+});
+const modelLedgerUnit = modelLedgerProject.bridge.units[0];
+if (modelLedgerUnit === undefined) throw new Error("model ledger fixture requires one unit");
+
+export const modelLedgerFixture = {
+  unitId: modelLedgerUnit.bridgeUnitId,
+  sourceRevisionId: modelLedgerUnit.sourceRevision.revisionId,
+  sourceUnitKey: modelLedgerUnit.sourceUnitKey,
+  sourceOccurrenceId: modelLedgerUnit.occurrenceId,
+  sourceHash: modelLedgerUnit.sourceHash,
+};
 
 export function runInput(
   providerRunId: string,
-  costKind: ProviderRunLedgerInput["cost"]["costKind"],
+  costKind: NonNullable<ProviderRunLedgerInput["cost"]>["costKind"],
   amountMicrosUsd: number,
   overrides: Partial<ProviderRunLedgerInput> = {},
 ): ProviderRunLedgerInput {
@@ -75,43 +98,7 @@ export function runInput(
 }
 
 export function projectFixture(): ItotoriProjectRecord {
-  return {
-    projectId: "project-test",
-    engineFamily: "synthetic_fixture",
-    sourceRoot: "/workspace/source",
-    buildRoot: "/workspace/build",
-    extractProfile: { adapter: "fixture" },
-    localeBranchId: "locale-en-us",
-    targetLocale: "en-US",
-    drafts: {},
-    bridge: {
-      schemaVersion: "0.1.0",
-      bridgeId: "bridge-test",
-      sourceBundleHash: "hash-test",
-      sourceLocale: "ja-JP",
-      extractorName: "kaifuu-fixture",
-      extractorVersion: "0.0.0",
-      units: [
-        {
-          bridgeUnitId: "bridge-unit-test",
-          sourceUnitKey: "hello.scene.001.line.001",
-          occurrenceId: "occurrence-1",
-          sourceHash: "source-hash",
-          sourceLocale: "ja-JP",
-          sourceText: "こんにちは、{player}。",
-          textSurface: "dialogue",
-          protectedSpans: [
-            { kind: "placeholder", raw: "{player}", start: 18, end: 26, preserveMode: "exact" },
-          ],
-          patchRef: {
-            assetId: "source.json",
-            writeMode: "replace",
-            sourceUnitKey: "hello.scene.001.line.001",
-          },
-        },
-      ],
-    },
-  };
+  return structuredClone(modelLedgerProject);
 }
 
 export async function seedDrilldownRuns(

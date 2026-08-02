@@ -73,17 +73,9 @@ export function dashboardDecisionCounts(
 }
 
 export function assertImportableBridgeBundle(
-  bridge: deps.BridgeBundle | deps.BridgeBundleV02,
-): void {
-  const schemaVersion =
-    typeof bridge === "object" && bridge !== null
-      ? (bridge as { schemaVersion?: unknown }).schemaVersion
-      : undefined;
-  if (schemaVersion === deps.BRIDGE_SCHEMA_VERSION_V02) {
-    deps.assertBridgeBundleV02(bridge);
-    return;
-  }
-  deps.assertBridgeBundle(bridge);
+  bridge: unknown,
+): asserts bridge is deps.BridgeBundleV02 {
+  deps.assertBridgeBundleV02(bridge);
 }
 
 export function jsonEquals(left: unknown, right: unknown): boolean {
@@ -108,135 +100,30 @@ export function stableJson(value: unknown): string {
 export function normalizeSourceBundle(
   project: api.ItotoriProjectRecord,
 ): helpers.NormalizedSourceBundle {
-  if (helpers.isBridgeBundleV02(project.bridge)) {
-    const revisions = helpers.uniqueRevisions([
-      project.bridge.sourceGame.sourceProfileRevision,
-      project.bridge.sourceBundleRevision,
-      ...project.bridge.assets.map((asset) => asset.sourceRevision),
-      ...project.bridge.units.map((unit) => unit.sourceRevision),
-    ]);
-    return {
-      sourceBundleId: project.bridge.bridgeId,
-      bridgeId: project.bridge.bridgeId,
-      schemaVersion: project.bridge.schemaVersion,
-      sourceBundleHash: project.bridge.sourceBundleHash,
-      sourceBundleRevision: project.bridge.sourceBundleRevision,
-      sourceLocale: project.bridge.sourceLocale,
-      sourceGame: {
-        gameId: project.bridge.sourceGame.gameId,
-        gameVersion: project.bridge.sourceGame.gameVersion,
-        sourceProfileId: project.bridge.sourceGame.sourceProfileId,
-      },
-      extractor: project.bridge.extractor,
-      revisions,
-      assets: project.bridge.assets,
-      units: project.bridge.units,
-    };
-  }
-
-  const sourceBundleRevision = helpers.revision(
-    `${project.bridge.bridgeId}:bundle-revision`,
-    project.bridge.sourceBundleHash,
-  );
-  const assetById = new Map<string, deps.BridgeAssetV02>();
-  for (const unit of project.bridge.units) {
-    const assetId = unit.patchRef.assetId;
-    if (!assetById.has(assetId)) {
-      assetById.set(assetId, {
-        assetId,
-        assetKey: assetId,
-        assetKind: "text",
-        sourceHash: project.bridge.sourceBundleHash,
-        sourceRevision: helpers.revision(
-          `${project.bridge.bridgeId}:asset:${assetId}`,
-          project.bridge.sourceBundleHash,
-        ),
-        path: assetId,
-      });
-    }
-  }
-
-  const assetsV02 = [...assetById.values()];
+  const bridge = project.bridge;
+  helpers.assertImportableBridgeBundle(bridge);
   const revisions = helpers.uniqueRevisions([
-    helpers.revision(`${project.bridge.bridgeId}:source-profile`, project.bridge.sourceBundleHash),
-    sourceBundleRevision,
-    ...assetsV02.map((asset) => asset.sourceRevision),
-    ...project.bridge.units.map((unit) =>
-      helpers.revision(`${project.bridge.bridgeId}:unit:${unit.bridgeUnitId}`, unit.sourceHash),
-    ),
+    bridge.sourceGame.sourceProfileRevision,
+    bridge.sourceBundleRevision,
+    ...bridge.assets.map((asset) => asset.sourceRevision),
+    ...bridge.units.map((unit) => unit.sourceRevision),
   ]);
-
   return {
-    sourceBundleId: project.bridge.bridgeId,
-    bridgeId: project.bridge.bridgeId,
-    schemaVersion: project.bridge.schemaVersion,
-    sourceBundleHash: project.bridge.sourceBundleHash,
-    sourceBundleRevision,
-    sourceLocale: project.bridge.sourceLocale,
+    sourceBundleId: bridge.bridgeId,
+    bridgeId: bridge.bridgeId,
+    schemaVersion: bridge.schemaVersion,
+    sourceBundleHash: bridge.sourceBundleHash,
+    sourceBundleRevision: bridge.sourceBundleRevision,
+    sourceLocale: bridge.sourceLocale,
     sourceGame: {
-      gameId: "hello-game",
-      gameVersion: "fixture",
-      sourceProfileId: "kaifuu-fixture",
+      gameId: bridge.sourceGame.gameId,
+      gameVersion: bridge.sourceGame.gameVersion,
+      sourceProfileId: bridge.sourceGame.sourceProfileId,
     },
-    extractor: {
-      name: project.bridge.extractorName,
-      version: project.bridge.extractorVersion,
-    },
+    extractor: bridge.extractor,
     revisions,
-    assets: assetsV02,
-    units: project.bridge.units.map(
-      (unit): deps.LocalizationUnitV02 => ({
-        bridgeUnitId: unit.bridgeUnitId,
-        surfaceId: unit.bridgeUnitId,
-        surfaceKind: unit.textSurface === "system" ? "ui_label" : "dialogue",
-        sourceUnitKey: unit.sourceUnitKey,
-        occurrenceId: unit.occurrenceId,
-        sourceLocale: unit.sourceLocale,
-        sourceText: unit.sourceText,
-        sourceHash: unit.sourceHash,
-        sourceRevision: helpers.revision(
-          `${project.bridge.bridgeId}:unit:${unit.bridgeUnitId}`,
-          unit.sourceHash,
-        ),
-        sourceAssetRef: { assetId: unit.patchRef.assetId, assetKey: unit.patchRef.assetId },
-        sourceLocation: {},
-        speaker: unit.speaker
-          ? {
-              knowledgeState: "known",
-              speakerId: `${unit.bridgeUnitId}:speaker`,
-              displayName: unit.speaker,
-            }
-          : { knowledgeState: "not_applicable" },
-        context:
-          unit.context === undefined ? {} : { route: { sceneId: unit.context.route.sceneId } },
-        spans: unit.protectedSpans.map((span) => ({
-          spanId: `${unit.bridgeUnitId}:${span.start}:${span.end}`,
-          spanKind: "variable_placeholder",
-          raw: span.raw,
-          startByte: span.start,
-          endByte: span.end,
-          preserveMode: span.preserveMode,
-        })),
-        patchRef: {
-          assetId: unit.patchRef.assetId,
-          writeMode: unit.patchRef.writeMode,
-          sourceUnitKey: unit.patchRef.sourceUnitKey,
-          sourceRevision: helpers.revision(
-            `${project.bridge.bridgeId}:unit:${unit.bridgeUnitId}`,
-            unit.sourceHash,
-          ),
-        },
-        runtimeExpectation: { expectationKind: "trace_text" },
-      }),
-    ),
-  };
-}
-
-export function revision(revisionId: string, value: string): deps.SourceRevisionV02 {
-  return {
-    revisionId,
-    revisionKind: "content_hash",
-    value,
+    assets: bridge.assets,
+    units: bridge.units,
   };
 }
 
@@ -258,12 +145,6 @@ export function uniqueRevisions(revisions: deps.SourceRevisionV02[]): deps.Sourc
   return [...byId.values()];
 }
 
-export function isBridgeBundleV02(
-  bundle: deps.BridgeBundle | deps.BridgeBundleV02,
-): bundle is deps.BridgeBundleV02 {
-  return bundle.schemaVersion === "0.2.0";
-}
-
-export function sourceBundleIdFor(bundle: deps.BridgeBundle | deps.BridgeBundleV02): string {
+export function sourceBundleIdFor(bundle: deps.BridgeBundleV02): string {
   return bundle.bridgeId;
 }

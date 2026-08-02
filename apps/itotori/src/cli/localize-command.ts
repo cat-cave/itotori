@@ -118,7 +118,7 @@ export function parseLocalizeRunRequest(args: readonly string[]): RunPolicyReque
  *   --build-root <PATH>                     owned patch build root
  *   --structure <PATH>                     decoded narrative-structure JSON (the
  *                                          decode→scene projection input)
- *   --bridge <PATH>                        matching BridgeBundle v0.2
+ *   --bridge <PATH>                        matching BridgeBundleV02
  * Optional flags:
  *   --context-scope <scope>   whole-game (default) | external-augmented | narrowed:<…>
  *   --output-scope <scope>    dialogue-only (default) | dialogue-and-choices | …

@@ -25,9 +25,12 @@ import {
 } from "../src/schema.js";
 
 import {
+  failedRuntimeEvidenceReportFixture,
   localActor,
   manualFeedbackFixture,
   projectFixture,
+  projectFixtureBridgeId,
+  projectFixtureUnitId,
   runtimeEvidenceReportFixture,
 } from "./repository.test.shared.js";
 import { migratedContext } from "./repository.test.legacy.js";
@@ -71,7 +74,7 @@ describe("ItotoriProjectRepository", () => {
           description: "A placeholder was not preserved.",
           impact: "Patch output could break runtime substitution.",
           createdAt: "2026-06-17T00:01:00.000Z",
-          affectedRefs: [{ subjectKind: "bridge_unit", subjectId: "bridge-unit-test" }],
+          affectedRefs: [{ subjectKind: "bridge_unit", subjectId: projectFixtureUnitId }],
           evidence: [],
           provenance: [],
           causalLinks: [],
@@ -81,17 +84,16 @@ describe("ItotoriProjectRepository", () => {
       await repo.saveRuntimeReport(
         localActor,
         project,
-        runtimeEvidenceReportFixture({
+        failedRuntimeEvidenceReportFixture({
           runtimeReportId: "019ed003-0000-7000-8000-000000000999",
-          status: "failed",
           createdAt: "2026-06-17T00:02:00.000Z",
           validationFindings: [
             {
-              findingId: "finding-runtime-validation",
+              findingId: "019ed003-0000-7000-8000-000000000997",
               findingKind: "text_mismatch",
               severity: "P2",
               bridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
+                bridgeUnitId: projectFixtureUnitId,
                 sourceUnitKey: "hello.scene.001.line.001",
               },
               message: "Observed runtime text differed from the drafted locale branch text.",
@@ -127,7 +129,7 @@ describe("ItotoriProjectRepository", () => {
           },
           {
             decisionKind: "runtime_validation",
-            findingId: "019ed003-0000-7000-8000-000000000999:finding-runtime-validation",
+            findingId: "019ed003-0000-7000-8000-000000000999:019ed003-0000-7000-8000-000000000997",
             localeBranchId: "locale-en-us",
             targetLocale: "en-US",
             runtimeRunId: "019ed003-0000-7000-8000-000000000999",
@@ -170,7 +172,7 @@ describe("ItotoriProjectRepository", () => {
         projectId: "project-test",
         localeBranchId: "locale-en-us",
         targetLocale: "en-US",
-        bridgeUnitId: "bridge-unit-test",
+        bridgeUnitId: projectFixtureUnitId,
         feedbackType: feedbackTypeValues.stylePreference,
         reporterRole: "playtester",
         reporterNote: "The protagonist sounds too formal in this line.",
@@ -207,7 +209,7 @@ describe("ItotoriProjectRepository", () => {
       expect(evidence).toHaveLength(1);
       expect(evidence[0]?.attachments).toHaveLength(2);
       expect(evidence[0]?.contextSignals).toMatchObject({
-        lineReference: { bridgeUnitId: "bridge-unit-test" },
+        lineReference: { bridgeUnitId: projectFixtureUnitId },
       });
 
       const linkedArtifact = await context.db
@@ -217,7 +219,7 @@ describe("ItotoriProjectRepository", () => {
         .limit(1);
       expect(linkedArtifact[0]).toMatchObject({
         artifactKind: "feedback_screenshot",
-        bridgeUnitId: "bridge-unit-test",
+        bridgeUnitId: projectFixtureUnitId,
       });
       expect(linkedArtifact[0]?.metadata).toMatchObject({
         feedbackReportId: result.feedbackReportId,
@@ -251,7 +253,7 @@ describe("ItotoriProjectRepository", () => {
         manualFeedbackFixture({
           suggestedEdit: "The protagonist speaks naturally here.",
           lineReference: {
-            bridgeUnitId: "bridge-unit-test",
+            bridgeUnitId: projectFixtureUnitId,
             sourceUnitKey: "hello.scene.001.line.001",
             path: "/private/tmp/source.json",
             line: 1,
@@ -286,7 +288,7 @@ describe("ItotoriProjectRepository", () => {
       const bundle = await context.db
         .select({ sourceRevisionId: sourceBundles.sourceBundleRevisionId })
         .from(sourceBundles)
-        .where(eq(sourceBundles.sourceBundleId, "bridge-test"))
+        .where(eq(sourceBundles.sourceBundleId, projectFixtureBridgeId))
         .limit(1);
       const correctionContext = await feedbackRepo.loadManualFeedbackCorrectionContext(
         localActor,
@@ -305,7 +307,7 @@ describe("ItotoriProjectRepository", () => {
         contextStatus: feedbackContextStatusValues.contextualized,
         reporterNote: "The protagonist sounds too formal in this line.",
         suggestedEdit: "The protagonist speaks naturally here.",
-        affectedUnitIds: ["bridge-unit-test"],
+        affectedUnitIds: [projectFixtureUnitId],
       });
       expect(correctionContext).not.toHaveProperty("attachments");
       expect(correctionContext).not.toHaveProperty("context");
@@ -342,7 +344,7 @@ describe("ItotoriProjectRepository", () => {
 
       expect(correctionContext).toMatchObject({
         sourceRevisionId: branch?.sourceRevisionId,
-        affectedUnitIds: ["bridge-unit-test"],
+        affectedUnitIds: [projectFixtureUnitId],
       });
       expect(correctionContext?.sourceRevisionId).not.toBe("caller-supplied-stale-revision");
     } finally {
@@ -374,7 +376,7 @@ describe("ItotoriProjectRepository", () => {
           feedbackType: feedbackTypeValues.objectiveDefect,
           reporter: { role: "playtester" },
           reporterNote: "The server must derive this from the branch.",
-          lineReference: { bridgeUnitId: "bridge-unit-test" },
+          lineReference: { bridgeUnitId: projectFixtureUnitId },
         }),
       ).toThrow(/targetLocale is server-owned/i);
 

@@ -9,7 +9,7 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
-import { projectFixture } from "./model-ledger-repository.test.support.js";
+import { modelLedgerFixture, projectFixture } from "./model-ledger-repository.test.support.js";
 
 describe("ItotoriModelLedgerRepository", () => {
   it("keeps the project cost report available when a tm reuse event has a malformed cost_impact JSON", async () => {
@@ -22,21 +22,6 @@ describe("ItotoriModelLedgerRepository", () => {
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
-      // Look up the source revision id produced by `importSourceBundle` so
-      // the parent-row FKs for the raw INSERTs below resolve cleanly.
-      // (This is the same value the translation-memory repository would set
-      // when going through `recordReuse`; we read it back so the test does
-      // not have to depend on a private helper.)
-      const suRows = await context.db.execute(sql`
-        select source_revision_id
-        from itotori_source_units
-        where bridge_unit_id = 'bridge-unit-test'
-        limit 1
-      `);
-      const sourceRevisionId = (suRows.rows[0] as { source_revision_id?: string } | undefined)
-        ?.source_revision_id;
-      expect(typeof sourceRevisionId).toBe("string");
-
       // Seed a translation-memory segment for the well-formed reuse event.
       await context.db.execute(sql`
         insert into itotori_translation_memory_segments
@@ -44,8 +29,8 @@ describe("ItotoriModelLedgerRepository", () => {
            source_unit_key, source_occurrence_id, source_hash, source_fingerprint,
            source_text, target_locale, target_text, status, provenance)
         values
-          ('tm-segment-good', 'project-test', 'locale-en-us', ${sourceRevisionId},
-           'hello.scene.001.line.001', 'occurrence-1', 'source-hash', 'fingerprint-good',
+          ('tm-segment-good', 'project-test', 'locale-en-us', ${modelLedgerFixture.sourceRevisionId},
+           ${modelLedgerFixture.sourceUnitKey}, ${modelLedgerFixture.sourceOccurrenceId}, ${modelLedgerFixture.sourceHash}, 'fingerprint-good',
            'こんにちは、{player}。', 'en-US', 'Hello, {player}.', 'reusable', '{}'::jsonb)
       `);
 
@@ -58,9 +43,9 @@ describe("ItotoriModelLedgerRepository", () => {
            reuse_status, source_hash, candidate_source_hash, target_text,
            cost_impact, provenance)
         values
-          ('reuse-good', 'project-test', 'locale-en-us', 'bridge-unit-test',
-           ${sourceRevisionId}, 'tm-segment-good', 'exact', 1000,
-           'applied', 'source-hash', 'source-hash', 'Hello, {player}.',
+          ('reuse-good', 'project-test', 'locale-en-us', ${modelLedgerFixture.unitId},
+           ${modelLedgerFixture.sourceRevisionId}, 'tm-segment-good', 'exact', 1000,
+           'applied', ${modelLedgerFixture.sourceHash}, ${modelLedgerFixture.sourceHash}, 'Hello, {player}.',
            ${sql.raw(`'{"providerCallAvoided":true,"estimatedPromptTokensSaved":40,"estimatedCompletionTokensSaved":20,"estimatedTotalTokensSaved":60,"estimatedCostUsdSaved":"0.00012","calculation":"deterministic_character_estimate_v1"}'::jsonb`)},
            '{}'::jsonb)
       `);
@@ -80,9 +65,9 @@ describe("ItotoriModelLedgerRepository", () => {
            reuse_status, source_hash, candidate_source_hash, target_text,
            cost_impact, provenance)
         values
-          ('reuse-malformed', 'project-test', 'locale-en-us', 'bridge-unit-test',
-           ${sourceRevisionId}, 'tm-segment-good', 'exact', 1000,
-           'applied', 'source-hash', 'source-hash', 'Hello, {player}.',
+          ('reuse-malformed', 'project-test', 'locale-en-us', ${modelLedgerFixture.unitId},
+           ${modelLedgerFixture.sourceRevisionId}, 'tm-segment-good', 'exact', 1000,
+           'applied', ${modelLedgerFixture.sourceHash}, ${modelLedgerFixture.sourceHash}, 'Hello, {player}.',
            ${sql.raw(`'{"providerCallAvoided":"yes","estimatedPromptTokensSaved":"abc","estimatedCompletionTokensSaved":20,"estimatedTotalTokensSaved":60,"estimatedCostUsdSaved":"cheap"}'::jsonb`)},
            '{}'::jsonb)
       `);
@@ -159,24 +144,14 @@ describe("ItotoriModelLedgerRepository", () => {
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
-      const suRows = await context.db.execute(sql`
-        select source_revision_id
-        from itotori_source_units
-        where bridge_unit_id = 'bridge-unit-test'
-        limit 1
-      `);
-      const sourceRevisionId = (suRows.rows[0] as { source_revision_id?: string } | undefined)
-        ?.source_revision_id;
-      expect(typeof sourceRevisionId).toBe("string");
-
       await context.db.execute(sql`
         insert into itotori_translation_memory_segments
           (memory_segment_id, project_id, locale_branch_id, source_revision_id,
            source_unit_key, source_occurrence_id, source_hash, source_fingerprint,
            source_text, target_locale, target_text, status, provenance)
         values
-          ('tm-segment-good-2', 'project-test', 'locale-en-us', ${sourceRevisionId},
-           'hello.scene.001.line.001', 'occurrence-1', 'source-hash', 'fingerprint-good-2',
+          ('tm-segment-good-2', 'project-test', 'locale-en-us', ${modelLedgerFixture.sourceRevisionId},
+           ${modelLedgerFixture.sourceUnitKey}, ${modelLedgerFixture.sourceOccurrenceId}, ${modelLedgerFixture.sourceHash}, 'fingerprint-good-2',
            'こんにちは、{player}。', 'en-US', 'Hello, {player}.', 'reusable', '{}'::jsonb)
       `);
       await context.db.execute(sql`
@@ -186,9 +161,9 @@ describe("ItotoriModelLedgerRepository", () => {
            reuse_status, source_hash, candidate_source_hash, target_text,
            cost_impact, provenance)
         values
-          ('reuse-good-2', 'project-test', 'locale-en-us', 'bridge-unit-test',
-           ${sourceRevisionId}, 'tm-segment-good-2', 'exact', 1000,
-           'applied', 'source-hash', 'source-hash', 'Hello, {player}.',
+          ('reuse-good-2', 'project-test', 'locale-en-us', ${modelLedgerFixture.unitId},
+           ${modelLedgerFixture.sourceRevisionId}, 'tm-segment-good-2', 'exact', 1000,
+           'applied', ${modelLedgerFixture.sourceHash}, ${modelLedgerFixture.sourceHash}, 'Hello, {player}.',
            ${sql.raw(`'{"providerCallAvoided":true,"estimatedPromptTokensSaved":12,"estimatedCompletionTokensSaved":3,"estimatedTotalTokensSaved":15,"estimatedCostUsdSaved":"0.00005","calculation":"deterministic_character_estimate_v1"}'::jsonb`)},
            '{}'::jsonb)
       `);

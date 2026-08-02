@@ -1,6 +1,6 @@
 import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { describe, expect, it } from "vitest";
-import type { BridgeBundle, ConformanceResultV01 } from "@itotori/localization-bridge-schema";
+import type { ConformanceResultV01 } from "@itotori/localization-bridge-schema";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import type { DatabaseContext } from "../src/connection.js";
 import { ItotoriConformanceRepository } from "../src/repositories/conformance-repository.js";
@@ -9,33 +9,16 @@ import {
   type ItotoriProjectRecord,
 } from "../src/repositories/project-repository.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
+import { currentProjectFixture } from "./current-project-fixture.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
-function bridgeFixture(): BridgeBundle {
-  return {
-    schemaVersion: "0.1.0",
-    bridgeId: "bridge-conformance",
-    sourceBundleHash: "hash-conformance",
-    sourceLocale: "ja-JP",
-    extractorName: "kaifuu-fixture",
-    extractorVersion: "0.0.0",
-    units: [],
-  };
-}
-
 function projectFixture(projectId: string): ItotoriProjectRecord {
-  return {
+  return currentProjectFixture({
+    seed: `conformance:${projectId}`,
     projectId,
-    engineFamily: "synthetic_fixture",
-    sourceRoot: "/workspace/source",
-    buildRoot: "/workspace/build",
-    extractProfile: { adapter: "fixture" },
     localeBranchId: `${projectId}-branch`,
-    targetLocale: "en-US",
-    drafts: {},
-    bridge: { ...bridgeFixture(), bridgeId: `bridge-${projectId}` },
-  };
+  });
 }
 
 function passResult(

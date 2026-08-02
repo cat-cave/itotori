@@ -81,7 +81,7 @@ export const runtimeEvidenceIngestResponseFixture: ApiRuntimeEvidenceResponse =
  */
 export const apiMutationBadRequestResponseFixture: ApiErrorResponse = {
   error:
-    "ApiProjectImportRequest: ApiProjectImportRequest.bridge: BridgeInput.schemaVersion must be 0.1.0 or 0.2.0",
+    "ApiProjectImportRequest: BridgeBundleV02.schemaVersion must be 0.2.0; follow the migration path",
   code: "bad_request",
 };
 

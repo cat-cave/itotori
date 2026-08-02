@@ -2,7 +2,10 @@ import { testProjectEngineFamilyRegistry } from "./project-engine-family-registr
 
 import { describe, expect, it } from "vitest";
 
-import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
+import {
+  FormatVersionMismatchError,
+  type BridgeBundleV02,
+} from "@itotori/localization-bridge-schema";
 
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
 
@@ -11,7 +14,6 @@ import {
   localActor,
   projectFixture,
   projectV02Fixture,
-  runtimeEvidenceReportFixture,
   v02Sha256,
 } from "./repository.test.shared.js";
 import { migratedContext } from "./repository.test.legacy.js";
@@ -160,7 +162,7 @@ describe("ItotoriProjectRepository", () => {
       await context.close();
     }
   });
-  it("reimports a migrated legacy bridge through its existing source bundle id", async () => {
+  it("rejects a legacy bridge reimport without remapping its persisted source bundle", async () => {
     const context = await migratedContext();
     try {
       const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
@@ -240,15 +242,20 @@ describe("ItotoriProjectRepository", () => {
       `,
       );
 
-      const importStatus = await repo.importSourceBundle(localActor, projectFixture());
-
-      expect(importStatus).toMatchObject({
-        bridgeId: "bridge-test",
-        sourceBundleId: "legacy:project-test:source-bundle",
-        sourceBundleRevisionId: "bridge-test:bundle-revision",
-        unitCount: 1,
-        assetCount: 1,
+      const legacyProject = projectFixture({
+        bridge: {
+          schemaVersion: "0.1.0",
+          bridgeId: "bridge-test",
+          sourceBundleHash: "hash-test",
+          sourceLocale: "ja-JP",
+          extractorName: "legacy-hello-world",
+          extractorVersion: "0.1.0",
+          units: [],
+        },
       });
+      const rejection = repo.importSourceBundle(localActor, legacyProject);
+      await expect(rejection).rejects.toBeInstanceOf(FormatVersionMismatchError);
+      await expect(rejection).rejects.toThrow(/Migration path:/u);
 
       const bundles = await context.pool.query<{
         source_bundle_id: string;
@@ -271,91 +278,27 @@ describe("ItotoriProjectRepository", () => {
         {
           source_bundle_id: "legacy:project-test:source-bundle",
           bridge_id: "bridge-test",
-          source_bundle_revision_id: "bridge-test:bundle-revision",
-          unit_count: 1,
-          asset_count: 1,
+          source_bundle_revision_id: "legacy:project-test:bundle-revision",
+          unit_count: 0,
+          asset_count: 0,
         },
       ]);
 
-      const importedProject = { ...projectFixture(), importStatus };
-      await repo.savePatchExport(localActor, importedProject, {
-        schemaVersion: "0.1.0",
-        patchExportId: "legacy-remap-patch",
-        sourceBridgeId: "bridge-test",
-        sourceBundleHash: "hash-test",
-        sourceLocale: "ja-JP",
-        targetLocale: "en-US",
-        entries: [
-          {
-            entryId: "legacy-remap-entry",
-            bridgeUnitId: "bridge-unit-test",
-            sourceUnitKey: "hello.scene.001.line.001",
-            sourceHash: "source-hash",
-            targetText: "Hello, {player}.",
-            protectedSpanMappings: [{ raw: "{player}", targetStart: 7, targetEnd: 15 }],
-          },
-        ],
-      });
-      await repo.saveRuntimeReport(
-        localActor,
-        importedProject,
-        runtimeEvidenceReportFixture(),
-        "legacy-remap-patch-result",
-      );
-
-      const artifactBundles = await context.pool.query<{
-        artifact_id: string;
-        source_bundle_id: string | null;
-      }>(
-        `
-        select artifact_id, source_bundle_id
-        from itotori_artifacts
-        where artifact_id in ($1, $2, $3)
-        order by artifact_id
-      `,
-        ["019ed003-0000-7000-8000-000000000901", "legacy-remap-patch", "legacy-remap-patch-result"],
-      );
-      expect(artifactBundles.rows).toEqual([
-        {
-          artifact_id: "019ed003-0000-7000-8000-000000000901",
-          source_bundle_id: "legacy:project-test:source-bundle",
-        },
-        {
-          artifact_id: "legacy-remap-patch",
-          source_bundle_id: "legacy:project-test:source-bundle",
-        },
-        {
-          artifact_id: "legacy-remap-patch-result",
-          source_bundle_id: "legacy:project-test:source-bundle",
-        },
-      ]);
-
-      const runtimeRows = await context.pool.query<{
-        row_kind: string;
-        source_bundle_id: string;
-        source_bundle_revision_id: string;
+      const mutationCounts = await context.pool.query<{
+        bridge_imports: number;
+        source_units: number;
+        artifacts: number;
       }>(`
         select
-          'run' as row_kind,
-          source_bundle_id,
-          source_bundle_revision_id
-        from itotori_runtime_evidence_runs
-        union all
-        select
-          'item' as row_kind,
-          source_bundle_id,
-          source_bundle_revision_id
-        from itotori_runtime_evidence_items
-        order by row_kind, source_bundle_id, source_bundle_revision_id
+          (select count(*)::int from itotori_bridge_imports) as bridge_imports,
+          (select count(*)::int from itotori_source_units) as source_units,
+          (select count(*)::int from itotori_artifacts) as artifacts
       `);
-      expect(runtimeRows.rows.length).toBeGreaterThan(0);
-      expect(
-        runtimeRows.rows.every(
-          (row) =>
-            row.source_bundle_id === "legacy:project-test:source-bundle" &&
-            row.source_bundle_revision_id === "bridge-test:bundle-revision",
-        ),
-      ).toBe(true);
+      expect(mutationCounts.rows[0]).toEqual({
+        bridge_imports: 0,
+        source_units: 0,
+        artifacts: 0,
+      });
     } finally {
       await context.close();
     }

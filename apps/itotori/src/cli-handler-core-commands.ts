@@ -2,7 +2,7 @@ import {
   assertConformanceManifestV01,
   assertConformanceResultV01,
   assertPatchResultV02,
-  assertRuntimeReport,
+  assertRuntimeEvidenceReportV02,
   type ConformanceManifestV01,
   type ConformanceResultV01,
 } from "@itotori/localization-bridge-schema";
@@ -255,7 +255,7 @@ export async function runIngestRuntime(
   const outputPath = requiredFlag(args, "--output");
   const project = readProject(dependencies.io, projectPath);
   const report = dependencies.io.readJson(runtimeReportPath);
-  assertRuntimeReport(report);
+  assertRuntimeEvidenceReportV02(report);
   const result = await dependencies.withServices((services) =>
     services.projectWorkflow.ingestRuntimeReport(project, report),
   );

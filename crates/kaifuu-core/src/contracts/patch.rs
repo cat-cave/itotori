@@ -69,10 +69,10 @@ pub fn validate_patch_export_v02(value: &Value) -> BridgeContractResult<()> {
             "protectedSpanMappings",
             &format!("{label}.protectedSpanMappings"),
         )?;
-        // v0.2 source identities (`sourceSpanId`) must be unique
-        // within an entry (strict identity). Legacy raw-only spans carry no
-        // identity and are intentionally NOT tracked here, so duplicate `raw`
-        // stays compatibility-preserving. See the doc comment above.
+        // Optional v0.2 source identities (`sourceSpanId`) must be unique
+        // within an entry. Raw-only v0.2 mappings carry no identity and are
+        // intentionally not tracked here; source compatibility later decides
+        // whether their raw occurrences are unambiguous.
         let mut seen_source_span_ids: HashSet<&str> = HashSet::new();
         for (mapping_index, mapping) in mappings.iter().enumerate() {
             let mapping_label = format!("{label}.protectedSpanMappings[{mapping_index}]");

@@ -14,12 +14,10 @@ import { describe, expect, it } from "vitest";
 import {
   assertBridgeBundleV02,
   assertNormalizedSurfacePreservesIdentity,
-  LEGACY_TEXT_SURFACE_TO_SURFACE_KIND,
   normalizeBridgeSurface,
   normalizedProtectedSpanRaws,
   SurfaceNormalizationIdentityError,
   type BridgeBundleV02,
-  type BridgeUnit,
   type LocalizationUnitV02,
   type NormalizedBridgeSurface,
   type SurfaceKindV02,
@@ -29,6 +27,11 @@ function loadBridgeV02(): BridgeBundleV02 {
   const path = fileURLToPath(new URL("./examples/bridge-v0.2.json", import.meta.url));
   const value: unknown = JSON.parse(readFileSync(path, "utf8"));
   assertBridgeBundleV02(value);
+  return value;
+}
+
+function requiredFixtureValue<T>(value: T | null | undefined, label: string): T {
+  if (value === undefined || value === null) throw new Error(`fixture is missing ${label}`);
   return value;
 }
 
@@ -73,7 +76,10 @@ describe("SHARED-020 surface-identity preserving normalization (v0.2 expanded ki
       const normalized = normalizeBridgeSurface(unit);
       expect(normalized.protectedSpans).toHaveLength(unit.spans.length);
       unit.spans.forEach((span, index) => {
-        const normalizedSpan = normalized.protectedSpans[index]!;
+        const normalizedSpan = requiredFixtureValue(
+          normalized.protectedSpans[index],
+          `normalized span ${index}`,
+        );
         expect(normalizedSpan.spanId).toBe(span.spanId);
         expect(normalizedSpan.spanKind).toBe(span.spanKind);
         expect(normalizedSpan.preserveMode).toBe(span.preserveMode);
@@ -247,50 +253,34 @@ describe("SHARED-020 protected-span semantics survive across span kinds", () => 
   });
 });
 
-describe("SHARED-020 legacy v0.1 surfaces widen deterministically, never collapse", () => {
-  const legacyUnit: BridgeUnit = {
-    bridgeUnitId: "019ed001-0000-7000-8000-000000000a01",
-    sourceUnitKey: "script/legacy#line-001",
-    occurrenceId: "legacy-001",
-    sourceHash: "sha256:2222222222222222222222222222222222222222222222222222222222222222",
-    sourceLocale: "ja-JP",
-    sourceText: "設定{value}を保存",
-    textSurface: "system",
-    protectedSpans: [
-      {
-        kind: "variable_placeholder",
-        raw: "{value}",
-        start: Buffer.from("設定", "utf8").length,
-        end: Buffer.from("設定", "utf8").length + Buffer.from("{value}", "utf8").length,
-        preserveMode: "map",
-        variableName: "value",
-      },
-    ],
-    patchRef: {
-      assetId: "asset-legacy",
-      writeMode: "replace",
-      sourceUnitKey: "script/legacy#line-001",
-    },
+describe("SHARED-020 current v0.2 UI surfaces preserve declared span identity", () => {
+  const sourceUnit = requiredFixtureValue(loadBridgeV02().units[0], "source unit");
+  const sourceSpan = requiredFixtureValue(sourceUnit.spans[0], "source span");
+  const currentUnit: LocalizationUnitV02 = {
+    ...sourceUnit,
+    surfaceKind: "ui_label",
+    context: { ui: { uiArea: "system" } },
   };
 
-  it("widens 'system' to 'metadata_text' (NOT dialogue) and preserves the span", () => {
-    const normalized = normalizeBridgeSurface(legacyUnit);
-    expect(LEGACY_TEXT_SURFACE_TO_SURFACE_KIND.system).toBe("metadata_text");
-    expect(normalized.surfaceKind).toBe("metadata_text");
+  it("normalizes the declared v0.2 UI label and preserves the span", () => {
+    const normalized = normalizeBridgeSurface(currentUnit);
+    expect(normalized.surfaceKind).toBe("ui_label");
     expect(normalized.surfaceKind).not.toBe("dialogue");
-    const span = normalized.protectedSpans[0]!;
+    const span = requiredFixtureValue(normalized.protectedSpans[0], "normalized span");
     expect(span.spanKind).toBe("variable_placeholder");
     expect(span.preserveMode).toBe("map");
-    expect(span.raw).toBe("{value}");
-    expect(span.startByte).toBe(legacyUnit.protectedSpans[0]!.start);
-    expect(span.endByte).toBe(legacyUnit.protectedSpans[0]!.end);
-    expect(() => assertNormalizedSurfacePreservesIdentity(legacyUnit, normalized)).not.toThrow();
+    expect(span.raw).toBe(sourceSpan.raw);
+    expect(span.startByte).toBe(sourceSpan.startByte);
+    expect(span.endByte).toBe(sourceSpan.endByte);
+    expect(() => assertNormalizedSurfacePreservesIdentity(currentUnit, normalized)).not.toThrow();
   });
 
-  it("synthesizes a stable span identity for legacy spans (deterministic)", () => {
-    const first = normalizeBridgeSurface(legacyUnit);
-    const second = normalizeBridgeSurface(legacyUnit);
-    expect(first.protectedSpans[0]!.spanId).toBe(second.protectedSpans[0]!.spanId);
-    expect(first.protectedSpans[0]!.spanId).toContain(legacyUnit.bridgeUnitId);
+  it("repeated normalization keeps the producer-declared span identity", () => {
+    const first = normalizeBridgeSurface(currentUnit);
+    const second = normalizeBridgeSurface(currentUnit);
+    const firstSpan = requiredFixtureValue(first.protectedSpans[0], "first normalized span");
+    const secondSpan = requiredFixtureValue(second.protectedSpans[0], "second normalized span");
+    expect(firstSpan.spanId).toBe(sourceSpan.spanId);
+    expect(firstSpan.spanId).toBe(secondSpan.spanId);
   });
 });

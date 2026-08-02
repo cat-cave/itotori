@@ -88,10 +88,10 @@ test("cell_transition_kills_an_unsupported-version-acceptance_mutation", async (
   assert.notEqual(missingDatabaseProof.status, 0);
   assert.match(missingDatabaseProof.stderr, /MissingRequiredInputError/u);
   assert.match(missingDatabaseProof.stderr, /DATABASE_URL/u);
-  assert.equal(mutant.caseResults.length, 32);
-  assert.equal(baseline.caseResults.length, 32);
+  assert.equal(mutant.caseResults.length, 37);
+  assert.equal(baseline.caseResults.length, 37);
   assert.deepEqual(new Set(mutant.caseResults.map(({ status }) => status)), new Set(["fail"]));
-  assert.equal(baseline.caseResults.filter(({ status }) => status === "pass").length, 32);
+  assert.equal(baseline.caseResults.filter(({ status }) => status === "pass").length, 37);
   assert.equal(baseline.caseResults.filter(({ status }) => status === "fail").length, 0);
   assert.ok(
     baseline.caseResults
@@ -112,6 +112,48 @@ test("cell_transition_kills_an_unsupported-version-acceptance_mutation", async (
           reasonCodes.includes("artifact-incompatible-version-not-typed"),
       ),
   );
+
+  const publicFormatBaseline = baseline.caseResults.filter(
+    ({ behavior }) => behavior === "platform.public-formats-upgrade-predictably",
+  );
+  const publicFormatMutant = mutant.caseResults.filter(
+    ({ behavior }) => behavior === "platform.public-formats-upgrade-predictably",
+  );
+  const publicFormatCell = baselinePlan.cells.find(
+    ({ behavior }) => behavior === "platform.public-formats-upgrade-predictably",
+  );
+  assert.deepEqual(
+    {
+      laneResolution: publicFormatCell?.laneResolution,
+      requiredLanes: publicFormatCell?.requiredLanes,
+    },
+    { laneResolution: "assigned", requiredLanes: ["public-ts"] },
+  );
+  assert.equal(publicFormatBaseline.length, 5);
+  assert.ok(
+    publicFormatBaseline.every(
+      ({ status, observationCount, reasonCodes }) =>
+        status === "pass" && observationCount > 0 && reasonCodes.length === 0,
+    ),
+  );
+  assert.equal(publicFormatMutant.length, 5);
+  assert.ok(
+    publicFormatMutant.every(
+      ({ status, observationCount, reasonCodes }) =>
+        status === "fail" &&
+        observationCount > 0 &&
+        reasonCodes.includes("public-format-incompatible-version-not-typed"),
+    ),
+  );
+  const publicFormatDriver = await import(
+    pathToFileURL(resolve(root, ".tmp/behavior-proof/glue/drivers/public-format.js")).href
+  );
+  const strictPublicFormat = publicFormatDriver.observePublicFormatBehavior(root, false);
+  const mutatedPublicFormat = publicFormatDriver.observePublicFormatBehavior(root, true);
+  assert.equal(strictPublicFormat.typedIncompatibility, true);
+  assert.equal(strictPublicFormat.allBoundariesAgree, true);
+  assert.equal(mutatedPublicFormat.typedIncompatibility, false);
+  assert.equal(mutatedPublicFormat.allBoundariesAgree, false);
 
   const driver = await import(
     pathToFileURL(resolve(root, ".tmp/behavior-proof/glue/drivers/explicit-failure.js")).href

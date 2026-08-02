@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { ItotoriDraftJobRepository } from "../src/repositories/draft-job-repository.js";
 import {
+  draftJobFixtureFirstUnitId,
   draftJobFixtureInput,
+  draftJobFixtureSecondUnitId,
   provisionDraftJobFixtureProject,
   retryableDraftJobFixture,
 } from "./draft-job-fixtures.js";
@@ -122,7 +124,7 @@ describe("draft job migration drift", () => {
     try {
       await provisionDraftJobFixtureProject(context.db, localActor);
       const { attempts } = await retryableDraftJobFixture(context.db, localActor, {
-        sourceUnitIds: ["unit-draft-1"],
+        sourceUnitIds: [draftJobFixtureFirstUnitId],
       });
       const attempt = attempts[0];
       if (attempt === undefined) {
@@ -156,7 +158,7 @@ describe("draft job migration drift", () => {
     try {
       await provisionDraftJobFixtureProject(context.db, localActor);
       const { job, attempts } = await retryableDraftJobFixture(context.db, localActor, {
-        sourceUnitIds: ["unit-draft-1", "unit-draft-2"],
+        sourceUnitIds: [draftJobFixtureFirstUnitId, draftJobFixtureSecondUnitId],
       });
 
       expect(job.status).toBe("retryable");
@@ -174,7 +176,7 @@ describe("draft job migration drift", () => {
       const repo = new ItotoriDraftJobRepository(context.db);
       const job = await repo.createDraftJob(
         localActor,
-        draftJobFixtureInput({ sourceUnitIds: ["unit-draft-1"] }),
+        draftJobFixtureInput({ sourceUnitIds: [draftJobFixtureFirstUnitId] }),
       );
 
       await repo.recordAttempt(localActor, job.draftJobId, {

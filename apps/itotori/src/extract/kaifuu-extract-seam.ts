@@ -2,7 +2,7 @@
 // orchestration behind every `itotori extract`.
 //
 // The user-shaped extract wraps `kaifuu-cli extract --engine <engine>`, producing
-// the BridgeBundle that `itotori localize` consumes — WITHOUT forcing the caller
+// the BridgeBundleV02 that `itotori localize` consumes — WITHOUT forcing the caller
 // to know about the Rust binary or `cargo`. This module is engine-agnostic: it
 // resolves the ADAPTER for the request's REQUIRED `engine` discriminant from the
 // `extract-adapter-registry`, then delegates argv construction, pre-spawn
@@ -112,7 +112,7 @@ export function buildExtractArgs(args: KaifuuExtractArgs): string[] {
 }
 
 /**
- * Run `kaifuu-cli extract --engine <engine>`, writing the BridgeBundle to
+ * Run `kaifuu-cli extract --engine <engine>`, writing the BridgeBundleV02 to
  * `bundleOutputPath` (kaifuu writes the file directly — this seam does NOT touch
  * the bridge bytes). The engine's registered adapter owns argv/validation/mode;
  * an omitted or unregistered engine is rejected here BEFORE any spawn. Throws a

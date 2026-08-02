@@ -161,9 +161,10 @@ describe("portfolio drill-down surface", () => {
     // Working deep-link into the blocked unit.
     const review = drilldown!.querySelector('[data-portfolio-drilldown-section="review"]')!;
     const unitLink = review.querySelector("a[data-portfolio-drilldown-link]");
+    expect(gamma.selectedLocaleBranchId).not.toBeNull();
     expect(unitLink).toHaveAttribute(
       "href",
-      "/play/units/portfolio-unit-3?projectId=project-3&localeBranchId=019ed065-0000-7000-8000-000000000110",
+      `/play/units/portfolio-unit-3?projectId=project-3&localeBranchId=${gamma.selectedLocaleBranchId}`,
     );
 
     // The card reports itself expanded, and the board is still on screen.

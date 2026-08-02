@@ -1,11 +1,9 @@
 import {
-  BRIDGE_SCHEMA_VERSION_V02,
   RUNTIME_APPROXIMATION_TIERS_V02,
   RUNTIME_EVIDENCE_TIERS_V02,
   RUNTIME_FIDELITY_TIERS_V02,
   RUNTIME_TRACE_EVENT_KINDS_V02,
   RUNTIME_VALIDATION_FINDING_KINDS_V02,
-  RuntimeVerificationReport,
   TRIAGE_SEVERITIES,
   Uuid7,
 } from "./bridge-core-types.js";
@@ -25,7 +23,7 @@ import {
   RuntimeCapabilityContractV02,
   RuntimeEvidenceReportV02,
 } from "./patch-and-runtime-types.js";
-import { assertRuntimeVerificationReport } from "./patch-compatibility-validation.js";
+import { BRIDGE_FORMAT_STABILITY, assertFormatVersion } from "./dependencies.js";
 import {
   assertControlledPlaybackSessionV02,
   assertObservationHookEvent,
@@ -52,7 +50,6 @@ import {
 } from "./fixture-utility-validation.js";
 import {
   assertEnum,
-  assertEqual,
   assertNonNegativeInteger,
   assertOptionalUuid7,
   assertPixelRegionV02,
@@ -64,9 +61,9 @@ export function assertRuntimeEvidenceReportV02(
   value: unknown,
 ): asserts value is RuntimeEvidenceReportV02 {
   const report = asRecord(value, "RuntimeEvidenceReportV02");
-  assertEqual(
+  assertFormatVersion(
+    BRIDGE_FORMAT_STABILITY,
     report.schemaVersion,
-    BRIDGE_SCHEMA_VERSION_V02,
     "RuntimeEvidenceReportV02.schemaVersion",
   );
   assertUuid7(report.runtimeReportId, "RuntimeEvidenceReportV02.runtimeReportId");
@@ -278,17 +275,6 @@ export function assertRuntimeEvidenceReportV02(
       "RuntimeEvidenceReportV02.validationFindings must explain failed runtime evidence",
     );
   }
-}
-
-export function assertRuntimeReport(
-  value: unknown,
-): asserts value is RuntimeVerificationReport | RuntimeEvidenceReportV02 {
-  const report = asRecord(value, "RuntimeReport");
-  if (report.schemaVersion === BRIDGE_SCHEMA_VERSION_V02) {
-    assertRuntimeEvidenceReportV02(report);
-    return;
-  }
-  assertRuntimeVerificationReport(report);
 }
 
 export function isUuid7(value: unknown): value is Uuid7 {

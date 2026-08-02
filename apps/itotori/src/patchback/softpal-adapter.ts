@@ -63,7 +63,7 @@ function findSoftpalRoot(root: string): string | null {
 
 export const softpalPatchbackAdapter: EnginePatchbackAdapter = {
   engineId: "softpal",
-  // Softpal rewrites exactly the units the PatchExport names, so both
+  // Softpal rewrites exactly the units the PatchExportV02 names, so both
   // config-driven scopes resolve to the same full-text-surface patch.
   supportedScopes: ["dialogue-only", "dialogue+choices"],
   probeSource(root: string): string | null {

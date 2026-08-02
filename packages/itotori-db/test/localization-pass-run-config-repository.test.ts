@@ -10,6 +10,7 @@ import {
   type ItotoriProjectRecord,
 } from "../src/repositories/project-repository.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
+import { currentProjectFixture } from "./current-project-fixture.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
@@ -101,37 +102,16 @@ function runConfigInput() {
 }
 
 function projectFixture(): ItotoriProjectRecord {
-  return {
+  return currentProjectFixture({
+    seed: "localization-pass-config",
     projectId: "project-test",
     localeBranchId: "locale-en-us",
-    targetLocale: "en-US",
-    drafts: {},
-    bridge: {
-      schemaVersion: "0.1.0",
-      bridgeId: "bridge-test",
-      sourceBundleHash: "hash-test",
-      sourceLocale: "ja-JP",
-      extractorName: "kaifuu-fixture",
-      extractorVersion: "0.0.0",
-      units: [
-        {
-          bridgeUnitId: "bridge-unit-test",
-          sourceUnitKey: "hello.scene.001.line.001",
-          occurrenceId: "occurrence-1",
-          sourceHash: "source-hash",
-          sourceLocale: "ja-JP",
-          sourceText: "Hello, {player}.",
-          textSurface: "dialogue",
-          protectedSpans: [
-            { kind: "placeholder", raw: "{player}", start: 7, end: 15, preserveMode: "exact" },
-          ],
-          patchRef: {
-            assetId: "source.json",
-            writeMode: "replace",
-            sourceUnitKey: "hello.scene.001.line.001",
-          },
-        },
-      ],
-    },
-  };
+    units: [
+      {
+        sourceUnitKey: "hello.scene.001.line.001",
+        sourceText: "Hello, {player}.",
+        spans: [{ raw: "{player}" }],
+      },
+    ],
+  });
 }

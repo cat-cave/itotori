@@ -2,7 +2,7 @@ import * as deps from "./project-repository-dependencies.js";
 import * as api from "./project-repository-types.js";
 import * as helpers from "./project-repository-helpers.js";
 
-export type RuntimeReportInput = deps.RuntimeVerificationReport | deps.RuntimeEvidenceReportV02;
+export type RuntimeReportInput = deps.RuntimeEvidenceReportV02;
 
 export type RuntimeArtifactLink = {
   artifactId: string;
@@ -111,7 +111,7 @@ export function runtimeAdapterName(report: helpers.RuntimeReportInput): string {
 }
 
 export function runtimeAdapterVersion(report: helpers.RuntimeReportInput): string | null {
-  return helpers.isRuntimeEvidenceReportV02(report) ? report.adapterVersion : null;
+  return report.adapterVersion;
 }
 
 export function runtimeReportStatus(report: helpers.RuntimeReportInput): "passed" | "failed" {
@@ -129,54 +129,43 @@ export function runtimeFidelityTier(report: helpers.RuntimeReportInput): string 
 }
 
 export function runtimeEvidenceTier(report: helpers.RuntimeReportInput): string | null {
-  return helpers.isRuntimeEvidenceReportV02(report) ? report.evidenceTier : null;
+  return report.evidenceTier;
 }
 
 export function runtimeTextEventCount(report: helpers.RuntimeReportInput): number {
-  return helpers.isRuntimeEvidenceReportV02(report)
-    ? report.traceEvents.length
-    : report.textEvents.length;
+  return report.traceEvents.length;
 }
 
 export function runtimeBranchEventCount(report: helpers.RuntimeReportInput): number {
-  return helpers.isRuntimeEvidenceReportV02(report) ? report.branchEvents.length : 0;
+  return report.branchEvents.length;
 }
 
-export function runtimeFrameCaptureCount(report: helpers.RuntimeReportInput): number {
-  if (!helpers.isRuntimeEvidenceReportV02(report)) {
-    return report.frameCaptures.length;
-  }
+export function runtimeFrameCaptureCount(_report: helpers.RuntimeReportInput): number {
   // V02 captures are persisted as `screenshot` artifacts (see
   // localization-bridge-schema assertRuntimeArtifactRefV02(capture.artifactRef,
-  // ..., "screenshot")), so a V02 run contributes ZERO frame_capture
-  // artifacts — its captures are screenshots. Legacy runtime verification
-  // reports persist their frameCaptures as `frame_capture` artifacts only.
+  // ..., "screenshot")), so a V02 run contributes zero frame_capture
+  // artifacts — its captures are screenshots.
   return 0;
 }
 
 export function runtimeScreenshotArtifactCount(report: helpers.RuntimeReportInput): number {
-  if (!helpers.isRuntimeEvidenceReportV02(report)) {
-    return 0;
-  }
   return report.captures.length;
 }
 
 export function runtimeRecordingArtifactCount(report: helpers.RuntimeReportInput): number {
-  return helpers.isRuntimeEvidenceReportV02(report) ? report.recordings.length : 0;
+  return report.recordings.length;
 }
 
 export function runtimeValidationFindingCount(report: helpers.RuntimeReportInput): number {
-  return helpers.isRuntimeEvidenceReportV02(report) ? report.validationFindings.length : 0;
+  return report.validationFindings.length;
 }
 
 export function runtimeReferenceComparisonCount(report: helpers.RuntimeReportInput): number {
-  return helpers.isRuntimeEvidenceReportV02(report)
-    ? (report.referenceComparisons ?? []).length
-    : 0;
+  return (report.referenceComparisons ?? []).length;
 }
 
 export function runtimeReportCreatedAt(report: helpers.RuntimeReportInput): Date {
-  return helpers.isRuntimeEvidenceReportV02(report) ? new Date(report.createdAt) : new Date();
+  return new Date(report.createdAt);
 }
 
 export function runtimeApproximations(report: helpers.RuntimeReportInput): unknown[] {
@@ -205,14 +194,10 @@ export function runtimeReportMetadataFor(
     schemaVersion: report.schemaVersion,
     adapterName: summary.adapterName,
     adapterVersion: summary.adapterVersion,
-    sourceBridgeId: helpers.isRuntimeEvidenceReportV02(report)
-      ? (report.sourceBridgeId ?? null)
-      : null,
-    sourceBundleHash: helpers.isRuntimeEvidenceReportV02(report)
-      ? (report.sourceBundleHash ?? null)
-      : null,
-    sourceLocale: helpers.isRuntimeEvidenceReportV02(report) ? (report.sourceLocale ?? null) : null,
-    targetLocale: helpers.isRuntimeEvidenceReportV02(report) ? (report.targetLocale ?? null) : null,
+    sourceBridgeId: report.sourceBridgeId ?? null,
+    sourceBundleHash: report.sourceBundleHash ?? null,
+    sourceLocale: report.sourceLocale ?? null,
+    targetLocale: report.targetLocale ?? null,
     fidelityTier: summary.fidelityTier,
     evidenceTier: summary.evidenceTier,
     status: summary.runtimeStatus,
@@ -225,13 +210,9 @@ export function runtimeReportMetadataFor(
     validationFindingCount: summary.validationFindingCount,
     referenceComparisonCount: summary.referenceComparisonCount,
     approximations: helpers.runtimeApproximations(report),
-    runtimeCapabilities: helpers.isRuntimeEvidenceReportV02(report)
-      ? (report.runtimeCapabilities ?? null)
-      : null,
-    controlledPlaybackSession: helpers.isRuntimeEvidenceReportV02(report)
-      ? (report.controlledPlaybackSession ?? null)
-      : null,
-    limitations: helpers.isRuntimeEvidenceReportV02(report) ? report.limitations : [],
+    runtimeCapabilities: report.runtimeCapabilities ?? null,
+    controlledPlaybackSession: report.controlledPlaybackSession ?? null,
+    limitations: report.limitations,
     reportCreatedAt: helpers.runtimeReportCreatedAt(report).toISOString(),
   };
 }
@@ -239,34 +220,6 @@ export function runtimeReportMetadataFor(
 export function runtimeArtifactLinks(
   report: helpers.RuntimeReportInput,
 ): helpers.RuntimeArtifactLink[] {
-  if (!helpers.isRuntimeEvidenceReportV02(report)) {
-    return report.frameCaptures.map((frame) => {
-      helpers.assertPortableLegacyRuntimeArtifactUri(frame.artifactPath);
-      const artifactId = helpers.runtimeChildIdFor(report.runtimeReportId, frame.frameCaptureId);
-      return {
-        artifactId,
-        artifactKind: "frame_capture",
-        uri: frame.artifactPath,
-        hash: undefined,
-        // Legacy v0.1 frame captures carry no hash and no repository-generated
-        // fallback (the managed-hash contract is v0.2-only), so provenance is
-        // unknown. The dashboard surfaces this as a missing-hash diagnostic
-        // exactly as before.
-        hashProvenance: null,
-        bridgeUnitId: frame.bridgeUnitId,
-        metadata: {
-          adapterLocalArtifactId: frame.frameCaptureId,
-          captureId: frame.frameCaptureId,
-          evidenceTier: null,
-          hashProvenance: null,
-          width: frame.width,
-          height: frame.height,
-          nonZeroPixels: frame.nonZeroPixels,
-        },
-      };
-    });
-  }
-
   return [
     ...report.traceEvents.flatMap((event) =>
       event.artifactRef === undefined

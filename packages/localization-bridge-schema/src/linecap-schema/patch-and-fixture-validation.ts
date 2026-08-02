@@ -162,7 +162,11 @@ export function assertUuid7ArrayUnique(value: unknown, label: string): Uuid7[] {
 
 export function assertPatchResultV02(value: unknown): asserts value is PatchResultV02 {
   const result = asRecord(value, "PatchResultV02");
-  assertEqual(result.schemaVersion, BRIDGE_SCHEMA_VERSION_V02, "PatchResultV02.schemaVersion");
+  assertFormatVersion(
+    BRIDGE_FORMAT_STABILITY,
+    result.schemaVersion,
+    "PatchResultV02.schemaVersion",
+  );
   assertUuid7(result.patchResultId, "PatchResultV02.patchResultId");
   assertUuid7(result.patchExportId, "PatchResultV02.patchExportId");
   assertString(result.adapterId, "PatchResultV02.adapterId");

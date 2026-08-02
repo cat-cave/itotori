@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { assertPatchResultV02, computePatchResultOutputHashRollupV02 } from "../src/index.js";
 
 /**
- * TS-side validator coverage for the v0.2 PatchResult emitted by the
+ * TS-side validator coverage for the v0.2 PatchResultV02 emitted by the
  * composed binary patch smoke command. The Rust side
  * (`crates/kaifuu-cli/tests/binary_patch_smoke.rs`) covers the same
  * fixtures via `validate_patch_result_v02`; this test mirrors the

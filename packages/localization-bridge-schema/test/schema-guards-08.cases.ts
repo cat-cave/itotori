@@ -4,9 +4,9 @@ import {
   adapterMatrixSupportsAtLeast,
   assertAdapterCapabilityMatrixV02,
   assertCapabilityLevelStatusV02,
-  assertPatchExport,
+  assertPatchExportV02,
   assertRuntimeEvidenceReportV02,
-  assertRuntimeVerificationReport,
+  FormatVersionMismatchError,
 } from "../src/index.js";
 import type { AdapterCapabilityMatrixV02 } from "../src/index.js";
 import {
@@ -85,23 +85,16 @@ describe("localization bridge schema guards", () => {
     expect(() => assertRuntimeEvidenceReportV02(report)).not.toThrow();
   });
 
-  it("rejects invalid patch exports", () => {
-    expect(() => assertPatchExport({ schemaVersion: "0.1.0" })).toThrow();
+  it("rejects a removed v0.1 patch export before interpreting entries", () => {
+    expect(() => assertPatchExportV02({ schemaVersion: "0.1.0" })).toThrow(
+      FormatVersionMismatchError,
+    );
   });
 
-  it("accepts runtime reports", () => {
-    expect(() =>
-      assertRuntimeVerificationReport({
-        schemaVersion: "0.1.0",
-        runtimeReportId: "019ed000-0000-7000-8000-000000000002",
-        adapterName: "utsushi-fixture",
-        fidelityTier: "layout_probe",
-        status: "passed",
-        textEvents: [],
-        frameCaptures: [],
-        approximations: [],
-      }),
-    ).not.toThrow();
+  it("rejects a removed v0.1 runtime report before interpreting captures", () => {
+    expect(() => assertRuntimeEvidenceReportV02({ schemaVersion: "0.1.0" })).toThrow(
+      FormatVersionMismatchError,
+    );
   });
 
   // Capability ladder coverage. Mirrors the Rust round-trip and strict-gate

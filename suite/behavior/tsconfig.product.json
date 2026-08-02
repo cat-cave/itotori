@@ -17,6 +17,7 @@
     "product/evidence-expectation-scenario-boundary.ts",
     "product/evidence-product-fixture.ts",
     "product/evidence-scenario-projection.ts",
-    "product/managed-artifact-boundary.ts"
+    "product/managed-artifact-boundary.ts",
+    "product/public-format-boundary.ts"
   ]
 }

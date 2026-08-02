@@ -28,6 +28,7 @@ import {
   siblingLocaleProjectFixture,
   seedProject,
   seedApprovedGlossaryPolicy,
+  terminologyFixture,
 } from "./terminology-repository.test.support.js";
 
 describe("ItotoriTerminologyRepository", () => {
@@ -105,8 +106,8 @@ describe("ItotoriTerminologyRepository", () => {
         sourceReferences: [
           {
             sourceRefId: "source-ref-context-crimson-moon",
-            sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-            bridgeUnitId: "bridge-unit-term",
+            sourceRevisionId: terminologyFixture.sourceRevisionId,
+            bridgeUnitId: terminologyFixture.unitId,
             referenceKind: terminologySourceReferenceKindValues.sourceUnit,
             citation: "terminology.scene.001.line.001",
             context: "Policy fixture includes a protected placeholder near the term.",
@@ -118,11 +119,11 @@ describe("ItotoriTerminologyRepository", () => {
         repository.getGlossaryContext(localActor, {
           localeBranchId: "locale-en-us",
           termId: "term-context-crimson-moon",
-          sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+          sourceRevisionId: terminologyFixture.sourceRevisionId,
         }),
       ).resolves.toMatchObject({
         localeBranchId: "locale-en-us",
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+        sourceRevisionId: terminologyFixture.sourceRevisionId,
         styleGuideVersionId: "style-guide-version-glossary-policy",
         term: {
           termId: "term-context-crimson-moon",
@@ -132,15 +133,15 @@ describe("ItotoriTerminologyRepository", () => {
         termProvenance: [
           expect.objectContaining({
             sourceRefId: "source-ref-context-crimson-moon",
-            sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-            bridgeUnitId: "bridge-unit-term",
+            sourceRevisionId: terminologyFixture.sourceRevisionId,
+            bridgeUnitId: terminologyFixture.unitId,
             citation: "terminology.scene.001.line.001",
           }),
         ],
         protectedSpanReferences: [
           expect.objectContaining({
-            bridgeUnitId: "bridge-unit-term",
-            sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+            bridgeUnitId: terminologyFixture.unitId,
+            sourceRevisionId: terminologyFixture.sourceRevisionId,
             raw: "{player}",
             preserveMode: "exact",
           }),
@@ -318,7 +319,7 @@ describe("ItotoriTerminologyRepository", () => {
         .from(localeBranchUnits)
         .where(eq(localeBranchUnits.localeBranchId, "locale-en-us"));
       const draftProvenanceBefore = draftRowsBefore.find(
-        (row) => row.bridgeUnitId === "bridge-unit-term",
+        (row) => row.bridgeUnitId === terminologyFixture.unitId,
       );
       expect(draftProvenanceBefore).toMatchObject({
         styleGuideVersionId: "style-guide-version-draft-reference",
@@ -358,7 +359,7 @@ describe("ItotoriTerminologyRepository", () => {
         })
         .from(localeBranchUnits)
         .where(eq(localeBranchUnits.localeBranchId, "locale-en-us"));
-      expect(draftRowsAfter.find((row) => row.bridgeUnitId === "bridge-unit-term")).toEqual(
+      expect(draftRowsAfter.find((row) => row.bridgeUnitId === terminologyFixture.unitId)).toEqual(
         draftProvenanceBefore,
       );
 

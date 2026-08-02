@@ -38,43 +38,29 @@ export type {
   AssetPolicySurfaceKindV02,
   AssetPolicyTextSourceKindV02,
   Bcp47Locale,
-  BridgeBundle,
-  BridgeUnit,
   CapabilityLevelStatusKindV02,
   CapabilityLevelStatusV02,
   CapabilityLevelV02,
-  FrameCapture,
   ObservationHookEventKind,
   ObservationRedactionStatus,
-  PatchExport,
-  PatchExportEntry,
-  PatchResult,
-  PatchWriteMode,
   PolicyActionV02,
   PolicyRecordKindV02,
   PolicyScopeV02,
-  PreserveMode,
   PreserveModeV02,
-  ProtectedSpan,
-  ProtectedSpanKind,
   RuntimeApproximationTierV02,
   RuntimeArtifactKindV02,
   RuntimeCapabilityClassV02,
   RuntimeEvidenceTierV02,
   RuntimeFeatureStatusV02,
-  RuntimeFidelityTier,
   RuntimeFidelityTierV02,
   RuntimePlaybackFeatureV02,
   RuntimeReferenceComparisonKindV02,
   RuntimeReferenceComparisonStatusV02,
   RuntimeRequestedOperationV02,
-  RuntimeTextEvent,
   RuntimeTraceEventKindV02,
   RuntimeValidationFindingKindV02,
-  RuntimeVerificationReport,
   SpanKindV02,
   SurfaceKindV02,
-  TextSurface,
   TriageSeverityV02,
   Uuid7,
 } from "./bridge-core-types.js";
@@ -335,7 +321,6 @@ export type {
 } from "./patch-and-runtime-types.js";
 export {
   assertAssetPolicyBundleV02,
-  assertBridgeBundle,
   assertBridgeBundleV02,
   assertTriageBundleV02,
 } from "./bridge-bundle-validation.js";
@@ -346,7 +331,6 @@ export type {
 } from "./bridge-bundle-validation.js";
 export {
   assertBenchmarkReportV02,
-  assertPatchExport,
   assertPatchExportV02,
   computePatchResultOutputHashRollupV02,
 } from "./benchmark-and-patch-validation.js";
@@ -364,15 +348,8 @@ export {
   assertContractFixtureManifestV02,
   assertContractFixtureV02,
 } from "./fixture-and-capability-validation.js";
-export {
-  assertRuntimeVerificationReport,
-  evaluatePatchExportCompatibilityV02,
-} from "./patch-compatibility-validation.js";
-export {
-  assertRuntimeEvidenceReportV02,
-  assertRuntimeReport,
-  isUuid7,
-} from "./runtime-evidence-validation.js";
+export { evaluatePatchExportCompatibilityV02 } from "./patch-compatibility-validation.js";
+export { assertRuntimeEvidenceReportV02, isUuid7 } from "./runtime-evidence-validation.js";
 export { assertFindingRecordV02 } from "./triage-reference-validation.js";
 export {
   assertBenchmarkComparedSystemV02,

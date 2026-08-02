@@ -23,7 +23,7 @@ export type PatchbackWorkScope = {
 };
 
 /** The full input to the native patchback. `rawBridge` is the source-side v0.2
- * BridgeBundle the snapshot was materialized from; its `sourceBundleHash` MUST
+ * BridgeBundleV02 the snapshot was materialized from; its `sourceBundleHash` MUST
  * equal `snapshot.source.sourceBundleHash` (apply-time integrity), else the
  * export refuses. */
 export type NativePatchbackInput = {

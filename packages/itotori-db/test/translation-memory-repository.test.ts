@@ -1,7 +1,6 @@
 import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import type { BridgeBundle } from "@itotori/localization-bridge-schema";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import {
   ItotoriProjectRepository,
@@ -20,8 +19,47 @@ import {
   translationMemoryReuseStatusValues,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
+import { currentProjectFixture } from "./current-project-fixture.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
+const translationMemoryProject = currentProjectFixture({
+  seed: "translation-memory",
+  projectId: "project-tm",
+  localeBranchId: "locale-en-us",
+  units: [
+    {
+      sourceUnitKey: "scene.001.memory-a",
+      sourceText: "おはようございます、先輩。",
+      targetText: "Good morning, senpai.",
+    },
+    {
+      sourceUnitKey: "scene.002.memory-b",
+      sourceText: "おはようございます、先輩。",
+      targetText: "Morning, senpai.",
+    },
+    {
+      sourceUnitKey: "scene.010.target",
+      sourceText: "おはようございます、先輩。",
+    },
+    {
+      sourceUnitKey: "scene.020.fuzzy-source",
+      sourceText: "おかえりなさい、ご主人様。",
+      targetText: "Welcome back, master.",
+    },
+    { sourceUnitKey: "scene.021.fuzzy-target", sourceText: "おかえりなさいご主人様！" },
+  ],
+});
+const [memoryA, memoryB, targetExact, fuzzySource, fuzzyTarget] =
+  translationMemoryProject.bridge.units;
+if (
+  memoryA === undefined ||
+  memoryB === undefined ||
+  targetExact === undefined ||
+  fuzzySource === undefined ||
+  fuzzyTarget === undefined
+) {
+  throw new Error("translation memory fixture requires five current bridge units");
+}
 
 describe("ItotoriTranslationMemoryRepository", () => {
   it("reuses repeated exact lines in locale-branch scope and records applied provenance", async () => {
@@ -31,23 +69,27 @@ describe("ItotoriTranslationMemoryRepository", () => {
       const repository = new ItotoriTranslationMemoryRepository(context.db);
       const service = new ItotoriTranslationMemoryService(repository);
 
+      expect(new Set([memoryA.sourceHash, memoryB.sourceHash, targetExact.sourceHash]).size).toBe(
+        3,
+      );
+
       await repository.upsertSegment(localActor, {
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
-        sourceBridgeUnitId: "unit-memory-a",
+        sourceBridgeUnitId: memoryA.bridgeUnitId,
         memorySegmentId: "tm-memory-a",
         targetText: "Good morning, senpai.",
-        expectedSourceHash: "hash:good-morning",
+        expectedSourceHash: memoryA.sourceHash,
         expectedTargetLocale: "en-US",
         provenance: { source: "approved_draft", reviewer: "fixture" },
       });
       await repository.upsertSegment(localActor, {
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
-        sourceBridgeUnitId: "unit-memory-b",
+        sourceBridgeUnitId: memoryB.bridgeUnitId,
         memorySegmentId: "tm-memory-b",
         targetText: "Morning, senpai.",
-        expectedSourceHash: "hash:good-morning",
+        expectedSourceHash: memoryB.sourceHash,
         expectedTargetLocale: "en-US",
         provenance: { source: "approved_draft", reviewer: "fixture" },
       });
@@ -56,7 +98,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
         requestedTargetLocale: "en-US",
-        targetBridgeUnitId: "unit-target-exact",
+        targetBridgeUnitId: targetExact.bridgeUnitId,
         candidateLimit: 5,
       });
       expect(matchSet?.matches.map((match) => match.memorySegmentId)).toEqual([
@@ -69,7 +111,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
         requestedTargetLocale: "en-US",
-        bridgeUnitIds: ["unit-target-exact"],
+        bridgeUnitIds: [targetExact.bridgeUnitId],
         requestId: "prefill-exact",
       });
       expect(result).toMatchObject({
@@ -84,21 +126,21 @@ describe("ItotoriTranslationMemoryRepository", () => {
         matchScore: 1000,
       });
 
-      await expect(targetText(context.db, "locale-en-us", "unit-target-exact")).resolves.toBe(
+      await expect(targetText(context.db, "locale-en-us", targetExact.bridgeUnitId)).resolves.toBe(
         "Good morning, senpai.",
       );
       const events = await repository.listReuseEvents({
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
-        targetBridgeUnitId: "unit-target-exact",
+        targetBridgeUnitId: targetExact.bridgeUnitId,
       });
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
         memorySegmentId: "tm-memory-a",
         matchKind: translationMemoryMatchKindValues.exact,
         reuseStatus: translationMemoryReuseStatusValues.applied,
-        sourceHash: "hash:good-morning",
-        candidateSourceHash: "hash:good-morning",
+        sourceHash: targetExact.sourceHash,
+        candidateSourceHash: memoryA.sourceHash,
         targetText: "Good morning, senpai.",
         costImpact: {
           providerCallAvoided: true,
@@ -128,10 +170,10 @@ describe("ItotoriTranslationMemoryRepository", () => {
       await repository.upsertSegment(localActor, {
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
-        sourceBridgeUnitId: "unit-memory-a",
+        sourceBridgeUnitId: memoryA.bridgeUnitId,
         memorySegmentId: "tm-memory-a",
         targetText: "Good morning, senpai.",
-        expectedSourceHash: "hash:good-morning",
+        expectedSourceHash: memoryA.sourceHash,
       });
 
       await expect(
@@ -139,7 +181,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
           projectId: "project-tm",
           localeBranchId: "locale-fr-fr",
           requestedTargetLocale: "fr-FR",
-          targetBridgeUnitId: "unit-target-exact",
+          targetBridgeUnitId: targetExact.bridgeUnitId,
           candidateLimit: 5,
         }),
       ).resolves.toMatchObject({ matches: [] });
@@ -148,7 +190,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
           projectId: "project-tm",
           localeBranchId: "locale-fr-fr",
           requestedTargetLocale: "fr-FR",
-          targetBridgeUnitId: "unit-target-exact",
+          targetBridgeUnitId: targetExact.bridgeUnitId,
           memorySegmentId: "tm-memory-a",
           matchKind: translationMemoryMatchKindValues.exact,
           matchScore: 1000,
@@ -162,7 +204,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
         repository.upsertSegment(localActor, {
           projectId: "project-tm",
           localeBranchId: "locale-en-us",
-          sourceBridgeUnitId: "unit-memory-a",
+          sourceBridgeUnitId: memoryA.bridgeUnitId,
           memorySegmentId: "tm-stale-write",
           targetText: "Good morning, senpai.",
           expectedSourceHash: "hash:old-good-morning",
@@ -173,7 +215,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
 
       await context.db
         .update(translationMemorySegments)
-        .set({ sourceRevisionId: "bridge-tm:source-profile" })
+        .set({ sourceRevisionId: fuzzySource.sourceRevision.revisionId })
         .where(eq(translationMemorySegments.memorySegmentId, "tm-memory-a"));
 
       await expect(
@@ -181,7 +223,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
           projectId: "project-tm",
           localeBranchId: "locale-en-us",
           requestedTargetLocale: "en-US",
-          targetBridgeUnitId: "unit-target-exact",
+          targetBridgeUnitId: targetExact.bridgeUnitId,
           includeFuzzy: true,
           minFuzzyScore: 300,
         }),
@@ -191,7 +233,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
           projectId: "project-tm",
           localeBranchId: "locale-en-us",
           requestedTargetLocale: "en-US",
-          targetBridgeUnitId: "unit-target-exact",
+          targetBridgeUnitId: targetExact.bridgeUnitId,
           memorySegmentId: "tm-memory-a",
           matchKind: translationMemoryMatchKindValues.fuzzy,
           matchScore: 500,
@@ -214,10 +256,10 @@ describe("ItotoriTranslationMemoryRepository", () => {
       await repository.upsertSegment(localActor, {
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
-        sourceBridgeUnitId: "unit-memory-a",
+        sourceBridgeUnitId: memoryA.bridgeUnitId,
         memorySegmentId: "tm-memory-a",
         targetText: "Good morning, senpai.",
-        expectedSourceHash: "hash:good-morning",
+        expectedSourceHash: memoryA.sourceHash,
         expectedTargetLocale: "en-US",
       });
 
@@ -226,7 +268,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
           projectId: "project-tm",
           localeBranchId: "locale-en-us",
           requestedTargetLocale: "fr-FR",
-          targetBridgeUnitId: "unit-target-exact",
+          targetBridgeUnitId: targetExact.bridgeUnitId,
           candidateLimit: 5,
         }),
       ).resolves.toMatchObject({ matches: [] });
@@ -235,7 +277,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
         requestedTargetLocale: "fr-FR",
-        bridgeUnitIds: ["unit-target-exact"],
+        bridgeUnitIds: [targetExact.bridgeUnitId],
         requestId: "prefill-wrong-requested-locale",
       });
       expect(prefill).toMatchObject({
@@ -245,12 +287,14 @@ describe("ItotoriTranslationMemoryRepository", () => {
         skippedCount: 1,
         skipped: [expect.objectContaining({ reasonCode: "target_locale_mismatch" })],
       });
-      await expect(targetText(context.db, "locale-en-us", "unit-target-exact")).resolves.toBeNull();
+      await expect(
+        targetText(context.db, "locale-en-us", targetExact.bridgeUnitId),
+      ).resolves.toBeNull();
       await expect(
         repository.listReuseEvents({
           projectId: "project-tm",
           localeBranchId: "locale-en-us",
-          targetBridgeUnitId: "unit-target-exact",
+          targetBridgeUnitId: targetExact.bridgeUnitId,
         }),
       ).resolves.toHaveLength(0);
       await expect(
@@ -258,7 +302,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
           projectId: "project-tm",
           localeBranchId: "locale-en-us",
           requestedTargetLocale: "fr-FR",
-          targetBridgeUnitId: "unit-target-exact",
+          targetBridgeUnitId: targetExact.bridgeUnitId,
           memorySegmentId: "tm-memory-a",
           matchKind: translationMemoryMatchKindValues.exact,
           matchScore: 1000,
@@ -282,10 +326,10 @@ describe("ItotoriTranslationMemoryRepository", () => {
       await repository.upsertSegment(localActor, {
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
-        sourceBridgeUnitId: "unit-fuzzy-source",
+        sourceBridgeUnitId: fuzzySource.bridgeUnitId,
         memorySegmentId: "tm-fuzzy-source",
         targetText: "Welcome back, master.",
-        expectedSourceHash: "hash:welcome-master",
+        expectedSourceHash: fuzzySource.sourceHash,
       });
       expect(
         lexicalSimilarityScore("おかえりなさい、ご主人様。", "おかえりなさいご主人様！"),
@@ -295,7 +339,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
         requestedTargetLocale: "en-US",
-        targetBridgeUnitId: "unit-fuzzy-target",
+        targetBridgeUnitId: fuzzyTarget.bridgeUnitId,
         includeFuzzy: true,
         minFuzzyScore: 650,
         candidateLimit: 1,
@@ -313,7 +357,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
         requestedTargetLocale: "en-US",
-        bridgeUnitIds: ["unit-fuzzy-target"],
+        bridgeUnitIds: [fuzzyTarget.bridgeUnitId],
         applyDrafts: false,
         includeFuzzy: true,
         minFuzzyScore: 650,
@@ -325,11 +369,13 @@ describe("ItotoriTranslationMemoryRepository", () => {
         suggestedCount: 1,
         skippedCount: 0,
       });
-      await expect(targetText(context.db, "locale-en-us", "unit-fuzzy-target")).resolves.toBeNull();
+      await expect(
+        targetText(context.db, "locale-en-us", fuzzyTarget.bridgeUnitId),
+      ).resolves.toBeNull();
       const events = await repository.listReuseEvents({
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
-        targetBridgeUnitId: "unit-fuzzy-target",
+        targetBridgeUnitId: fuzzyTarget.bridgeUnitId,
       });
       expect(events[0]).toMatchObject({
         reuseStatus: translationMemoryReuseStatusValues.suggested,
@@ -356,110 +402,7 @@ async function seedTranslationMemoryProject(
 function translationMemoryProjectFixture(
   overrides: Partial<ItotoriProjectRecord> = {},
 ): ItotoriProjectRecord {
-  return {
-    projectId: "project-tm",
-    engineFamily: "synthetic_fixture",
-    sourceRoot: "/workspace/source",
-    buildRoot: "/workspace/build",
-    extractProfile: { adapter: "fixture" },
-    localeBranchId: "locale-en-us",
-    targetLocale: "en-US",
-    drafts: {
-      "unit-memory-a": "Good morning, senpai.",
-      "unit-memory-b": "Morning, senpai.",
-      "unit-fuzzy-source": "Welcome back, master.",
-    },
-    bridge: translationMemoryBridgeFixture(),
-    ...overrides,
-  };
-}
-
-function translationMemoryBridgeFixture(
-  overrides: {
-    sourceBundleHash?: string;
-    bridgeId?: string;
-    targetExactSourceText?: string;
-    targetExactSourceHash?: string;
-  } = {},
-): BridgeBundle {
-  const bridgeId = overrides.bridgeId ?? "bridge-tm";
-  const sourceBundleHash = overrides.sourceBundleHash ?? "hash:bundle-v1";
-  const assetId = `${bridgeId}:scenario.ks`;
-  return {
-    schemaVersion: "0.1.0",
-    bridgeId,
-    sourceBundleHash,
-    sourceLocale: "ja-JP",
-    extractorName: "kaifuu-fixture",
-    extractorVersion: "0.0.0",
-    units: [
-      unit({
-        bridgeUnitId: "unit-memory-a",
-        sourceUnitKey: "scene.001.memory-a",
-        occurrenceId: "occurrence-memory-a",
-        sourceText: "おはようございます、先輩。",
-        sourceHash: "hash:good-morning",
-        assetId,
-      }),
-      unit({
-        bridgeUnitId: "unit-memory-b",
-        sourceUnitKey: "scene.002.memory-b",
-        occurrenceId: "occurrence-memory-b",
-        sourceText: "おはようございます、先輩。",
-        sourceHash: "hash:good-morning",
-        assetId,
-      }),
-      unit({
-        bridgeUnitId: "unit-target-exact",
-        sourceUnitKey: "scene.010.target",
-        occurrenceId: "occurrence-target-exact",
-        sourceText: overrides.targetExactSourceText ?? "おはようございます、先輩。",
-        sourceHash: overrides.targetExactSourceHash ?? "hash:good-morning",
-        assetId,
-      }),
-      unit({
-        bridgeUnitId: "unit-fuzzy-source",
-        sourceUnitKey: "scene.020.fuzzy-source",
-        occurrenceId: "occurrence-fuzzy-source",
-        sourceText: "おかえりなさい、ご主人様。",
-        sourceHash: "hash:welcome-master",
-        assetId,
-      }),
-      unit({
-        bridgeUnitId: "unit-fuzzy-target",
-        sourceUnitKey: "scene.021.fuzzy-target",
-        occurrenceId: "occurrence-fuzzy-target",
-        sourceText: "おかえりなさいご主人様！",
-        sourceHash: "hash:welcome-master-near",
-        assetId,
-      }),
-    ],
-  };
-}
-
-function unit(input: {
-  bridgeUnitId: string;
-  sourceUnitKey: string;
-  occurrenceId: string;
-  sourceText: string;
-  sourceHash: string;
-  assetId: string;
-}): BridgeBundle["units"][number] {
-  return {
-    bridgeUnitId: input.bridgeUnitId,
-    sourceUnitKey: input.sourceUnitKey,
-    occurrenceId: input.occurrenceId,
-    sourceHash: input.sourceHash,
-    sourceLocale: "ja-JP",
-    sourceText: input.sourceText,
-    textSurface: "dialogue",
-    protectedSpans: [],
-    patchRef: {
-      assetId: input.assetId,
-      writeMode: "replace",
-      sourceUnitKey: input.sourceUnitKey,
-    },
-  };
+  return { ...structuredClone(translationMemoryProject), ...overrides };
 }
 
 async function targetText(

@@ -9,56 +9,64 @@ import { ItotoriProjectRepository } from "../src/repositories/project-repository
 import { artifacts } from "../src/schema.js";
 
 import {
-  escapeRegExp,
-  invalidLegacyRuntimeArtifactUriCases,
+  invalidManagedRuntimeArtifactUriCases,
   localActor,
+  patchExportV02Fixture,
   projectFixture,
+  projectFixtureBundleRevisionId,
+  projectFixtureUnitId,
+  requiredFixtureValue,
+  runtimeArtifactUriRejectionError,
+  runtimeEvidenceReportFixture,
 } from "./repository.test.shared.js";
 import { migratedContext } from "./repository.test.legacy.js";
 
+const invalidRuntimeArtifactUriCases = invalidManagedRuntimeArtifactUriCases.filter(
+  ([label]) => label !== "missing managed runtime prefix",
+);
+
 describe("ItotoriProjectRepository", () => {
-  it("rejects legacy runtime capture refs through repository and direct SQL", async () => {
+  it("rejects non-portable runtime refs at repository and database boundaries", async () => {
     const context = await migratedContext();
     try {
       const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
       await repo.importSourceBundle(localActor, project);
+      const capture = requiredFixtureValue(
+        runtimeEvidenceReportFixture().captures[0],
+        "runtime capture",
+      );
 
-      for (const [index, [_label, uri]] of invalidLegacyRuntimeArtifactUriCases.entries()) {
+      for (const [index, [_label, uri]] of invalidRuntimeArtifactUriCases.entries()) {
         await expect(
           repo.saveRuntimeReport(
             localActor,
             project,
-            {
-              schemaVersion: "0.1.0",
-              runtimeReportId: "legacy-runtime-uri-parity",
-              adapterName: "utsushi-fixture",
-              fidelityTier: "layout_probe",
-              status: "passed",
-              textEvents: [],
-              frameCaptures: [
+            runtimeEvidenceReportFixture({
+              runtimeReportId: "019ed003-0000-7000-8000-000000000d01",
+              captures: [
                 {
-                  frameCaptureId: "legacy-runtime-capture",
-                  bridgeUnitId: "bridge-unit-test",
-                  width: 320,
-                  height: 180,
-                  nonZeroPixels: 57600,
-                  artifactPath: uri,
+                  ...capture,
+                  captureId: "019ed003-0000-7000-8000-000000000d11",
+                  artifactRef: {
+                    ...capture.artifactRef,
+                    artifactId: "019ed003-0000-7000-8000-000000000d21",
+                    uri,
+                  },
                 },
               ],
-              approximations: [],
-            },
-            "legacy-runtime-uri-patch-result",
+            }),
+            "019ed003-0000-7000-8000-000000000d91",
           ),
-        ).rejects.toThrow(new RegExp(`portable relative artifact path.*${escapeRegExp(uri)}`));
+        ).rejects.toThrow(runtimeArtifactUriRejectionError(uri));
 
         await expect(
           context.pool.query(
             `insert into itotori_artifacts (
               artifact_id, project_id, artifact_kind, uri, metadata
             ) values ($1, $2, 'frame_capture', $3, '{}'::jsonb)`,
-            [`legacy-runtime-uri-direct-${index}`, project.projectId, uri],
+            [`runtime-uri-direct-${index}`, project.projectId, uri],
           ),
         ).rejects.toThrow(/itotori_legacy_runtime_artifact_uri_check/u);
       }
@@ -69,9 +77,9 @@ describe("ItotoriProjectRepository", () => {
             artifact_id, project_id, artifact_kind, uri, metadata
           ) values ($1, $2, 'frame_capture', $3, '{}'::jsonb)`,
           [
-            "legacy-runtime-uri-direct-valid",
+            "runtime-uri-direct-valid",
             project.projectId,
-            "artifacts/utsushi/runtime/legacy-run/frame-captures/capture.png",
+            "artifacts/utsushi/runtime/current-run/frame-captures/capture.png",
           ],
         ),
       ).resolves.toBeDefined();
@@ -91,7 +99,7 @@ describe("ItotoriProjectRepository", () => {
         projectFixture({
           localeBranchId: "locale-fr-fr",
           targetLocale: "fr-FR",
-          drafts: { "bridge-unit-test": "Bonjour, {player}." },
+          drafts: { [projectFixtureUnitId]: "Bonjour, {player}." },
         }),
       );
 
@@ -117,7 +125,7 @@ describe("ItotoriProjectRepository", () => {
         projectFixture({
           localeBranchId: "locale-fr-fr",
           targetLocale: "fr-FR",
-          drafts: { "bridge-unit-test": "Bonjour, {player}." },
+          drafts: { [projectFixtureUnitId]: "Bonjour, {player}." },
         }),
       );
       await repo.importSourceBundle(
@@ -125,7 +133,7 @@ describe("ItotoriProjectRepository", () => {
         projectFixture({
           localeBranchId: "locale-ko-kr",
           targetLocale: "ko-KR",
-          drafts: { "bridge-unit-test": "Annyeonghaseyo, {player}." },
+          drafts: { [projectFixtureUnitId]: "Annyeonghaseyo, {player}." },
         }),
       );
       await repo.savePatchExport(
@@ -133,25 +141,21 @@ describe("ItotoriProjectRepository", () => {
         projectFixture({
           localeBranchId: "locale-fr-fr",
           targetLocale: "fr-FR",
-          drafts: { "bridge-unit-test": "Bonjour, {player}." },
+          drafts: { [projectFixtureUnitId]: "Bonjour, {player}." },
         }),
         {
-          schemaVersion: "0.1.0",
-          patchExportId: "patch-fr-fr",
-          sourceBridgeId: "bridge-test",
-          sourceBundleHash: "hash-test",
-          sourceLocale: "ja-JP",
-          targetLocale: "fr-FR",
-          entries: [
-            {
-              entryId: "entry-fr-fr",
-              bridgeUnitId: "bridge-unit-test",
-              sourceUnitKey: "hello.scene.001.line.001",
-              sourceHash: "source-hash",
-              targetText: "Bonjour, {player}.",
-              protectedSpanMappings: [{ raw: "{player}", targetStart: 9, targetEnd: 17 }],
-            },
-          ],
+          ...patchExportV02Fixture(projectFixture().bridge, {
+            targetLocale: "fr-FR",
+            targetText: "Bonjour, {player}.",
+          }),
+          patchExportId: "019ed010-0000-7000-8000-000000000011",
+          entries: patchExportV02Fixture(projectFixture().bridge, {
+            targetLocale: "fr-FR",
+            targetText: "Bonjour, {player}.",
+          }).entries.map((entry) => ({
+            ...entry,
+            entryId: "019ed010-0000-7000-8000-000000000010",
+          })),
         },
       );
       await repo.recordBenchmarkArtifactWithProviderLedger(localActor, {
@@ -180,7 +184,7 @@ describe("ItotoriProjectRepository", () => {
         "ko-KR",
       ]);
       expect(new Set(firstIdentities.map((branch) => branch.sourceBundleRevisionId))).toEqual(
-        new Set(["bridge-test:bundle-revision"]),
+        new Set([projectFixtureBundleRevisionId]),
       );
 
       await repo.importSourceBundle(
@@ -188,7 +192,7 @@ describe("ItotoriProjectRepository", () => {
         projectFixture({
           localeBranchId: "locale-fr-fr",
           targetLocale: "fr-FR",
-          drafts: { "bridge-unit-test": "Salut, {player}." },
+          drafts: { [projectFixtureUnitId]: "Salut, {player}." },
         }),
       );
       await context.pool.query("delete from itotori_locale_branch_units");
@@ -204,21 +208,21 @@ describe("ItotoriProjectRepository", () => {
       const artifactRows = await context.db.execute(sql`
         select artifact_id, locale_branch_id, artifact_kind, metadata->>'targetLocale' as target_locale
         from ${artifacts}
-        where artifact_id in ('patch-fr-fr', 'benchmark-ko-kr')
+        where artifact_id in ('019ed010-0000-7000-8000-000000000011', 'benchmark-ko-kr')
         order by artifact_id
       `);
       expect(artifactRows.rows).toEqual([
+        expect.objectContaining({
+          artifact_id: "019ed010-0000-7000-8000-000000000011",
+          artifact_kind: "patch_export",
+          locale_branch_id: "locale-fr-fr",
+          target_locale: "fr-FR",
+        }),
         expect.objectContaining({
           artifact_id: "benchmark-ko-kr",
           artifact_kind: "benchmark_report",
           locale_branch_id: "locale-ko-kr",
           target_locale: null,
-        }),
-        expect.objectContaining({
-          artifact_id: "patch-fr-fr",
-          artifact_kind: "patch_export",
-          locale_branch_id: "locale-fr-fr",
-          target_locale: "fr-FR",
         }),
       ]);
     } finally {
@@ -317,7 +321,7 @@ describe("ItotoriProjectRepository", () => {
           occurredAt: "2026-06-17T00:00:00.000Z",
           actor: { actorKind: "tool", displayName: "deterministic-check" },
           findingId: "finding-test",
-          subjectRefs: [{ subjectKind: "bridge_unit", subjectId: "bridge-unit-test" }],
+          subjectRefs: [{ subjectKind: "bridge_unit", subjectId: projectFixtureUnitId }],
           provenance: [],
           causalLinks: [],
           payload: { check: "protected-span" },
@@ -344,7 +348,7 @@ describe("ItotoriProjectRepository", () => {
           impact: "Patch output could break runtime substitution.",
           createdAt: "2026-06-17T00:00:00.000Z",
           firstSeenEventId: "event-finding",
-          affectedRefs: [{ subjectKind: "bridge_unit", subjectId: "bridge-unit-test" }],
+          affectedRefs: [{ subjectKind: "bridge_unit", subjectId: projectFixtureUnitId }],
           evidence: [],
           provenance: [],
           causalLinks: [],
@@ -354,7 +358,7 @@ describe("ItotoriProjectRepository", () => {
         artifactId: "artifact-finding",
         projectId: "project-test",
         localeBranchId: "locale-en-us",
-        bridgeUnitId: "bridge-unit-test",
+        bridgeUnitId: projectFixtureUnitId,
         findingId: "finding-test",
         artifactKind: "validator_message",
         uri: "fixture://validator/protected-span",

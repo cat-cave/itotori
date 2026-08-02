@@ -27,12 +27,12 @@ export interface ItotoriProjectRepositoryPort {
   savePatchExport(
     actor: deps.AuthorizationActor,
     project: api.ItotoriProjectRecord,
-    patchExport: deps.PatchExport | deps.PatchExportV02,
+    patchExport: deps.PatchExportV02,
   ): Promise<void>;
   saveRuntimeReport(
     actor: deps.AuthorizationActor,
     project: api.ItotoriProjectRecord,
-    runtimeReport: deps.RuntimeVerificationReport | deps.RuntimeEvidenceReportV02,
+    runtimeReport: unknown,
     patchResultId: string,
   ): Promise<api.ProjectDashboardStatus>;
   appendEvent(actor: deps.AuthorizationActor, input: api.EventInput): Promise<void>;
@@ -100,14 +100,14 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
   savePatchExport(
     actor: deps.AuthorizationActor,
     project: api.ItotoriProjectRecord,
-    patchExport: deps.PatchExport | deps.PatchExportV02,
+    patchExport: deps.PatchExportV02,
   ) {
     return this.drafts.savePatchExport(actor, project, patchExport);
   }
   saveRuntimeReport(
     actor: deps.AuthorizationActor,
     project: api.ItotoriProjectRecord,
-    runtimeReport: deps.RuntimeVerificationReport | deps.RuntimeEvidenceReportV02,
+    runtimeReport: unknown,
     patchResultId: string,
   ) {
     return this.runtimePersistence.saveRuntimeReport(actor, project, runtimeReport, patchResultId);

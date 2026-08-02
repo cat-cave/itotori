@@ -33,6 +33,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { setupServer } from "msw/node";
 import {
+  ApiValidationError,
   assertItotoriApiResponse,
   parseDraftBranchRequest,
   parseProjectImportRequest,
@@ -134,6 +135,22 @@ async function postJson(url: string, body: unknown): Promise<Response> {
 }
 
 describe("policy MSW project mutation contract handlers", () => {
+  it("rejects a v0.1 bridge with the migration requirement before reading later request fields", () => {
+    let bootstrapSelectionRead = false;
+    const priorVersionRequest = {
+      bridge: { ...bridgeImportRequestFixture.bridge, schemaVersion: "0.1.0" },
+      get bootstrapSelection(): undefined {
+        bootstrapSelectionRead = true;
+        return undefined;
+      },
+    };
+
+    expect(() => parseProjectImportRequest(priorVersionRequest)).toThrow(ApiValidationError);
+    expect(() => parseProjectImportRequest(priorVersionRequest)).toThrow(/known legacy version/u);
+    expect(() => parseProjectImportRequest(priorVersionRequest)).toThrow(/Migration path:/u);
+    expect(bootstrapSelectionRead).toBe(false);
+  });
+
   describe("SUCCESS — every project mutation route returns a contract-valid success body", () => {
     it.each(apiMutationContract)(
       "$routeId — POSTs the success request fixture and returns 200 + an asserter-valid body",

@@ -163,11 +163,11 @@ function messageLink(
 }
 
 /**
- * A choice option surfaced from the static script (a real BridgeUnit) is an
+ * A choice option surfaced from the static script (a real v0.2 bridge unit) is an
  * inherently translatable surface, so it MUST bind: a bridge-linked choice with
  * no bridgeRef (or no coordinates / asset) is an incomplete link and FAILS. A
  * `runtime_only` choice (a displayed runtime prompt option with NO static
- * BridgeUnit — e.g. a system "continue playing / save for later" menu) is not
+ * v0.2 bridge unit — e.g. a system "continue playing / save for later" menu) is not
  * part of the translatable script; it is skipped like a runtime-only message,
  * never fabricated a binding.
  */

@@ -11,6 +11,7 @@ import {
   localActor,
   patchExportV02Fixture,
   projectFixture,
+  projectFixtureBridgeId,
   projectV02Fixture,
 } from "./repository.test.shared.js";
 import { migratedContext } from "./repository.test.legacy.js";
@@ -237,8 +238,10 @@ describe("ItotoriProjectRepository", () => {
       ];
       const project = projectV02Fixture(bridge);
       await repo.importSourceBundle(localActor, project);
-      const patchExport = patchExportV02Fixture(bridge);
-      patchExport.entries[0]!.targetText = "{player} gets {item}";
+      const patchExport = patchExportV02Fixture(bridge, {
+        targetLocale: project.targetLocale,
+        targetText: "{player} gets {item}",
+      });
       patchExport.entries[0]!.protectedSpanMappings = [
         {
           raw: "{player}",
@@ -299,8 +302,10 @@ describe("ItotoriProjectRepository", () => {
       ];
       const project = projectV02Fixture(bridge);
       await repo.importSourceBundle(localActor, project);
-      const patchExport = patchExportV02Fixture(bridge);
-      patchExport.entries[0]!.targetText = "{name} and {name}";
+      const patchExport = patchExportV02Fixture(bridge, {
+        targetLocale: project.targetLocale,
+        targetText: "{name} and {name}",
+      });
       // Collapsed duplicates: both mappings resolve to the SAME source span
       // (bytes 0..6) via explicit byte-range identity. This stays schema-valid
       // (the strict identity check only rejects duplicate `sourceSpanId`,
@@ -336,27 +341,10 @@ describe("ItotoriProjectRepository", () => {
       const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const firstProject = projectFixture();
-      const firstUnit = firstProject.bridge.units[0]!;
+      const secondBridge = bridgeV02Fixture();
       const secondProject = projectFixture({
-        bridge: {
-          ...firstProject.bridge,
-          bridgeId: "bridge-second",
-          sourceBundleHash: "hash-second",
-          units: [
-            {
-              ...firstUnit,
-              bridgeUnitId: "bridge-unit-second",
-              sourceUnitKey: "hello.scene.001.line.002",
-              occurrenceId: "occurrence-2",
-              sourceHash: "source-hash-second",
-              patchRef: {
-                ...firstUnit.patchRef,
-                assetId: "source-second.json",
-                sourceUnitKey: "hello.scene.001.line.002",
-              },
-            },
-          ],
-        },
+        bridge: secondBridge,
+        drafts: {},
       });
 
       await repo.importSourceBundle(localActor, firstProject);
@@ -370,7 +358,12 @@ describe("ItotoriProjectRepository", () => {
         end
         where source_bundle_id in ($1, $2)
       `,
-        ["bridge-test", "bridge-second", "2026-06-17T00:30:00.000Z", "2026-06-17T00:00:00.000Z"],
+        [
+          projectFixtureBridgeId,
+          secondBridge.bridgeId,
+          "2026-06-17T00:30:00.000Z",
+          "2026-06-17T00:00:00.000Z",
+        ],
       );
       await context.pool.query(
         `
@@ -381,17 +374,22 @@ describe("ItotoriProjectRepository", () => {
         end
         where source_bundle_id in ($1, $2)
       `,
-        ["bridge-test", "bridge-second", "2026-06-17T00:00:00.000Z", "2026-06-17T00:30:00.000Z"],
+        [
+          projectFixtureBridgeId,
+          secondBridge.bridgeId,
+          "2026-06-17T00:00:00.000Z",
+          "2026-06-17T00:30:00.000Z",
+        ],
       );
 
       const status = await repo.getDashboardStatus();
-      expect(status.sourceBundleId).toBe("bridge-second");
-      expect(status.sourceBundleHash).toBe("hash-second");
+      expect(status.sourceBundleId).toBe(secondBridge.bridgeId);
+      expect(status.sourceBundleHash).toBe(secondBridge.sourceBundleHash);
       expect(status.importStatus).toMatchObject({
-        bridgeId: "bridge-second",
-        sourceBundleId: "bridge-second",
-        sourceBundleHash: "hash-second",
-        sourceBundleRevisionId: "bridge-second:bundle-revision",
+        bridgeId: secondBridge.bridgeId,
+        sourceBundleId: secondBridge.bridgeId,
+        sourceBundleHash: secondBridge.sourceBundleHash,
+        sourceBundleRevisionId: secondBridge.sourceBundleRevision.revisionId,
       });
     } finally {
       await context.close();

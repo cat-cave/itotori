@@ -4,7 +4,10 @@ import type {
   CatalogReleaseRecord,
   LocaleBranchStatus,
 } from "@itotori/db";
-import { assertBrowserItotoriApiResponse } from "../src/api-client-guards.js";
+import {
+  assertBrowserItotoriApiRequest,
+  assertBrowserItotoriApiResponse,
+} from "../src/api-client-guards.js";
 import { assertItotoriApiResponse } from "../src/api-schema.js";
 import { projectOverviewFixture } from "./api-fixtures.js";
 
@@ -105,11 +108,43 @@ function catalogContextPanelResponse(): CatalogContextPanelResponseJson {
 }
 
 describe("browser API response guard", () => {
+  it("rejects nested legacy bridge versions before reading sibling fields", () => {
+    let requestSiblingReads = 0;
+    const request: Record<string, unknown> = { bridge: { schemaVersion: "0.1.0" } };
+    Object.defineProperty(request, "bootstrapSelection", {
+      enumerable: true,
+      get() {
+        requestSiblingReads += 1;
+        throw new Error("request sibling was read before bridge version");
+      },
+    });
+    expect(() => assertBrowserItotoriApiRequest("imports.bridge", request)).toThrow(
+      "BridgeInput.schemaVersion must be 0.2.0; migrate before import",
+    );
+    expect(requestSiblingReads).toBe(0);
+
+    let responseSiblingReads = 0;
+    const response: Record<string, unknown> = { bridge: { schemaVersion: "0.1.0" } };
+    Object.defineProperty(response, "engine", {
+      enumerable: true,
+      get() {
+        responseSiblingReads += 1;
+        throw new Error("response sibling was read before bridge version");
+      },
+    });
+    expect(() => assertBrowserItotoriApiResponse("projects.decodeExtract", response)).toThrow(
+      "BridgeInput.schemaVersion must be 0.2.0; migrate before import",
+    );
+    expect(responseSiblingReads).toBe(0);
+  });
+
   it("rejects a WikiObject edit receipt that omits durable history and impact", () => {
     expect(() =>
       assertBrowserItotoriApiResponse("wiki.edit", {
         schemaVersion: "itotori.wiki.write.v1",
+        generatedAt: "2026-07-31T12:00:00.000Z",
         receipt: {},
+        dependencyImpact: {},
       }),
     ).toThrow("response for wiki.edit.history is required");
   });
@@ -118,6 +153,7 @@ describe("browser API response guard", () => {
     expect(() =>
       assertBrowserItotoriApiResponse("wiki.apply", {
         schemaVersion: "itotori.wiki.apply.v1",
+        generatedAt: "2026-07-31T12:00:00.000Z",
         history: [],
         dependencyImpact: {},
       }),

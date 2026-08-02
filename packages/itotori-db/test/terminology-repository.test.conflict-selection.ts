@@ -33,6 +33,8 @@ import {
   projectFixture,
   otherProjectFixture,
   seedProject,
+  terminologyFixture,
+  otherTerminologyFixture,
 } from "./terminology-repository.test.support.js";
 
 describe("ItotoriTerminologyRepository", () => {
@@ -276,7 +278,7 @@ describe("ItotoriTerminologyRepository", () => {
           preferredTranslation: "Otherworld",
           sourceReferences: [
             {
-              sourceRevisionId: "bridge-terminology-other:unit:bridge-unit-other",
+              sourceRevisionId: otherTerminologyFixture.sourceRevisionId,
               referenceKind: terminologySourceReferenceKindValues.sourceUnit,
               citation: "other.scene.001.line.001",
             },
@@ -295,7 +297,7 @@ describe("ItotoriTerminologyRepository", () => {
           preferredTranslation: "Gate",
           sourceReferences: [
             {
-              bridgeUnitId: "bridge-unit-other",
+              bridgeUnitId: otherTerminologyFixture.unitId,
               referenceKind: terminologySourceReferenceKindValues.sourceUnit,
               citation: "other.scene.001.line.001",
             },
@@ -338,7 +340,7 @@ describe("ItotoriTerminologyRepository", () => {
           metadata: {
             projectId: "project-terminology-other",
             localeBranchId: "locale-en-us-other",
-            sourceBundleId: "bridge-terminology-other",
+            sourceBundleId: otherTerminologyFixture.sourceBundleId,
           },
         },
         {
@@ -351,7 +353,7 @@ describe("ItotoriTerminologyRepository", () => {
           metadata: {
             projectId: "project-terminology",
             localeBranchId: "locale-en-us",
-            sourceBundleId: "bridge-terminology",
+            sourceBundleId: terminologyFixture.sourceBundleId,
           },
         },
       ]);

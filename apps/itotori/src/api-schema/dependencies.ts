@@ -59,22 +59,17 @@ export {
 } from "../api-enum-values.js";
 export {
   assertBenchmarkReportV02,
-  assertBridgeBundle,
   assertBridgeBundleV02,
   assertFindingRecordFixtureV02,
-  assertPatchExport,
   assertPatchExportV02,
-  assertRuntimeReport,
+  assertRuntimeEvidenceReportV02,
   BENCHMARK_TOKEN_COUNT_SOURCES,
   BRIDGE_SCHEMA_VERSION_V02,
   type BenchmarkReportV02,
-  type BridgeBundle,
   type BridgeBundleV02,
   type FindingRecordV02,
-  type PatchExport,
   type PatchExportV02,
   type RuntimeEvidenceReportV02,
-  type RuntimeVerificationReport,
 } from "@itotori/localization-bridge-schema";
 export type {
   BenchmarkRecordResult,

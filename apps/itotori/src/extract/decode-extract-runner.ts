@@ -6,7 +6,7 @@
 // path the CLI `itotori extract` command drives — `kaifuu-cli extract --engine
 // <engine>` for the request's REQUIRED engine discriminant (resolved through the
 // extract-adapter registry + spawned through the ONE sanitized native-CLI
-// boundary) — writes the v0.2 BridgeBundle kaifuu produces to a scratch path,
+// boundary) — writes the BridgeBundleV02 kaifuu produces to a scratch path,
 // reads it back, validates it against the bridge-schema authority, and hands it
 // to the workflow for ingestion.
 //

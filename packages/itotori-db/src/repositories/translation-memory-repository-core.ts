@@ -145,7 +145,7 @@ export class ItotoriTranslationMemoryRepository implements ItotoriTranslationMem
         sql`${translationMemorySegments.projectId} = ${target.projectId}
           and ${translationMemorySegments.localeBranchId} = ${target.localeBranchId}
           and ${translationMemorySegments.sourceRevisionId} = ${target.sourceRevisionId}
-          and ${translationMemorySegments.sourceHash} = ${target.sourceHash}
+          and ${translationMemorySegments.sourceFingerprint} = ${target.sourceFingerprint}
           and ${translationMemorySegments.targetLocale} = ${input.requestedTargetLocale}
           and ${translationMemorySegments.status} = ${translationMemorySegmentStatusValues.reusable}`,
       )
@@ -178,7 +178,7 @@ export class ItotoriTranslationMemoryRepository implements ItotoriTranslationMem
         sql`${translationMemorySegments.projectId} = ${target.projectId}
           and ${translationMemorySegments.localeBranchId} = ${target.localeBranchId}
           and ${translationMemorySegments.sourceRevisionId} = ${target.sourceRevisionId}
-          and ${translationMemorySegments.sourceHash} <> ${target.sourceHash}
+          and ${translationMemorySegments.sourceFingerprint} <> ${target.sourceFingerprint}
           and ${translationMemorySegments.targetLocale} = ${input.requestedTargetLocale}
           and ${translationMemorySegments.status} = ${translationMemorySegmentStatusValues.reusable}`,
       )

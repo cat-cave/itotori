@@ -353,12 +353,11 @@ fn shared_contract_fixture_suite_accepts_all_manifest_valid_fixtures() {
     }
 }
 
-/// legacy (raw-only) protected spans are compatibility-
-/// preserving: a duplicate `raw` value with no source identity is ALLOWED,
-/// disambiguated by distinct target byte ranges. This locks in the documented
-/// legacy v0.1 policy so it stays distinct from the strict v0.2 identity path.
+/// Raw-only v0.2 protected-span mappings are structurally valid: duplicate
+/// `raw` values carry distinct target byte ranges, while source compatibility
+/// later verifies that their source occurrences can be resolved safely.
 #[test]
-fn patch_export_v02_allows_duplicate_raw_legacy_spans_without_source_identity() {
+fn patch_export_v02_allows_duplicate_raw_mappings_without_source_metadata() {
     let mut fixture = contract_example_fixture_value("./patch-export-v0.2.json");
     // The same protected literal "{player}" recurs twice in one unit, each
     // occurrence carrying only `raw` + a distinct target range (no
@@ -368,7 +367,7 @@ fn patch_export_v02_allows_duplicate_raw_legacy_spans_without_source_identity() 
         { "raw": "{player}", "targetStart": 20, "targetEnd": 28 },
     ]);
     contracts::validate_patch_export_v02(&fixture)
-        .expect("legacy raw-only duplicate protected spans must stay compatibility-preserving");
+        .expect("raw-only v0.2 duplicate protected-span mappings must be structurally valid");
 }
 
 /// v0.2 source-identity spans are strict: a duplicate
@@ -404,9 +403,9 @@ fn patch_export_v02_rejects_duplicate_source_span_identity() {
     );
 }
 
-/// the v0.2 identity path stays distinct from the legacy path
-/// two spans with the SAME `raw` but DISTINCT `sourceSpanId`s are allowed
-/// (the reordered/duplicate-raw case source identity exists to carry).
+/// The v0.2 identity-metadata variant permits two spans with the SAME `raw`
+/// when they carry DISTINCT `sourceSpanId`s, representing reordered or
+/// repeated protected text without collapsing its source occurrences.
 #[test]
 fn patch_export_v02_allows_duplicate_raw_with_distinct_source_span_identity() {
     let mut fixture = contract_example_fixture_value("./patch-export-v0.2.json");

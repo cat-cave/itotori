@@ -5,6 +5,12 @@ import type {
 } from "@itotori/db";
 import type { ApiProjectsResponse } from "../src/api-schema.js";
 import { costReportFixture } from "./api-fixtures-settings.js";
+import { benchmarkReportFixture, bridgeFixture } from "./api-fixtures-public-contracts.js";
+
+const speakerNameUnit = requiredFixtureValue(
+  bridgeFixture.units.find((unit) => unit.surfaceKind === "speaker_name"),
+  "speaker-name bridge unit",
+);
 
 export const costDrilldownFixture: CostDrilldownPage = {
   filter: {
@@ -94,8 +100,8 @@ export const costDrilldownFixture: CostDrilldownPage = {
 };
 
 export const terminologySearchFixture: TerminologySearchReadModel = {
-  query: "Hero",
-  normalizedQuery: "hero",
+  query: speakerNameUnit.sourceText,
+  normalizedQuery: speakerNameUnit.sourceText.toLocaleLowerCase("en-US"),
   localeBranchId: "locale-1",
   results: [
     {
@@ -105,12 +111,12 @@ export const terminologySearchFixture: TerminologySearchReadModel = {
         termId: "term-hero",
         projectId: "project-1",
         localeBranchId: "locale-1",
-        sourceTerm: "Hero",
-        normalizedSourceTerm: "hero",
-        sourceLocale: "ja-JP",
-        targetLocale: "en-US",
-        preferredTranslation: "Hero",
-        normalizedPreferredTranslation: "hero",
+        sourceTerm: speakerNameUnit.sourceText,
+        normalizedSourceTerm: speakerNameUnit.sourceText.toLocaleLowerCase("en-US"),
+        sourceLocale: bridgeFixture.sourceLocale,
+        targetLocale: "fr-FR",
+        preferredTranslation: speakerNameUnit.sourceText,
+        normalizedPreferredTranslation: speakerNameUnit.sourceText.toLocaleLowerCase("fr-FR"),
         termKind: "character_name",
         partOfSpeech: null,
         status: "active",
@@ -124,10 +130,10 @@ export const terminologySearchFixture: TerminologySearchReadModel = {
           {
             aliasId: "alias-hero",
             termId: "term-hero",
-            aliasText: "勇者",
-            normalizedAliasText: "勇者",
+            aliasText: "M.",
+            normalizedAliasText: "m.",
             aliasKind: "source_alias",
-            locale: "ja-JP",
+            locale: bridgeFixture.sourceLocale,
             metadata: {},
             createdAt: new Date("2026-06-18T00:00:00.000Z"),
           },
@@ -136,11 +142,11 @@ export const terminologySearchFixture: TerminologySearchReadModel = {
           {
             sourceRefId: "source-ref-hero",
             termId: "term-hero",
-            sourceRevisionId: "source-revision-1",
-            bridgeUnitId: "bridge-unit-1",
+            sourceRevisionId: speakerNameUnit.sourceRevision.revisionId,
+            bridgeUnitId: speakerNameUnit.bridgeUnitId,
             sourceProvenanceId: null,
             referenceKind: "source_unit",
-            citation: "hello.scene.001.line.001",
+            citation: speakerNameUnit.sourceUnitKey,
             context: "Speaker name",
             metadata: {},
             createdAt: new Date("2026-06-18T00:00:00.000Z"),
@@ -149,8 +155,13 @@ export const terminologySearchFixture: TerminologySearchReadModel = {
         semanticIndex: {
           semanticIndexId: "semantic-hero",
           termId: "term-hero",
-          searchDocument: "Hero\n勇者\nSpeaker name",
-          searchTokens: ["hero", "勇者", "speaker", "name"],
+          searchDocument: `${speakerNameUnit.sourceText}\nM.\nSpeaker name`,
+          searchTokens: [
+            speakerNameUnit.sourceText.toLocaleLowerCase("en-US"),
+            "m.",
+            "speaker",
+            "name",
+          ],
           embeddingProvider: "itotori-lexical",
           embeddingModel: "terminology-lexical-token-index-v1",
           embeddingDimension: 0,
@@ -177,36 +188,36 @@ export const dashboardStatusFixture: ProjectDashboardStatus = {
   projectKey: "project-1",
   name: "project-1",
   status: "runtime_ingested",
-  sourceLocale: "ja-JP",
+  sourceLocale: bridgeFixture.sourceLocale,
   engineFamily: "synthetic_fixture",
-  sourceBundleId: "bridge-1",
-  sourceBundleHash: "hash-1",
-  sourceBundleRevisionId: "revision-1",
+  sourceBundleId: bridgeFixture.bridgeId,
+  sourceBundleHash: bridgeFixture.sourceBundleHash,
+  sourceBundleRevisionId: bridgeFixture.sourceBundleRevision.revisionId,
   branchCount: 2,
-  unitCount: 1,
+  unitCount: bridgeFixture.units.length,
   findingCount: 3,
   artifactCount: 3,
   latestEventKind: "patch_result_recorded",
   latestEventAt: "2026-06-17T00:00:00.000Z",
-  selectedLocaleBranchId: "019ed065-0000-7000-8000-000000000110",
+  selectedLocaleBranchId: benchmarkReportFixture.localeBranchId ?? "locale-1",
   currentStyleGuidePolicyVersionId: "019ed065-0000-7000-8000-000000000120",
   importStatus: {
-    bridgeImportId: "bridge-import:project-1:bridge-1:revision-1",
+    bridgeImportId: `bridge-import:project-1:${bridgeFixture.bridgeId}:${bridgeFixture.sourceBundleRevision.revisionId}`,
     projectId: "project-1",
-    bridgeId: "bridge-1",
-    sourceBundleId: "bridge-1",
-    sourceBundleHash: "hash-1",
-    sourceBundleRevisionId: "revision-1",
-    schemaVersion: "0.1.0",
-    sourceLocale: "ja-JP",
+    bridgeId: bridgeFixture.bridgeId,
+    sourceBundleId: bridgeFixture.bridgeId,
+    sourceBundleHash: bridgeFixture.sourceBundleHash,
+    sourceBundleRevisionId: bridgeFixture.sourceBundleRevision.revisionId,
+    schemaVersion: "0.2.0",
+    sourceLocale: bridgeFixture.sourceLocale,
     importedAt: "2026-06-17T00:00:00.000Z",
-    unitCount: 1,
-    assetCount: 1,
-    sourceRevisionCount: 4,
+    unitCount: bridgeFixture.units.length,
+    assetCount: bridgeFixture.assets.length,
+    sourceRevisionCount: 8,
     validationFailureCount: 0,
-    units: { added: 1, updated: 0, removed: 0, unchanged: 0 },
-    assets: { added: 1, updated: 0, removed: 0, unchanged: 0 },
-    sourceRevisions: { added: 4, existing: 0 },
+    units: { added: bridgeFixture.units.length, updated: 0, removed: 0, unchanged: 0 },
+    assets: { added: bridgeFixture.assets.length, updated: 0, removed: 0, unchanged: 0 },
+    sourceRevisions: { added: 8, existing: 0 },
     futureReferences: {
       catalogWorkId: null,
       localCorpusEntryId: null,
@@ -218,7 +229,7 @@ export const dashboardStatusFixture: ProjectDashboardStatus = {
   localeBranches: [
     {
       localeBranchId: "locale-1",
-      targetLocale: "en-US",
+      targetLocale: "fr-FR",
       status: "active",
       currentStyleGuidePolicyVersionId: null,
       unitCount: 1,
@@ -227,7 +238,7 @@ export const dashboardStatusFixture: ProjectDashboardStatus = {
       artifactCount: 3,
     },
     {
-      localeBranchId: "019ed065-0000-7000-8000-000000000110",
+      localeBranchId: benchmarkReportFixture.localeBranchId ?? "locale-1",
       targetLocale: "fr-FR",
       status: "active",
       currentStyleGuidePolicyVersionId: "019ed065-0000-7000-8000-000000000120",
@@ -238,6 +249,11 @@ export const dashboardStatusFixture: ProjectDashboardStatus = {
     },
   ],
 };
+
+function requiredFixtureValue<T>(value: T | null | undefined, label: string): T {
+  if (value === undefined || value === null) throw new Error(`fixture is missing ${label}`);
+  return value;
+}
 
 const emptyRunStatusCounts = {
   queued: 0,

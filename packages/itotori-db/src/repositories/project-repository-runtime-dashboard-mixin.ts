@@ -112,10 +112,8 @@ export class ProjectRuntimeDashboardRepository extends ProjectRepositoryBase {
         -- DAG-node-runtime-status-double-counted-capture-scalars-on-wire:
         -- The frame-capture vs screenshot API scalars are the REAL distinct
         -- per-artifactKind counts of the persisted runtime artifacts (each
-        -- capture produces exactly one row, keyed either as the
-        -- frame_capture artifact_kind for legacy deps.RuntimeVerificationReport
-        -- frame captures or as the screenshot artifact_kind for
-        -- RuntimeEvidenceReportV02 captures). Counting from the artifacts
+        -- capture produces exactly one screenshot artifact row for the
+        -- RuntimeEvidenceReportV02 capture. Counting from the artifacts
         -- table avoids double-counting that arose when the single
         -- capture_count column on itotori_runtime_evidence_runs was reused
         -- for both scalars.

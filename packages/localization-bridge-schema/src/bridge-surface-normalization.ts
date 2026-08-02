@@ -21,50 +21,31 @@
 // PreservesIdentity` re-derives the canonical form and fails loudly if a
 // consumer's normalized surface collapsed the kind or corrupted a span.
 //
-// Legitimately-normalized fields (flagged so consumers do not mistake them for
-// corruption): the legacy v0.1 `textSurface` two-value enum is DETERMINISTICALLY
-// widened to the v0.2 surface-kind vocabulary via
-// `LEGACY_TEXT_SURFACE_TO_SURFACE_KIND` — `system` maps to `metadata_text`, it
-// is NEVER collapsed to `dialogue`. Legacy spans carry no id, so a stable
-// per-occurrence identity is synthesized; a v0.2 span's own `spanId` is always
-// preserved verbatim.
+// Current readers accept only v0.2 localization units. A caller holding v0.1
+// must regenerate from authoritative source bytes; normalization neither reads
+// nor converts the historical shape. A v0.2 span's own `spanId` is preserved
+// verbatim.
 
 import type {
-  BridgeUnit,
   LocalizationUnitV02,
   PreserveModeV02,
-  ProtectedSpanKind,
+  SpanKindV02,
   SurfaceKindV02,
-  TextSurface,
   Uuid7,
 } from "./index.js";
-
-/**
- * Deterministic widening from the legacy v0.1 two-value `textSurface` enum to
- * the expanded v0.2 surface-kind vocabulary. `system` maps to `metadata_text`
- * — it is NEVER collapsed to `dialogue`. This mapping is the one legitimately
- * "normalizing" (not preserving) step for legacy units and is stated in the
- * surface-normalization semantics doc.
- */
-export const LEGACY_TEXT_SURFACE_TO_SURFACE_KIND: Record<TextSurface, SurfaceKindV02> = {
-  dialogue: "dialogue",
-  system: "metadata_text",
-};
 
 /**
  * A protected span after normalization. Carries everything a downstream
  * consumer needs to keep the span byte-exact and semantically identified:
  *  - `startByte` / `endByte` — the OFFSET into the source's UTF-8 bytes.
- *  - `spanId` — the stable IDENTITY (v0.2 spanId verbatim; synthesized for
- *    legacy spans which carry none).
+ *  - `spanId` — the stable v0.2 IDENTITY, preserved verbatim.
  *  - `spanKind` / `preserveMode` — the SEMANTIC MEANING (what the span is and
- *    how it must be handled), preserving the legacy `placeholder` kind which is
- *    a superset of the v0.2 span kinds.
+ *    how it must be handled).
  *  - `raw` — the exact source bytes the span covers.
  */
 export type NormalizedProtectedSpan = {
   spanId: Uuid7;
-  spanKind: ProtectedSpanKind;
+  spanKind: SpanKindV02;
   raw: string;
   startByte: number;
   endByte: number;
@@ -90,56 +71,23 @@ export class SurfaceNormalizationIdentityError extends Error {
 }
 
 /**
- * Synthesize a stable identity for a legacy protected span, which carries no
- * id of its own. Deterministic in the unit id + occurrence index so repeated
- * normalization of the same unit is byte-identical.
- */
-function legacySpanId(bridgeUnitId: Uuid7, index: number): Uuid7 {
-  return `${bridgeUnitId}#span-${index}`;
-}
-
-function isLocalizationUnitV02(
-  unit: BridgeUnit | LocalizationUnitV02,
-): unit is LocalizationUnitV02 {
-  return "spans" in unit && "surfaceKind" in unit;
-}
-
-/**
  * Produce the canonical surface-identity + protected-span preserving
- * normalization of a bridge unit (legacy v0.1 `BridgeUnit` or expanded v0.2
- * `LocalizationUnitV02`).
+ * normalization of a validated v0.2 localization unit.
  *
  * PRESERVES:
- *  - surface kind (v0.2 `surfaceKind` verbatim; legacy `textSurface`
- *    deterministically widened, never collapsed to dialogue).
+ *  - the v0.2 `surfaceKind` verbatim, never collapsed to dialogue.
  *  - every protected span's offset, identity, semantic meaning, and raw bytes.
  */
-export function normalizeBridgeSurface(
-  unit: BridgeUnit | LocalizationUnitV02,
-): NormalizedBridgeSurface {
-  if (isLocalizationUnitV02(unit)) {
-    return {
-      surfaceKind: unit.surfaceKind,
-      sourceText: unit.sourceText,
-      protectedSpans: unit.spans.map((span) => ({
-        spanId: span.spanId,
-        spanKind: span.spanKind,
-        raw: span.raw,
-        startByte: span.startByte,
-        endByte: span.endByte,
-        preserveMode: span.preserveMode,
-      })),
-    };
-  }
+export function normalizeBridgeSurface(unit: LocalizationUnitV02): NormalizedBridgeSurface {
   return {
-    surfaceKind: LEGACY_TEXT_SURFACE_TO_SURFACE_KIND[unit.textSurface],
+    surfaceKind: unit.surfaceKind,
     sourceText: unit.sourceText,
-    protectedSpans: unit.protectedSpans.map((span, index) => ({
-      spanId: legacySpanId(unit.bridgeUnitId, index),
-      spanKind: span.kind,
+    protectedSpans: unit.spans.map((span) => ({
+      spanId: span.spanId,
+      spanKind: span.spanKind,
       raw: span.raw,
-      startByte: span.start,
-      endByte: span.end,
+      startByte: span.startByte,
+      endByte: span.endByte,
       preserveMode: span.preserveMode,
     })),
   };
@@ -169,7 +117,7 @@ export function normalizedProtectedSpanRaws(surface: NormalizedBridgeSurface): s
  *    identity, semantic kind, preserve mode, or raw bytes altered.
  */
 export function assertNormalizedSurfacePreservesIdentity(
-  unit: BridgeUnit | LocalizationUnitV02,
+  unit: LocalizationUnitV02,
   normalized: NormalizedBridgeSurface,
   label = "normalizedSurface",
 ): void {
