@@ -1,5 +1,9 @@
 import { ITOTORI_PRODUCT_VERSION } from "@itotori/localization-bridge-schema";
 import { buildCommandHelpText, buildHelpText } from "./help-text.js";
+import {
+  createDeploymentStartupContext,
+  loadDeploymentConfigurationFile,
+} from "./config/deployment-config-file.js";
 import { loadExternalEnvFile } from "./env/external-env-file.js";
 import type { ItotoriCliDependencies } from "./cli-handler-contracts.js";
 import {
@@ -26,11 +30,21 @@ import {
   runValidateCommand,
 } from "./cli-handler-core-commands.js";
 import { runInitHandler } from "./cli-handler-init.js";
+import { runLifecycleHandler } from "./cli-handler-lifecycle.js";
 
 export async function runItotoriCliCommand(
   args: string[],
   dependencies: ItotoriCliDependencies,
 ): Promise<void> {
+  const deploymentStartup = createDeploymentStartupContext(
+    loadDeploymentConfigurationFile({ args }),
+  );
+  if (deploymentStartup.configuration.path !== undefined) {
+    process.stderr.write(
+      `validated ${deploymentStartup.settings.size} documented application setting(s) from deployment ` +
+        `configuration '${deploymentStartup.configuration.path}'\n`,
+    );
+  }
   const envFileResult = loadExternalEnvFile({ args, env: process.env });
   if (envFileResult.path !== undefined && envFileResult.appliedKeys.length > 0) {
     process.stderr.write(
@@ -47,16 +61,16 @@ export async function runItotoriCliCommand(
     process.stdout.write(`${buildHelpText(args.includes("--all"))}\n`);
     return;
   }
-  if (args.includes("--version") || args.includes("-v")) {
+  if (args[0] === "--version" || args[0] === "-v") {
     process.stdout.write(`itotori ${ITOTORI_PRODUCT_VERSION}\n`);
     return;
   }
   switch (args[0]) {
     case "db-migrate":
-      await dependencies.migrateDatabase();
+      await dependencies.migrateDatabase(deploymentStartup);
       break;
     case "db-reset":
-      await dependencies.resetDatabase();
+      await dependencies.resetDatabase(deploymentStartup);
       break;
     case "dashboard-status":
       await runDashboardStatus(args, dependencies);
@@ -121,6 +135,11 @@ export async function runItotoriCliCommand(
       break;
     case "init":
       await runInitHandler(args, dependencies);
+      break;
+    case "update":
+    case "rollback":
+    case "lifecycle-status":
+      runLifecycleHandler(args, args[0]);
       break;
     default:
       throw new Error(`unknown itotori command: ${String(args[0])}`);

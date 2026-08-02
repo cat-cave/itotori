@@ -31,9 +31,9 @@ npm install -g packages/itotori-cli/itotori-<version>.tgz
 
 The package version equals `ITOTORI_PRODUCT_VERSION`
 ([`product-version.ts`](../packages/localization-bridge-schema/src/product-version.ts));
-a build-time check and a `just check` test assert they never drift. The bundle's
-sole host requirement is a Node runtime matching the `.node-version` pin (a
-`>=24.14` major).
+a build-time check and a `just check` test assert they never drift. The bundle
+needs a Node runtime matching the `.node-version` pin (a `>=24.14` major);
+pipeline commands also need the native dependencies listed below.
 
 ### Set up with `itotori init`
 
@@ -48,6 +48,39 @@ inputs are limited to the environment registry; application choices do not
 become environment variables. Secrets are never printed or logged. Every live
 request carries the ZDR routing posture; see
 [security-and-limitations.md](security-and-limitations.md).
+
+### Managed host lifecycle and signed updates
+
+For an operator-managed host, pass an explicit writable state root to `init`.
+It checks every requested font and glyph before marking the host ready, then
+copies the complete installed package payload (including `bin/`, `dist/`, and
+`migrations/`) into a retained release with a provenance receipt. The example
+uses an already-configured Postgres service; `DATABASE_URL` remains an existing
+deployment input, not a new lifecycle environment variable.
+
+```sh
+DATABASE_URL='postgres://…' itotori init --non-interactive \
+  --state-root "$HOME/.local/state/itotori" \
+  --required-font 'DejaVu Sans' --required-glyph 'A'
+itotori lifecycle-status --state-root "$HOME/.local/state/itotori"
+```
+
+Apply a release directory containing `manifest.json`, `signature.sig`, and a
+`payload/` tree with an authorized public key:
+
+```sh
+itotori update --state-root "$HOME/.local/state/itotori" \
+  --release ./release-candidate --public-key ./release-public-key.pem
+```
+
+The signature and every payload hash are checked before the active release is
+changed. The active payload is the atomically switched
+`<state-root>/current` link; an installed package can be run through
+`<state-root>/current/bin/itotori.js`. If an update is refused, leave the state
+root in place, correct or replace the release input, and rerun `itotori update`;
+the prior runnable release and `data/` directory remain intact. To intentionally
+return to a retained version, run `itotori rollback --state-root <DIR> --version
+<VERSION>`; the `current` link switches back to that complete retained payload.
 
 ### Native runtime dependencies (not bundled)
 
@@ -64,10 +97,9 @@ them via the deterministic path in
 | Postgres                   | A database configured through the application setup.                                      |
 | Chromium (render/e2e)      | Installed browser selected through application setup.                                     |
 
-The current `just doctor <profile>` delegate has a dispatcher/parser mismatch
-and exits before performing its check; see the provisioning document. Do not
-use it as evidence until that behavior is repaired. An installed machine
-follows the provisioning document above.
+From a clone, `just doctor <profile>` runs the corresponding prerequisite
+checks and names missing tooling. An installed machine follows the provisioning
+document above before running a native pipeline command.
 
 ## Developer / fresh-clone setup
 

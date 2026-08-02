@@ -23,6 +23,9 @@ export function buildHelpText(allCommands = false): string {
   lines.push("                          config file, and database footprint.");
   lines.push("  db-migrate              Run database migrations.");
   lines.push("  db-reset                Reset the database (destroys all data).");
+  lines.push("  update                  Verify and atomically apply a signed release.");
+  lines.push("  rollback                Re-activate a retained complete release.");
+  lines.push("  lifecycle-status        Show the active release and its provenance receipt.");
   lines.push("");
 
   lines.push("LOCALIZATION:");
@@ -110,6 +113,7 @@ export function buildHelpText(allCommands = false): string {
   lines.push("  --help, -h              Print this help text.");
   lines.push("  --version, -v           Print the itotori version.");
   lines.push("  --env-file <path>       Load allowlisted live-provider vars from an env file.");
+  lines.push("  --deployment-config <path>  Validate documented application settings.");
   lines.push("");
 
   if (allCommands) {
@@ -122,6 +126,8 @@ export function buildHelpText(allCommands = false): string {
   lines.push("  itotori --help                    # this help");
   lines.push("  itotori --version                 # version");
   lines.push("  itotori db-migrate                # run database migrations");
+  lines.push("  itotori update --state-root <dir> --release <dir> --public-key <pem>");
+  lines.push("  itotori rollback --state-root <dir> --version <retained-version>");
   lines.push(
     "  itotori wiki build --structure <structure.json> --bridge <bridge.json> --source-locale <locale> --run-mode production",
   );
@@ -156,11 +162,31 @@ export function buildCommandHelpText(args: readonly string[]): string | undefine
 
   switch (command) {
     case "init":
-      usage("itotori init [--non-interactive] [--config <PATH>]");
+      usage(
+        "itotori init [--non-interactive] [--config <PATH>] [--state-root <DIR>] [--release-version <VERSION>] [--release-payload <PATH>] [--required-font <FAMILY>] [--required-glyph <CODEPOINT>]",
+      );
       lines.push("Writes local setup configuration. Supply OpenRouter, database, and field-cipher");
       lines.push(
         "credentials through the environment or an env file; never put secrets on the command line.",
       );
+      lines.push(
+        "With --state-root, init checks fonts before readiness and records the installed release.",
+      );
+      break;
+    case "update":
+      usage("itotori update --state-root <DIR> --release <SIGNED-RELEASE-DIR> --public-key <PEM>");
+      lines.push("The release directory must contain manifest.json, signature.sig, and payload/.");
+      lines.push(
+        "An invalid signature or payload hash is refused before the active release changes.",
+      );
+      break;
+    case "rollback":
+      usage("itotori rollback --state-root <DIR> --version <RETAINED-VERSION>");
+      lines.push("Re-activates a complete retained release; host data is preserved.");
+      break;
+    case "lifecycle-status":
+      usage("itotori lifecycle-status --state-root <DIR>");
+      lines.push("Prints the active release and reproducible authorization provenance receipt.");
       break;
     case "extract":
       usage("itotori extract --engine <ENGINE> ... --bundle-output <JSON>");

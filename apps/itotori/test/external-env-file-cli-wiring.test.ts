@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -45,12 +45,10 @@ describe("runItotoriCliCommand — external env-file wiring", () => {
     }
   });
 
-  it("loads allowlisted vars from --env-file before dispatch and never leaks the value", async () => {
+  it("loads a reviewed var from --env-file before dispatch and never leaks the value", async () => {
     const path = join(tmp, "itotori-openrouter.env");
-    writeFileSync(
-      path,
-      [`OPENROUTER_API_KEY=${DUMMY_KEY}`, "EVIL_EXFIL=http://attacker.example"].join("\n"),
-    );
+    writeFileSync(path, `OPENROUTER_API_KEY=${DUMMY_KEY}`, { mode: 0o600 });
+    chmodSync(path, 0o600);
 
     const stderrWrites: string[] = [];
     const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation((chunk: unknown) => {
@@ -63,8 +61,6 @@ describe("runItotoriCliCommand — external env-file wiring", () => {
 
     // The provider credential is now in the process env for the command.
     expect(process.env.OPENROUTER_API_KEY).toBe(DUMMY_KEY);
-    // Rogue var never loaded.
-    expect(process.env.EVIL_EXFIL).toBeUndefined();
     // The command still ran.
     expect(deps.migrateDatabase).toHaveBeenCalledOnce();
 
@@ -77,11 +73,33 @@ describe("runItotoriCliCommand — external env-file wiring", () => {
     stderrSpy.mockRestore();
   });
 
+  it("refuses an unknown setting before the command becomes ready", async () => {
+    const path = join(tmp, "itotori-unknown.env");
+    writeFileSync(path, [`OPENROUTER_API_KEY=${DUMMY_KEY}`, "EVIL_EXFIL=bad"].join("\n"), {
+      mode: 0o600,
+    });
+    chmodSync(path, 0o600);
+    const deps = noopDependencies();
+    let failure: unknown;
+    try {
+      await runItotoriCliCommand(["db-migrate", "--env-file", path], deps);
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(ExternalEnvFileError);
+    if (!(failure instanceof ExternalEnvFileError)) throw failure;
+    expect(failure.code).toBe("unknown-setting");
+    expect(String(failure.message)).not.toContain(DUMMY_KEY);
+    expect(deps.migrateDatabase).not.toHaveBeenCalled();
+    expect(process.env.OPENROUTER_API_KEY).toBeUndefined();
+  });
+
   it("does NOT overwrite an already-exported var (exported wins)", async () => {
     const exported = "sk-or-exported-cli-3333333333";
     process.env.OPENROUTER_API_KEY = exported;
     const path = join(tmp, "itotori-openrouter.env");
-    writeFileSync(path, `OPENROUTER_API_KEY=${DUMMY_KEY}`);
+    writeFileSync(path, `OPENROUTER_API_KEY=${DUMMY_KEY}`, { mode: 0o600 });
+    chmodSync(path, 0o600);
 
     const deps = noopDependencies();
     await runItotoriCliCommand(["db-migrate", "--env-file", path], deps);
@@ -124,6 +142,20 @@ describe("runItotoriCliCommand — external env-file wiring", () => {
       return true;
     });
     await runItotoriCliCommand(["--version"], deps);
+    expect(stdoutWrites.join("")).toContain("itotori ");
+    stdoutSpy.mockRestore();
+  });
+
+  it("prints the version after validating a supplied env file", async () => {
+    const path = join(tmp, "itotori-openrouter.env");
+    writeFileSync(path, `OPENROUTER_API_KEY=${DUMMY_KEY}`, { mode: 0o600 });
+    chmodSync(path, 0o600);
+    const stdoutWrites: string[] = [];
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      stdoutWrites.push(String(chunk));
+      return true;
+    });
+    await runItotoriCliCommand(["--version", "--env-file", path], noopDependencies());
     expect(stdoutWrites.join("")).toContain("itotori ");
     stdoutSpy.mockRestore();
   });

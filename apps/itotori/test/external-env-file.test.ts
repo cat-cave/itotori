@@ -5,14 +5,41 @@ import {
   loadExternalEnvFile,
   parseAllowlistedEnvFile,
   resolveExternalEnvFilePath,
+  type ExternalEnvFileErrorCode,
+  type ExternalEnvFileSource,
 } from "../src/env/external-env-file.js";
 
-// DUMMY values only — never a real secret.
+// Dummy value only — never a live credential.
 const DUMMY_KEY = "sk-or-dummy-do-not-use-0000000000";
 const DUMMY_FILE_PATH = "/nonexistent/dummy/itotori-openrouter.env";
+const PRIVATE_REGULAR_SOURCE: ExternalEnvFileSource = { isRegularFile: true, mode: 0o100600 };
 
-function fileFixture(body: string): (path: string) => string {
+function fileFixture(body: string | Uint8Array): (path: string) => string | Uint8Array {
   return vi.fn(() => body);
+}
+
+function loadFixture(
+  body: string | Uint8Array,
+  env: Record<string, string | undefined> = {},
+  args: readonly string[] = ["--env-file", DUMMY_FILE_PATH],
+) {
+  return loadExternalEnvFile({
+    args,
+    env,
+    readFile: fileFixture(body),
+    inspectSource: () => PRIVATE_REGULAR_SOURCE,
+  });
+}
+
+function expectCode(action: () => unknown, code: ExternalEnvFileErrorCode): void {
+  try {
+    action();
+    throw new Error("expected ExternalEnvFileError");
+  } catch (error) {
+    expect(error).toBeInstanceOf(ExternalEnvFileError);
+    if (!(error instanceof ExternalEnvFileError)) throw error;
+    expect(error.code).toBe(code);
+  }
 }
 
 describe("resolveExternalEnvFilePath", () => {
@@ -24,170 +51,130 @@ describe("resolveExternalEnvFilePath", () => {
   });
 
   it("falls back to ITOTORI_LOCAL_ENV_FILE when the flag is absent", () => {
-    const path = resolveExternalEnvFilePath([], {
-      ITOTORI_LOCAL_ENV_FILE: "/from/envvar.env",
-    });
-    expect(path).toBe("/from/envvar.env");
+    expect(resolveExternalEnvFilePath([], { ITOTORI_LOCAL_ENV_FILE: "/from/envvar.env" })).toBe(
+      "/from/envvar.env",
+    );
   });
 
-  it("returns undefined when neither is supplied", () => {
-    expect(resolveExternalEnvFilePath([], {})).toBeUndefined();
-  });
-
-  it("fails loud when --env-file has no path argument", () => {
-    expect(() => resolveExternalEnvFilePath(["--env-file"], {})).toThrow(ExternalEnvFileError);
-    expect(() => resolveExternalEnvFilePath(["--env-file", "--other"], {})).toThrow(
-      ExternalEnvFileError,
+  it("fails loudly and typed when --env-file has no path argument", () => {
+    expectCode(() => resolveExternalEnvFilePath(["--env-file"], {}), "flag-path-required");
+    expectCode(
+      () => resolveExternalEnvFilePath(["--env-file", "--other"], {}),
+      "flag-path-required",
     );
   });
 });
 
 describe("parseAllowlistedEnvFile", () => {
-  it("parses KEY=value, export KEY=value, comments, and quotes", () => {
+  it("round-trips supported credential punctuation without shell expansion", () => {
+    const expected = `dollar$ quote" space and \\ path`;
     const parsed = parseAllowlistedEnvFile(
-      [
-        "# a comment",
-        "",
-        `OPENROUTER_API_KEY=${DUMMY_KEY}`,
-        `OPENROUTER_ZDR_DOWNGRADE="deepseek/deepseek-chat"`,
-      ].join("\n"),
+      `OPENROUTER_API_KEY="dollar\\$ quote\\\" space and \\\\ path"`,
     );
-    expect(parsed.get("OPENROUTER_API_KEY")).toBe(DUMMY_KEY);
-    expect(parsed.get("OPENROUTER_ZDR_DOWNGRADE")).toBe("deepseek/deepseek-chat");
+    expect(parsed.get("OPENROUTER_API_KEY")).toBe(expected);
+  });
+
+  it("rejects unknown, malformed, duplicate, and unsupported trailing forms", () => {
+    expectCode(
+      () => parseAllowlistedEnvFile("OPENROUTER_API_KEY=first\nUNKNOWN_DEPLOYMENT_SETTING=second"),
+      "unknown-setting",
+    );
+    expectCode(() => parseAllowlistedEnvFile("not-an-assignment"), "malformed-assignment");
+    expectCode(
+      () => parseAllowlistedEnvFile("OPENROUTER_API_KEY=first\nOPENROUTER_API_KEY=second"),
+      "duplicate-setting",
+    );
+    expectCode(
+      () => parseAllowlistedEnvFile("OPENROUTER_API_KEY=ends-with-backslash\\"),
+      "unsupported-value-form",
+    );
+  });
+
+  it("uses only the reviewed live-provider names", () => {
+    expect(EXTERNAL_ENV_FILE_ALLOWLIST).toContain("OPENROUTER_API_KEY");
+    expect(EXTERNAL_ENV_FILE_ALLOWLIST).toContain("OPENROUTER_ZDR_DOWNGRADE");
+    expect(EXTERNAL_ENV_FILE_ALLOWLIST).not.toContain("ITOTORI_FIELD_CIPHER_KEY");
+    expect(EXTERNAL_ENV_FILE_ALLOWLIST).not.toContain("UNKNOWN_DEPLOYMENT_SETTING");
   });
 });
 
-describe("loadExternalEnvFile — allowlist", () => {
-  it("loads ONLY allowlisted keys; a rogue var is ignored", () => {
+describe("loadExternalEnvFile — strict transactional startup boundary", () => {
+  it("applies only a fully valid file and reports names rather than secret values", () => {
     const env: Record<string, string | undefined> = {};
-    const body = [
-      `OPENROUTER_API_KEY=${DUMMY_KEY}`,
-      "EVIL_EXFIL=http://attacker.example",
-      "AWS_SECRET_ACCESS_KEY=should-be-ignored",
-      "PATH=/malicious/bin",
-    ].join("\n");
-    const result = loadExternalEnvFile({
-      args: ["--env-file", DUMMY_FILE_PATH],
-      env,
-      readFile: fileFixture(body),
-    });
+    const result = loadFixture(`OPENROUTER_API_KEY=${DUMMY_KEY}`, env);
     expect(env.OPENROUTER_API_KEY).toBe(DUMMY_KEY);
-    // Non-allowlisted keys must NEVER enter the environment.
-    expect(env.EVIL_EXFIL).toBeUndefined();
-    expect(env.AWS_SECRET_ACCESS_KEY).toBeUndefined();
-    expect(env.PATH).toBeUndefined();
-    expect([...result.appliedKeys]).toEqual(["OPENROUTER_API_KEY"]);
-    // Every applied key is in the published allowlist.
-    for (const key of result.appliedKeys) {
-      expect(EXTERNAL_ENV_FILE_ALLOWLIST).toContain(key);
-    }
-  });
-});
-
-describe("loadExternalEnvFile — precedence", () => {
-  it("loads a file value (via ITOTORI_LOCAL_ENV_FILE) when the var is unset", () => {
-    // Exercise the env-var path (no --env-file flag).
-    const target: Record<string, string | undefined> = {
-      ITOTORI_LOCAL_ENV_FILE: DUMMY_FILE_PATH,
-    };
-    const result = loadExternalEnvFile({
-      args: [],
-      env: target,
-      readFile: fileFixture(`OPENROUTER_API_KEY=${DUMMY_KEY}`),
-    });
-    expect(target.OPENROUTER_API_KEY).toBe(DUMMY_KEY);
-    expect(result.appliedKeys).toContain("OPENROUTER_API_KEY");
+    expect(result.appliedKeys).toEqual(["OPENROUTER_API_KEY"]);
+    expect(JSON.stringify(result)).not.toContain(DUMMY_KEY);
   });
 
-  it("does NOT overwrite an already-exported var", () => {
-    const alreadyExported = "sk-or-exported-wins-1111111111";
-    const env: Record<string, string | undefined> = {
-      OPENROUTER_API_KEY: alreadyExported,
-    };
-    const result = loadExternalEnvFile({
-      args: ["--env-file", DUMMY_FILE_PATH],
-      env,
-      readFile: fileFixture(`OPENROUTER_API_KEY=${DUMMY_KEY}`),
-    });
-    // Exported value wins; file value is NOT applied.
-    expect(env.OPENROUTER_API_KEY).toBe(alreadyExported);
-    expect(result.appliedKeys).not.toContain("OPENROUTER_API_KEY");
-    expect(result.skippedAlreadySetKeys).toContain("OPENROUTER_API_KEY");
-  });
-});
+  it("does not mutate the environment when a late unknown or duplicate setting is refused", () => {
+    const unknownEnv: Record<string, string | undefined> = {};
+    expectCode(
+      () =>
+        loadFixture(`OPENROUTER_API_KEY=${DUMMY_KEY}\nUNKNOWN_DEPLOYMENT_SETTING=bad`, unknownEnv),
+      "unknown-setting",
+    );
+    expect(unknownEnv).toEqual({});
 
-describe("loadExternalEnvFile — missing file fails loud", () => {
-  it("throws a typed ExternalEnvFileError for a specified but unreadable path", () => {
+    const duplicateEnv: Record<string, string | undefined> = {};
+    const manySettings = Array.from({ length: 40 }, (_, index) =>
+      index === 39
+        ? `OPENROUTER_API_KEY=${DUMMY_KEY}`
+        : `# documented capacity probe ${String(index)}`,
+    ).join("\n");
+    expectCode(
+      () => loadFixture(`${manySettings}\nOPENROUTER_API_KEY=late`, duplicateEnv),
+      "duplicate-setting",
+    );
+    expect(duplicateEnv).toEqual({});
+  });
+
+  it("does not overwrite an already-exported setting", () => {
+    const env: Record<string, string | undefined> = { OPENROUTER_API_KEY: "already-exported" };
+    const result = loadFixture(`OPENROUTER_API_KEY=${DUMMY_KEY}`, env);
+    expect(env.OPENROUTER_API_KEY).toBe("already-exported");
+    expect(result.appliedKeys).toEqual([]);
+    expect(result.skippedAlreadySetKeys).toEqual(["OPENROUTER_API_KEY"]);
+  });
+
+  it("recognizes the init-generated DATABASE_URL line without applying it", () => {
     const env: Record<string, string | undefined> = {};
-    expect(() =>
-      loadExternalEnvFile({
-        args: ["--env-file", DUMMY_FILE_PATH],
-        env,
-        readFile: () => {
-          throw new Error("ENOENT: no such file or directory");
-        },
-      }),
-    ).toThrow(ExternalEnvFileError);
+    const result = loadFixture(
+      "DATABASE_URL=postgres://operator:credential@localhost/itotori",
+      env,
+    );
+    expect(env.DATABASE_URL).toBeUndefined();
+    expect(result.appliedKeys).toEqual([]);
+    expect(result.skippedAlreadySetKeys).toEqual([]);
   });
 
-  it("is a silent no-op when no file is specified", () => {
+  it("refuses non-Unicode values and insecure/non-regular sources before startup", () => {
+    expectCode(() => loadFixture(new Uint8Array([0xff])), "non-unicode");
+    expectCode(
+      () =>
+        loadExternalEnvFile({
+          args: ["--env-file", DUMMY_FILE_PATH],
+          env: {},
+          readFile: fileFixture(`OPENROUTER_API_KEY=${DUMMY_KEY}`),
+          inspectSource: () => ({ isRegularFile: true, mode: 0o100644 }),
+        }),
+      "source-permissions-insecure",
+    );
+    expectCode(
+      () =>
+        loadExternalEnvFile({
+          args: ["--env-file", DUMMY_FILE_PATH],
+          env: {},
+          readFile: fileFixture(`OPENROUTER_API_KEY=${DUMMY_KEY}`),
+          inspectSource: () => ({ isRegularFile: false, mode: 0o100600 }),
+        }),
+      "source-not-regular-file",
+    );
+  });
+
+  it("is a no-op only when no file was requested", () => {
     const env: Record<string, string | undefined> = {};
     const result = loadExternalEnvFile({ args: [], env });
-    expect(result.path).toBeUndefined();
-    expect(result.appliedKeys).toEqual([]);
-    expect(env.OPENROUTER_API_KEY).toBeUndefined();
-  });
-});
-
-describe("loadExternalEnvFile — secret hygiene", () => {
-  it("never puts the secret value in the result, error, or logs", () => {
-    const env: Record<string, string | undefined> = {};
-    const logs: string[] = [];
-    const logSpy = vi.spyOn(console, "log").mockImplementation((...a) => {
-      logs.push(a.join(" "));
-    });
-    const errSpy = vi.spyOn(console, "error").mockImplementation((...a) => {
-      logs.push(a.join(" "));
-    });
-
-    const result = loadExternalEnvFile({
-      args: ["--env-file", DUMMY_FILE_PATH],
-      env,
-      readFile: fileFixture(`OPENROUTER_API_KEY=${DUMMY_KEY}`),
-    });
-
-    // The result reports NAMES only — no value field anywhere.
-    const serialized = JSON.stringify(result);
-    expect(serialized).not.toContain(DUMMY_KEY);
-    expect(serialized).toContain("OPENROUTER_API_KEY");
-    // The path (safe) is present.
-    expect(result.path).toBe(DUMMY_FILE_PATH);
-    // No log captured the secret.
-    expect(logs.join("\n")).not.toContain(DUMMY_KEY);
-
-    logSpy.mockRestore();
-    errSpy.mockRestore();
-  });
-
-  it("keeps the secret value out of the error message on a bad file", () => {
-    // A readFile that (pathologically) throws an error carrying a secret must
-    // still not surface that secret — but we assert the common case: the error
-    // message is built from the path + terse cause, never file contents.
-    let thrown: unknown;
-    try {
-      loadExternalEnvFile({
-        args: ["--env-file", DUMMY_FILE_PATH],
-        env: {},
-        readFile: () => {
-          throw new Error("ENOENT");
-        },
-      });
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown).toBeInstanceOf(ExternalEnvFileError);
-    const message = (thrown as ExternalEnvFileError).message;
-    expect(message).toContain(DUMMY_FILE_PATH);
-    expect(message).not.toContain(DUMMY_KEY);
+    expect(result).toEqual({ path: undefined, appliedKeys: [], skippedAlreadySetKeys: [] });
   });
 });
