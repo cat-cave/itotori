@@ -2,8 +2,6 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
-import type { WorkflowRunReport } from "../src/workflow/index.js";
 import * as apiDependencies from "../src/api-handler-dependencies.js";
 import type { ItotoriCliDependencies, ItotoriCliServices } from "../src/cli-handler-contracts.js";
 import { errorResponse, parseNewPipelineDraftFields } from "../src/api-handler-responses.js";
@@ -13,8 +11,6 @@ import {
   runIngestPatchResult,
   runIngestRuntime,
 } from "../src/cli-handler-core-commands.js";
-import { resolveRunPolicy, FULL_ROSTER } from "../src/run-policy/index.js";
-import { dashboardStatusFixture } from "./api-fixtures-dashboard.js";
 import { projectFixture } from "./api-fixtures-project.js";
 
 const temporaryDirectories: string[] = [];
@@ -172,29 +168,8 @@ describe("audited command outcomes", () => {
     expect(errorResponse(error)).toMatchObject({ statusCode: 400, body: { code: "bad_request" } });
   });
 
-  it("returns a failing API response when the workflow report has no patch output", async () => {
-    const bridge = readJson(
-      new URL(
-        "../../../packages/localization-bridge-schema/test/examples/bridge-v0.2.json",
-        import.meta.url,
-      ).pathname,
-    ) as BridgeBundleV02;
-    const report: WorkflowRunReport = {
-      policy: resolveRunPolicy({
-        runMode: "production",
-        contextScope: "whole-game",
-        outputScope: "dialogue-only",
-        roster: FULL_ROSTER,
-      }),
-      schedule: { serialChains: [], parallelScenes: [] },
-      excludedOutputUnitIds: [],
-      scenes: [],
-      finalized: [],
-      patchId: null,
-      buildLqa: [],
-      attemptLineage: [],
-    };
-    vi.spyOn(apiDependencies, "runApiLocalize").mockResolvedValue(report);
+  it("refuses an unplanned qualifying branch request before it can bypass Q5 evidence", async () => {
+    const localize = vi.spyOn(apiDependencies, "runApiLocalize");
 
     const response = await routeDraftBranchMutation(
       {
@@ -203,19 +178,11 @@ describe("audited command outcomes", () => {
         body: {
           project: projectFixture,
           targetLocale: "fr-FR",
-          runMode: "production",
-          structure: {},
-          bridge,
         },
       },
       projectFixture.projectId,
       {
         authorization: { requirePermission: async () => undefined },
-        localizationSubstrate: {
-          resolvePortSource: () => {
-            throw new Error("the mocked localize route must not resolve workflow ports");
-          },
-        },
         projectWorkflow: {
           async listLocaleBranchIdentities() {
             return [
@@ -226,13 +193,17 @@ describe("audited command outcomes", () => {
               },
             ];
           },
-          async getDashboardStatus() {
-            return dashboardStatusFixture;
-          },
         },
       },
     );
 
-    expect(response).toMatchObject({ statusCode: 422, body: { code: "workflow_failed" } });
+    expect(response).toMatchObject({
+      statusCode: 200,
+      body: {
+        outcome: "refused",
+        refusalMessage: expect.stringContaining("launch-pass"),
+      },
+    });
+    expect(localize).not.toHaveBeenCalled();
   });
 });
