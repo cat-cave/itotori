@@ -237,6 +237,9 @@ pub use graphics_objects::{
     HitRect, HitRegion, HitRegionUnavailable, ImageRef, ObjectGeometryState, SurfaceGeometry,
     WipeColour, derive_dst_rect,
 };
+pub use render_pipeline::ocr_readback::{
+    RasterOcrReadback, RasterOcrReadbackError, RasterOcrStatus,
+};
 pub use render_pipeline::{
     ChoiceOverlay, ChoiceWindow, Framebuffer, ObjectButtonChoiceOption, ObjectButtonChoiceWindow,
     ObjectButtonChoiceWindowBuildError, ObjectWarning, PNG_BIT_DEPTH, PNG_COLOUR_TYPE_RGBA,

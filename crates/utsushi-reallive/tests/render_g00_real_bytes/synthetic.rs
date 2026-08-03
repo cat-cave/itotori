@@ -111,3 +111,81 @@ pub(super) fn run_synthetic_skip_surface_proof() {
     let _ = fs::remove_dir_all(root.path());
     let _ = fs::remove_dir_all(&g00_dir);
 }
+
+/// A successful but short type-0 decode: the renderer receives real on-disk
+/// bytes and paints the zero-extended canvas, so this exercises the warning
+/// path rather than the hard-decode skip path above.
+fn warning_type0_g00() -> Vec<u8> {
+    let lzss = [0x01, 0x01, 0x02, 0x03];
+    let mut bytes = Vec::new();
+    bytes.push(0u8);
+    bytes.extend_from_slice(&4u16.to_le_bytes());
+    bytes.extend_from_slice(&1u16.to_le_bytes());
+    bytes.extend_from_slice(&((lzss.len() + 8) as u32).to_le_bytes());
+    bytes.extend_from_slice(&16u32.to_le_bytes());
+    bytes.extend_from_slice(&lzss);
+    bytes
+}
+
+pub(super) fn run_synthetic_warning_surface_proof() {
+    let title = "synthetic-warning";
+    let stem = "SHORT_BACK";
+    let warning_bytes = warning_type0_g00();
+    let (_, warnings) = decode_g00(&warning_bytes)
+        .expect("short type-0 bytes decode through the warning-tolerant path");
+    assert_eq!(warnings.len(), 1, "fixture must carry one decode warning");
+
+    let g00_dir = temp_g00_dir_with(stem, &warning_bytes);
+    let assets: Arc<dyn AssetPackage> = Arc::new(OnDiskG00Package::new(g00_dir.clone()));
+    let mut stack = GraphicsObjectStack::new();
+    stack
+        .set(
+            GraphicsPlane::Background,
+            0,
+            GraphicsObject::wipe(WipeColour::opaque_rgb(0x24, 0x18, 0x30)),
+        )
+        .expect("set bg wipe");
+    stack
+        .set(GraphicsPlane::Foreground, 0, GraphicsObject::image(stem))
+        .expect("set warning-bearing image object");
+    let text = TextLayer::localized(vec!["WARNING SURFACE".to_string()]);
+    let root = temp_artifact_root("warning-surface");
+    let sink = RecordingFrameArtifactSink::new();
+    let private_dir = private_render_dir(title);
+    let mut pass = RenderPass::with_dimensions(320, 240)
+        .expect("non-zero screen")
+        .with_assets(assets);
+
+    let shots = pass
+        .emit_scene_screenshots(
+            &stack,
+            &text,
+            SceneEmit::frame(
+                &root,
+                "render-g00-warning-surface",
+                &sink,
+                &private_dir,
+                true,
+            ),
+        )
+        .expect("warning-bearing real bytes still emit an inspectable frame");
+
+    assert!(
+        shots.skipped_objects.is_empty(),
+        "the short payload is a warning-only decode, not a dropped object"
+    );
+    assert_eq!(shots.decode_warnings.len(), 1);
+    assert!(
+        shots.is_incomplete(),
+        "a zero-extended g00 must be non-final evidence even when it emitted a frame"
+    );
+    assert_eq!(
+        sink.len(),
+        1,
+        "the real-but-failed public frame is retained"
+    );
+
+    let _ = fs::remove_dir_all(&private_dir);
+    let _ = fs::remove_dir_all(root.path());
+    let _ = fs::remove_dir_all(&g00_dir);
+}

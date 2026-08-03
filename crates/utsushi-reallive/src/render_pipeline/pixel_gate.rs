@@ -39,6 +39,9 @@ impl PixelBounds {
 pub(crate) struct GlyphRaster {
     pub(crate) source: char,
     pub(crate) coverage_signature: String,
+    /// Source-free line grouping for emitted-frame OCR geometry. The OCR
+    /// readback receives this index and bounds, never [`Self::source`].
+    pub(crate) line_index: usize,
     pub(crate) bounds: PixelBounds,
 }
 

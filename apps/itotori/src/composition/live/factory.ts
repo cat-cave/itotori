@@ -70,6 +70,7 @@ import {
   type AcceptedTargetRecord,
 } from "./accepted-target-history.js";
 import { createCapturedDraftFinalizer, LiveWorkflowFactoryError } from "./factory-finalizer.js";
+import type { BuildLqaReviewer, ProductionRenderEvidencePlan } from "./render-evidence-adapter.js";
 
 export { LiveWorkflowFactoryError } from "./factory-finalizer.js";
 
@@ -92,6 +93,9 @@ export interface LiveWorkflowStores {
  * and never synthesizes a frame. */
 export interface BoundLiveWorkflowRoleSeams {
   readonly review: ReviewDeps;
+  /** Q5 receives only the already-captured render/OCR result. It never owns a
+   * runtime launcher or an alternate evidence source. */
+  readonly buildLqa?: BuildLqaReviewer;
   /** The default patchback is a concrete accepted-output → PatchExportV02
    * binder. Hosts may replace it only when they own a stricter artifact sink. */
   readonly patchback?: PatchbackDeps;
@@ -142,6 +146,9 @@ export interface LiveWorkflowFactoryConfig {
   readonly dispatch: Omit<LiveDispatchRuntimeConfig, "memoStore" | "contentAccess" | "snapshots">;
   readonly stores: LiveWorkflowStores;
   readonly roles: LiveWorkflowRoleSeams;
+  /** Per-invocation physical patch/runtime plan carried from the localize
+   * boundary. Without it a qualifying run fails closed at Build-LQA. */
+  readonly renderEvidence?: ProductionRenderEvidencePlan;
   /** Hosts with an external accepted-output authority may override the standard
    * live finalizer. Production normally uses the built-in P1 receipt-backed
    * finalizer below. */
@@ -288,6 +295,11 @@ export async function createLiveWorkflowPortDeps(
     config.bridge,
     snapshot,
     config.targetLocale,
+    {
+      ...(config.renderEvidence === undefined ? {} : { renderEvidence: config.renderEvidence }),
+      ...(roles.buildLqa === undefined ? {} : { buildLqaReviewer: roles.buildLqa }),
+      recoveredFinalOutputs: acceptedTargets.map((record) => record.acceptedOutput),
+    },
   );
   const finalizeArtifact = config.finalizeArtifact ?? capturedFinalizer.resolve;
   const draft = createDraftDeps({

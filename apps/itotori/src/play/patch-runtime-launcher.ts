@@ -1,11 +1,13 @@
 // Patch-play runtime launcher facade.
 //
-// The facade owns no engine behavior. It builds the registered adapter
-// registry and delegates every engine-specific concern to the selected adapter.
+// The facade owns no engine behavior. It derives launcher factories from the
+// patchback engine registry, so an engine carries its byte producer and native
+// runtime contribution together instead of Q5 maintaining a second engine list.
 
-import { realliveRuntimeLauncherAdapterFactory } from "./reallive-runtime-launcher-adapter.js";
+import { enginePatchbackAdapters, type PatchbackEngineId } from "../patchback/index.js";
 import {
   RuntimeLauncherRegistry,
+  type RuntimeLauncherAdapterFactory,
   type RuntimeLaunchRequest,
   type RuntimePatchSurface,
   type RuntimeLauncherDeps,
@@ -30,5 +32,25 @@ export type PatchRuntimeLauncherPort = {
 export function createRuntimeLauncherRegistry(
   deps: RuntimeLauncherDeps = {},
 ): RuntimeLauncherRegistry {
-  return new RuntimeLauncherRegistry([realliveRuntimeLauncherAdapterFactory], deps);
+  return new RuntimeLauncherRegistry(runtimeLauncherFactories(), deps);
+}
+
+function runtimeLauncherFactories(): readonly RuntimeLauncherAdapterFactory[] {
+  return enginePatchbackAdapters().flatMap((adapter) => {
+    const factory = adapter.runtimeLauncherFactory;
+    return factory === undefined ? [] : [boundRuntimeFactory(adapter.engineId, factory)];
+  });
+}
+
+function boundRuntimeFactory(
+  engineId: PatchbackEngineId,
+  factory: RuntimeLauncherAdapterFactory,
+): RuntimeLauncherAdapterFactory {
+  return (deps) => {
+    const adapter = factory(deps);
+    if (adapter.manifest.adapterId !== engineId) {
+      throw new Error(`runtime adapter registration does not match engine '${engineId}'`);
+    }
+    return adapter;
+  };
 }

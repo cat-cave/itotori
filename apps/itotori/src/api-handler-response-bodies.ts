@@ -105,6 +105,9 @@ export function playDeliveryResponseBody(
 export function patchIterationPlayReceiptResponseBody(
   input: PatchRuntimeLaunchReceipt,
 ): ApiPatchIterationPlayResponse {
+  if (input.operation !== "replay-validate") {
+    throw new Error("patch iteration play API only exposes replay-validation receipts");
+  }
   return {
     schemaVersion: "itotori.patch-iteration.play.v0",
     receipt: {

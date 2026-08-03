@@ -22,6 +22,8 @@ import {
   PatchbackEngineSelectionError,
 } from "../src/patchback/index.js";
 import { produceNativePatchbackBuild } from "../src/patchback/produce-build.js";
+import { createRuntimeLauncherRegistry } from "../src/play/patch-runtime-launcher.js";
+import { PatchRuntimeLaunchError } from "../src/play/runtime-launcher-registry.js";
 import type { NativePatchbackInput } from "../src/patchback/index.js";
 import type { NativeCliRunProcess } from "../src/native-bin/cli-bin-resolver.js";
 import { buildRb024Snapshot, loadBridgeBundle, makeAccepted } from "./support/gate-fixtures.js";
@@ -112,6 +114,36 @@ describe("engine patch-back registry", () => {
     const empty = mkdtempSync(join(tmpdir(), "itotori-eng-empty-"));
     expect(() => detectPatchbackEngine(empty)).toThrow(PatchbackEngineSelectionError);
   });
+
+  it("contributes Q5 runtime launchers through the same engine registry", async () => {
+    const registry = createRuntimeLauncherRegistry();
+    const runtimeEngines = enginePatchbackAdapters().flatMap((adapter) =>
+      adapter.runtimeLauncherFactory === undefined ? [] : [adapter.engineId],
+    );
+    expect(registry.manifests().map((manifest) => manifest.adapterId)).toEqual(runtimeEngines);
+    expect(registry.manifests()).toContainEqual(
+      expect.objectContaining({
+        adapterId: "reallive",
+        capabilities: expect.arrayContaining(["render-evidence"]),
+      }),
+    );
+
+    const unsupportedRender = registry.launch({
+      patch: {
+        patchVersionId: "patch:unsupported-runtime",
+        status: "playable",
+        artifactHashes: {},
+        artifactRefs: {},
+      },
+      request: {
+        adapterId: "softpal",
+        operation: "render-evidence",
+        launchDescriptor: {},
+      },
+    });
+    await expect(unsupportedRender).rejects.toBeInstanceOf(PatchRuntimeLaunchError);
+    await expect(unsupportedRender).rejects.toMatchObject({ code: "unknown_runtime_adapter" });
+  });
 });
 
 describe("generic producer selects the engine adapter", () => {
@@ -128,6 +160,7 @@ describe("generic producer selects the engine adapter", () => {
     expect(produced.patch.engineId).toBe("reallive");
     expect(produced.patch.patchReceipt.engineId).toBe("reallive");
     expect(produced.patch.patchReceipt.scope).toBe("dialogue+choices");
+    expect(produced.patch.runtimeAssets.contentHash).toMatch(/^sha256:[0-9a-f]{64}$/u);
     expect(calls[0]).toContain("--engine");
     expect(calls[0]).toContain("reallive");
     expect(calls[0]).toContain("--bundle");

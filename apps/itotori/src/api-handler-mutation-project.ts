@@ -3,32 +3,12 @@ import * as deps from "./api-handler-dependencies.js";
 import * as responses from "./api-handler-responses.js";
 import * as shared from "./api-handler-shared.js";
 
-type DraftBranchMutationServices = Pick<
-  contracts.ItotoriApiServices,
-  "authorization" | "localizationSubstrate"
-> & {
+type DraftBranchMutationServices = Pick<contracts.ItotoriApiServices, "authorization"> & {
   projectWorkflow: Pick<
     contracts.ItotoriApiServices["projectWorkflow"],
-    "getDashboardStatus" | "listLocaleBranchIdentities"
+    "listLocaleBranchIdentities"
   >;
 };
-
-function failedDraftWorkflowResponse(
-  report: Awaited<ReturnType<typeof deps.runApiLocalize>>,
-): contracts.ApiJsonResponse | null {
-  const failures: string[] = [];
-  if (report.finalized.length === 0) failures.push("no units finalized");
-  if (report.patchId === null) failures.push("no patch produced");
-  if (report.buildLqa.some(({ verdict }) => verdict.verdict !== "PASS")) {
-    failures.push("Build-LQA did not pass");
-  }
-  if (failures.length === 0) return null;
-  return responses.errorBody(
-    422,
-    "workflow_failed",
-    `draft workflow failed: ${failures.join("; ")}`,
-  );
-}
 
 export async function routeDraftBranchMutation(
   request: contracts.ItotoriApiRequest,
@@ -41,72 +21,23 @@ export async function routeDraftBranchMutation(
   // policy — derive the branch scope from the SERVER-SIDE ownership
   // lookup; a client-supplied ProjectState carrying a foreign/forged
   // localeBranchId is refused here before the new pipeline runs.
-  const scope = await deps.requireOwnedBranchScope(services.projectWorkflow, {
+  await deps.requireOwnedBranchScope(services.projectWorkflow, {
     projectId,
     localeBranchId: body.project.localeBranchId,
   });
-  const scopedProject = { ...body.project, localeBranchId: scope.localeBranchId };
-  // New-pipeline path: draft routes ONLY through composition `runLocalization`.
-  // The old `projectWorkflow.draftProject` path is unreachable from this route.
-  // The live substrate (WorkflowPortDeps assemblers over decode facts + bible)
-  // is installed by the production DB service. A missing one is still a loud
-  // configuration failure; this route never falls back to the old service.
-  const substrate = deps.configuredServicePort(services, "localizationSubstrate");
-  if (substrate === undefined) {
-    return responses.ok("branches.draft", {
-      outcome: "refused",
-      project: null,
-      status: null,
-      refusalMessage:
-        "draft is not configured in this API build (localizationSubstrate port missing — the new-pipeline WorkflowPortDeps assemblers are not installed)",
-    });
-  }
-  const localizeFields = responses.parseNewPipelineDraftFields(request.body);
-  if (localizeFields === null) {
-    return responses.ok("branches.draft", {
-      outcome: "refused",
-      project: null,
-      status: null,
-      refusalMessage:
-        "draft refused: new-pipeline localize requires runMode + structure + bridge on the request body (localizationSubstrate is installed)",
-    });
-  }
-  const report = await deps.runApiLocalize(
-    {
-      runMode: localizeFields.runMode,
-      structureJson: localizeFields.structure,
-      bridge: localizeFields.bridge,
-      ...(localizeFields.contextScope === undefined
-        ? {}
-        : { contextScope: localizeFields.contextScope }),
-      ...(localizeFields.outputScope === undefined
-        ? {}
-        : { outputScope: localizeFields.outputScope }),
-    },
-    {
-      resolvePortSource: (request, perRun) => substrate.resolvePortSource(request, perRun),
-    },
-  );
-  const failureResponse = failedDraftWorkflowResponse(report);
-  if (failureResponse !== null) return failureResponse;
-  const status = await services.projectWorkflow.getDashboardStatus();
-  // gate-mutation-route-status-echo — see POST /api/imports/bridge: the
-  // success body echoes the full dashboard status, so the same
-  // catalog.read gate + redaction applies (recentRuns / recentEvents
-  // stripped for a non-holder).
-  const canReadStatus = await shared.resolveProjectReadPermission(services);
-  // The new pipeline stores drafts in the CAS, not ProjectState.drafts. Echo
-  // the scoped project identity + target locale so the Studio envelope stays
-  // typed; the run report's shippable posture is the proof the driver ran.
-  const project = {
-    ...scopedProject,
-    targetLocale: body.targetLocale,
-  };
+  // This legacy synchronous branch mutation never falls back to the retired
+  // draft service. Every new-pipeline API localize request is wiki-first and
+  // therefore QUALIFYING: Q5 is mandatory. This endpoint has neither a durable
+  // run id nor a server-owned physical plan, so it must not enter the workflow
+  // and later reach Q5 without patched-byte evidence. The dedicated launch-pass
+  // action owns the saved operator config, creates the run, and supplies its
+  // render-evidence plan to the exact same production pipeline.
   return responses.ok("branches.draft", {
-    outcome: "drafted",
-    project,
-    status: canReadStatus ? status : shared.redactProjectDashboardStatus(status),
-    refusalMessage: null,
+    outcome: "refused",
+    project: null,
+    status: null,
+    refusalMessage:
+      "draft refused: qualifying localization must start through the configured launch-pass action so Q5 receives a server-owned patched-byte render plan",
   });
 }
 

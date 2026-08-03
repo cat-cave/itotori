@@ -116,6 +116,7 @@ export function parseLocalizeRunRequest(args: readonly string[]): RunPolicyReque
  *   --target-locale <BCP-47>                locale written to that branch
  *   --source-root <PATH>                    read-only extracted game root
  *   --build-root <PATH>                     owned patch build root
+ *   --runtime-background-asset <PATH>        optional RealLive background asset
  *   --structure <PATH>                     decoded narrative-structure JSON (the
  *                                          decode→scene projection input)
  *   --bridge <PATH>                        matching BridgeBundleV02
@@ -145,6 +146,9 @@ export async function runLocalizeCommand(
   const bridge: BridgeBundleV02 = bridgeJson;
   const { scenes } = projectDecodeStructure(structureJson, bridge);
   const runId = requiredFlag(args, "--run-id");
+  const sourceRoot = requiredFlag(args, "--source-root");
+  const buildRoot = requiredFlag(args, "--build-root");
+  const runtimeBackgroundAsset = optionalFlag(args, "--runtime-background-asset");
   const projectRun = {
     projectId: requiredFlag(args, "--project-id"),
     runId,
@@ -167,7 +171,24 @@ export async function runLocalizeCommand(
   }
   const options: WorkflowOptions = wholeSceneMaxUnits === undefined ? {} : { wholeSceneMaxUnits };
 
-  const source = await deps.resolvePortSource(request, { structureJson, bridge, projectRun });
+  const renderEvidence =
+    request.ablation === null
+      ? {
+          sourceRoot,
+          buildRoot,
+          patchScope: patchbackScopeForOutputScope(request.outputScope),
+          runId,
+          ...(runtimeBackgroundAsset === undefined
+            ? {}
+            : { backgroundAsset: runtimeBackgroundAsset }),
+        }
+      : undefined;
+  const source = await deps.resolvePortSource(request, {
+    structureJson,
+    bridge,
+    projectRun,
+    ...(renderEvidence === undefined ? {} : { renderEvidence }),
+  });
   if (source.runPlane === undefined) {
     throw new Error("localize run plane is not configured by the localization substrate");
   }
@@ -220,6 +241,16 @@ export async function runLocalizeCommand(
   }
   (deps.log ?? ((message: string) => process.stdout.write(`${message}\n`)))(
     JSON.stringify(summary, null, 2),
+  );
+}
+
+function patchbackScopeForOutputScope(
+  outputScope: OutputScope,
+): "dialogue-only" | "dialogue+choices" {
+  if (outputScope === "dialogue-only") return "dialogue-only";
+  if (outputScope === "dialogue-and-choices") return "dialogue+choices";
+  throw new Error(
+    `localize refused: physical Build-LQA does not support output scope '${outputScope}'`,
   );
 }
 

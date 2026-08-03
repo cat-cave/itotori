@@ -138,10 +138,21 @@ export interface AdjudicateDeps {
 export interface PatchbackDeps {
   buildInput(finalized: readonly FinalizedUnit[]): NativePatchbackInput;
   translatedBundlePath(finalized: readonly FinalizedUnit[]): string;
+  /** Physical production patchback. When present it applies bytes through the
+   * registered engine adapter and retains the hash-bound manifest Q5 renders.
+   * The older export builder remains available to offline/pure-MTL proofs. */
+  exportPatch?(finalized: readonly FinalizedUnit[]): Promise<{ readonly patchId: string }>;
   buildLqa(input: {
     readonly patchId: string;
     readonly unitIds: readonly string[];
   }): Promise<readonly LaneVerdict[]>;
+  /** Rebind persisted real Q5 evidence when a memoized Build-LQA verdict is
+   * replayed after process restart, before its CAS output is sealed. */
+  hydrateBuildLqaEvidence?(input: {
+    readonly patchId: string;
+    readonly unitIds: readonly string[];
+    readonly verdicts: readonly LaneVerdict[];
+  }): Promise<void>;
 }
 
 /** The full substrate the live workflow ports adapt into the driver's ports. */

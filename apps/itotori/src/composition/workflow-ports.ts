@@ -175,8 +175,16 @@ function createAdjudicatePort(deps: WorkflowPortDeps): AdjudicatePort {
 /** Patchback: build the native patch from the finalized units, then run the
  * downstream on-screen Build-LQA strictly after the patch is exported. */
 function createPatchbackPort(deps: WorkflowPortDeps): PatchbackPort {
+  // Some composition-only callers construct all ports from a deliberately
+  // partial substrate, then exercise only readiness. Keep the optional Q5
+  // recovery hook lazy for that case; every actual patchback invocation still
+  // requires the bound production dependency below.
+  const hydrateBuildLqaEvidence = deps.patchback?.hydrateBuildLqaEvidence;
   return {
     async exportPatch(input) {
+      if (deps.patchback.exportPatch !== undefined) {
+        return await deps.patchback.exportPatch(input.finalized);
+      }
       const build = buildNativePatchback(
         deps.patchback.buildInput(input.finalized),
         deps.patchback.translatedBundlePath(input.finalized),
@@ -186,6 +194,7 @@ function createPatchbackPort(deps: WorkflowPortDeps): PatchbackPort {
     async buildLqaReview(input) {
       return await deps.patchback.buildLqa(input);
     },
+    ...(hydrateBuildLqaEvidence === undefined ? {} : { hydrateBuildLqaEvidence }),
   };
 }
 

@@ -12,7 +12,9 @@ import {
   type LlmMemoCipher,
 } from "@itotori/db";
 
-import { AcceptedOutputSchema } from "../../contracts/index.js";
+import { AcceptedOutputSchema, type AcceptedOutput } from "../../contracts/index.js";
+
+type AcceptedUnitOutput = Extract<AcceptedOutput, { readonly subjectType: "unit" }>;
 
 /** The narrow, verified target-history shape a review binding consumes. */
 export interface AcceptedTargetRecord {
@@ -20,6 +22,10 @@ export interface AcceptedTargetRecord {
   readonly unitId: string;
   readonly sourceHash: `sha256:${string}`;
   readonly targetSkeleton: string;
+  /** The schema-validated encrypted-CAS output used only to recover an
+   * interrupted Q5 finalization. It is never written into the local replay
+   * receipt, which retains identities and hashes only. */
+  readonly acceptedOutput: AcceptedUnitOutput;
 }
 
 /** Read only active, verified final unit heads for one localization snapshot. */
@@ -145,6 +151,7 @@ function parseFinalUnit(
       `final accepted output source hash for ${row.subject_id}`,
     ),
     targetSkeleton: output.value.targetSkeleton,
+    acceptedOutput: output,
   };
 }
 

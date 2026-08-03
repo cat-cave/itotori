@@ -12,6 +12,12 @@ export type RuntimePatchSurface = {
   status: string;
   artifactHashes: Record<string, string>;
   artifactRefs: Record<string, string>;
+  /** Optional for legacy replay-only operations. Render evidence requires
+   * this immutable source-runtime pairing before it will launch. */
+  runtimeAssets?: {
+    root: string;
+    contentHash: string;
+  };
 };
 
 /** The generic part of a runtime launch request. `launchDescriptor` stays adapter-owned. */
@@ -33,15 +39,44 @@ export type RuntimeLaunchRequest = {
  * the selected adapter/capability; engine-specific evidence belongs in the
  * adapter payload rather than freezing one engine's runtime vocabulary here.
  */
-export type PatchRuntimeLaunchReceipt = {
-  adapterId: "reallive";
-  operation: "replay-validate";
-  adapterReceipt: {
-    replay: "observed";
-    scene: number;
-    observedTextLineCount: number;
-  };
-};
+export type PatchRuntimeLaunchReceipt =
+  | {
+      adapterId: "reallive";
+      operation: "replay-validate";
+      adapterReceipt: {
+        replay: "observed";
+        scene: number;
+        observedTextLineCount: number;
+      };
+    }
+  | {
+      /** Render evidence stays generic: the selected runtime adapter owns how it
+       * obtains these pixels, while every Q5 producer receives the same observed
+       * frame shape. `artifactPath` is internal launcher data; composition projects
+       * only its managed URI and content hash into the reviewer contract. */
+      adapterId: string;
+      operation: "render-evidence";
+      adapterReceipt: {
+        scene: number;
+        messageIndex: number;
+        frame: {
+          artifactUri: string;
+          artifactPath: string;
+          contentHash: `sha256:${string}`;
+          /** Hash of the exact patched script bytes Utsushi rendered. */
+          patchedBytesHash: `sha256:${string}`;
+          /** A separate patched-byte replay receipt completed before capture. */
+          replayObserved: boolean;
+          width: number;
+          height: number;
+          /** Pixel/readback OCR, never a decoded replay text line. */
+          ocrText: string;
+          ocrStatus: "PASS" | "FAIL";
+          /** The renderer's post-blend localized-text pixel gate. */
+          pixelGateStatus: "PASS" | "FAIL";
+        };
+      };
+    };
 
 export type PatchRuntimeLaunchErrorCode =
   | "patch_not_playable"
@@ -71,7 +106,7 @@ export type RuntimeLauncherDeps = {
   temporaryRoot?: string;
 };
 
-export type RuntimeLauncherCapability = "replay-validate" | "validate";
+export type RuntimeLauncherCapability = "replay-validate" | "render-evidence" | "validate";
 
 export type RuntimeLauncherManifest = {
   adapterId: string;

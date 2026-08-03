@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { verifyLocalizationArtifactManifest } from "@itotori/db";
 import { runNativeCli } from "../native-bin/cli-bin-resolver.js";
+import { launchRealLiveRenderEvidence } from "./reallive-runtime-render-evidence.js";
 import {
   PatchRuntimeLaunchError,
   type PatchRuntimeLaunchReceipt,
@@ -45,10 +46,17 @@ export const realliveRuntimeLauncherAdapterFactory: RuntimeLauncherAdapterFactor
   manifest: {
     adapterId: "reallive",
     summary: "Replay and render validation for a RealLive patched artifact tree.",
-    capabilities: ["replay-validate", "validate"],
+    capabilities: ["replay-validate", "render-evidence", "validate"],
   },
 
   async launch(input): Promise<PatchRuntimeLaunchReceipt> {
+    if (input.request.operation === "render-evidence") {
+      return await launchRealLiveRenderEvidence({
+        patch: input.patch,
+        request: input.request,
+        ...(deps.nativeCli === undefined ? {} : { nativeCli: deps.nativeCli }),
+      });
+    }
     const launch = launchInputs(input.patch, input.request);
     const temporaryReplayRoot =
       input.request.output === undefined

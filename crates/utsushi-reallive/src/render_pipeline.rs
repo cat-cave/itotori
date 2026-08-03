@@ -288,6 +288,7 @@ pub use choice_window::{
 /// Glyphs are laid out with real horizontal advances + kerning and
 /// anti-aliased coverage.
 mod font;
+pub mod ocr_readback;
 
 /// Pixel-space localized-text validation. Kept beside the rasterizer so the
 /// gate receives the actual glyph coverage masks and framebuffer delta.
@@ -337,6 +338,8 @@ pub enum RenderEmitError {
     /// on-disk path failed (directory creation or file write).
     #[error("private full-fidelity artifact write failed: {0}")]
     PrivateArtifactWrite(String),
+    #[error("public-frame OCR readback failed: {0}")]
+    OcrReadback(#[from] ocr_readback::RasterOcrReadbackError),
     /// A non-empty localized [`TextLayer`] painted ZERO framebuffer
     /// pixels (off-screen origin, all-whitespace, or a glyph-less
     /// layer), so the emitted PNG would carry no localized text and the

@@ -1,3 +1,4 @@
+use super::ocr_readback::{OcrLayout, recognize_emitted_png};
 use super::*;
 
 impl RenderPass {
@@ -228,24 +229,38 @@ impl RenderPass {
 
         // Public artifacts are always redacted. The private PNG is the only
         // full-fidelity output and must be read through an authorized path.
-        let policy = RedactionPolicy::public_toggle(emit.public_redact);
-        let public_fb = match policy {
-            RedactionPolicy::Full => full_fb,
-            RedactionPolicy::Redact => {
-                let mut framebuffer = self.rasterise_with_policy(stack, RedactionPolicy::Redact);
-                framebuffer.draw_text_checked(text)?;
-                Self::paint_choice(&mut framebuffer, emit.choice.as_ref())?;
-                framebuffer.flatten_over_black();
-                framebuffer
-            }
-        };
+        // Build a no-glyph pixel baseline alongside the eventual public frame;
+        // it lets OCR infer coverage from the persisted PNG rather than ever
+        // consulting the decoder/replay text that produced this TextLayer.
+        let policy = RedactionPolicy::Redact;
+        let mut baseline = self.rasterise_with_policy(stack, policy);
+        baseline.paint_text_backdrop(text);
+        Self::paint_choice(&mut baseline, emit.choice.as_ref())?;
+        baseline.flatten_over_black();
+
+        let mut public_fb = self.rasterise_with_policy(stack, policy);
+        let mut ocr_layout = OcrLayout::default();
+        public_fb.draw_text_checked_with_ocr(text, &mut ocr_layout)?;
+        Self::paint_choice(&mut public_fb, emit.choice.as_ref())?;
+        public_fb.flatten_over_black();
         let public = self.announce_framebuffer(&public_fb, emit.root, emit.run_id, emit.sink)?;
+        let public_path = emit
+            .root
+            .artifact_path(&public.artifact_ref.uri)
+            .map_err(|error| {
+                RenderEmitError::ArtifactWrite(format!("reopen public artifact for OCR: {error}"))
+            })?;
+        let public_png = std::fs::read(&public_path).map_err(|error| {
+            RenderEmitError::ArtifactWrite(format!("read public artifact for OCR: {error}"))
+        })?;
+        let ocr = recognize_emitted_png(&public_png, &baseline, &ocr_layout)?;
 
         Ok(SceneScreenshots {
             public,
             private_png_path,
             private_png_sha256: private_sha,
             redaction: policy,
+            ocr,
             skipped_objects: report.skipped_objects,
             decode_warnings: report.warnings,
         })

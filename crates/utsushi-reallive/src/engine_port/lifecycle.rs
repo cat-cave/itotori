@@ -1,11 +1,15 @@
 use super::*;
 
-fn reject_incomplete_frame(skipped_object_count: usize) -> Result<(), String> {
-    if skipped_object_count == 0 {
+fn reject_incomplete_frame(
+    skipped_object_count: usize,
+    decode_warning_count: usize,
+) -> Result<(), String> {
+    if skipped_object_count == 0 && decode_warning_count == 0 {
         return Ok(());
     }
     Err(format!(
-        "incomplete frame: {skipped_object_count} object(s) dropped during render"
+        "incomplete frame: {skipped_object_count} object(s) dropped and \
+         {decode_warning_count} decode warning(s) observed during render"
     ))
 }
 
@@ -81,7 +85,7 @@ impl UtsushiReallivePort {
                 SceneEmit::frame(root, run_id, &throwaway, &private_dir, true),
             )
             .map_err(|error| format!("frame emit failed: {error}"))?;
-        reject_incomplete_frame(shots.skipped_objects.len())?;
+        reject_incomplete_frame(shots.skipped_objects.len(), shots.decode_warnings.len())?;
         Ok(shots.public)
     }
 
@@ -357,10 +361,20 @@ mod tests {
 
     #[test]
     fn incomplete_frame_rejects_the_port_success_path() {
-        let error = reject_incomplete_frame(1)
+        let error = reject_incomplete_frame(1, 0)
             .expect_err("a dropped object must not be published as a successful port frame");
-        assert_eq!(error, "incomplete frame: 1 object(s) dropped during render");
-        assert!(reject_incomplete_frame(0).is_ok());
+        assert_eq!(
+            error,
+            "incomplete frame: 1 object(s) dropped and 0 decode warning(s) observed during render"
+        );
+        assert!(reject_incomplete_frame(0, 0).is_ok());
+    }
+
+    #[test]
+    fn decode_warning_rejects_the_port_success_path() {
+        let error = reject_incomplete_frame(0, 1)
+            .expect_err("a repaired g00 decode must not publish a successful port frame");
+        assert!(error.contains("1 decode warning(s)"));
     }
 
     #[test]

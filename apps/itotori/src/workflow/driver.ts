@@ -22,6 +22,7 @@ import type { Defect, DefectBundle } from "../contracts/index.js";
 import { stableDigest } from "../gates/index.js";
 import type { ResolvedRunPolicy, RunPolicyRequest } from "../run-policy/index.js";
 import { applyCorrections, type CorrectionSummary } from "./correction.js";
+import { assertCleanBuildLqa } from "./build-lqa-finalization.js";
 import { BoundedConcurrency, mapBounded } from "./bounded-concurrency.js";
 import { coherenceSchedule, missingStageUnits, type CoherenceSchedule } from "./durability.js";
 import { finalizeUnits } from "./finalize.js";
@@ -405,13 +406,21 @@ export async function runLocalizationWorkflowForPolicy(
       );
       if (missingBuildLqa.length > 0) {
         const q5Key = memoKeyFor(policy, "build-lqa", currentPatchId, ...missingBuildLqa);
-        const reviewed = await ports.store.runMemoizedStep(q5Key, () =>
-          providerBoundPorts.patchback.buildLqaReview({
+        const reviewed = await ports.store.runMemoizedStep(q5Key, async () => {
+          const verdicts = await providerBoundPorts.patchback.buildLqaReview({
             patchId: currentPatchId,
             unitIds: missingBuildLqa,
-          }),
-        );
+          });
+          assertCleanBuildLqa(missingBuildLqa, verdicts);
+          return verdicts;
+        });
         buildLqa = reviewed.value;
+        assertCleanBuildLqa(missingBuildLqa, buildLqa);
+        await providerBoundPorts.patchback.hydrateBuildLqaEvidence?.({
+          patchId: currentPatchId,
+          unitIds: missingBuildLqa,
+          verdicts: buildLqa,
+        });
         await Promise.all(
           missingBuildLqa.map((unitId) =>
             providerBoundPorts.store.finalizeUnit({
@@ -449,6 +458,7 @@ export async function runLocalizationWorkflowForPolicy(
 /** Gate only operations that can contact a model provider; store/readiness work
  * remains under the per-run scene scheduler without consuming this portfolio cap. */
 function boundProviderPorts(ports: WorkflowPorts, gate: BoundedConcurrency): WorkflowPorts {
+  const hydrateBuildLqaEvidence = ports.patchback.hydrateBuildLqaEvidence;
   return {
     ...ports,
     draft: {
@@ -471,6 +481,7 @@ function boundProviderPorts(ports: WorkflowPorts, gate: BoundedConcurrency): Wor
         await gate.run(async () => await ports.patchback.exportPatch(input)),
       buildLqaReview: async (input) =>
         await gate.run(async () => await ports.patchback.buildLqaReview(input)),
+      ...(hydrateBuildLqaEvidence === undefined ? {} : { hydrateBuildLqaEvidence }),
     },
   };
 }

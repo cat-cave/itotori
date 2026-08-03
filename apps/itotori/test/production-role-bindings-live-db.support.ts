@@ -1,27 +1,28 @@
 import { ItotoriLlmWikiRepository } from "@itotori/db";
 import { expect } from "vitest";
 import { createFieldMemoCipher } from "../src/composition/live/index.js";
-import {
-  LocalizedRenderingSchema,
-  WikiObjectSchema,
-  type ReviewVerdict,
-} from "../src/contracts/index.js";
+import { LocalizedRenderingSchema, WikiObjectSchema } from "../src/contracts/index.js";
 import { FULL_ROSTER, type RunPolicyRequest } from "../src/run-policy/index.js";
 import type { ItotoriApplicationServices } from "../src/services/database-services.js";
-import type { LaneVerdict } from "../src/workflow/index.js";
 import { persistLocalizedRendering, persistWikiObject } from "../src/wiki/object-persistence.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import { loadBridgeBundle, wholeGameStructure } from "./support/gate-fixtures.js";
-export const STYLE_SOURCE_ID = "style-contract:role-binding-proof";
-const STYLE_RENDERING_ID_PREFIX = "rendering:style-contract:role-binding-proof";
-const CHARACTER_ID = "char.rin";
-const SPEAKER_ID = "01920000-0000-7000-8000-000000000001";
-const ROUTE_ID = "route.proof";
-const NAME_SOURCE_ID = "term-ruling:role-binding-proof:name";
-const VOICE_SOURCE_ID = "voice-profile:role-binding-proof:rin";
-const ARC_SOURCE_ID = "route-arc:role-binding-proof";
+import {
+  Q5_BACKGROUND_ASSET,
+  Q5_FIXTURE_IDENTITIES,
+  type RealLiveQ5Fixture,
+} from "./production-role-bindings-reallive-fixture.support.js";
+export const STYLE_SOURCE_ID = "style-contract:q5-fixture";
+const STYLE_RENDERING_ID_PREFIX = "rendering:style-contract:q5-fixture";
+const CHARACTER_ID = Q5_FIXTURE_IDENTITIES.characterId;
+const SPEAKER_ID = Q5_FIXTURE_IDENTITIES.speakerId;
+const ROUTE_ID = Q5_FIXTURE_IDENTITIES.routeId;
+const NAME_SOURCE_ID = "term-ruling:q5-fixture:name";
+const VOICE_SOURCE_ID = "voice-profile:q5-fixture:fixture";
+const ARC_SOURCE_ID = "route-arc:q5-fixture";
+export type RoleBindingRunMode = "production" | "test-dev";
 export const launchEnvironment = {
-  OPENROUTER_API_KEY: "role-binding-proof-key",
+  OPENROUTER_API_KEY: "fixture-transport-key",
   ITOTORI_TARGET_LOCALE: "en-US",
   ITOTORI_DRAFT_SCHEMA_HASH: hash("a"),
   ITOTORI_DECODE_REVISION_HASH: hash("b"),
@@ -36,11 +37,13 @@ export function commandArgs(
   runId: string,
   localeBranchId: string,
   ablation: boolean,
+  runtimeFixture?: RealLiveQ5Fixture,
+  runMode: RoleBindingRunMode = "test-dev",
 ): readonly string[] {
   return [
     "localize",
     "--run-mode",
-    "test-dev",
+    runMode,
     "--project-id",
     projectId,
     "--run-id",
@@ -50,9 +53,10 @@ export function commandArgs(
     "--target-locale",
     "en-US",
     "--source-root",
-    "/fixture/role-binding/source",
+    runtimeFixture?.sourceRoot ?? "/fixture/q5/source",
     "--build-root",
-    "/fixture/role-binding/build",
+    runtimeFixture?.buildRoot ?? "/fixture/q5/build",
+    ...(runtimeFixture === undefined ? [] : ["--runtime-background-asset", Q5_BACKGROUND_ASSET]),
     "--structure",
     "structure.json",
     "--bridge",
@@ -62,13 +66,17 @@ export function commandArgs(
     "summary.json",
   ];
 }
-export function commandDeps(services: ItotoriApplicationServices, outputs: Map<string, unknown>) {
+export function commandDeps(
+  services: ItotoriApplicationServices,
+  outputs: Map<string, unknown>,
+  runtimeFixture?: RealLiveQ5Fixture,
+) {
   return {
     io: {
       readJson(path: string): unknown {
-        if (path === "structure.json") return parseableStructure();
-        if (path === "bridge.json") return proofBridge();
-        throw new Error(`unexpected role-binding proof input ${path}`);
+        if (path === "structure.json") return structureFor(runtimeFixture);
+        if (path === "bridge.json") return bridgeFor(runtimeFixture);
+        throw new Error(`unexpected Q5 fixture input ${path}`);
       },
       writeJson(path: string, value: unknown): void {
         outputs.set(path, value);
@@ -90,10 +98,13 @@ export async function seedStyleBible(input: {
   readonly runId: string;
   readonly localeBranchId: string;
   readonly sourceInstalled: boolean;
+  readonly runtimeFixture?: RealLiveQ5Fixture;
+  readonly runMode?: RoleBindingRunMode;
 }) {
+  const runMode = input.runMode ?? "test-dev";
   const perRun = {
-    structureJson: parseableStructure(),
-    bridge: proofBridge(),
+    structureJson: structureFor(input.runtimeFixture),
+    bridge: bridgeFor(input.runtimeFixture),
     projectRun: {
       projectId: input.projectId,
       runId: input.runId,
@@ -102,18 +113,18 @@ export async function seedStyleBible(input: {
     },
   };
   const before = await input.services.localizationSubstrate.resolvePortSource(
-    qualifyingRequest(),
+    qualifyingRequest(runMode),
     perRun,
   );
-  if (before.runPlane === undefined) throw new Error("role-binding proof source has no run plane");
+  if (before.runPlane === undefined) throw new Error("Q5 fixture source has no run plane");
   const wiki = new ItotoriLlmWikiRepository(input.context.pool, createFieldMemoCipher(process.env));
   if (!input.sourceInstalled) {
     await Promise.all(
       [
-        styleSource(before.runPlane.contextSnapshotId),
-        nameSource(before.runPlane.contextSnapshotId),
-        voiceSource(before.runPlane.contextSnapshotId),
-        arcSource(before.runPlane.contextSnapshotId),
+        styleSource(before.runPlane.contextSnapshotId, runMode),
+        nameSource(before.runPlane.contextSnapshotId, runMode),
+        voiceSource(before.runPlane.contextSnapshotId, runMode),
+        arcSource(before.runPlane.contextSnapshotId, runMode),
       ].map(
         async (source) =>
           await persistWikiObject(wiki, source, {
@@ -127,10 +138,10 @@ export async function seedStyleBible(input: {
   const voiceRenderingId = voiceRenderingIdFor(before.runPlane.localizationSnapshotId);
   await Promise.all(
     [
-      styleRendering(before.runPlane.localizationSnapshotId, bibleRenderingId),
-      nameRendering(before.runPlane.localizationSnapshotId),
-      voiceRendering(before.runPlane.localizationSnapshotId, voiceRenderingId),
-      arcRendering(before.runPlane.localizationSnapshotId),
+      styleRendering(before.runPlane.localizationSnapshotId, bibleRenderingId, runMode),
+      nameRendering(before.runPlane.localizationSnapshotId, runMode),
+      voiceRendering(before.runPlane.localizationSnapshotId, voiceRenderingId, runMode),
+      arcRendering(before.runPlane.localizationSnapshotId, runMode),
     ].map(
       async (rendering) =>
         await persistLocalizedRendering(wiki, rendering, {
@@ -140,11 +151,11 @@ export async function seedStyleBible(input: {
     ),
   );
   const after = await input.services.localizationSubstrate.resolvePortSource(
-    qualifyingRequest(),
+    qualifyingRequest(runMode),
     perRun,
   );
   if (after.runPlane === undefined || after.deps === undefined) {
-    throw new Error("role-binding proof could not rebuild the live source after Bible install");
+    throw new Error("Q5 fixture could not rebuild the live source after Bible install");
   }
   expect(after.runPlane.contextSnapshotId).toBe(before.runPlane.contextSnapshotId);
   expect(after.runPlane.localizationSnapshotId).toBe(before.runPlane.localizationSnapshotId);
@@ -155,52 +166,23 @@ export async function seedStyleBible(input: {
     voiceRenderingId,
   };
 }
-export function contestedVerdicts(
-  unitId: string,
-  localizationSnapshotId: string,
-  bibleRenderingId: string,
-  repairConstraint = "Preserve the grounded sense.",
-): readonly LaneVerdict[] {
-  const pass = reviewVerdict({
-    roleId: "Q1",
-    rubric: "meaning",
-    unitId,
-    localizationSnapshotId,
-    evidenceId: bibleRenderingId,
-    bibleRenderingId,
-    verdict: "PASS",
-  });
-  const fail = reviewVerdict({
-    roleId: "Q3",
-    rubric: "terminology",
-    unitId,
-    localizationSnapshotId,
-    evidenceId: unitId,
-    bibleRenderingId,
-    verdict: "FAIL",
-    repairConstraint,
-  });
-  return [
-    { lane: "Q1", verdict: pass },
-    { lane: "Q3", verdict: fail },
-  ];
-}
-function qualifyingRequest(): RunPolicyRequest {
+function qualifyingRequest(runMode: RoleBindingRunMode): RunPolicyRequest {
   return {
-    runMode: "test-dev",
+    runMode,
     contextScope: "whole-game",
     outputScope: "dialogue-only",
     roster: FULL_ROSTER,
     ablation: null,
   };
 }
-function styleSource(contextSnapshotId: string) {
+function styleSource(contextSnapshotId: string, runMode: RoleBindingRunMode) {
   return sourceObject({
     contextSnapshotId,
     objectId: STYLE_SOURCE_ID,
     kind: "style-contract",
-    subject: { kind: "game", id: "role-binding-proof" },
+    subject: { kind: "game", id: "q5-fixture" },
     scope: { kind: "global" },
+    runMode,
     body: {
       registerPolicy: "Use a calm, direct register.",
       honorificPolicy: "Retain meaningful honorifics.",
@@ -211,13 +193,18 @@ function styleSource(contextSnapshotId: string) {
     },
   });
 }
-function styleRendering(localizationSnapshotId: string, renderingId: string) {
+function styleRendering(
+  localizationSnapshotId: string,
+  renderingId: string,
+  runMode: RoleBindingRunMode,
+) {
   return localizedRendering({
     localizationSnapshotId,
     renderingId,
     sourceObjectId: STYLE_SOURCE_ID,
     sourceObjectKind: "style-contract",
     scope: { kind: "global" },
+    runMode,
     body: {
       kind: "style-contract",
       registerGuidance: "Deterministic global style guidance.",
@@ -229,16 +216,17 @@ function styleRendering(localizationSnapshotId: string, renderingId: string) {
   });
 }
 
-function nameSource(contextSnapshotId: string) {
+function nameSource(contextSnapshotId: string, runMode: RoleBindingRunMode) {
   return sourceObject({
     contextSnapshotId,
     objectId: NAME_SOURCE_ID,
     kind: "term-ruling",
     subject: { kind: "character", id: SPEAKER_ID },
     scope: { kind: "global" },
+    runMode,
     body: {
       termId: SPEAKER_ID,
-      sourceForm: "Rin",
+      sourceForm: "Fixture",
       meaning: "The revealed speaker name.",
       register: "neutral",
       confidence: "high",
@@ -248,13 +236,14 @@ function nameSource(contextSnapshotId: string) {
   });
 }
 
-function voiceSource(contextSnapshotId: string) {
+function voiceSource(contextSnapshotId: string, runMode: RoleBindingRunMode) {
   return sourceObject({
     contextSnapshotId,
     objectId: VOICE_SOURCE_ID,
     kind: "voice-profile",
     subject: { kind: "character", id: SPEAKER_ID },
     scope: { kind: "global" },
+    runMode,
     body: {
       characterId: CHARACTER_ID,
       base: { pronoun: "I", register: "calm and direct", tics: [] },
@@ -264,13 +253,14 @@ function voiceSource(contextSnapshotId: string) {
   });
 }
 
-function arcSource(contextSnapshotId: string) {
+function arcSource(contextSnapshotId: string, runMode: RoleBindingRunMode) {
   return sourceObject({
     contextSnapshotId,
     objectId: ARC_SOURCE_ID,
     kind: "route-arc",
     subject: { kind: "route", id: ROUTE_ID },
     scope: { kind: "route", routeId: ROUTE_ID },
+    runMode,
     body: {
       routeId: ROUTE_ID,
       arcSummary: "A deterministic route for the review proof.",
@@ -291,6 +281,7 @@ function sourceObject(input: {
   readonly subject: unknown;
   readonly scope: unknown;
   readonly body: unknown;
+  readonly runMode: RoleBindingRunMode;
 }) {
   return WikiObjectSchema.parse({
     schemaVersion: "itotori.wiki-object.v1",
@@ -309,58 +300,65 @@ function sourceObject(input: {
       snapshotKind: "context",
       contextSnapshotId: input.contextSnapshotId,
       contextScope: "whole-game",
-      runMode: "test-dev",
+      runMode: input.runMode,
     },
   });
 }
 
-function nameRendering(localizationSnapshotId: string) {
+function nameRendering(localizationSnapshotId: string, runMode: RoleBindingRunMode) {
   return localizedRendering({
     localizationSnapshotId,
-    renderingId: `rendering:name:role-binding-proof:${snapshotSuffix(localizationSnapshotId)}`,
+    renderingId: `rendering:name:q5-fixture:${snapshotSuffix(localizationSnapshotId)}`,
     sourceObjectId: NAME_SOURCE_ID,
     sourceObjectKind: "term-ruling",
     scope: { kind: "global" },
+    runMode,
     body: {
       kind: "term-ruling",
       termId: SPEAKER_ID,
-      canonicalForms: [{ form: "Rin", status: "preferred", scope: { kind: "global" } }],
+      canonicalForms: [{ form: "Fixture", status: "preferred", scope: { kind: "global" } }],
       registerGuidance: "Use the revealed name consistently.",
     },
   });
 }
 
-function voiceRendering(localizationSnapshotId: string, renderingId: string) {
+function voiceRendering(
+  localizationSnapshotId: string,
+  renderingId: string,
+  runMode: RoleBindingRunMode,
+) {
   return localizedRendering({
     localizationSnapshotId,
     renderingId,
     sourceObjectId: VOICE_SOURCE_ID,
     sourceObjectKind: "voice-profile",
     scope: { kind: "global" },
+    runMode,
     body: {
       kind: "voice-profile",
       characterId: CHARACTER_ID,
-      baseRegisterGuidance: "Keep Rin calm and direct.",
+      baseRegisterGuidance: "Keep the fixture speaker calm and direct.",
       counterpartGuidance: [],
       arcGuidance: [],
     },
   });
 }
 
-function arcRendering(localizationSnapshotId: string) {
+function arcRendering(localizationSnapshotId: string, runMode: RoleBindingRunMode) {
   return localizedRendering({
     localizationSnapshotId,
-    renderingId: `rendering:arc:role-binding-proof:${snapshotSuffix(localizationSnapshotId)}`,
+    renderingId: `rendering:arc:q5-fixture:${snapshotSuffix(localizationSnapshotId)}`,
     sourceObjectId: ARC_SOURCE_ID,
     sourceObjectKind: "route-arc",
     scope: { kind: "route", routeId: ROUTE_ID },
+    runMode,
     body: {
       kind: "route-arc",
       sections: [
         {
-          sectionId: "route-proof",
-          heading: "Proof route",
-          text: "Keep the proof route continuous.",
+          sectionId: "fixture-route",
+          heading: "Fixture route",
+          text: "Keep the fixture route continuous.",
           scope: { kind: "route", routeId: ROUTE_ID },
         },
       ],
@@ -375,6 +373,7 @@ function localizedRendering(input: {
   readonly sourceObjectKind: "style-contract" | "term-ruling" | "voice-profile" | "route-arc";
   readonly scope: unknown;
   readonly body: unknown;
+  readonly runMode: RoleBindingRunMode;
 }) {
   return LocalizedRenderingSchema.parse({
     schemaVersion: "itotori.localized-rendering.v1",
@@ -391,49 +390,19 @@ function localizedRendering(input: {
     provenance: {
       basisSourceVersion: 1,
       localizationSnapshotId: input.localizationSnapshotId,
-      runMode: "test-dev",
+      runMode: input.runMode,
     },
   });
 }
 
-function reviewVerdict(input: {
-  readonly roleId: "Q1" | "Q3";
-  readonly rubric: "meaning" | "terminology";
-  readonly unitId: string;
-  readonly localizationSnapshotId: string;
-  readonly evidenceId: string;
-  readonly bibleRenderingId: string;
-  readonly verdict: "PASS" | "FAIL";
-  readonly repairConstraint?: string;
-}): ReviewVerdict {
-  const base = {
-    schemaVersion: "itotori.review-verdict.v1" as const,
-    reviewId: `review:${input.roleId}:${input.unitId}`,
-    localizationSnapshotId: input.localizationSnapshotId,
-    roleId: input.roleId,
-    rubric: input.rubric,
-    unitId: input.unitId,
-    basis: { kind: "wiki-first" as const, bibleRenderingIds: [input.bibleRenderingId] },
-    evidenceIds: [input.evidenceId],
-  };
-  if (input.verdict === "PASS") {
-    return {
-      ...base,
-      verdict: "PASS",
-      severity: "none",
-      span: null,
-      category: null,
-      repairConstraint: null,
-    };
-  }
-  return {
-    ...base,
-    verdict: "FAIL",
-    severity: "major",
-    span: { spanId: "span:role-binding-proof", surface: "source", text: "proof source" },
-    category: "term-sense",
-    repairConstraint: input.repairConstraint ?? "Preserve the grounded sense.",
-  };
+function structureFor(runtimeFixture: RealLiveQ5Fixture | undefined) {
+  if (runtimeFixture !== undefined) return runtimeFixture.structure;
+  return parseableStructure();
+}
+
+function bridgeFor(runtimeFixture: RealLiveQ5Fixture | undefined) {
+  if (runtimeFixture !== undefined) return runtimeFixture.bridge;
+  return proofBridge();
 }
 
 function parseableStructure() {
@@ -465,7 +434,7 @@ function proofBridge() {
         policyRecordKind: "non_translated_term",
         policyAction: "do_not_translate",
         termKey: SPEAKER_ID,
-        sourceText: "Rin",
+        sourceText: "Fixture",
         targetLocale: "en-US",
         policyReason: "Fixture name decision required by the live Bible resolver.",
       },
@@ -476,7 +445,7 @@ function proofBridge() {
       speaker: {
         knowledgeState: "known" as const,
         speakerId: SPEAKER_ID,
-        displayName: "Rin",
+        displayName: "Fixture",
         canonicalNameRef: CHARACTER_ID,
       },
     })),
@@ -488,7 +457,7 @@ function styleRenderingId(localizationSnapshotId: string): string {
 }
 
 function voiceRenderingIdFor(localizationSnapshotId: string): string {
-  return `rendering:voice:role-binding-proof:${snapshotSuffix(localizationSnapshotId)}`;
+  return `rendering:voice:q5-fixture:${snapshotSuffix(localizationSnapshotId)}`;
 }
 
 function snapshotSuffix(localizationSnapshotId: string): string {

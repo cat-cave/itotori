@@ -185,6 +185,23 @@ fn positional_message_index_selects_duplicate_occurrence() {
 }
 
 #[test]
+fn incomplete_scene_pixel_gate_is_not_promoted_to_clean_render_evidence() {
+    let gate = render_validate_pixel_gate::scene_verdict(true, 1, 0);
+    assert_eq!(gate["status"], "failed");
+    assert_eq!(gate["failedChecks"], serde_json::json!(["complete-scene"]));
+    assert_eq!(gate["skippedObjectCount"], 1);
+}
+
+#[test]
+fn decode_warning_pixel_gate_is_not_promoted_to_clean_render_evidence() {
+    let gate = render_validate_pixel_gate::scene_verdict(true, 0, 1);
+    assert_eq!(gate["status"], "failed");
+    assert_eq!(gate["failedChecks"], serde_json::json!(["complete-scene"]));
+    assert_eq!(gate["skippedObjectCount"], 0);
+    assert_eq!(gate["decodeWarningCount"], 1);
+}
+
+#[test]
 fn substring_selection_without_index_rejects_duplicate_matches() {
     let play_order = vec![
         text_line("line-0", "Same localized line."),
