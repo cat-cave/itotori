@@ -193,6 +193,22 @@ test("the DB-backed CI workflow provisions Postgres via a health-checked GH serv
       /DATABASE_URL: postgres:\/\/itotori:itotori@127\.0\.0\.1:5432\/itotori/u,
       `${name} must wire DATABASE_URL to the service`,
     );
+    // The DB-owned durable restart/memo proofs drive the real Kaifuu and
+    // Utsushi seams. Consume the release binaries built by the native job,
+    // rather than relying on a hidden local cargo fallback in CI.
+    assert.match(job, /needs: \[native\]/u, `${name} must wait for the native CLI artifact`);
+    assert.match(
+      job,
+      /actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c/u,
+      `${name} must download the native CLI artifact`,
+    );
+    assert.match(
+      job,
+      /name: native-\$\{\{ github\.sha \}\}-linux-x64\n\s+path: \.ci\/bin/u,
+      `${name} must use the matching native artifact`,
+    );
+    assert.match(job, /ITOTORI_KAIFUU_BIN=\$PWD\/\.ci\/bin\/kaifuu-cli/u);
+    assert.match(job, /ITOTORI_UTSUSHI_BIN=\$PWD\/\.ci\/bin\/utsushi-cli/u);
     // The runner no longer starts/tears down the local compose stack.
     assert.doesNotMatch(
       job,
