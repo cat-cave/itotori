@@ -15,6 +15,7 @@
 // a new `if (engine === ...)` branch in the producer.
 
 import { runNativeCli, type NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
+import type { RuntimeLauncherAdapterFactory } from "../play/runtime-launcher-registry.js";
 
 /** The patch-back engines the app can select. Each maps 1:1 to a kaifuu-cli
  * `patch --engine <id>` implementation and to one registered adapter. */
@@ -115,6 +116,13 @@ export interface EnginePatchbackAdapter {
   readonly engineId: PatchbackEngineId;
   /** The byte-fidelity scopes this engine honors. */
   readonly supportedScopes: readonly PatchbackScope[];
+  /**
+   * Optional real-runtime contribution for this engine's patched artifacts.
+   * Q5 selects launcher factories through this same engine registry, so an
+   * engine without a native runtime stays unavailable rather than inventing
+   * render evidence.
+   */
+  readonly runtimeLauncherFactory?: RuntimeLauncherAdapterFactory;
   /**
    * Resolve the engine's source root under `root` (the directory whose bytes
    * the engine actually patches) — or `null` when this engine's source

@@ -10,6 +10,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
+import { realliveRuntimeLauncherAdapterFactory } from "../play/reallive-runtime-launcher-adapter.js";
 import {
   registerEnginePatchbackAdapter,
   type EnginePatchbackAdapter,
@@ -53,6 +54,7 @@ function findRealLiveRoot(root: string): string | null {
 export const realLivePatchbackAdapter: EnginePatchbackAdapter = {
   engineId: "reallive",
   supportedScopes: ["dialogue-only", "dialogue+choices"],
+  runtimeLauncherFactory: realliveRuntimeLauncherAdapterFactory,
   probeSource(root: string): string | null {
     return findRealLiveRoot(root);
   },
