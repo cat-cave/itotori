@@ -122,7 +122,13 @@ export function runUtsushiStructureExport(
   args: RunUtsushiStructureArgs,
 ): RunUtsushiStructureResult {
   const env = args.env ?? process.env;
-  const { command, prefixArgs } = resolveUtsushiCli(env);
+  // A supplied runner owns an explicit process seam. Keep its resolution
+  // bounded to that runner's environment rather than letting a cached binary
+  // under this checkout change the injected invocation shape. Production keeps
+  // the full native-deps resolution order, including the checkout target.
+  const { command, prefixArgs } = resolveUtsushiCli(env, {
+    includeCheckoutTarget: args.runProcess === undefined,
+  });
   const structureArgs = buildUtsushiStructureArgs(args);
   args.log?.(`structure-export: ${command} ${structureArgs.join(" ")}`);
   const runProcess = args.runProcess ?? defaultRunUtsushiProcess;
@@ -183,14 +189,19 @@ export function buildUtsushiStructureArgs(args: RunUtsushiStructureArgs): string
  * scenario could resolve a different bin than the doctor (the codex-audit P1);
  * the shared resolver closes that gap.
  */
-export function resolveUtsushiCli(env: NodeJS.ProcessEnv): {
+export function resolveUtsushiCli(
+  env: NodeJS.ProcessEnv,
+  options: { includeCheckoutTarget?: boolean } = {},
+): {
   command: string;
   prefixArgs: string[];
 } {
   return resolveNativeCliBin(
     { binName: "utsushi-cli", envVar: "ITOTORI_UTSUSHI_BIN", cargoPackage: "utsushi-cli" },
     env,
-    { repoRoot: defaultRepoRoot() },
+    {
+      repoRoot: options.includeCheckoutTarget === false ? undefined : defaultRepoRoot(),
+    },
   );
 }
 
