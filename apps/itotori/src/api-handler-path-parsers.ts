@@ -274,6 +274,22 @@ export function parsePlayDeliveryApiRoute(pathname: string): { runId: string } |
   return { runId: decodeApiPathSegment(match[1], "runId") };
 }
 
+export function parseLocalizationPassControlApiRoute(pathname: string): {
+  projectId: string;
+  journalRunId: string;
+  action: "pause" | "resume";
+} | null {
+  const match = /^\/api\/projects\/([^/]+)\/runs\/([^/]+)\/(pause|resume)\/?$/u.exec(pathname);
+  if (match === null || match[1] === undefined || match[2] === undefined) return null;
+  const action = match[3];
+  if (action !== "pause" && action !== "resume") return null;
+  return {
+    projectId: decodeApiPathSegment(match[1], "projectId"),
+    journalRunId: decodeApiPathSegment(match[2], "runId"),
+    action,
+  };
+}
+
 export function parseBranchPolicySettingsApiRoute(pathname: string): {
   projectId: string;
   localeBranchId: string;

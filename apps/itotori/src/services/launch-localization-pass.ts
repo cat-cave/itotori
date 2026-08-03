@@ -32,6 +32,16 @@ import {
 import type { WorkflowOptions } from "../workflow/index.js";
 import { LocalizeRunTracker, type LocalizeRunTrackerTiming } from "../cli/localize-run-tracker.js";
 import type { ItotoriProjectWorkflowPort } from "./project-operations-port.js";
+import {
+  isLocalizationPassPause,
+  LocalizationPassControlError,
+  LocalizationPassPausedError,
+} from "./localization-pass-control.js";
+
+export {
+  createDetachedLocalizationPassRunner,
+  type LocalizationPassRunnerPort,
+} from "./localization-pass-runner.js";
 
 const RUN_MODE_VALUES: readonly RunModeValue[] = ["production", "pilot", "test-dev"];
 
@@ -46,18 +56,6 @@ export type LocalizationLaunchConfigDocument = {
    * scene inherits graphics from an earlier scene. */
   readonly runtimeBackgroundAsset?: string;
   readonly wholeSceneMaxUnits?: number;
-};
-
-export type LocalizationPassRunnerPort = {
-  /**
-   * Admit a durable localization run and return its id without waiting for the
-   * pass to finish. The runner keeps driving the pass after this resolves.
-   */
-  start(input: {
-    projectId: string;
-    localeBranchId: string;
-    config: LocalizationPassRunConfigRecord;
-  }): Promise<{ journalRunId: string; startedAt: Date }>;
 };
 
 /** A branch already has a queued, running, or paused pass. */
@@ -109,10 +107,15 @@ export async function driveLocalizationPass(
     projectId: string;
     localeBranchId: string;
     config: LocalizationPassRunConfigRecord;
+    /** Present only when an existing durable paused run is resumed. */
+    journalRunId?: string;
+    /** Process-local operator pause request, forwarded to physical dispatch. */
+    abortSignal?: AbortSignal;
   },
   deps: DriveLocalizationPassDeps,
   hooks: {
     onAdmitted?: (admitted: { journalRunId: string; startedAt: Date }) => void;
+    onPaused?: (paused: { journalRunId: string; pausedAt: Date }) => void;
   } = {},
 ): Promise<void> {
   const launch = parseLaunchConfigDocument(
@@ -134,7 +137,7 @@ export async function driveLocalizationPass(
   };
   resolveRunPolicy(request);
 
-  const journalRunId = (deps.createRunId ?? defaultRunId)();
+  const journalRunId = input.journalRunId ?? (deps.createRunId ?? defaultRunId)();
   const projectRun = {
     projectId: input.projectId,
     runId: journalRunId,
@@ -150,6 +153,7 @@ export async function driveLocalizationPass(
     structureJson,
     bridge,
     projectRun,
+    ...(input.abortSignal === undefined ? {} : { abortSignal: input.abortSignal }),
     renderEvidence: {
       // The pass record owns both roots: `dataRoot` is the read-only extracted
       // runtime and `runDir` is the operator-owned output location. Keep the
@@ -172,6 +176,7 @@ export async function driveLocalizationPass(
     deps.projectWorkflow,
     source.runPlane,
     deps.localizeRunTrackerTiming,
+    input.abortSignal,
   );
   const writeJson = deps.writeJson ?? defaultWriteJson;
   try {
@@ -193,6 +198,7 @@ export async function driveLocalizationPass(
       tracker.costObserver,
       async () => await runLocalization(request, scenes, { ports }, options),
     );
+    throwIfLocalizationPassPaused(input.abortSignal, journalRunId);
     const live = await tracker.complete();
 
     const summary = {
@@ -214,6 +220,30 @@ export async function driveLocalizationPass(
     };
     writeJson(join(input.config.runDir, `${journalRunId}.summary.json`), summary);
   } catch (error: unknown) {
+    if (isLocalizationPassPause(input.abortSignal)) {
+      const live = await tracker.pause();
+      if (live?.run.status !== "paused") {
+        throw new LocalizationPassControlError(
+          "pause_requires_running",
+          "pause",
+          journalRunId,
+          `cannot pause localization pass ${journalRunId}: it completed before the pause took effect`,
+        );
+      }
+      const pausedAt = (deps.now ?? (() => new Date()))();
+      // The durable transition and lease release are complete. Resolve the
+      // control request before writing the optional operator artifact so a
+      // local output-volume failure cannot strand a successfully paused run.
+      hooks.onPaused?.({ journalRunId, pausedAt });
+      writeJson(join(input.config.runDir, `${journalRunId}.paused.json`), {
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        runId: journalRunId,
+        runStatus: live?.run.status ?? null,
+        progress: live === null ? null : live.progress,
+      });
+      return;
+    }
     let failedTransitionError: unknown;
     try {
       await tracker.fail();
@@ -234,53 +264,6 @@ export async function driveLocalizationPass(
     });
     throw error;
   }
-}
-
-/**
- * Production-shaped runner: opens a detached service session, admits the run,
- * resolves with the journal id, then keeps the session open until the pass
- * finishes (or fails durably).
- */
-export function createDetachedLocalizationPassRunner(options: {
-  openSession: (run: (deps: DriveLocalizationPassDeps) => Promise<void>) => Promise<void>;
-  createRunId?: () => string;
-  now?: () => Date;
-}): LocalizationPassRunnerPort {
-  return {
-    async start(input) {
-      let admitted = false;
-      let resolveAdmitted!: (value: { journalRunId: string; startedAt: Date }) => void;
-      let rejectAdmitted!: (error: unknown) => void;
-      const admittedPromise = new Promise<{ journalRunId: string; startedAt: Date }>(
-        (resolve, reject) => {
-          resolveAdmitted = resolve;
-          rejectAdmitted = reject;
-        },
-      );
-
-      const execution = options.openSession(async (deps) => {
-        await driveLocalizationPass(
-          input,
-          {
-            ...deps,
-            ...(options.createRunId === undefined ? {} : { createRunId: options.createRunId }),
-            ...(options.now === undefined ? {} : { now: options.now }),
-          },
-          {
-            onAdmitted: (value) => {
-              admitted = true;
-              resolveAdmitted(value);
-            },
-          },
-        );
-      });
-      execution.catch((error: unknown) => {
-        if (!admitted) rejectAdmitted(error);
-      });
-
-      return await admittedPromise;
-    },
-  };
 }
 
 export function parseLaunchConfigDocument(
@@ -419,6 +402,13 @@ function portsWithRunCostObserver(source: LocalizationPortSource, tracker: Local
 function errorSummary(error: unknown): { name: string; message: string } {
   if (error instanceof Error) return { name: error.name, message: error.message };
   return { name: "NonErrorThrown", message: String(error) };
+}
+
+function throwIfLocalizationPassPaused(
+  signal: AbortSignal | undefined,
+  journalRunId: string,
+): void {
+  if (isLocalizationPassPause(signal)) throw new LocalizationPassPausedError(journalRunId);
 }
 
 export function isActiveLocalizationPassConflict(error: unknown): boolean {

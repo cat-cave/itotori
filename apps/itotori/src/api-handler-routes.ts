@@ -51,6 +51,8 @@ export function readOnlyMutationPathResponse(
     return responses.methodNotAllowed(["GET", "POST"]);
   if (deps.parseLocalizationRunConfigApiRoute(request.pathname) !== null)
     return responses.methodNotAllowed(["POST"]);
+  if (deps.parseLocalizationPassControlApiRoute(request.pathname) !== null)
+    return responses.methodNotAllowed(["POST"]);
   if (
     request.pathname === "/api/auth/members/invitations" ||
     deps.parseAuthMemberAcceptRoute(request.pathname) !== null ||

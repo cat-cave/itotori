@@ -112,6 +112,38 @@ export const mutationComponentBuilders: ComponentBuilders = {
       additionalProperties: false,
       schemaVersion: "itotori.projects.launch-pass.v1",
     }),
+  ApiLocalizationPassControlRequest: () =>
+    object({
+      required: STRICT_API_BODY_KEYS.ApiLocalizationPassControlRequest,
+      properties: {},
+      additionalProperties: false,
+    }),
+  ApiLocalizationPassControlResponse: () => ({
+    oneOf: [
+      object({
+        required: STRICT_API_BODY_KEYS.ApiLocalizationPassControlResponse,
+        properties: {
+          action: { const: "pause" },
+          journalRunId: str,
+          status: { const: "paused" },
+          transitionedAt: str,
+        },
+        additionalProperties: false,
+        schemaVersion: "itotori.projects.pass-control.v1",
+      }),
+      object({
+        required: STRICT_API_BODY_KEYS.ApiLocalizationPassControlResponse,
+        properties: {
+          action: { const: "resume" },
+          journalRunId: str,
+          status: { const: "running" },
+          transitionedAt: str,
+        },
+        additionalProperties: false,
+        schemaVersion: "itotori.projects.pass-control.v1",
+      }),
+    ],
+  }),
 
   // play-routemap-ui — route/choice tree envelope -------------------------
   ApiPlayRouteMapNode: () =>

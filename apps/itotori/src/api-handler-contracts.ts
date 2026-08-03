@@ -284,6 +284,8 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
     | "recordBenchmarkReport"
     | "ingestRuntimeReport"
     | "launchNextLocalizationPass"
+    | "pauseLocalizationPass"
+    | "resumeLocalizationPass"
   >;
   authSsoSettings: {
     configureSettings(input: deps.ApiConfigureAuthSsoSettingsRequest): Promise<{

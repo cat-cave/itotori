@@ -66,7 +66,10 @@ import {
   assertRemoveMemberResponse,
   assertRevokeAuthSessionResponse,
 } from "./api-membership-auth-response-validation.js";
-import { assertLaunchPassResponse } from "./api-play-request-parsers.js";
+import {
+  assertLaunchPassResponse,
+  assertLocalizationPassControlResponse,
+} from "./api-play-request-parsers.js";
 import { assertPlayRouteMapResponse } from "./api-play-route-validation.js";
 import {
   assertPatchIterationDeliveryResponse,
@@ -244,6 +247,10 @@ export function assertItotoriApiResponse(
       return;
     case "projects.launchPass":
       assertLaunchPassResponse(value);
+      return;
+    case "projects.pausePass":
+    case "projects.resumePass":
+      assertLocalizationPassControlResponse(value);
       return;
     case "play.routeMap":
       assertPlayRouteMapResponse(value);

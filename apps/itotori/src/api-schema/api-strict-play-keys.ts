@@ -7,6 +7,14 @@ export const API_STRICT_PLAY_BODY_KEYS = {
     "refusalMessage",
   ],
   ApiLaunchPassRequest: ["localeBranchId"],
+  ApiLocalizationPassControlRequest: [],
+  ApiLocalizationPassControlResponse: [
+    "schemaVersion",
+    "action",
+    "journalRunId",
+    "status",
+    "transitionedAt",
+  ],
   ApiPlayRouteMapResponse: [
     "schemaVersion",
     "generatedAt",

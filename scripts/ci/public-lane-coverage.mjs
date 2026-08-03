@@ -63,7 +63,7 @@ export const PRIVATE_LANES = new Set([
 ]);
 
 // The two public app-suite shards. Their UNION covers every public-owned app
-// test. The two durable proofs in DB_OWNED_APP_PROOFS are explicitly excluded
+// test. The DB-owned durable proofs in DB_OWNED_APP_PROOFS are explicitly excluded
 // from both shards and directly invoked by ci-tier1-db: that is collection
 // ownership, not a no-DATABASE_URL skip.
 export const APP_SUITE_SHARDS = ["ci-tier1-ts-public-1of2", "ci-tier1-ts-public-2of2"];
@@ -90,9 +90,21 @@ export const DB_OWNED_APP_PROOFS = [
     lane: DB_OWNED_LANE,
     invocation: "vitest run test/workflow-memo-identity-live-db.test.ts",
   },
+  {
+    proof: "durable-pause-resume",
+    title: "user pause/resume",
+    test: "apps/itotori/test/production-localize-pause-live-db.test.ts",
+    marker: "pauses live provider work, resumes the same run, and reuses its 0120 checkpoint",
+    lane: DB_OWNED_LANE,
+    invocation: "vitest run test/production-localize-pause-live-db.test.ts",
+  },
 ];
 
-export const REQUIRED_DB_OWNED_PROOF_IDS = ["durable-restart", "workflow-memo-model-variant"];
+export const REQUIRED_DB_OWNED_PROOF_IDS = [
+  "durable-restart",
+  "workflow-memo-model-variant",
+  "durable-pause-resume",
+];
 
 // ---------------------------------------------------------------------------
 // The required-category coverage registry. Each entry cites:

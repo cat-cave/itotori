@@ -45,6 +45,26 @@ export async function routeProjectMutations(
   request: contracts.ItotoriApiRequest,
   services: contracts.ItotoriApiServices,
 ): Promise<contracts.ApiJsonResponse> {
+  const controlRoute = deps.parseLocalizationPassControlApiRoute(request.pathname);
+  if (controlRoute !== null) {
+    if (request.method !== "POST") return responses.methodNotAllowed(["POST"]);
+    deps.parseLocalizationPassControlRequest(request.body);
+    await shared.requireApiPermission(services, contracts.apiMutationPermissionGates.launchPass);
+    const outcome =
+      controlRoute.action === "pause"
+        ? await services.projectWorkflow.pauseLocalizationPass({
+            projectId: controlRoute.projectId,
+            journalRunId: controlRoute.journalRunId,
+          })
+        : await services.projectWorkflow.resumeLocalizationPass({
+            projectId: controlRoute.projectId,
+            journalRunId: controlRoute.journalRunId,
+          });
+    const body = deps.localizationPassControlResponseBody(outcome);
+    return controlRoute.action === "pause"
+      ? responses.ok("projects.pausePass", body)
+      : responses.ok("projects.resumePass", body);
+  }
   const projectRoute = responses.parseProjectRoute(request.pathname);
   if (!projectRoute) {
     return responses.notFound(request.pathname);

@@ -23,6 +23,8 @@ import type {
   ApiJobsRunTableResponse,
   ApiLaunchPassRequest,
   ApiLaunchPassResponse,
+  ApiLocalizationPassControlRequest,
+  ApiLocalizationPassControlResponse,
   ApiLocalizationRunConfigResponse,
   ApiMemberInvitationResponse,
   ApiMemberResponse,
@@ -247,6 +249,16 @@ interface ItotoriApiRouteTypeMap {
     response: ApiLaunchPassResponse;
     pathParams: { projectId: string };
     request: ApiLaunchPassRequest;
+  };
+  "projects.pausePass": {
+    response: ApiLocalizationPassControlResponse;
+    pathParams: { projectId: string; runId: string };
+    request: ApiLocalizationPassControlRequest;
+  };
+  "projects.resumePass": {
+    response: ApiLocalizationPassControlResponse;
+    pathParams: { projectId: string; runId: string };
+    request: ApiLocalizationPassControlRequest;
   };
   "play.routeMap": {
     response: ApiPlayRouteMapResponse;

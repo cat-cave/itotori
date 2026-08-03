@@ -3,6 +3,7 @@ import * as deps from "./api-handler-dependencies.js";
 import { translationScopeValues } from "./api-enum-values.js";
 import { ContextScopeValueSchema, RunModeValueSchema } from "./contracts/index.js";
 import { explicitFailureApiResponse } from "./explicit-failure/api-response.js";
+import { LocalizationPassControlError } from "./services/localization-pass-control.js";
 
 export function ok(
   routeId: "projects.list",
@@ -200,6 +201,10 @@ export function ok(
   body: deps.ApiLaunchPassResponse,
 ): contracts.ApiJsonResponse;
 export function ok(
+  routeId: "projects.pausePass" | "projects.resumePass",
+  body: deps.ApiLocalizationPassControlResponse,
+): contracts.ApiJsonResponse;
+export function ok(
   routeId: "play.routeMap",
   body: deps.ApiPlayRouteMapResponse,
 ): contracts.ApiJsonResponse;
@@ -364,6 +369,9 @@ export function draftProviderConfigurationRefusal(error: unknown): string | null
 }
 
 export function errorResponse(error: unknown): contracts.ApiJsonResponse {
+  if (error instanceof LocalizationPassControlError) {
+    return errorBody(409, "run_transition_rejected", error.message);
+  }
   if (deps.hasExplicitFailureEvidence(error)) {
     return applicationFailureBody(error);
   }
