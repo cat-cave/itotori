@@ -1,21 +1,31 @@
 #!/usr/bin/env node
 import { fileURLToPath } from "node:url";
 import { runItotoriCliCommand, type JsonFileStore } from "./cli-handlers.js";
+import { assertDeploymentStartupContext } from "./config/deployment-config-file.js";
+import { requireDatabaseUrl } from "./deployment-required-input.js";
 import { readOwnedJsonFile, writeJsonFile, writeTextFile } from "./cli-json-file-store.js";
-import {
-  migrateItotoriDatabase,
-  resetItotoriDatabase,
-  withDatabaseItotoriServices,
-} from "./services/database-services.js";
 
 const args = process.argv.slice(2);
 
 export async function main(cliArgs = args): Promise<void> {
   await runItotoriCliCommand(cliArgs, {
     io: nodeJsonFileStore,
-    migrateDatabase: migrateItotoriDatabase,
-    resetDatabase: resetItotoriDatabase,
-    withServices: (callback) => withDatabaseItotoriServices({}, callback),
+    migrateDatabase: async (startup) => {
+      if (startup !== undefined) assertDeploymentStartupContext(startup);
+      const databaseUrl = requireDatabaseUrl();
+      const { migrateItotoriDatabase } = await import("./services/database-services.js");
+      await migrateItotoriDatabase(databaseUrl);
+    },
+    resetDatabase: async (startup) => {
+      if (startup !== undefined) assertDeploymentStartupContext(startup);
+      const databaseUrl = requireDatabaseUrl();
+      const { resetItotoriDatabase } = await import("./services/database-services.js");
+      await resetItotoriDatabase(databaseUrl);
+    },
+    withServices: async (callback) => {
+      const { withDatabaseItotoriServices } = await import("./services/database-services.js");
+      return await withDatabaseItotoriServices({}, callback);
+    },
   });
 }
 

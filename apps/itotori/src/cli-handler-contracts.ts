@@ -16,6 +16,7 @@ import type { RunPolicyRequest } from "./run-policy/index.js";
 import type { EngineCapabilityReportPort } from "./services/engine-capability-report.js";
 import type { ItotoriProjectWorkflowPort } from "./services/project-operations-port.js";
 import type { InitCommandDeps } from "./init-command.js";
+import type { DeploymentStartupContext } from "./config/deployment-config-file.js";
 import type { WikiObjectApiService } from "./wiki/object-api/index.js";
 
 export type JsonFileStore = {
@@ -58,8 +59,8 @@ export type ItotoriCliServices = {
 
 export type ItotoriCliDependencies = {
   io: JsonFileStore;
-  migrateDatabase(): Promise<void>;
-  resetDatabase(): Promise<void>;
+  migrateDatabase(startup?: DeploymentStartupContext): Promise<void>;
+  resetDatabase(startup?: DeploymentStartupContext): Promise<void>;
   withServices<T>(callback: (services: ItotoriCliServices) => Promise<T>): Promise<T>;
   nativeCli?: NativeCliRunner;
   /** Optional override for the `itotori init` guided-setup dependencies. */

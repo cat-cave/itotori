@@ -1,18 +1,13 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { ITOTORI_PRODUCT_VERSION } from "@itotori/localization-bridge-schema";
+import { chmodSync, existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
+import { fileURLToPath } from "node:url";
+import { withTemporarySecretFile } from "./env/temporary-secret-file.js";
 import { runInitCommand, type InitCommandDeps } from "./init-command.js";
+import { initializeHostLifecycle, verifyHostLifecycleReadiness } from "./install-lifecycle.js";
 import type { ItotoriCliDependencies } from "./cli-handler-contracts.js";
 
 export async function runInitHandler(
@@ -44,7 +39,47 @@ function constructDefaultInitDeps(dependencies: ItotoriCliDependencies): InitCom
     log: (message) => process.stdout.write(`${message}\n`),
     defaultDatabaseUrl: () => defaultLocalDatabaseUrl(process.env),
     provisionDatabase: async (databaseUrl) => provisionLocalPostgresContainer(databaseUrl),
+    preflightHostLifecycle: (input) => {
+      verifyHostLifecycleReadiness(input);
+    },
+    initializeHostLifecycle,
+    currentReleasePayloadPath: resolveInstalledPackagePayloadPath,
+    currentReleaseVersion: () => ITOTORI_PRODUCT_VERSION,
+    migrateDatabaseForHostLifecycle: async () => await dependencies.migrateDatabase(),
   };
+}
+
+/**
+ * The bundled CLI runs through a tiny `bin/itotori.js` launcher. Retaining
+ * `process.argv[1]` would copy that launcher alone, leaving its `dist/` import
+ * behind. Resolve the full installed package rooted around this bundled module
+ * instead, so every retained release remains runnable through `current/bin`.
+ */
+export function resolveInstalledPackagePayloadPath(moduleUrl = import.meta.url): string {
+  let bundlePath: string;
+  try {
+    bundlePath = fileURLToPath(moduleUrl);
+  } catch {
+    throw new Error("itotori init cannot identify its installed package payload");
+  }
+  const distDirectory = dirname(bundlePath);
+  const packageRoot = dirname(distDirectory);
+  const requiredPaths = [
+    bundlePath,
+    join(packageRoot, "package.json"),
+    join(packageRoot, "bin", "itotori.js"),
+    join(packageRoot, "migrations"),
+  ];
+  if (
+    basename(distDirectory) !== "dist" ||
+    basename(bundlePath) !== "cli.js" ||
+    !requiredPaths.every(existsSync)
+  ) {
+    throw new Error(
+      "itotori init cannot identify a complete installed package payload; pass --release-payload <directory>",
+    );
+  }
+  return realpathSync(packageRoot);
 }
 
 function defaultLocalDatabaseUrl(env: Record<string, string | undefined>): string {
@@ -136,31 +171,38 @@ function provisionLocalPostgresContainer(databaseUrl: string): { ok: boolean; me
       timeoutMessage: `Started existing local Postgres container ${containerName}, but Postgres did not become ready for migrations.`,
     });
   }
-  let envFilePath: string;
+  let envContents: string;
   try {
-    envFilePath = writePostgresContainerEnvFile({ user, password, database });
+    envContents = postgresContainerEnvironmentContents({ user, password, database });
   } catch (error) {
     return {
       ok: false,
       message: `Could not auto-start local Postgres because DATABASE_URL contains an unsupported credential value: ${errorMessage(error)}`,
     };
   }
-  const run = spawnSync(
-    runtime,
-    [
-      "run",
-      "--detach",
-      "--name",
-      containerName,
-      "--env-file",
-      envFilePath,
-      "-p",
-      `127.0.0.1:${port}:5432`,
-      "postgres:18",
-    ],
-    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+  const run = withTemporarySecretFile(
+    {
+      contents: envContents,
+      directoryPrefix: "itotori-postgres-env-",
+      fileName: "postgres.env",
+    },
+    (envFilePath) =>
+      spawnSync(
+        runtime,
+        [
+          "run",
+          "--detach",
+          "--name",
+          containerName,
+          "--env-file",
+          envFilePath,
+          "-p",
+          `127.0.0.1:${port}:5432`,
+          "postgres:18",
+        ],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+      ),
   );
-  removeSensitiveFile(envFilePath);
   if (run.status === 0) {
     return waitForLocalPostgresReady(runtime, containerName, user, database, {
       readyMessage: `Started local Postgres container ${containerName}; Postgres is ready for migrations.`,
@@ -171,22 +213,17 @@ function provisionLocalPostgresContainer(databaseUrl: string): { ok: boolean; me
   return { ok: false, message: `Could not auto-start local Postgres with ${runtime}: ${detail}` };
 }
 
-function writePostgresContainerEnvFile(input: {
+function postgresContainerEnvironmentContents(input: {
   user: string;
   password: string;
   database: string;
 }): string {
-  const dir = mkdtempSync(join(tmpdir(), "itotori-postgres-env-"));
-  const path = join(dir, "postgres.env");
-  const contents = [
+  return [
     envFileLine("POSTGRES_USER", input.user),
     envFileLine("POSTGRES_PASSWORD", input.password),
     envFileLine("POSTGRES_DB", input.database),
     "",
   ].join("\n");
-  writeFileSync(path, contents, { mode: 0o600 });
-  chmodSync(path, 0o600);
-  return path;
 }
 
 function envFileLine(name: string, value: string): string {
@@ -194,10 +231,6 @@ function envFileLine(name: string, value: string): string {
     throw new Error(`${name} may not contain newline or NUL characters`);
   }
   return `${name}=${value}`;
-}
-
-function removeSensitiveFile(path: string): void {
-  rmSync(dirname(path), { recursive: true, force: true });
 }
 
 const LOCAL_POSTGRES_READY_TIMEOUT_MS = 30_000;

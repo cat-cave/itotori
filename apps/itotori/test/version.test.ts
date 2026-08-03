@@ -1,10 +1,14 @@
 import { ITOTORI_PRODUCT_VERSION } from "@itotori/localization-bridge-schema";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   runItotoriCliCommand,
   type ItotoriCliDependencies,
   type ItotoriCliServices,
 } from "../src/cli-handlers.js";
+import { initializeHostLifecycle } from "../src/install-lifecycle.js";
 
 describe("itotori --version", () => {
   it("prints the real product semver to stdout (not 0.0.0)", async () => {
@@ -37,6 +41,36 @@ describe("itotori --version", () => {
     }
     expect(dependencies.migrateDatabase).not.toHaveBeenCalled();
     expect(dependencies.withServices).not.toHaveBeenCalled();
+  });
+
+  it("dispatches rollback --version as its retained-release argument", async () => {
+    const root = mkdtempSync(join(tmpdir(), "itotori-cli-rollback-"));
+    const stateRoot = join(root, "host");
+    const payload = join(root, "release", "payload");
+    mkdirSync(payload, { recursive: true });
+    writeFileSync(join(payload, "cli.txt"), "retained release");
+    initializeHostLifecycle({
+      stateRoot,
+      releaseVersion: "1.0.0",
+      releasePayloadPath: payload,
+      installedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    const writes = captureStdout();
+    try {
+      await runItotoriCliCommand(
+        ["rollback", "--state-root", stateRoot, "--version", "1.0.0"],
+        noOpDependencies(),
+      );
+    } finally {
+      writes.restore();
+      rmSync(root, { force: true, recursive: true });
+    }
+
+    expect(JSON.parse(writes.chunks.join(""))).toMatchObject({
+      outcome: "rolled-back",
+      state: { active: { version: "1.0.0" } },
+    });
   });
 
   it("pins a stamped real semver (regression-fails on a 0.0.0 rollback)", () => {

@@ -1,5 +1,4 @@
 import {
-  databaseUrlFromEnv,
   ItotoriCatalogRepository,
   ItotoriConformanceRepository,
   ItotoriFeedbackRepository,
@@ -50,6 +49,7 @@ import { WikiObjectApiService } from "../wiki/object-api/service.js";
 import { createDispatchEnhancementRunner } from "../wiki/human-enhancement/index.js";
 import engineCapabilityMatrixJson from "../engine-capability/engine-capability-matrix.v0.1.json" with { type: "json" };
 import { configuredServicePort } from "./configured-port.js";
+import { requireDatabaseUrl } from "../deployment-required-input.js";
 import {
   assertEngineCapabilityMatrixDocument,
   createProjectEngineFamilyRegistry,
@@ -310,7 +310,7 @@ export async function withDatabaseItotoriServices<T>(
       },
     });
     return await callback(services);
-  }, options.databaseUrl ?? databaseUrlFromEnv());
+  }, options.databaseUrl ?? requireDatabaseUrl());
 }
 
 function productionRoleBindings() {
@@ -475,10 +475,10 @@ export function toReadOnlyServiceFactory(
     });
 }
 
-export async function migrateItotoriDatabase(databaseUrl = databaseUrlFromEnv()): Promise<void> {
+export async function migrateItotoriDatabase(databaseUrl = requireDatabaseUrl()): Promise<void> {
   await migrate(databaseUrl);
 }
 
-export async function resetItotoriDatabase(databaseUrl = databaseUrlFromEnv()): Promise<void> {
+export async function resetItotoriDatabase(databaseUrl = requireDatabaseUrl()): Promise<void> {
   await resetDatabase(databaseUrl);
 }

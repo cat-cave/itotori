@@ -10,6 +10,7 @@ import { runMutationProof } from "./run-behavior-proof.mjs";
 test("cell_transition_kills_an_unsupported-version-acceptance_mutation", async () => {
   const root = resolve(new URL("../..", import.meta.url).pathname);
   const { mutant, baseline, baselinePlan } = await runMutationProof({ root });
+  const ownedCases = baselinePlan.cases.filter(({ driverModule }) => driverModule !== null);
   const noDatabaseEnvironment = { ...process.env };
   delete noDatabaseEnvironment.DATABASE_URL;
   const missingDatabase = spawnSync(
@@ -88,10 +89,13 @@ test("cell_transition_kills_an_unsupported-version-acceptance_mutation", async (
   assert.notEqual(missingDatabaseProof.status, 0);
   assert.match(missingDatabaseProof.stderr, /MissingRequiredInputError/u);
   assert.match(missingDatabaseProof.stderr, /DATABASE_URL/u);
-  assert.equal(mutant.caseResults.length, 37);
-  assert.equal(baseline.caseResults.length, 37);
+  assert.equal(mutant.caseResults.length, ownedCases.length);
+  assert.equal(baseline.caseResults.length, ownedCases.length);
   assert.deepEqual(new Set(mutant.caseResults.map(({ status }) => status)), new Set(["fail"]));
-  assert.equal(baseline.caseResults.filter(({ status }) => status === "pass").length, 37);
+  assert.equal(
+    baseline.caseResults.filter(({ status }) => status === "pass").length,
+    ownedCases.length,
+  );
   assert.equal(baseline.caseResults.filter(({ status }) => status === "fail").length, 0);
   assert.ok(
     baseline.caseResults

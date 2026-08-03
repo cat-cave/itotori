@@ -1,95 +1,109 @@
-// Secure, portable external env-file loader for live-provider runs.
+// Secure, portable deployment env-file loader for CLI startup.
 //
-// itotori is Nix/sops-agnostic. A caller may hand the CLI an ARBITRARY
-// env-file path (via `--env-file <path>` or `ITOTORI_LOCAL_ENV_FILE`) that
-// carries the live-provider credentials — nothing here depends on Nix, sops,
-// direnv, or any particular workstation path. nix-desktop happens to render
-// such a file at `~/.config/nix-desktop/secrets/env.d/itotori-openrouter.env`,
-// but that is one example of many valid callers.
-//
-// SECRET HYGIENE (load-bearing):
-//   - The file PATH may appear in logs/errors; the VALUES never do. No loaded
-//     value is written to argv, stdout/stderr, or any report.
-//   - Only an ALLOWLIST of live-provider vars is read from the file; any other
-//     key in the file is ignored (a rogue var can never enter the process env).
-//   - An already-exported process env var WINS: a file value is applied only
-//     when the target var is currently unset. Callers can always override the
-//     file via the real environment.
-//   - A specified-but-missing file FAILS LOUD (typed error), never silently.
+// The file is a closed deployment boundary, not a dotenv convenience parser:
+// every non-comment line names a documented setting, is validated before any
+// process state changes, and failure names only a safe path/key classification
+// (never a credential value). `cli-handler-dispatch.ts` invokes this before it
+// dispatches every command, including --help and --version.
 
-import { readFileSync } from "node:fs";
+import { lstatSync, readFileSync } from "node:fs";
+
 import { LIVE_PROVIDER_SECRET_VARS } from "./live-provider-secret-vars.js";
 
 /**
- * The ONLY env vars the external env-file loader will ever apply to the
- * process environment. This is the union of what the live dispatch boundary
- * consumes:
- *
- *   - OPENROUTER_API_KEY               — the provider credential
- *     (the pinned LLM dispatch boundary)
- *   - OPENROUTER_ZDR_DOWNGRADE         — operator-level per-leaf ZDR downgrade
- *     (the active dispatch policy)
- *
- * Any key in the env file NOT in this set is ignored. Backed by the single
- * source of truth in `live-provider-secret-vars.mjs`, shared with the native-CLI
- * spawn boundary + the native-deps doctor so the allowlist can never drift.
+ * The existing live-provider names which may arrive through the explicit
+ * deployment file. Host-held registry entries intentionally do not enter this
+ * process-wide loader: native-spawn redaction is scoped to these two names.
  */
 export const EXTERNAL_ENV_FILE_ALLOWLIST: readonly string[] = LIVE_PROVIDER_SECRET_VARS;
 
-/**
- * The CLI flag that names an external env file. Takes precedence over
- * {@link EXTERNAL_ENV_FILE_ENV_VAR} when both are supplied.
- */
+// `itotori init` has historically written this existing database connection
+// line next to provider credentials. It remains recognized so those private
+// files keep working, but it is deliberately never applied by this loader;
+// callers must source/export it separately for database commands.
+const DOCUMENTED_BUT_NOT_APPLIED_NAMES: readonly string[] = ["DATABASE_URL"];
+const DOCUMENTED_ENV_FILE_NAMES = new Set([
+  ...EXTERNAL_ENV_FILE_ALLOWLIST,
+  ...DOCUMENTED_BUT_NOT_APPLIED_NAMES,
+]);
+
+/** The CLI flag that names an external env file. */
 export const EXTERNAL_ENV_FILE_FLAG = "--env-file";
 
-/**
- * The env var that names an external env file. Used when the CLI flag is
- * absent.
- */
+/** The existing environment pointer used when the CLI flag is absent. */
 export const EXTERNAL_ENV_FILE_ENV_VAR = "ITOTORI_LOCAL_ENV_FILE";
 
+export type ExternalEnvFileErrorCode =
+  | "flag-path-required"
+  | "unreadable"
+  | "source-not-regular-file"
+  | "source-permissions-insecure"
+  | "non-unicode"
+  | "malformed-assignment"
+  | "unknown-setting"
+  | "duplicate-setting"
+  | "unsupported-value-form";
+
+const errorDetails: Readonly<Record<ExternalEnvFileErrorCode, string>> = {
+  "flag-path-required": "requires a path argument",
+  unreadable: "could not be read",
+  "source-not-regular-file": "must be a regular file",
+  "source-permissions-insecure": "has group or world permissions",
+  "non-unicode": "contains a non-Unicode value",
+  "malformed-assignment": "contains a malformed assignment",
+  "unknown-setting": "contains an undocumented setting",
+  "duplicate-setting": "contains a duplicate setting",
+  "unsupported-value-form": "contains an unsupported credential form",
+};
+
 /**
- * Thrown when a caller specifies an external env file that cannot be read
- * (missing path, not a file, permission error). Specifying a path is an
- * explicit intent, so a broken path must fail loudly — never silently
- * continue as if no file were given.
- *
- * The message includes the offending PATH (safe) but never any value read
- * from the file.
+ * Typed, redacted startup failure. `inputName`, when present, is a setting
+ * name rather than its value; values never reach this error or CLI output.
  */
 export class ExternalEnvFileError extends Error {
   readonly path: string;
+  readonly code: ExternalEnvFileErrorCode;
+  readonly inputName: string | undefined;
 
-  constructor(path: string, cause: string) {
-    super(`failed to load env file '${path}': ${cause}`);
+  constructor(path: string, code: ExternalEnvFileErrorCode, inputName?: string) {
+    const named = inputName === undefined ? "" : ` for ${inputName}`;
+    super(`deployment env file '${path}' ${errorDetails[code]}${named}`);
     this.name = "ExternalEnvFileError";
     this.path = path;
+    this.code = code;
+    this.inputName = inputName;
   }
 }
 
-/**
- * Result of a load attempt. Reports only the NAMES of vars that were applied
- * (never their values) so callers can log a non-secret summary.
- */
 export interface ExternalEnvFileLoadResult {
   /** The env-file path that was read, or `undefined` if no file was specified. */
   readonly path: string | undefined;
-  /**
-   * Allowlisted var names that were applied to the environment from the file
-   * (i.e. were previously unset). NAMES only — never values.
-   */
+  /** Applied setting names only; values are intentionally absent. */
   readonly appliedKeys: readonly string[];
-  /**
-   * Allowlisted var names that were present in the file but skipped because
-   * the environment already had them set. NAMES only.
-   */
+  /** Setting names whose process environment values already won precedence. */
   readonly skippedAlreadySetKeys: readonly string[];
 }
 
-/**
- * Resolve which env-file path to use. The CLI flag wins over the env var;
- * returns `undefined` when neither is supplied.
- */
+/** A minimal injectable source stat seam; production always uses lstatSync. */
+export interface ExternalEnvFileSource {
+  readonly isRegularFile: boolean;
+  readonly mode: number;
+}
+
+export interface LoadExternalEnvFileOptions {
+  readonly args: readonly string[];
+  readonly env: Record<string, string | undefined>;
+  /** Test seam only; production reads bytes from the supplied path. */
+  readonly readFile?: (path: string) => string | Uint8Array;
+  /** Test seam only; production verifies a regular private file with lstat. */
+  readonly inspectSource?: (path: string) => ExternalEnvFileSource;
+}
+
+const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]*$/u;
+const PRIVATE_FILE_MASK = 0o077;
+const utf8 = new TextDecoder("utf-8", { fatal: true });
+
+/** Resolve the requested path; the CLI flag wins over the existing pointer. */
 export function resolveExternalEnvFilePath(
   args: readonly string[],
   env: Readonly<Record<string, string | undefined>>,
@@ -98,106 +112,150 @@ export function resolveExternalEnvFilePath(
   if (flagIndex >= 0) {
     const value = args[flagIndex + 1];
     if (value === undefined || value.length === 0 || value.startsWith("-")) {
-      throw new ExternalEnvFileError(
-        String(value ?? ""),
-        `${EXTERNAL_ENV_FILE_FLAG} requires a path argument`,
-      );
+      throw new ExternalEnvFileError(String(value ?? ""), "flag-path-required");
     }
     return value;
   }
   const fromEnv = env[EXTERNAL_ENV_FILE_ENV_VAR];
-  if (fromEnv !== undefined && fromEnv.length > 0) {
-    return fromEnv;
-  }
-  return undefined;
+  return fromEnv === undefined || fromEnv.length === 0 ? undefined : fromEnv;
 }
 
 /**
- * Parse a `.env`-style file body into a name→value map, filtered to the
- * allowlist. Supports `KEY=value`, `export KEY=value`, `#` comments, blank
- * lines, and surrounding single/double quotes. Non-allowlisted keys are
- * dropped. This parser never logs; it operates purely in-memory.
+ * Parse a strict `.env`-style body. The syntax admits blank lines, comments,
+ * `KEY=value`, and `export KEY=value`. Quoted values preserve dollar signs,
+ * quotes, spaces, and backslashes literally; no shell expansion is performed.
+ *
+ * The full body is validated before this function returns, which lets the
+ * caller mutate the process environment transactionally after a late failure.
  */
-export function parseAllowlistedEnvFile(body: string): Map<string, string> {
-  const allow = new Set(EXTERNAL_ENV_FILE_ALLOWLIST);
+export function parseAllowlistedEnvFile(body: string, path = "<inline>"): Map<string, string> {
   const out = new Map<string, string>();
-  for (const rawLine of body.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (line.length === 0 || line.startsWith("#")) {
-      continue;
+  for (const [index, rawLine] of body.split(/\r?\n/u).entries()) {
+    const line = rawLine.trimStart();
+    if (line.length === 0 || line.startsWith("#")) continue;
+    const assignment = line.startsWith("export ") ? line.slice("export ".length).trimStart() : line;
+    const equals = assignment.indexOf("=");
+    if (equals <= 0) {
+      throw new ExternalEnvFileError(path, "malformed-assignment");
     }
-    const withoutExport = line.startsWith("export ") ? line.slice("export ".length).trim() : line;
-    const eq = withoutExport.indexOf("=");
-    if (eq <= 0) {
-      // No key, or malformed line — ignore (never throw on a stray line so a
-      // rogue var can't wedge the load; the allowlist is the real gate).
-      continue;
+    const name = assignment.slice(0, equals).trim();
+    if (!ENVIRONMENT_NAME.test(name)) {
+      throw new ExternalEnvFileError(path, "malformed-assignment");
     }
-    const key = withoutExport.slice(0, eq).trim();
-    if (!allow.has(key)) {
-      continue;
+    // Fixed-success mutation seam: this refusal protects every later startup
+    // action from an undocumented setting being silently ignored.
+    if (!DOCUMENTED_ENV_FILE_NAMES.has(name)) {
+      throw new ExternalEnvFileError(path, "unknown-setting", name);
     }
-    let value = withoutExport.slice(eq + 1).trim();
-    if (
-      value.length >= 2 &&
-      ((value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'")))
-    ) {
-      value = value.slice(1, -1);
+    if (out.has(name)) {
+      throw new ExternalEnvFileError(path, "duplicate-setting", name);
     }
-    out.set(key, value);
+    out.set(name, parseValue(assignment.slice(equals + 1), path, index + 1, name));
   }
   return out;
 }
 
-/**
- * Load allowlisted live-provider vars from a caller-specified external env
- * file into `target` (defaults to `process.env`), honoring precedence:
- *
- *   1. If neither the flag nor the env var names a file, this is a no-op
- *      (returns a result with `path: undefined`). The repo-local `.env`
- *      fallback, if any, is handled by direnv/`.envrc.local` OUTSIDE this
- *      loader — this function never reads a repo `.env`.
- *   2. A specified-but-unreadable path throws {@link ExternalEnvFileError}.
- *   3. Only {@link EXTERNAL_ENV_FILE_ALLOWLIST} keys are considered.
- *   4. An already-set var in `target` is NEVER overwritten.
- *
- * No value is ever logged or returned; only applied var NAMES are reported.
- */
-export function loadExternalEnvFile(options: {
-  readonly args: readonly string[];
-  readonly env: Record<string, string | undefined>;
-  readonly readFile?: (path: string) => string;
-}): ExternalEnvFileLoadResult {
-  const { args, env } = options;
-  const readFile = options.readFile ?? ((path: string) => readFileSync(path, "utf8"));
-
-  const path = resolveExternalEnvFilePath(args, env);
-  if (path === undefined) {
-    return { path: undefined, appliedKeys: [], skippedAlreadySetKeys: [] };
+function parseValue(rawValue: string, path: string, line: number, name: string): string {
+  const value = rawValue.trim();
+  if (value.length === 0) return "";
+  const quote = value[0];
+  if (quote !== '"' && quote !== "'") {
+    if (value.endsWith("\\") || value.includes('"') || value.includes("'")) {
+      throw new ExternalEnvFileError(path, "unsupported-value-form", name);
+    }
+    return value;
   }
-
-  let body: string;
-  try {
-    body = readFile(path);
-  } catch (error) {
-    // Surface only the path + a terse cause; never echo file contents.
-    const cause = error instanceof Error ? error.message : String(error);
-    throw new ExternalEnvFileError(path, cause);
+  if (value.length < 2 || !value.endsWith(quote)) {
+    throw new ExternalEnvFileError(path, "unsupported-value-form", name);
   }
+  return parseQuotedValue(value.slice(1, -1), quote, path, line, name);
+}
 
-  const parsed = parseAllowlistedEnvFile(body);
-  const appliedKeys: string[] = [];
-  const skippedAlreadySetKeys: string[] = [];
-  for (const [key, value] of parsed) {
-    if (env[key] !== undefined) {
-      // Exported process env wins — never overwrite.
-      skippedAlreadySetKeys.push(key);
+function parseQuotedValue(
+  value: string,
+  quote: string,
+  path: string,
+  _line: number,
+  name: string,
+): string {
+  let parsed = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const current = value[index];
+    if (current === quote) {
+      throw new ExternalEnvFileError(path, "unsupported-value-form", name);
+    }
+    if (current !== "\\") {
+      parsed += current;
       continue;
     }
-    env[key] = value;
-    appliedKeys.push(key);
+    const escaped = value[index + 1];
+    if (
+      escaped === undefined ||
+      (escaped !== "\\" && escaped !== quote && escaped !== "$" && escaped !== " ")
+    ) {
+      throw new ExternalEnvFileError(path, "unsupported-value-form", name);
+    }
+    parsed += escaped;
+    index += 1;
+  }
+  return parsed;
+}
+
+/**
+ * Load a requested file only after validating its source and every entry.
+ * A late duplicate/unknown/malformed entry leaves `env` exactly unchanged.
+ */
+export function loadExternalEnvFile(
+  options: LoadExternalEnvFileOptions,
+): ExternalEnvFileLoadResult {
+  const { args, env } = options;
+  const path = resolveExternalEnvFilePath(args, env);
+  if (path === undefined) return { path: undefined, appliedKeys: [], skippedAlreadySetKeys: [] };
+
+  const inspectSource = options.inspectSource ?? inspectExternalEnvFileSource;
+  const readFile = options.readFile ?? ((candidate: string) => readFileSync(candidate));
+  let body: string;
+  try {
+    assertPrivateRegularFile(inspectSource(path), path);
+    body = decodeUtf8(readFile(path), path);
+  } catch (error) {
+    if (error instanceof ExternalEnvFileError) throw error;
+    throw new ExternalEnvFileError(path, "unreadable");
   }
 
-  return { path, appliedKeys, skippedAlreadySetKeys };
+  const parsed = parseAllowlistedEnvFile(body, path);
+  const toApply: Array<readonly [string, string]> = [];
+  const skippedAlreadySetKeys: string[] = [];
+  for (const [name, value] of parsed) {
+    if (!EXTERNAL_ENV_FILE_ALLOWLIST.includes(name)) continue;
+    if (env[name] === undefined) toApply.push([name, value]);
+    else skippedAlreadySetKeys.push(name);
+  }
+  for (const [name, value] of toApply) env[name] = value;
+  return {
+    path,
+    appliedKeys: toApply.map(([name]) => name),
+    skippedAlreadySetKeys,
+  };
+}
+
+function inspectExternalEnvFileSource(path: string): ExternalEnvFileSource {
+  const stat = lstatSync(path);
+  return { isRegularFile: stat.isFile(), mode: stat.mode };
+}
+
+function assertPrivateRegularFile(source: ExternalEnvFileSource, path: string): void {
+  if (!source.isRegularFile) throw new ExternalEnvFileError(path, "source-not-regular-file");
+  if (!Number.isSafeInteger(source.mode) || (source.mode & PRIVATE_FILE_MASK) !== 0) {
+    throw new ExternalEnvFileError(path, "source-permissions-insecure");
+  }
+}
+
+function decodeUtf8(value: string | Uint8Array, path: string): string {
+  if (typeof value === "string") return value;
+  try {
+    return utf8.decode(value);
+  } catch {
+    throw new ExternalEnvFileError(path, "non-unicode");
+  }
 }
