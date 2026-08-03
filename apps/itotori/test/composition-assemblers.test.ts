@@ -51,7 +51,7 @@ import {
 
 describe("readiness assembler", () => {
   it("resolves ready with the installed rendering ids", async () => {
-    const deps = { readiness: createReadinessDeps({ facts, bible: installedBible() }) };
+    const deps = { readiness: createReadinessDeps({ facts, bible: installedBible() }), draft: {} };
     const ports = createWorkflowPorts(deps as unknown as Parameters<typeof createWorkflowPorts>[0]);
     const readiness = await ports.readiness.resolve("unit:u1");
     expect(readiness.ready).toBe(true);
@@ -61,6 +61,7 @@ describe("readiness assembler", () => {
   it("reports not-ready naming the missing required entry", async () => {
     const deps = {
       readiness: createReadinessDeps({ facts, bible: installedBible(new Set(["voice"])) }),
+      draft: {},
     };
     const ports = createWorkflowPorts(deps as unknown as Parameters<typeof createWorkflowPorts>[0]);
     const readiness = await ports.readiness.resolve("unit:u1");

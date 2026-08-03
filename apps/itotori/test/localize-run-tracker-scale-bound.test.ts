@@ -11,7 +11,7 @@ describe("LocalizeRunTracker startup scale bound", () => {
     let writes = 0;
     const tracker = new LocalizeRunTracker(
       {
-        async createRun() {
+        async createOrResumeRun() {
           return undefined as never;
         },
         async acquireLease() {
@@ -43,6 +43,17 @@ describe("LocalizeRunTracker startup scale bound", () => {
         },
         async settleCost() {
           return undefined as never;
+        },
+        async releaseCost(input) {
+          return {
+            reservationId: input.reservationId,
+            reservedMicrosUsd: 0,
+            settledMicrosUsd: null,
+            state: "released" as const,
+            createdAt: new Date(),
+            settledAt: null,
+            releasedAt: new Date(),
+          };
         },
         async loadLiveReadModel() {
           return null;

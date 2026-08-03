@@ -373,7 +373,7 @@ function memoryProjectWorkflow() {
   return {
     runs,
     progress,
-    async createRun(input: {
+    async createOrResumeRun(input: {
       projectId: string;
       runId: string;
       localeBranchId: string;
@@ -459,6 +459,17 @@ function memoryProjectWorkflow() {
     },
     async settleCost() {
       return undefined as never;
+    },
+    async releaseCost(input: { reservationId: string }) {
+      return {
+        reservationId: input.reservationId,
+        reservedMicrosUsd: 0,
+        settledMicrosUsd: null,
+        state: "released" as const,
+        createdAt: new Date(),
+        settledAt: null,
+        releasedAt: new Date(),
+      };
     },
     async loadLiveReadModel(projectId: string, runId: string) {
       const run = runs.get(runId);

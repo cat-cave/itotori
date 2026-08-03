@@ -22,6 +22,7 @@ import {
 } from "../src/ablation/index.js";
 import { runLocalizationWorkflow } from "../src/workflow/index.js";
 import { passingVerdict } from "./recorded-localize-run.js";
+import { TEST_WORKFLOW_MEMO_IDENTITY } from "./workflow.support.js";
 import type {
   AttemptContext,
   AttemptLineageEntry,
@@ -220,6 +221,7 @@ function buildPorts(store: FakeStore, rec: Recorder, opts: FakeOptions = {}): Wo
   } as unknown as WorkflowPorts["store"];
 
   return {
+    memoIdentity: TEST_WORKFLOW_MEMO_IDENTITY,
     readiness: {
       async resolve(unitId: string) {
         rec.readinessCalls += 1;

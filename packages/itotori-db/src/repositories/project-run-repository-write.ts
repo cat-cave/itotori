@@ -36,6 +36,7 @@ import {
   type SqlExecutor,
 } from "./project-run-repository-internal.js";
 import { rethrowProjectRunConstraint } from "./project-run-diagnostics.js";
+import { createOrResumeProjectRun } from "./project-run-repository-resume.js";
 import {
   type AcquireProjectRunLeaseInput,
   type AdvanceProjectRunInput,
@@ -98,6 +99,13 @@ export class ItotoriProjectRunRepository implements ItotoriProjectRunRepositoryP
     } catch (error) {
       rethrowProjectRunConstraint(error, normalized);
     }
+  }
+
+  async createOrResumeRun(
+    actor: AuthorizationActor,
+    input: CreateProjectRunInput,
+  ): Promise<ProjectRunRecord> {
+    return await createOrResumeProjectRun(this.db, actor, input);
   }
 
   async advanceRun(
@@ -187,6 +195,13 @@ export class ItotoriProjectRunRepository implements ItotoriProjectRunRepositoryP
       assertMicros(entry.costMicrosUsd, "costMicrosUsd");
       assertCoverage(entry.coveragePercent);
     }
+    const isDecodedStartup = progress.every(
+      (entry) =>
+        entry.status === "decoded" &&
+        entry.costMicrosUsd === 0 &&
+        entry.coveragePercent === 0 &&
+        entry.blockers.length === 0,
+    );
     return await this.db.transaction(async (tx) => {
       const executor = tx as unknown as SqlExecutor;
       await requireCurrentLease(executor, lease);
@@ -196,20 +211,28 @@ export class ItotoriProjectRunRepository implements ItotoriProjectRunRepositoryP
           ${entry.costMicrosUsd}, ${entry.coveragePercent}, ${JSON.stringify(entry.blockers)}::jsonb
         )`,
       );
+      const conflictClause = isDecodedStartup
+        ? sql`
+            on conflict (run_id, bridge_unit_id, role) do update set
+              status = ${projectRunProgress.status}
+          `
+        : sql`
+            on conflict (run_id, bridge_unit_id, role) do update set
+              status = excluded.status, cost_micros_usd = excluded.cost_micros_usd,
+              coverage_percent = excluded.coverage_percent, blockers = excluded.blockers, updated_at = now()
+            where ${progressRank(projectRunProgress.status)} <= ${progressRank(sql`excluded.status`)}
+          `;
       const rows = await rowsOf(
         executor,
         sql`
           insert into ${projectRunProgress} (
             run_id, project_id, bridge_unit_id, role, status, cost_micros_usd, coverage_percent, blockers
           ) values ${sql.join(values, sql`, `)}
-          on conflict (run_id, bridge_unit_id, role) do update set
-            status = excluded.status, cost_micros_usd = excluded.cost_micros_usd,
-            coverage_percent = excluded.coverage_percent, blockers = excluded.blockers, updated_at = now()
-          where ${progressRank(projectRunProgress.status)} <= ${progressRank(sql`excluded.status`)}
+          ${conflictClause}
           returning *
         `,
       );
-      if (rows.length !== progress.length) {
+      if (!isDecodedStartup && rows.length !== progress.length) {
         throw new ItotoriProjectRunRepositoryError(
           "progress_regression",
           "project run progress cannot move backwards",

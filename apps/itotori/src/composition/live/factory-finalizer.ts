@@ -8,8 +8,7 @@ import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import type { AcceptedOutput, Draft } from "../../contracts/index.js";
 import type { NativePatchbackInput } from "../../patchback/index.js";
 import type { FactSnapshot } from "../../prepass/index.js";
-import type { SceneLocalization } from "../../roles/p1/index.js";
-import type { FinalizedUnit } from "../../workflow/index.js";
+import type { DraftedScene, FinalizedUnit } from "../../workflow/index.js";
 import type { PatchbackDeps } from "../deps.js";
 import type { RunScopeConfig } from "./assemblers/index.js";
 import type { FinalizeArtifactResolver } from "./artifact-store.js";
@@ -52,7 +51,7 @@ export function createCapturedDraftFinalizer(
     >[];
   } = {},
 ): {
-  readonly record: (localized: SceneLocalization) => void;
+  readonly record: (drafted: DraftedScene) => void;
   readonly resolve: FinalizeArtifactResolver;
   readonly patchback: PatchbackDeps;
 } {
@@ -81,18 +80,16 @@ export function createCapturedDraftFinalizer(
     acceptedByUnit.set(output.subjectId, output);
   }
   const buildLqaEvidenceByUnit = new Map<string, BuildLqaReviewEvidence>();
-  const record = (localized: SceneLocalization): void => {
-    const memoKeys = localized.results.flatMap((result) =>
-      result.status === "success" ? [result.memoKey] : [],
-    );
-    for (const draft of localized.finalizedDrafts) {
-      const parent = localized.batches.find((batch) =>
-        batch.drafts.some((candidate) => candidate.unitId === draft.unitId),
+  const record = (drafted: DraftedScene): void => {
+    const memoKeys = drafted.memoKeys ?? [];
+    for (const unit of drafted.units) {
+      const parent = drafted.batches.find((batch) =>
+        batch.drafts.some((candidate) => candidate.unitId === unit.unitId),
       );
       if (parent === undefined) {
-        throw new LiveWorkflowFactoryError(`draft ${draft.unitId} has no parent P1 batch`);
+        throw new LiveWorkflowFactoryError(`draft ${unit.unitId} has no parent P1 batch`);
       }
-      byUnit.set(draft.unitId, { draft, parentDraftBatchId: parent.batchId, memoKeys });
+      byUnit.set(unit.unitId, { draft: unit.draft, parentDraftBatchId: parent.batchId, memoKeys });
     }
   };
   const resolve: FinalizeArtifactResolver = (input) => {

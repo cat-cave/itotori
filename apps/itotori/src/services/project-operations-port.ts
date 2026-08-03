@@ -129,6 +129,9 @@ export type ItotoriProjectWorkflowPort = {
   createRun(
     input: Parameters<ItotoriProjectRunRepositoryPort["createRun"]>[1],
   ): ReturnType<ItotoriProjectRunRepositoryPort["createRun"]>;
+  createOrResumeRun(
+    input: Parameters<ItotoriProjectRunRepositoryPort["createOrResumeRun"]>[1],
+  ): ReturnType<ItotoriProjectRunRepositoryPort["createOrResumeRun"]>;
   advanceRun(
     input: Parameters<ItotoriProjectRunRepositoryPort["advanceRun"]>[1],
   ): ReturnType<ItotoriProjectRunRepositoryPort["advanceRun"]>;

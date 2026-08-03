@@ -10,7 +10,13 @@
 //     time, never an unbounded loop (bounded Q6).
 
 import type { Defect, DefectBundle } from "../contracts/index.js";
-import { stableDigest } from "../gates/index.js";
+import type { ResolvedRunPolicy } from "../run-policy/index.js";
+import {
+  workflowMemoKeyFor,
+  type WorkflowMemoIdentity,
+  type WorkflowMemoRole,
+  type WorkflowMemoStep,
+} from "./memo-identity.js";
 import type {
   AdjudicatePort,
   GateReport,
@@ -90,14 +96,30 @@ function isGenuineHighImpactContest(
 /** Keep correction-time model work on the same durable memo/attempt seam as
  * drafting and first-pass review. Direct callers may omit the store for a pure
  * unit proof; the workflow driver always supplies it. */
-async function memoized<T>(
-  store: WorkflowArtifactStore | undefined,
-  keyParts: readonly string[],
-  produce: () => Promise<T>,
-): Promise<T> {
-  if (store === undefined) return await produce();
-  const step = await store.runMemoizedStep(stableDigest("workflow-correction", ...keyParts), () =>
-    produce(),
+async function memoized<T>(input: {
+  readonly store: WorkflowArtifactStore | undefined;
+  readonly memoIdentity: WorkflowMemoIdentity | undefined;
+  readonly policy: ResolvedRunPolicy | undefined;
+  readonly step: WorkflowMemoStep;
+  readonly role: WorkflowMemoRole;
+  readonly parts: readonly unknown[];
+  readonly produce: () => Promise<T>;
+}): Promise<T> {
+  if (input.store === undefined) return await input.produce();
+  if (input.memoIdentity === undefined || input.policy === undefined) {
+    throw new Error(
+      "durable correction memo requires a workflow memo identity and resolved policy",
+    );
+  }
+  const step = await input.store.runMemoizedStep(
+    workflowMemoKeyFor({
+      identity: input.memoIdentity,
+      policy: input.policy,
+      step: input.step,
+      role: input.role,
+      parts: input.parts,
+    }),
+    () => input.produce(),
   );
   return step.value;
 }
@@ -123,6 +145,11 @@ export async function applyCorrections(input: {
   /** Supplied by the driver so P2/P3/Q6 and correction reruns are durable,
    * idempotent physical steps too. */
   readonly store?: WorkflowArtifactStore;
+  /** Required alongside a durable store: run scope and certified role routes
+   * prevent correction output from crossing a model or run boundary. */
+  readonly memoIdentity?: WorkflowMemoIdentity;
+  /** The resolved policy affects which correction computation is legal. */
+  readonly policy?: ResolvedRunPolicy;
 }): Promise<CorrectionSummary> {
   const { bundle, scene, verdicts } = input;
   const corrections: CorrectionRecord[] = [];
@@ -138,14 +165,21 @@ export async function applyCorrections(input: {
     const scope = implicatedRerun(bundle, changedUnitIds);
     const reviewed = await Promise.all(
       scope.lanes.map(async (lane) => {
-        await memoized(input.store, ["rerun-review", scene.sceneId, lane, ...scope.unitIds], () =>
-          input.review.review({
-            lane,
-            scene,
-            unitIds: scope.unitIds,
-            gateReport: input.gateReport,
-          }),
-        );
+        await memoized({
+          store: input.store,
+          memoIdentity: input.memoIdentity,
+          policy: input.policy,
+          step: "rerun-review",
+          role: lane,
+          parts: [scene.sceneId, lane, ...scope.unitIds],
+          produce: async () =>
+            await input.review.review({
+              lane,
+              scene,
+              unitIds: scope.unitIds,
+              gateReport: input.gateReport,
+            }),
+        });
         return { lane, unitIds: scope.unitIds };
       }),
     );
@@ -164,10 +198,13 @@ export async function applyCorrections(input: {
         continue;
       }
       adjudicated.add(unitId);
-      const disposition = await memoized(
-        input.store,
-        [
-          "adjudicate",
+      const disposition = await memoized({
+        store: input.store,
+        memoIdentity: input.memoIdentity,
+        policy: input.policy,
+        step: "adjudicate",
+        role: "Q6",
+        parts: [
           scene.sceneId,
           unitId,
           ...bundle.defects
@@ -175,14 +212,14 @@ export async function applyCorrections(input: {
             .map((defect) => defect.defectId)
             .sort(),
         ],
-        () =>
-          input.adjudicate.adjudicate({
+        produce: async () =>
+          await input.adjudicate.adjudicate({
             unitId,
             defects: bundle.defects.filter((defect) => defect.unitId === unitId),
             // The two blinded positions live in the verdicts that judged THIS unit.
             contested: verdicts.filter((laneVerdict) => laneVerdict.verdict.unitId === unitId),
           }),
-      );
+      });
       adjudications += 1;
       if (disposition.disposition !== "finalize") unresolved.add(unitId);
     }
@@ -191,21 +228,24 @@ export async function applyCorrections(input: {
   // P2 line-edit — the minor style/format/voice repairs.
   const edit = unitsWith(bundle.defects, (defect) => !MAJOR_SEVERITIES.has(defect.severity));
   if (edit.unitIds.length > 0) {
-    const outcome = await memoized(
-      input.store,
-      [
-        "line-edit",
+    const outcome = await memoized({
+      store: input.store,
+      memoIdentity: input.memoIdentity,
+      policy: input.policy,
+      step: "line-edit",
+      role: "P2",
+      parts: [
         scene.sceneId,
         ...edit.unitIds,
         ...edit.defects.map((defect) => defect.defectId).sort(),
       ],
-      () =>
-        input.repair.lineEdit({
+      produce: async () =>
+        await input.repair.lineEdit({
           scene,
           unitIds: edit.unitIds,
           defects: edit.defects,
         }),
-    );
+    });
     if (outcome.route === "repair") {
       const scope = await rerunImplicated(outcome.changedUnitIds);
       corrections.push({
@@ -229,22 +269,25 @@ export async function applyCorrections(input: {
   // P3 semantic-repair — material meaning/continuity, bounded to one per defect.
   const repair = unitsWith(bundle.defects, (defect) => MAJOR_SEVERITIES.has(defect.severity));
   if (repair.unitIds.length > 0) {
-    const outcome = await memoized(
-      input.store,
-      [
-        "semantic-repair",
+    const outcome = await memoized({
+      store: input.store,
+      memoIdentity: input.memoIdentity,
+      policy: input.policy,
+      step: "semantic-repair",
+      role: "P3",
+      parts: [
         scene.sceneId,
         ...repair.unitIds,
         ...repair.defects.map((defect) => defect.defectId).sort(),
       ],
-      () =>
-        input.repair.semanticRepair({
+      produce: async () =>
+        await input.repair.semanticRepair({
           scene,
           unitIds: repair.unitIds,
           defects: repair.defects,
           repairedDefectLedger: new Set<string>(),
         }),
-    );
+    });
     if (outcome.route === "repair") {
       const scope = await rerunImplicated(outcome.changedUnitIds);
       corrections.push({

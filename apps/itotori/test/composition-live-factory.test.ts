@@ -34,6 +34,12 @@ function factoryConfig(): LiveWorkflowFactoryConfig {
       runMode: "production",
       contextScope: "whole-game",
     },
+    projectRun: {
+      projectId: "factory-proof-project",
+      runId: "factory-proof-run",
+      localeBranchId: "factory-proof-en-US",
+      leaseOwnerId: "factory-proof-owner",
+    },
     dispatchSnapshots: {
       decodeRevisionHash: HASH,
       glossaryRevisionHash: HASH,
@@ -137,6 +143,7 @@ describe("live workflow factory", () => {
       "adjudicate",
       "draft",
       "gates",
+      "memoIdentity",
       "patchback",
       "readiness",
       "repair",
@@ -163,7 +170,7 @@ describe("live workflow factory", () => {
       bridge: config.bridge,
     });
 
-    expect(Object.keys(createWorkflowPorts(source.deps))).toHaveLength(8);
+    expect(Object.keys(createWorkflowPorts(source.deps))).toHaveLength(9);
     const pilot = await substrate.resolvePortSource(
       { ...request, runMode: "pilot" },
       { structureJson: config.structureJson, bridge: config.bridge },

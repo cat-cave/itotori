@@ -7,6 +7,7 @@ import {
   ItotoriLlmAcceptedOutputRepository,
   ItotoriLlmCallMemoRepository,
   ItotoriLlmWikiRepository,
+  ItotoriWorkflowStepMemoRepository,
   permissionBasedLlmContentRead,
   type AuthorizationActor,
   type ItotoriDatabase,
@@ -36,6 +37,7 @@ import {
 import { resolveRoleModelProfile } from "../../llm/role-model-profiles.js";
 import type { RunPolicyRequest } from "../../run-policy/index.js";
 import type { LocalizationPerRunInput } from "../localize-entrypoint.js";
+import type { WorkflowMemoIdentity } from "../../workflow/memo-identity.js";
 import {
   createAdjudicateDeps,
   createDraftDeps,
@@ -71,6 +73,7 @@ import {
 } from "./accepted-target-history.js";
 import { createCapturedDraftFinalizer, LiveWorkflowFactoryError } from "./factory-finalizer.js";
 import type { BuildLqaReviewer, ProductionRenderEvidencePlan } from "./render-evidence-adapter.js";
+import { resolveLiveWorkflowMemoIdentity } from "./workflow-memo-identity.js";
 
 export { LiveWorkflowFactoryError } from "./factory-finalizer.js";
 
@@ -83,6 +86,8 @@ export interface LiveWorkflowStores {
   readonly memoStore: LlmCallMemoStore;
   readonly contentAccess: LlmContentReadAuthorizer;
   readonly accepted: AcceptedOutputCas;
+  /** Completed logical step checkpoints; production supplies Postgres. */
+  readonly stepCache?: WorkflowStepCache;
   /** Verified decrypted final heads for the Q2/Q4 accepted-target context. */
   readonly acceptedTargets: AcceptedTargetHistoryReader;
   readonly wiki: InstalledBibleSource;
@@ -142,6 +147,9 @@ export interface LiveWorkflowFactoryConfig {
   readonly bridge: BridgeBundleV02;
   readonly targetLocale: string;
   readonly scope: RunScopeConfig;
+  /** Required for live composition unless an offline proof supplies a complete
+   * memo identity directly. The lease owner deliberately remains excluded. */
+  readonly projectRun?: LocalizationPerRunInput["projectRun"];
   readonly dispatchSnapshots: RunSnapshotRevisions;
   readonly dispatch: Omit<LiveDispatchRuntimeConfig, "memoStore" | "contentAccess" | "snapshots">;
   readonly stores: LiveWorkflowStores;
@@ -154,6 +162,9 @@ export interface LiveWorkflowFactoryConfig {
    * finalizer below. */
   readonly finalizeArtifact?: FinalizeArtifactResolver;
   readonly draftBudget: DraftRealizationConfig;
+  /** Explicit identity for an offline proof; production derives it from the
+   * admitted project/run/branch coordinates at the invocation boundary. */
+  readonly memoIdentity?: WorkflowMemoIdentity;
   readonly gateSideInputs?: Omit<GateSideInputs, "glossary" | "policy">;
   readonly stepCache?: WorkflowStepCache;
   readonly maxStepAttempts?: number;
@@ -246,6 +257,15 @@ async function loadInstalledBibleMaterial(input: {
 export async function createLiveWorkflowPortDeps(
   config: LiveWorkflowFactoryConfig,
 ): Promise<WorkflowPortDeps> {
+  const stepCache = config.stores.stepCache ?? config.stepCache;
+  const memoIdentity = resolveLiveWorkflowMemoIdentity({
+    ...(config.memoIdentity === undefined ? {} : { memoIdentity: config.memoIdentity }),
+    ...(config.projectRun === undefined ? {} : { projectRun: config.projectRun }),
+    scope: config.scope,
+    targetLocale: config.targetLocale,
+    draftBudget: config.draftBudget,
+    ...(config.renderEvidence === undefined ? {} : { renderEvidence: config.renderEvidence }),
+  });
   const structure = parseNarrativeStructure(
     config.structureJson,
     SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
@@ -310,6 +330,7 @@ export async function createLiveWorkflowPortDeps(
   });
 
   return {
+    memoIdentity,
     readiness: createReadinessDeps({ facts, bible: installedBible.bible }),
     draft: {
       ...draft,
@@ -337,7 +358,7 @@ export async function createLiveWorkflowPortDeps(
       accepted: config.stores.accepted,
       snapshotId: config.scope.localizationSnapshotId,
       resolveFinalizeArtifact: finalizeArtifact,
-      ...(config.stepCache === undefined ? {} : { stepCache: config.stepCache }),
+      ...(stepCache === undefined ? {} : { stepCache }),
       ...(config.maxStepAttempts === undefined ? {} : { maxStepAttempts: config.maxStepAttempts }),
     }),
   };
@@ -398,6 +419,7 @@ export async function createProductionLiveWorkflowPortDeps(
       memoStore: new ItotoriLlmCallMemoRepository(config.pool, cipher, contentAccess),
       contentAccess,
       accepted: new ItotoriLlmAcceptedOutputRepository(config.pool, cipher),
+      stepCache: new ItotoriWorkflowStepMemoRepository(config.pool, cipher, contentAccess),
       acceptedTargets: createAcceptedTargetHistoryReader({
         pool: config.pool,
         cipher,
@@ -427,6 +449,7 @@ export function createProductionLiveLocalizationSubstrate(
       memoStore: new ItotoriLlmCallMemoRepository(config.pool, cipher, contentAccess),
       contentAccess,
       accepted: new ItotoriLlmAcceptedOutputRepository(config.pool, cipher),
+      stepCache: new ItotoriWorkflowStepMemoRepository(config.pool, cipher, contentAccess),
       acceptedTargets: createAcceptedTargetHistoryReader({
         pool: config.pool,
         cipher,

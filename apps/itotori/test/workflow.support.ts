@@ -17,6 +17,9 @@ import {
   type UnitArtifactRef,
   type UnitReadiness,
   type UnitStage,
+  type WorkflowMemoIdentity,
+  type WorkflowMemoRole,
+  type WorkflowMemoRoleRoute,
   type WorkflowPorts,
   type WorkflowScene,
 } from "../src/workflow/index.js";
@@ -24,6 +27,54 @@ import {
 export const SNAP = `sha256:${"a".repeat(64)}` as const;
 
 export const SRC = `sha256:${"b".repeat(64)}` as const;
+
+function fixtureMemoRoute(roleId: WorkflowMemoRole): WorkflowMemoRoleRoute {
+  return {
+    roleId,
+    profileId: `fixture-profile:${roleId}`,
+    modelProfile:
+      roleId === "P1"
+        ? "draft"
+        : roleId === "P2" || roleId === "P3"
+          ? "reasoning"
+          : roleId === "Q6"
+            ? "judge"
+            : "reviewer",
+    modelProfileVersion: `fixture-profile:${roleId}:v1`,
+    requestedModel: `fixture-model:${roleId}`,
+    providerPolicy: {
+      allowFallbacks: true,
+      zdr: true,
+      dataCollection: "deny",
+      requireParameters: true,
+    },
+  };
+}
+
+/** Explicit, run-scoped identity for deterministic workflow-port proofs. */
+export const TEST_WORKFLOW_MEMO_IDENTITY: WorkflowMemoIdentity = {
+  schemaVersion: "itotori.workflow-memo-identity.v1",
+  projectId: "workflow-test-project",
+  runId: "workflow-test-run",
+  localeBranchId: "workflow-test-en-US",
+  contextSnapshotId: SNAP,
+  localizationSnapshotId: SNAP,
+  schemaHash: SNAP,
+  targetLocale: "en-US",
+  draftBudget: { budgetBytes: 1_024, overlapUnits: 1 },
+  renderPlan: null,
+  roleRoutes: {
+    P1: fixtureMemoRoute("P1"),
+    P2: fixtureMemoRoute("P2"),
+    P3: fixtureMemoRoute("P3"),
+    Q1: fixtureMemoRoute("Q1"),
+    Q2: fixtureMemoRoute("Q2"),
+    Q3: fixtureMemoRoute("Q3"),
+    Q4: fixtureMemoRoute("Q4"),
+    Q5: fixtureMemoRoute("Q5"),
+    Q6: fixtureMemoRoute("Q6"),
+  },
+};
 
 export function draftFor(unitId: string, uncertain = false): DraftedUnit {
   return {
@@ -253,6 +304,7 @@ export function buildPorts(store: FakeStore, rec: Recorder, opts: FakeOptions = 
   let inFlight = 0;
   let remainingTransient = opts.draftTransientFailures ?? 0;
   return {
+    memoIdentity: TEST_WORKFLOW_MEMO_IDENTITY,
     readiness: {
       async resolve(unitId: string): Promise<UnitReadiness> {
         return opts.readiness

@@ -14,10 +14,14 @@ const PROGRESS_ROLE = "localize";
 const LEASE_DURATION_SECONDS = 90;
 const LEASE_RENEWAL_INTERVAL_MS = 30_000;
 export const STARTUP_PROGRESS_BATCH_SIZE = 500;
-
+/** Test-only override; production leaves both values at their conservative defaults. */
+export type LocalizeRunTrackerTiming = {
+  readonly leaseDurationSeconds?: number;
+  readonly leaseRenewalIntervalMs?: number;
+};
 type RunWorkflow = Pick<
   ItotoriProjectWorkflowPort,
-  | "createRun"
+  | "createOrResumeRun"
   | "acquireLease"
   | "renewLease"
   | "releaseLease"
@@ -34,11 +38,9 @@ type CostScope = {
   readonly unitIds: readonly string[];
   readonly failureStage: string;
 };
-
 type CostReservation = CostScope & {
   readonly reservationId: string;
 };
-
 const statusRank: Record<ProjectRunProgressStatus, number> = {
   decoded: 1,
   drafted: 2,
@@ -46,13 +48,7 @@ const statusRank: Record<ProjectRunProgressStatus, number> = {
   accepted: 4,
   patched: 5,
 };
-
-/**
- * Couples the workflow's real port completions and physical LLM attempts to one
- * durable project run. It deliberately has no engine knowledge: project/run
- * identity, snapshots, and exposure ceiling arrive as data from the live
- * substrate.
- */
+/** Couples real port completions and physical LLM attempts to one durable project run. */
 export class LocalizeRunTracker {
   readonly #costScopes = new AsyncLocalStorage<CostScope>();
   readonly #reservations = new Map<string, CostReservation>();
@@ -69,14 +65,13 @@ export class LocalizeRunTracker {
   #renewalError: unknown;
   #acceptingWrites = true;
   #finished = false;
-
   constructor(
     private readonly workflow: RunWorkflow,
     private readonly plane: LocalizationRunPlane,
+    private readonly timing: LocalizeRunTrackerTiming = {},
   ) {}
-
   async start(unitIds: readonly string[]): Promise<void> {
-    await this.workflow.createRun({
+    await this.workflow.createOrResumeRun({
       projectId: this.plane.projectId,
       runId: this.plane.runId,
       localeBranchId: this.plane.localeBranchId,
@@ -88,7 +83,7 @@ export class LocalizeRunTracker {
       projectId: this.plane.projectId,
       runId: this.plane.runId,
       leaseOwnerId: this.plane.leaseOwnerId,
-      leaseDurationSeconds: LEASE_DURATION_SECONDS,
+      leaseDurationSeconds: this.timing.leaseDurationSeconds ?? LEASE_DURATION_SECONDS,
     });
     await this.workflow.advanceRun({ lease: this.lease(), status: "running" });
     this.startLeaseRenewal();
@@ -149,13 +144,16 @@ export class LocalizeRunTracker {
 
   wrapPorts(ports: WorkflowPorts): WorkflowPorts {
     const hydrateBuildLqaEvidence = ports.patchback.hydrateBuildLqaEvidence;
+    const recordFinalizationData = ports.draft.recordFinalizationData;
     return {
       ...ports,
+      memoIdentity: ports.memoIdentity,
       readiness: {
         resolve: async (unitId) =>
           await this.withFailure([unitId], "readiness", () => ports.readiness.resolve(unitId)),
       },
       draft: {
+        ...(recordFinalizationData === undefined ? {} : { recordFinalizationData }),
         draftScene: async (input) =>
           await this.withTransition(
             input.scene.units.map((unit) => unit.unitId),
@@ -332,8 +330,7 @@ export class LocalizeRunTracker {
         role: PROGRESS_ROLE,
         status: nextStatus,
         costMicrosUsd: this.#costByUnit.get(unitId) ?? 0,
-        // Coverage means actual completion of this unit's CURRENT stage. A unit
-        // is not called covered until the corresponding port has returned.
+        // A unit is covered only once its current stage's port has returned.
         coveragePercent: nextStatus === "decoded" ? 0 : 100,
         blockers,
       });
@@ -341,24 +338,27 @@ export class LocalizeRunTracker {
     this.#statusByUnit.set(unitId, nextStatus);
   }
 
-  /** Startup uses bounded transactional inserts. The fallback retains that hard
-   * cap for narrow test doubles which have not adopted the batch port yet. */
+  /** Startup uses bounded inserts; narrow test doubles retain the per-unit fallback. */
   private async recordStartupBatch(unitIds: readonly string[]): Promise<void> {
-    if (this.workflow.recordProgressBatch !== undefined) {
+    const workflow = this.workflow;
+    const recordProgressBatch = workflow.recordProgressBatch;
+    if (recordProgressBatch !== undefined) {
+      const initialStatus: ProjectRunProgressStatus = "decoded";
       await this.trackWrite(async () => {
-        await this.workflow.recordProgressBatch?.({
+        const progress = await recordProgressBatch.call(workflow, {
           lease: this.lease(),
           progress: unitIds.map((bridgeUnitId) => ({
             bridgeUnitId,
             role: PROGRESS_ROLE,
-            status: "decoded",
+            status: initialStatus,
             costMicrosUsd: 0,
             coveragePercent: 0,
             blockers: [],
           })),
         });
+        for (const entry of progress) this.#statusByUnit.set(entry.bridgeUnitId, entry.status);
+        for (const entry of progress) this.#costByUnit.set(entry.bridgeUnitId, entry.costMicrosUsd);
       });
-      for (const unitId of unitIds) this.#statusByUnit.set(unitId, "decoded");
       return;
     }
     await Promise.all(unitIds.map(async (unitId) => await this.record(unitId, "decoded")));
@@ -367,9 +367,7 @@ export class LocalizeRunTracker {
   private async finish(status: "completed" | "failed"): Promise<ProjectRunLiveReadModel | null> {
     this.stopLeaseRenewal();
     await this.#renewal;
-    // The workflow and physical-attempt boundary await their callbacks. Closing
-    // this gate makes a broken detached callback fail before it can touch the
-    // service, and the drain covers every callback that began before the gate.
+    // Close the gate and drain callbacks before the terminal transition.
     this.#acceptingWrites = false;
     await this.drainWrites();
     try {
@@ -416,7 +414,10 @@ export class LocalizeRunTracker {
     this.#renewalTimer = setInterval(() => {
       if (this.#renewal !== undefined) return;
       this.#renewal = this.workflow
-        .renewLease({ lease: this.lease(), leaseDurationSeconds: LEASE_DURATION_SECONDS })
+        .renewLease({
+          lease: this.lease(),
+          leaseDurationSeconds: this.timing.leaseDurationSeconds ?? LEASE_DURATION_SECONDS,
+        })
         .then((lease) => {
           this.#lease = lease;
         })
@@ -426,7 +427,7 @@ export class LocalizeRunTracker {
         .finally(() => {
           this.#renewal = undefined;
         });
-    }, LEASE_RENEWAL_INTERVAL_MS);
+    }, this.timing.leaseRenewalIntervalMs ?? LEASE_RENEWAL_INTERVAL_MS);
     this.#renewalTimer.unref?.();
   }
 

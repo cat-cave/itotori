@@ -18,6 +18,7 @@ import {
   persistQualifyingWorkflowRunLineage,
   type QualifyingWorkflowAttemptObservation,
 } from "../src/telemetry/qualifying-lineage.js";
+import { TEST_WORKFLOW_MEMO_IDENTITY } from "./workflow.support.js";
 
 const HASH = `sha256:${"a".repeat(64)}` as const;
 const SOURCE_HASH = `sha256:${"b".repeat(64)}` as const;
@@ -196,6 +197,7 @@ function flowPorts(
   semanticRoute: "repair" | "adjudication" = "repair",
 ): WorkflowPorts {
   return {
+    memoIdentity: TEST_WORKFLOW_MEMO_IDENTITY,
     readiness: {
       async resolve() {
         events.push("readiness");

@@ -22,7 +22,7 @@ import {
 } from "../composition/localize-entrypoint.js";
 import { projectDecodeStructure } from "../composition/live/scene-projection.js";
 import { withPhysicalAttemptCostObserver } from "../llm/physical-attempt-cost-context.js";
-import { LocalizeRunTracker } from "./localize-run-tracker.js";
+import { LocalizeRunTracker, type LocalizeRunTrackerTiming } from "./localize-run-tracker.js";
 import { localizeProjectScope } from "./localize-project-scope.js";
 import { assertBridgeBundleV02, type BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import {
@@ -53,7 +53,7 @@ export interface LocalizeCommandDeps {
    * fallback: every invocation owns a project run. */
   readonly projectWorkflow: Pick<
     ItotoriProjectWorkflowPort,
-    | "createRun"
+    | "createOrResumeRun"
     | "ensureRunProjectScope"
     | "acquireLease"
     | "renewLease"
@@ -69,6 +69,8 @@ export interface LocalizeCommandDeps {
     request: RunPolicyRequest,
     perRun: LocalizationPerRunInput,
   ): LocalizationPortSource | Promise<LocalizationPortSource>;
+  /** Test-only lease timing override used by interrupted-run integration proofs. */
+  readonly localizeRunTrackerTiming?: LocalizeRunTrackerTiming;
   log?(message: string): void;
 }
 
@@ -193,7 +195,11 @@ export async function runLocalizeCommand(
     throw new Error("localize run plane is not configured by the localization substrate");
   }
   assertRunPlaneIdentity(source, projectRun);
-  const tracker = new LocalizeRunTracker(deps.projectWorkflow, source.runPlane);
+  const tracker = new LocalizeRunTracker(
+    deps.projectWorkflow,
+    source.runPlane,
+    deps.localizeRunTrackerTiming,
+  );
   let report: Awaited<ReturnType<typeof runLocalization>>;
   let live: Awaited<ReturnType<ItotoriProjectWorkflowPort["loadLiveReadModel"]>>;
   try {

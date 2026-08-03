@@ -18,6 +18,7 @@ import type {
   UnitStage,
   WorkflowPorts,
 } from "../src/workflow/index.js";
+import { TEST_WORKFLOW_MEMO_IDENTITY } from "./workflow.support.js";
 
 const structure = JSON.parse(
   readFileSync(new URL("./fixtures/narrative-structure-v2-units.json", import.meta.url), "utf8"),
@@ -99,6 +100,7 @@ function passingVerdict(lane: "Q1" | "Q2" | "Q3" | "Q4" | "Q5", unitId: string):
 
 function gatewayPorts(store: GatewayStore): WorkflowPorts {
   return {
+    memoIdentity: TEST_WORKFLOW_MEMO_IDENTITY,
     readiness: {
       async resolve() {
         return { ready: true, bibleRenderingIds: ["bible:1"] } as const;
@@ -362,7 +364,7 @@ function commandRunWorkflow() {
   };
   return {
     ensureRunProjectScope: vi.fn(),
-    createRun: vi.fn(),
+    createOrResumeRun: vi.fn(),
     acquireLease: vi.fn().mockResolvedValue(lease),
     renewLease: vi.fn().mockResolvedValue(lease),
     releaseLease: vi.fn(),
@@ -370,6 +372,7 @@ function commandRunWorkflow() {
     recordProgress: vi.fn(),
     reserveCost: vi.fn(),
     settleCost: vi.fn(),
+    releaseCost: vi.fn(),
     loadLiveReadModel: vi.fn().mockResolvedValue({
       run: { status: "completed" },
       progress: {

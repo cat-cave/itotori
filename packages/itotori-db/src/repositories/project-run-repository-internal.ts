@@ -30,6 +30,7 @@ export class ItotoriProjectRunRepositoryError extends Error {
       | "run_id_collision"
       | "active_branch_collision"
       | "constraint_violation"
+      | "run_resume_rejected"
       | "run_transition_rejected"
       | "unknown_run",
     message: string,
@@ -101,6 +102,25 @@ export async function loadRunOrNull(
       join ${projectRunCostAccounts} account
         on account.run_id = run.run_id and account.project_id = run.project_id
       where run.run_id = ${runId} and run.project_id = ${projectId}
+    `,
+  );
+  return rows[0] === undefined ? null : runFromRow(rows[0]);
+}
+
+/** Load a globally unique run ID for the create-or-resume collision path. */
+export async function loadRunByIdOrNull(
+  executor: SqlExecutor,
+  runId: string,
+): Promise<ProjectRunRecord | null> {
+  const rows = await rowsOf(
+    executor,
+    sql`
+      select run.*, account.cap_micros_usd, account.spent_micros_usd, account.reserved_micros_usd
+      from ${projectRuns} run
+      join ${projectRunCostAccounts} account
+        on account.run_id = run.run_id and account.project_id = run.project_id
+      where run.run_id = ${runId}
+      for update
     `,
   );
   return rows[0] === undefined ? null : runFromRow(rows[0]);

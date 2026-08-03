@@ -456,8 +456,9 @@ describe("ItotoriProjectRunRepository", () => {
 });
 function runWorkflow(fixture: RunFixture) {
   return {
-    createRun: async (input: Parameters<ItotoriProjectRunRepository["createRun"]>[1]) =>
-      await fixture.runs.createRun(actor, input),
+    createOrResumeRun: async (
+      input: Parameters<ItotoriProjectRunRepository["createOrResumeRun"]>[1],
+    ) => await fixture.runs.createOrResumeRun(actor, input),
     acquireLease: async (input: Parameters<ItotoriProjectRunRepository["acquireLease"]>[1]) =>
       await fixture.runs.acquireLease(actor, input),
     renewLease: async (input: Parameters<ItotoriProjectRunRepository["renewLease"]>[1]) =>
@@ -475,6 +476,8 @@ function runWorkflow(fixture: RunFixture) {
       await fixture.runs.reserveCost(actor, input),
     settleCost: async (input: Parameters<ItotoriProjectRunRepository["settleCost"]>[1]) =>
       await fixture.runs.settleCost(actor, input),
+    releaseCost: async (input: Parameters<ItotoriProjectRunRepository["releaseCost"]>[1]) =>
+      await fixture.runs.releaseCost(actor, input),
     loadLiveReadModel: async (
       projectId: string,
       runId: string,

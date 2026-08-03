@@ -15,6 +15,23 @@ export {
 } from "./driver.js";
 export { BoundedConcurrency } from "./bounded-concurrency.js";
 export {
+  createWorkflowMemoIdentity,
+  createWorkflowMemoRoleRoutes,
+  workflowMemoKeyFor,
+  PURE_MTL_WORKFLOW_MEMO_PREFIX,
+  WORKFLOW_MEMO_IDENTITY_SCHEMA_VERSION,
+  WORKFLOW_MEMO_KEY_SCHEMA_VERSION,
+  WORKFLOW_MEMO_ROLE_IDS,
+  type CreateWorkflowMemoIdentityInput,
+  type WorkflowMemoIdentity,
+  type WorkflowMemoKeyInput,
+  type WorkflowMemoRenderPlan,
+  type WorkflowMemoRole,
+  type WorkflowMemoRoleRoute,
+  type WorkflowMemoRoleRoutes,
+  type WorkflowMemoStep,
+} from "./memo-identity.js";
+export {
   WorkflowReadinessError,
   WorkflowSequenceError,
   REVIEW_LANE_VALUES,

@@ -30,7 +30,7 @@ import {
   type RunPolicyRequest,
 } from "../run-policy/index.js";
 import type { WorkflowOptions } from "../workflow/index.js";
-import { LocalizeRunTracker } from "../cli/localize-run-tracker.js";
+import { LocalizeRunTracker, type LocalizeRunTrackerTiming } from "../cli/localize-run-tracker.js";
 import type { ItotoriProjectWorkflowPort } from "./project-operations-port.js";
 
 const RUN_MODE_VALUES: readonly RunModeValue[] = ["production", "pilot", "test-dev"];
@@ -76,7 +76,7 @@ export type DriveLocalizationPassDeps = {
   readonly writeJson?: (path: string, value: unknown) => void;
   readonly projectWorkflow: Pick<
     ItotoriProjectWorkflowPort,
-    | "createRun"
+    | "createOrResumeRun"
     | "acquireLease"
     | "renewLease"
     | "releaseLease"
@@ -91,6 +91,8 @@ export type DriveLocalizationPassDeps = {
     request: RunPolicyRequest,
     perRun: LocalizationPerRunInput,
   ): LocalizationPortSource | Promise<LocalizationPortSource>;
+  /** Test-only lease timing override used by interrupted-run integration proofs. */
+  readonly localizeRunTrackerTiming?: LocalizeRunTrackerTiming;
   /** Override only in tests — production uses a fresh random id per launch. */
   readonly createRunId?: () => string;
   readonly now?: () => Date;
@@ -166,7 +168,11 @@ export async function driveLocalizationPass(
   }
   assertRunPlaneIdentity(source, projectRun);
 
-  const tracker = new LocalizeRunTracker(deps.projectWorkflow, source.runPlane);
+  const tracker = new LocalizeRunTracker(
+    deps.projectWorkflow,
+    source.runPlane,
+    deps.localizeRunTrackerTiming,
+  );
   const writeJson = deps.writeJson ?? defaultWriteJson;
   try {
     try {

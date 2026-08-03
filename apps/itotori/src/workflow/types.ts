@@ -81,6 +81,10 @@ export interface DraftedScene {
   readonly mode: DraftMode;
   readonly batches: readonly DraftBatch[];
   readonly units: readonly DraftedUnit[];
+  /** Verified physical P1 memo receipts. Live drafts retain them so a durable
+   * step-cache replay can rebuild the CAS finalizer's receipt index without
+   * re-dispatching P1 after a process restart. */
+  readonly memoKeys?: readonly string[];
 }
 
 /** A reviewer verdict tagged with the lane that produced it — the raw finding

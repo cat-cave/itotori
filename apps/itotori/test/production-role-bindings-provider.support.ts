@@ -15,6 +15,9 @@ export function deterministicProvider(input: {
   readonly voiceRenderingId?: string;
   /** Controlled P1 output only. Runtime evidence is always produced by native Utsushi. */
   readonly targetSkeleton?: string;
+  /** Test-only transport hook. It observes a real provider request before this
+   * deterministic HTTP seam returns its response; it never substitutes a role. */
+  readonly beforeResponse?: (role: ProviderRole) => void | Promise<void>;
 }) {
   let localizationSnapshotId = input.localizationSnapshotId;
   let bibleRenderingId = input.bibleRenderingId;
@@ -42,6 +45,7 @@ export function deterministicProvider(input: {
         bibleRenderingId ??= seed.bibleRenderingIds[0];
       }
       calls.push({ role, prompt, response });
+      await input.beforeResponse?.(role);
       return structuredProviderResponse(response, 0.000001);
     },
     count(role: ProviderRole): number {

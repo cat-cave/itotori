@@ -18,6 +18,7 @@ import type {
   UnitStage,
   WorkflowPorts,
 } from "../src/workflow/index.js";
+import { TEST_WORKFLOW_MEMO_IDENTITY } from "./workflow.support.js";
 
 export const SOURCE_HASH = `sha256:${"b".repeat(64)}` as const;
 export const SNAPSHOT_HASH = `sha256:${"a".repeat(64)}` as const;
@@ -149,6 +150,7 @@ export function recordedPorts(
   observer?: PhysicalAttemptCostObserver,
 ): WorkflowPorts {
   return {
+    memoIdentity: TEST_WORKFLOW_MEMO_IDENTITY,
     readiness: {
       async resolve() {
         return { ready: true, bibleRenderingIds: ["bible:recorded"] };

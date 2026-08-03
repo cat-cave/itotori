@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
-import { ItotoriLlmAcceptedOutputRepository, LlmQuarantinedResponseError } from "@itotori/db";
+import {
+  ItotoriLlmAcceptedOutputRepository,
+  ItotoriWorkflowStepMemoRepository,
+  LlmQuarantinedResponseError,
+  WorkflowStepMemoConflictError,
+} from "@itotori/db";
 import { describe, expect, it } from "vitest";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import { dispatch } from "../src/llm/dispatch.js";
@@ -100,6 +105,61 @@ postgresDescribe("live workflow artifact store — real CAS round-trip", () => {
           shippable: true,
         }),
       ).rejects.toBeInstanceOf(LlmQuarantinedResponseError);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  it("replays an encrypted completed step through a separately constructed store", async () => {
+    const ctx = await isolatedMigratedContext();
+    const cipher = new TestMemoCipher();
+    const memoKey = "b".repeat(64);
+    const value = { result: "step-cache-private-value" };
+    try {
+      const accepted = new ItotoriLlmAcceptedOutputRepository(ctx.pool, cipher);
+      const stepCache = new ItotoriWorkflowStepMemoRepository(ctx.pool, cipher, {
+        requireContentRead: async () => undefined,
+      });
+      const makeStore = () =>
+        createLiveWorkflowArtifactStore({
+          accepted,
+          snapshotId: SNAPSHOT_ID,
+          stepCache,
+          resolveFinalizeArtifact: (input): AcceptedUnitOutput => ({
+            outputId: `${input.unitId}:${input.stage}:v${(input.priorHead?.version ?? 0) + 1}`,
+            semanticKey: sha256(`semantic:${input.unitId}:${input.stage}`),
+            schemaVersion: "itotori.accepted-output.v1",
+            outputJson: JSON.stringify({ unitId: input.unitId, target: input.contentHash }),
+            memoKeys: [],
+            sourceHash: sha256(`source:${input.unitId}`),
+          }),
+        });
+      let producerCalls = 0;
+
+      const first = await makeStore().runMemoizedStep(memoKey, async () => {
+        producerCalls += 1;
+        return value;
+      });
+      const second = await makeStore().runMemoizedStep(memoKey, async () => {
+        producerCalls += 1;
+        return { result: "must-not-run" };
+      });
+
+      expect(first).toEqual({ memoHit: false, value });
+      expect(second).toEqual({ memoHit: true, value });
+      expect(producerCalls).toBe(1);
+
+      const stored = await ctx.pool.query<{ value_ciphertext: Uint8Array }>(
+        "select value_ciphertext from itotori_llm_workflow_step_memos where memo_key = $1",
+        [memoKey],
+      );
+      expect(stored.rows).toHaveLength(1);
+      expect(Buffer.from(stored.rows[0]!.value_ciphertext)).not.toContain(
+        Buffer.from(value.result),
+      );
+      await expect(
+        stepCache.set(memoKey, JSON.stringify({ result: "different" })),
+      ).rejects.toBeInstanceOf(WorkflowStepMemoConflictError);
     } finally {
       await ctx.close();
     }
