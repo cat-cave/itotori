@@ -14,6 +14,7 @@
 // a speaker's first occurrence across the dispatch order. A dispatch-only scene
 // with no translatable units is skipped (it carries no work), never emitted empty.
 
+import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import { namespacedFactId } from "@itotori/db";
 import { createHash } from "node:crypto";
 import { stableSegment } from "../../prepass/fact-id.js";
@@ -51,13 +52,23 @@ export interface DecodeSceneProjection {
 
 /** Project a decoded narrative-structure artifact (the JSON the structure-export
  * seam writes) into `WorkflowScene[]` + the per-unit fact/rendering maps. */
-export function projectDecodeStructure(structureJson: unknown): DecodeSceneProjection {
+export function projectDecodeStructure(
+  structureJson: unknown,
+  bridge?: Pick<BridgeBundleV02, "units">,
+): DecodeSceneProjection {
   const structure = parseNarrativeStructure(structureJson, SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS);
   const sceneById = new Map<string, NarrativeScene>(
     structure.scenes.map((scene) => [scene.sceneId, scene]),
   );
 
   const seenSpeakers = new Set<string>();
+  const voiceSpeakerByBridgeUnit = new Map(
+    bridge?.units.flatMap((unit) => {
+      const speaker = unit.speaker;
+      if (speaker?.knowledgeState !== "known") return [];
+      return [[unit.bridgeUnitId, speaker.canonicalNameRef ?? speaker.speakerId] as const];
+    }) ?? [],
+  );
   const scenes: WorkflowScene[] = [];
   const renderingIdsByUnit = new Map<string, readonly string[]>();
   const factsByUnit = new Map<string, DecodeUnitFact>();
@@ -75,9 +86,10 @@ export function projectDecodeStructure(structureJson: unknown): DecodeSceneProje
         unit.choiceId === null ? "unit" : "choice",
         stableSegment(unit.bridgeRef.bridgeUnitId),
       );
-      const speakerId = unit.characterId;
-      const firstAppearance = speakerId !== null && !seenSpeakers.has(speakerId);
-      if (speakerId !== null) seenSpeakers.add(speakerId);
+      const decodedSpeakerId = unit.characterId;
+      const firstAppearance = decodedSpeakerId !== null && !seenSpeakers.has(decodedSpeakerId);
+      if (decodedSpeakerId !== null) seenSpeakers.add(decodedSpeakerId);
+      const speakerId = voiceSpeakerByBridgeUnit.get(unit.bridgeRef.bridgeUnitId) ?? null;
       const routeId = firstRoute(unit.routeMembership) ?? sceneRoute;
       const sourceHash = sha256(unit.sourceText);
 

@@ -381,6 +381,7 @@ describe("Clause 5 — order-debiasing runs; agreement and winning side recorded
     const ordered = buildQ6OrderCallSpecs(baseInput, refs);
     expect(ordered.map((item) => item.order)).toEqual(["A-then-B", "B-then-A"]);
     expect(ordered).toHaveLength(2);
+    expect(ordered[0]!.spec.parentEventId).not.toBe(ordered[1]!.spec.parentEventId);
 
     // Agreement path: exactly two dispatches, never a third round-trip.
     const agree = sequentialDispatch([sideVerdict("A", "PASS"), sideVerdict("A", "PASS")]);

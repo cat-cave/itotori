@@ -86,7 +86,7 @@ export async function runApiLocalize(
   // (the driver re-resolves it as its own first gate — this is not a bypass).
   resolveRunPolicy(request);
 
-  const { scenes } = projectDecodeStructure(input.structureJson);
+  const { scenes } = projectDecodeStructure(input.structureJson, input.bridge);
 
   const options: WorkflowOptions =
     input.wholeSceneMaxUnits === undefined ? {} : { wholeSceneMaxUnits: input.wholeSceneMaxUnits };

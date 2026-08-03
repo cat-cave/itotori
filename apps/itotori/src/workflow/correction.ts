@@ -11,7 +11,13 @@
 
 import type { Defect, DefectBundle } from "../contracts/index.js";
 import { stableDigest } from "../gates/index.js";
-import type { AdjudicatePort, RepairPort, ReviewPort, WorkflowArtifactStore } from "./ports.js";
+import type {
+  AdjudicatePort,
+  GateReport,
+  RepairPort,
+  ReviewPort,
+  WorkflowArtifactStore,
+} from "./ports.js";
 import { implicatedRerun, type RerunScope } from "./rerun-scope.js";
 import type { DraftedScene, LaneVerdict } from "./types.js";
 
@@ -104,6 +110,9 @@ async function memoized<T>(
 export async function applyCorrections(input: {
   readonly bundle: DefectBundle;
   readonly scene: DraftedScene;
+  /** The gates that evaluated this draft. Correction reruns retain the current
+   * draft semantics, so they carry the same authoritative gate result. */
+  readonly gateReport: GateReport;
   /** The lane verdicts that judged this scene — the source of the contested A/B
    * positions the adjudicator weighs. Threaded from the driver so the correction
    * step never re-derives a contest from the defects alone. */
@@ -130,7 +139,12 @@ export async function applyCorrections(input: {
     const reviewed = await Promise.all(
       scope.lanes.map(async (lane) => {
         await memoized(input.store, ["rerun-review", scene.sceneId, lane, ...scope.unitIds], () =>
-          input.review.review({ lane, scene, unitIds: scope.unitIds }),
+          input.review.review({
+            lane,
+            scene,
+            unitIds: scope.unitIds,
+            gateReport: input.gateReport,
+          }),
         );
         return { lane, unitIds: scope.unitIds };
       }),

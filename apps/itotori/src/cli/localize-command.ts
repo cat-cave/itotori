@@ -143,7 +143,7 @@ export async function runLocalizeCommand(
   const bridgeJson = deps.io.readJson(bridgePath);
   assertBridgeBundleV02(bridgeJson);
   const bridge: BridgeBundleV02 = bridgeJson;
-  const { scenes } = projectDecodeStructure(structureJson);
+  const { scenes } = projectDecodeStructure(structureJson, bridge);
   const runId = requiredFlag(args, "--run-id");
   const projectRun = {
     projectId: requiredFlag(args, "--project-id"),

@@ -43,6 +43,17 @@ export interface GateSideInputs {
   readonly evidence?: GateEvidenceCorpus;
 }
 
+/** The workflow evaluates gates one drafted scene at a time. Patch coverage must
+ * therefore be scoped to that scene, otherwise a later scene's still-undrafted
+ * units become defects that an earlier scene's P2/P3 inputs cannot own. A host
+ * supplied scope can narrow this set, but never widen it across scene bounds. */
+function workScopeForScene(scene: DraftedScene, configured: WorkScope | undefined): WorkScope {
+  const sceneUnitIds = scene.units.map((unit) => unit.unitId);
+  if (configured === undefined) return { inScopeUnitFactIds: sceneUnitIds };
+  const allowed = new Set(configured.inScopeUnitFactIds);
+  return { inScopeUnitFactIds: sceneUnitIds.filter((unitId) => allowed.has(unitId)) };
+}
+
 function sha256(value: string): Sha256Hash {
   return `sha256:${createHash("sha256").update(value, "utf8").digest("hex")}`;
 }
@@ -104,6 +115,7 @@ export function buildDeterministicGateInput(input: {
   const localizationSnapshotId =
     input.scene.batches[0]?.localizationSnapshotId ?? input.facts.snapshot.snapshotId;
   const withEvidence = input.side.evidence !== undefined;
+  const workScope = workScopeForScene(input.scene, input.side.workScope);
   const accepted = input.scene.units.map((unit) =>
     candidateAcceptedOutput(unit, parentDraftBatchId, localizationSnapshotId, withEvidence),
   );
@@ -113,7 +125,7 @@ export function buildDeterministicGateInput(input: {
     policy: input.side.policy,
     ...(input.side.glossary !== undefined ? { glossary: input.side.glossary } : {}),
     ...(input.side.boxLimits !== undefined ? { boxLimits: input.side.boxLimits } : {}),
-    ...(input.side.workScope !== undefined ? { workScope: input.side.workScope } : {}),
+    workScope,
     ...(input.side.evidence !== undefined
       ? {
           contextFacts: input.side.evidence.contextFacts,

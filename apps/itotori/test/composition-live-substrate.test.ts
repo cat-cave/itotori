@@ -367,7 +367,9 @@ describe("decode → WorkflowScene[] adapter", () => {
     expect(scenes[0]!.units.map((unit) => unit.firstAppearance)).toEqual([true, true]);
     const rinAgain = scenes[1]!.units.find((unit) => unit.unitId === rinAgainUnitId);
     expect(rinAgain?.firstAppearance).toBe(false);
-    expect(rinAgain?.speakerId).toBe("char:rin");
+    // Raw decode identity still drives first appearance, but no bridge was
+    // supplied, so Q2's reveal-safe speaker identity fails closed.
+    expect(rinAgain?.speakerId).toBeNull();
     // routeId falls back from unit to the scene's route membership.
     expect(scenes[0]!.units[0]!.routeId).toBe("route:common");
     expect(rinAgain?.routeId).toBe("route:rin");
@@ -379,7 +381,7 @@ describe("decode → WorkflowScene[] adapter", () => {
     expect(projection.renderingIdsByUnit.get(firstUnitId)).toEqual(["line:100:1"]);
     expect(projection.factsByUnit.get(rinAgainUnitId)).toMatchObject({
       sceneId: "scene:0200",
-      speakerId: "char:rin",
+      speakerId: null,
       routeId: "route:rin",
       surfaceKind: "dialogue",
     });

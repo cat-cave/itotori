@@ -34,8 +34,10 @@ import {
   createDispatchRuntime,
   createProductionLiveLocalizationSubstrate,
   productionLocalizeDispatchConfig,
+  type LiveDispatchRuntimeConfig,
   type RunSnapshotRevisions,
 } from "../composition/live/index.js";
+import { createProductionRoleBindings } from "../composition/live/production-role-bindings.js";
 import { runWikiBuild } from "../composition/index.js";
 import { canonicalJson, sha256 } from "../llm/canonical-json.js";
 import { resolveRoleModelProfile } from "../llm/role-model-profiles.js";
@@ -74,6 +76,9 @@ export type ItotoriApplicationServices = ItotoriCliServices & ItotoriApiServices
 
 export type ItotoriServiceFactoryOptions = {
   sessionId?: string;
+  /** Test/integration seam at the sole provider HTTP boundary. Production
+   * callers leave this unset and continue to use the real transport. */
+  providerFetcher?: LiveDispatchRuntimeConfig["fetcher"];
 };
 
 export type ItotoriServiceFactory = <T>(
@@ -117,6 +122,15 @@ export async function withDatabaseItotoriServices<T>(
     const cipher = createFieldMemoCipher(process.env);
     let config: ReturnType<typeof productionLocalizationConfig> | undefined;
     const localizationConfig = () => (config ??= productionLocalizationConfig(process.env));
+    const localizeDispatchConfig = () => {
+      const current = localizationConfig();
+      return productionLocalizeDispatchConfig({
+        env: process.env,
+        maxAttemptExposureUsd: current.maxAttemptExposureUsd,
+        confirmedCostCapUsd: current.confirmedCostCapUsd,
+        ...(options.providerFetcher === undefined ? {} : { fetcher: options.providerFetcher }),
+      });
+    };
     const wikiObjectApi = new WikiObjectApiService({
       wiki: new ItotoriLlmWikiRepository(pool, cipher),
       humanInputs: new ItotoriLlmHumanInputRepository(pool, cipher),
@@ -186,14 +200,7 @@ export async function withDatabaseItotoriServices<T>(
       wikiObjectApi,
       wikiApply: {
         runner: createLiveWikiEnhancementRunner({
-          dispatchConfig: () => {
-            const config = localizationConfig();
-            return productionLocalizeDispatchConfig({
-              env: process.env,
-              maxAttemptExposureUsd: config.maxAttemptExposureUsd,
-              confirmedCostCapUsd: config.confirmedCostCapUsd,
-            });
-          },
+          dispatchConfig: localizeDispatchConfig,
           memoStore,
           contentAccess,
           snapshots: () => {
@@ -235,11 +242,7 @@ export async function withDatabaseItotoriServices<T>(
             repository: wikiRepository,
             memoStore,
             contentAccess,
-            dispatch: productionLocalizeDispatchConfig({
-              env: process.env,
-              maxAttemptExposureUsd: config.maxAttemptExposureUsd,
-              confirmedCostCapUsd: config.confirmedCostCapUsd,
-            }),
+            dispatch: localizeDispatchConfig(),
             dispatchSnapshots: {
               decodeRevisionHash: config.decodeRevisionHash,
               glossaryRevisionHash: config.glossaryRevisionHash,
@@ -284,12 +287,8 @@ export async function withDatabaseItotoriServices<T>(
               styleRevisionHash: config.styleRevisionHash,
               acceptedOutputHeadHash: null,
             },
-            dispatch: productionLocalizeDispatchConfig({
-              env: process.env,
-              maxAttemptExposureUsd: config.maxAttemptExposureUsd,
-              confirmedCostCapUsd: config.confirmedCostCapUsd,
-            }),
-            roles: productionRoleBindings(),
+            dispatch: localizeDispatchConfig(),
+            roles: createProductionRoleBindings(),
             draftBudget: { budgetBytes: 16_384, overlapUnits: 1 },
           });
           const source = await substrate.resolvePortSource(request, perRun);
@@ -311,25 +310,6 @@ export async function withDatabaseItotoriServices<T>(
     });
     return await callback(services);
   }, options.databaseUrl ?? requireDatabaseUrl());
-}
-
-function productionRoleBindings() {
-  return {
-    review: {
-      async reviewLane() {
-        throw new Error("production review role binding has not been installed");
-      },
-    },
-    adjudicate: {
-      buildRefs() {
-        throw new Error("production adjudication role binding has not been installed");
-      },
-      async readPayload() {
-        throw new Error("production adjudication role binding has not been installed");
-      },
-      resolveEvidence: () => null,
-    },
-  };
 }
 
 function projectEngineRegistry() {

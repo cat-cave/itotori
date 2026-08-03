@@ -88,6 +88,8 @@ export interface ReviewPort {
     readonly lane: ReviewLane;
     readonly scene: DraftedScene;
     readonly unitIds: readonly string[];
+    /** The deterministic gates already evaluated for this exact draft. */
+    readonly gateReport: GateReport;
   }): Promise<readonly LaneVerdict[]>;
 }
 

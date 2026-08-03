@@ -156,7 +156,7 @@ export function createAdjudicateDeps(input: {
   readonly config: RunScopeConfig;
   readonly resolveEvidence: EvidenceTextResolver;
   readonly resolveBibleRenderingIds: BibleRenderingIdResolver;
-  readonly buildRefs: (portInput: { readonly unitId: string }) => Q6DispatchRefs;
+  readonly buildRefs: (reviewInput: Q6ReviewInput) => Q6DispatchRefs;
   readonly dispatch: Q6Dispatch;
 }): AdjudicateDeps {
   return {
@@ -172,7 +172,7 @@ export function createAdjudicateDeps(input: {
         resolveBibleRenderingIds: input.resolveBibleRenderingIds,
         config: input.config,
       }),
-    buildRefs: input.buildRefs,
+    buildRefs: (portInput) => input.buildRefs(portInput),
     dispatch: input.dispatch,
   };
 }

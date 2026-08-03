@@ -159,11 +159,10 @@ function createRepairPort(deps: WorkflowPortDeps): RepairPort {
 function createAdjudicatePort(deps: WorkflowPortDeps): AdjudicatePort {
   return {
     async adjudicate(input) {
-      const outcome = await runQ6Adjudication(
-        deps.adjudicate.buildInput(input),
-        deps.adjudicate.buildRefs(input),
-        { dispatch: deps.adjudicate.dispatch },
-      );
+      const reviewInput = deps.adjudicate.buildInput(input);
+      const outcome = await runQ6Adjudication(reviewInput, deps.adjudicate.buildRefs(reviewInput), {
+        dispatch: deps.adjudicate.dispatch,
+      });
       if (outcome.outcome === "adjudicated") {
         return { disposition: outcome.canFinalize ? "finalize" : "repair" };
       }

@@ -27,6 +27,7 @@ import { buildFactSnapshot } from "../../prepass/index.js";
 import {
   buildInstalledBible,
   resolveUnitBibleGroundTruth,
+  type InstalledBibleEntry,
 } from "../../localized-wiki/ground-truth/index.js";
 import {
   SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
@@ -42,13 +43,16 @@ import {
   createReadinessDeps,
   createRepairDeps,
   decodeFactSourceFrom,
+  type DecodeFactSource,
   type DraftRealizationConfig,
   type GateSideInputs,
+  type InstalledBible,
   type RunScopeConfig,
 } from "./assemblers/index.js";
 import {
   createCertifiedDispatch,
   createDispatchRuntime,
+  type DispatchRuntimeBase,
   type LiveDispatchRuntimeConfig,
   type PayloadResolver,
   type RunSnapshotRevisions,
@@ -60,6 +64,11 @@ import {
   type FinalizeArtifactResolver,
   type WorkflowStepCache,
 } from "./artifact-store.js";
+import {
+  createAcceptedTargetHistoryReader,
+  type AcceptedTargetHistoryReader,
+  type AcceptedTargetRecord,
+} from "./accepted-target-history.js";
 import { createCapturedDraftFinalizer, LiveWorkflowFactoryError } from "./factory-finalizer.js";
 
 export { LiveWorkflowFactoryError } from "./factory-finalizer.js";
@@ -73,13 +82,15 @@ export interface LiveWorkflowStores {
   readonly memoStore: LlmCallMemoStore;
   readonly contentAccess: LlmContentReadAuthorizer;
   readonly accepted: AcceptedOutputCas;
+  /** Verified decrypted final heads for the Q2/Q4 accepted-target context. */
+  readonly acceptedTargets: AcceptedTargetHistoryReader;
   readonly wiki: InstalledBibleSource;
 }
 
-/** The unbuilt role and patch seams that are intentionally supplied by the
- * caller. The render/OCR-backed Build-LQA path remains a live-only source; this
- * factory carries it through as `patchback`, and never synthesizes a frame. */
-export interface LiveWorkflowRoleSeams {
+/** The concrete role seams for one run. The render/OCR-backed Build-LQA path
+ * remains a live-only source; this factory carries it through as `patchback`,
+ * and never synthesizes a frame. */
+export interface BoundLiveWorkflowRoleSeams {
   readonly review: ReviewDeps;
   /** The default patchback is a concrete accepted-output → PatchExportV02
    * binder. Hosts may replace it only when they own a stricter artifact sink. */
@@ -88,8 +99,36 @@ export interface LiveWorkflowRoleSeams {
     readonly buildRefs: AdjudicateDeps["buildRefs"];
     readonly readPayload: PayloadResolver;
     readonly resolveEvidence: (evidenceId: string) => string | null | undefined;
+    /** Production role bindings supply Q6's independently profiled dispatch. */
+    readonly dispatch?: AdjudicateDeps["dispatch"];
   };
 }
+
+/** The facts that do not exist until this factory has materialized the exact
+ * run. Production review/adjudication must bind here rather than at a service
+ * lifetime: their prompts and evidence resolvers are snapshot-specific. */
+export interface LiveWorkflowRoleBindingInput {
+  readonly facts: DecodeFactSource;
+  readonly bible: InstalledBible;
+  /** Source/rendering pairs preserve the granular source authority that the
+   * installed-bible lookup indexes away (for example A5's scoped voice rules). */
+  readonly bibleEntries: readonly InstalledBibleEntry[];
+  /** Current verified final heads, loaded once before any role binding sees text. */
+  readonly acceptedTargets: readonly AcceptedTargetRecord[];
+  readonly targetLocale: string;
+  readonly scope: RunScopeConfig;
+  readonly runtime: DispatchRuntimeBase;
+}
+
+/** Defers role installation until the per-run facts, bible, and certified
+ * dispatch runtime all exist. This is the production composition shape. */
+export interface LiveWorkflowRoleBindingFactory {
+  bind(input: LiveWorkflowRoleBindingInput): BoundLiveWorkflowRoleSeams;
+}
+
+/** A host may either provide already-bound seams (offline proofs) or defer
+ * their construction until the live run substrate is available. */
+export type LiveWorkflowRoleSeams = BoundLiveWorkflowRoleSeams | LiveWorkflowRoleBindingFactory;
 
 /** All run-specific input that is not owned by the deterministic workflow.
  * Snapshot identities and the spend admission must already be durable and
@@ -121,6 +160,9 @@ export function productionLocalizeDispatchConfig(input: {
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly maxAttemptExposureUsd: string;
   readonly confirmedCostCapUsd: string;
+  /** A deterministic HTTP transport is an integration-proof seam only; normal
+   * production composition omits it and uses the platform fetch boundary. */
+  readonly fetcher?: LiveDispatchRuntimeConfig["fetcher"];
 }): Pick<LiveWorkflowFactoryConfig, "dispatch">["dispatch"] {
   const apiKey = input.env.OPENROUTER_API_KEY;
   if (apiKey === undefined || apiKey.length === 0) {
@@ -139,6 +181,7 @@ export function productionLocalizeDispatchConfig(input: {
       confirmedCostCapUsd: input.confirmedCostCapUsd,
     },
     env: input.env,
+    ...(input.fetcher === undefined ? {} : { fetcher: input.fetcher }),
   };
 }
 
@@ -150,7 +193,16 @@ export async function loadInstalledBible(input: {
   readonly contextSnapshotId: string;
   readonly localizationSnapshotId: string;
   readonly targetLocale: string;
-}) {
+}): Promise<InstalledBible> {
+  return (await loadInstalledBibleMaterial(input)).bible;
+}
+
+async function loadInstalledBibleMaterial(input: {
+  readonly wiki: InstalledBibleSource;
+  readonly contextSnapshotId: string;
+  readonly localizationSnapshotId: string;
+  readonly targetLocale: string;
+}): Promise<{ readonly bible: InstalledBible; readonly entries: readonly InstalledBibleEntry[] }> {
   const [sourceRows, renderingRows] = await Promise.all([
     input.wiki.listObjects({ snapshotId: input.contextSnapshotId, wikiKind: "source-object" }),
     input.wiki.listObjects({
@@ -163,7 +215,7 @@ export async function loadInstalledBible(input: {
     const source = parseSourceObject(row);
     sources.set(source.objectId, source);
   }
-  const entries = renderingRows.flatMap((row) => {
+  const entries: InstalledBibleEntry[] = renderingRows.flatMap((row) => {
     const rendering = LocalizedRenderingSchema.parse(JSON.parse(row.objectJson));
     if (rendering.targetLanguage !== input.targetLocale) return [];
     const sourceObject = sources.get(rendering.sourceObjectId);
@@ -179,7 +231,7 @@ export async function loadInstalledBible(input: {
     }
     return [{ sourceObject, rendering }];
   });
-  return buildInstalledBible(entries);
+  return { bible: buildInstalledBible(entries), entries };
 }
 
 /** Source every deterministic assembler and durable adapter into the complete
@@ -196,7 +248,7 @@ export async function createLiveWorkflowPortDeps(
     snapshot,
     bridgeUnitsByUnitKey(snapshot.orderedUnits, config.bridge),
   );
-  const bible = await loadInstalledBible({
+  const installedBible = await loadInstalledBibleMaterial({
     wiki: config.stores.wiki,
     contextSnapshotId: config.scope.contextSnapshotId,
     localizationSnapshotId: config.scope.localizationSnapshotId,
@@ -208,14 +260,27 @@ export async function createLiveWorkflowPortDeps(
     contentAccess: config.stores.contentAccess,
     snapshots: config.dispatchSnapshots,
   });
+  const acceptedTargets = await config.stores.acceptedTargets.listFinalUnits({
+    localizationSnapshotId: config.scope.localizationSnapshotId,
+  });
+  const roles = bindRoleSeams(config.roles, {
+    facts,
+    bible: installedBible.bible,
+    bibleEntries: installedBible.entries,
+    acceptedTargets,
+    targetLocale: config.targetLocale,
+    scope: config.scope,
+    runtime,
+  });
   const bibleRenderingIds = (unitId: string): readonly string[] =>
-    resolveUnitBibleGroundTruth(facts.orderedFact(unitId), facts.snapshot, bible).bibleRenderingIds;
+    resolveUnitBibleGroundTruth(facts.orderedFact(unitId), facts.snapshot, installedBible.bible)
+      .bibleRenderingIds;
   // The extract/patch adapter that produced this bridge selects the target
   // policy (codec, layout, control grammar, evidence channels) via the registry.
   const policy = resolveTargetPolicyForAdapter(config.bridge.extractor.name);
   const side: GateSideInputs = {
     ...config.gateSideInputs,
-    glossary: bible.canonicalForms,
+    glossary: installedBible.bible.canonicalForms,
     policy,
   };
   const capturedFinalizer = createCapturedDraftFinalizer(
@@ -233,13 +298,13 @@ export async function createLiveWorkflowPortDeps(
   });
 
   return {
-    readiness: createReadinessDeps({ facts, bible }),
+    readiness: createReadinessDeps({ facts, bible: installedBible.bible }),
     draft: {
       ...draft,
       recordFinalizationData: capturedFinalizer.record,
     },
     gates: createGateDeps({ facts, side }),
-    review: config.roles.review,
+    review: roles.review,
     repair: createRepairDeps({
       facts,
       config: config.scope,
@@ -249,12 +314,13 @@ export async function createLiveWorkflowPortDeps(
     }),
     adjudicate: createAdjudicateDeps({
       config: config.scope,
-      resolveEvidence: config.roles.adjudicate.resolveEvidence,
+      resolveEvidence: roles.adjudicate.resolveEvidence,
       resolveBibleRenderingIds: bibleRenderingIds,
-      buildRefs: config.roles.adjudicate.buildRefs,
-      dispatch: createCertifiedDispatch(runtime, config.roles.adjudicate.readPayload),
+      buildRefs: roles.adjudicate.buildRefs,
+      dispatch:
+        roles.adjudicate.dispatch ?? createCertifiedDispatch(runtime, roles.adjudicate.readPayload),
     }),
-    patchback: config.roles.patchback ?? capturedFinalizer.patchback,
+    patchback: roles.patchback ?? capturedFinalizer.patchback,
     store: createLiveWorkflowArtifactStore({
       accepted: config.stores.accepted,
       snapshotId: config.scope.localizationSnapshotId,
@@ -263,6 +329,13 @@ export async function createLiveWorkflowPortDeps(
       ...(config.maxStepAttempts === undefined ? {} : { maxStepAttempts: config.maxStepAttempts }),
     }),
   };
+}
+
+function bindRoleSeams(
+  roles: LiveWorkflowRoleSeams,
+  input: LiveWorkflowRoleBindingInput,
+): BoundLiveWorkflowRoleSeams {
+  return "bind" in roles ? roles.bind(input) : roles;
 }
 
 /** Adapt a long-lived service substrate into the `localizationSubstrate` port
@@ -313,6 +386,11 @@ export async function createProductionLiveWorkflowPortDeps(
       memoStore: new ItotoriLlmCallMemoRepository(config.pool, cipher, contentAccess),
       contentAccess,
       accepted: new ItotoriLlmAcceptedOutputRepository(config.pool, cipher),
+      acceptedTargets: createAcceptedTargetHistoryReader({
+        pool: config.pool,
+        cipher,
+        contentAccess,
+      }),
       wiki: new ItotoriLlmWikiRepository(config.pool, cipher),
     },
   });
@@ -337,6 +415,11 @@ export function createProductionLiveLocalizationSubstrate(
       memoStore: new ItotoriLlmCallMemoRepository(config.pool, cipher, contentAccess),
       contentAccess,
       accepted: new ItotoriLlmAcceptedOutputRepository(config.pool, cipher),
+      acceptedTargets: createAcceptedTargetHistoryReader({
+        pool: config.pool,
+        cipher,
+        contentAccess,
+      }),
       wiki: new ItotoriLlmWikiRepository(config.pool, cipher),
     },
   });

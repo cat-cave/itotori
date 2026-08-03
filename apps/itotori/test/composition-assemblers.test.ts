@@ -109,6 +109,9 @@ describe("gate assembler → DeterministicGateInput", () => {
       side: { policy: realliveSjisPolicy },
     });
     const report = evaluateDeterministicGates(input);
+    expect(input.workScope?.inScopeUnitFactIds).toEqual(
+      draftedScene.units.map((unit) => unit.unitId),
+    );
     // The always-run gates all ran, bound by subjectId === factId.
     expect(report.evaluatedGates).toEqual(
       expect.arrayContaining([

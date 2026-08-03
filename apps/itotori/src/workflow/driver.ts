@@ -30,7 +30,7 @@ import { projectOutputScope } from "./output-scope.js";
 import { mayShip, resolveWorkflowPolicy } from "./policy.js";
 import { resolveSceneReadiness } from "./readiness.js";
 import { planStratifiedReview, type ReviewPlan } from "./risk-routing.js";
-import type { AttemptLineageEntry, FinalizedUnit, WorkflowPorts } from "./ports.js";
+import type { AttemptLineageEntry, FinalizedUnit, GateReport, WorkflowPorts } from "./ports.js";
 import {
   WorkflowSequenceError,
   type DraftMode,
@@ -226,7 +226,7 @@ async function processScene(
     reviewPlan = planStratifiedReview(drafted, gateReport.defects, identity);
 
     // Run the selected lanes in PARALLEL, each through a memoized step.
-    const laneVerdicts = await runStratifiedReview(drafted, reviewPlan, policy, ports);
+    const laneVerdicts = await runStratifiedReview(drafted, gateReport, reviewPlan, policy, ports);
 
     // (5) Deterministic finding join — order-independent, facts dominate.
     bundle = joinFindings({
@@ -243,6 +243,7 @@ async function processScene(
         ? await applyCorrections({
             bundle,
             scene: drafted,
+            gateReport,
             verdicts: laneVerdicts,
             repair: ports.repair,
             review: ports.review,
@@ -282,6 +283,7 @@ async function processScene(
  * lanes in parallel, each a memoized physical step. */
 async function runStratifiedReview(
   scene: DraftedScene,
+  gateReport: GateReport,
   plan: ReviewPlan,
   policy: ResolvedRunPolicy,
   ports: WorkflowPorts,
@@ -289,7 +291,7 @@ async function runStratifiedReview(
   const laneJobs = [...plan.unitsByLane.entries()].map(async ([lane, unitIds]) => {
     const key = memoKeyFor(policy, "review", scene.sceneId, lane, unitIds);
     const step = await ports.store.runMemoizedStep(key, () =>
-      ports.review.review({ lane, scene, unitIds }),
+      ports.review.review({ lane, scene, unitIds, gateReport }),
     );
     return step.value;
   });
