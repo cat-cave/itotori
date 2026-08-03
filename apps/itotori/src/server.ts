@@ -11,10 +11,10 @@ import {
 import {
   toReadOnlyServiceFactory,
   ItotoriInvalidAuthSessionError,
-  withDatabaseItotoriServices,
   type ItotoriServiceFactory,
   type ItotoriReadOnlyServiceFactory,
 } from "./services/database-services.js";
+import { createDatabaseItotoriServiceFactory } from "./services/database-service-factory.js";
 import { parseItotoriSessionCookie } from "./auth-session-cookie.js";
 import { databaseUnreachableMessage } from "./database-unreachable.js";
 import { isShellNavPath } from "./ui/shell-nav-routes.js";
@@ -67,9 +67,7 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
   const publicFixtureArtifactRoot =
     options.publicFixtureArtifactRoot ?? new URL("../../../fixtures/public/", import.meta.url);
   const serviceFactory =
-    options.serviceFactory ??
-    ((callback, serviceOptions) =>
-      withDatabaseItotoriServices({ ...databaseOptions(options), ...serviceOptions }, callback));
+    options.serviceFactory ?? createDatabaseItotoriServiceFactory(databaseOptions(options));
   // policy-followup-transport-level-readonly-routing — GET (read-only)
   // requests are served through the read-only service factory so a GET can
   // NEVER reach a mutation service: the factory hands the handler only the

@@ -20,6 +20,7 @@ const API_ERROR_RESPONSE_CODES = [
   "forbidden",
   "not_found",
   "method_not_allowed",
+  "run_transition_rejected",
   "internal_error",
 ] as const satisfies readonly ApiErrorResponse["code"][];
 
@@ -53,6 +54,8 @@ const REQUIRED_RESPONSE_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, readonl
   "catalog.opportunities": ["rows"],
   "settings.translationScope.get": ["projectId", "localeBranchId", "scope"],
   "settings.translationScope.save": ["projectId", "localeBranchId", "scope"],
+  "projects.pausePass": ["schemaVersion", "action", "journalRunId", "status", "transitionedAt"],
+  "projects.resumePass": ["schemaVersion", "action", "journalRunId", "status", "transitionedAt"],
   "play.targetEdit": ["patchVersionId", "resultRevisionId", "selectedAt"],
   "play.addressableUnit": ["schemaVersion", "projectId", "localeBranchId", "unit"],
   "play.delivery": ["patchVersionId", "artifactHashes", "downloadUrl", "units"],

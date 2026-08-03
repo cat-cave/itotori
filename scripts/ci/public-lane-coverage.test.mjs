@@ -35,7 +35,7 @@ const realProbe = {
 test("all required public categories and DB-owned proofs are covered against the real tree", () => {
   const result = runCoverage();
   assert.equal(result.ok, true, `coverage gaps: ${result.failures.join("; ")}`);
-  assert.equal(result.rows.length, 12);
+  assert.equal(result.rows.length, 13);
 });
 
 test("the registry covers exactly the ten required category ids", () => {
@@ -44,9 +44,13 @@ test("the registry covers exactly the ten required category ids", () => {
   for (const id of REQUIRED_CATEGORY_IDS) assert.ok(present.has(id), `missing ${id}`);
 });
 
-test("the registry keeps both durable proofs explicitly owned by the DB lane", () => {
-  assert.deepEqual(REQUIRED_DB_OWNED_PROOF_IDS, ["durable-restart", "workflow-memo-model-variant"]);
-  assert.equal(DB_OWNED_APP_PROOFS.length, 2);
+test("the registry keeps all durable proofs explicitly owned by the DB lane", () => {
+  assert.deepEqual(REQUIRED_DB_OWNED_PROOF_IDS, [
+    "durable-restart",
+    "workflow-memo-model-variant",
+    "durable-pause-resume",
+  ]);
+  assert.equal(DB_OWNED_APP_PROOFS.length, 3);
   for (const proof of DB_OWNED_APP_PROOFS) assert.equal(proof.lane, DB_OWNED_LANE);
 });
 

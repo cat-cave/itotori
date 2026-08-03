@@ -59,7 +59,7 @@ const ERROR_STATUS_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "403": "Permission denied (forbidden).",
   "404": "Route or resource not found (not_found).",
   "405": "Method not allowed (method_not_allowed).",
-  "409": "Workflow conflicts with the current state (workflow_failed).",
+  "409": "Workflow conflicts with the current state (workflow_failed or run_transition_rejected).",
   "422": "Workflow input or operation cannot be processed (workflow_failed).",
   "429": "Exact cost allowance is exhausted (workflow_failed).",
   "500": "Internal error (internal_error).",

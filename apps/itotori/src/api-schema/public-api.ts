@@ -93,6 +93,8 @@ export { API_PLAY_FLAG_SEVERITIES } from "./api-play-session-types.js";
 export type {
   ApiLaunchPassRequest,
   ApiLaunchPassResponse,
+  ApiLocalizationPassControlRequest,
+  ApiLocalizationPassControlResponse,
   ApiPatchIterationDeliveryResponse,
   ApiPermissionSetRecord,
   ApiPermissionSetsListResponse,
@@ -198,6 +200,7 @@ export {
 } from "./api-project-response-validation.js";
 export {
   parseLaunchPassRequest,
+  parseLocalizationPassControlRequest,
   parsePatchIterationFeedbackBatchRequest,
   parsePatchIterationPlayRequest,
   parsePlayTargetEditRequest,

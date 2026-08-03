@@ -31,6 +31,9 @@ import type { ProductionRenderEvidencePlan } from "./live/render-evidence-adapte
 export interface LocalizationPerRunInput {
   readonly structureJson: unknown;
   readonly bridge: BridgeBundleV02;
+  /** A user-driven lifecycle pause reaches physical provider work through this
+   * invocation-owned signal; it is never persisted as workflow input. */
+  readonly abortSignal?: AbortSignal;
   /** The physical patched-byte plan for a qualifying invocation. This is
    * supplied at the localize boundary rather than inferred from persistence or
    * an environment variable. */

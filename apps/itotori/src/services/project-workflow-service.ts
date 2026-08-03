@@ -48,8 +48,9 @@ import { benchmarkArtifactInput } from "./project-workflow-benchmark.js";
 import {
   LocalizationPassAlreadyActiveError,
   isActiveLocalizationPassConflict,
-  type LocalizationPassRunnerPort,
 } from "./launch-localization-pass.js";
+import type { LocalizationPassRunnerPort } from "./localization-pass-runner.js";
+import { pauseLocalizationPass, resumeLocalizationPass } from "./project-workflow-pass-control.js";
 
 export class ProjectWorkflowCapabilityError extends Error {
   constructor(readonly capability: string) {
@@ -395,6 +396,14 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       journalRunId: started.journalRunId,
       startedAt: started.startedAt,
     };
+  }
+
+  async pauseLocalizationPass(input: { projectId: string; journalRunId: string }) {
+    return await pauseLocalizationPass(this.deps, input);
+  }
+
+  async resumeLocalizationPass(input: { projectId: string; journalRunId: string }) {
+    return await resumeLocalizationPass(this.deps, input);
   }
 
   private async getTelemetry(projectId: string): Promise<ProjectTelemetryTimeseries> {

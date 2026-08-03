@@ -283,11 +283,11 @@ function ci(lane, forwarded) {
   }
   if (lane === "tier1-ts-public-1of2")
     return shell(
-      "pnpm exec vp run ts:build\npnpm --filter @itotori/localization-bridge-schema test\npnpm --filter @itotori/runtime-web-review test\npnpm --filter @itotori/ds test:dom\npnpm --filter @itotori/app exec vitest run --shard=1/2 --exclude '**/.direnv/**' --exclude 'test/production-localize-restart-live-db.test.ts' --exclude 'test/workflow-memo-identity-live-db.test.ts'",
+      "pnpm exec vp run ts:build\npnpm --filter @itotori/localization-bridge-schema test\npnpm --filter @itotori/runtime-web-review test\npnpm --filter @itotori/ds test:dom\npnpm --filter @itotori/app exec vitest run --shard=1/2 --exclude '**/.direnv/**' --exclude 'test/production-localize-restart-live-db.test.ts' --exclude 'test/workflow-memo-identity-live-db.test.ts' --exclude 'test/production-localize-pause-live-db.test.ts'",
     );
   if (lane === "tier1-ts-public-2of2")
     return shell(
-      "pnpm exec vp run ts:build\npnpm --filter @itotori/db test\npnpm --filter @itotori/app exec vitest run --shard=2/2 --exclude '**/.direnv/**' --exclude 'test/production-localize-restart-live-db.test.ts' --exclude 'test/workflow-memo-identity-live-db.test.ts'",
+      "pnpm exec vp run ts:build\npnpm --filter @itotori/db test\npnpm --filter @itotori/app exec vitest run --shard=2/2 --exclude '**/.direnv/**' --exclude 'test/production-localize-restart-live-db.test.ts' --exclude 'test/workflow-memo-identity-live-db.test.ts' --exclude 'test/production-localize-pause-live-db.test.ts'",
     );
   const rustPartition = /^tier1-rust-([1-3])of3$/u.exec(lane)?.[1];
   if (rustPartition !== undefined)
@@ -301,7 +301,7 @@ function ci(lane, forwarded) {
     ]);
   if (lane === "tier1-db")
     return shell(
-      "pnpm exec vp run ts:build\nnode apps/itotori/dist/cli.js db-migrate\nnode apps/itotori/dist/cli.js db-reset\npnpm --filter @itotori/db test:db\nnode scripts/assert-db-tests-not-skipped.mjs\npnpm --filter @itotori/app exec vitest run test/production-localize-restart-live-db.test.ts --exclude '**/.direnv/**'\npnpm --filter @itotori/app exec vitest run test/workflow-memo-identity-live-db.test.ts --exclude '**/.direnv/**'\npnpm --filter @itotori/app exec vitest run --exclude '**/.direnv/**' --exclude 'test/production-localize-restart-live-db.test.ts' --exclude 'test/workflow-memo-identity-live-db.test.ts'",
+      "pnpm exec vp run ts:build\nnode apps/itotori/dist/cli.js db-migrate\nnode apps/itotori/dist/cli.js db-reset\npnpm --filter @itotori/db test:db\nnode scripts/assert-db-tests-not-skipped.mjs\npnpm --filter @itotori/app exec vitest run test/production-localize-restart-live-db.test.ts --exclude '**/.direnv/**'\npnpm --filter @itotori/app exec vitest run test/workflow-memo-identity-live-db.test.ts --exclude '**/.direnv/**'\npnpm --filter @itotori/app exec vitest run test/production-localize-pause-live-db.test.ts --exclude '**/.direnv/**'\npnpm --filter @itotori/app exec vitest run --exclude '**/.direnv/**' --exclude 'test/production-localize-restart-live-db.test.ts' --exclude 'test/workflow-memo-identity-live-db.test.ts' --exclude 'test/production-localize-pause-live-db.test.ts'",
     );
   if (lane === "tier1-browser")
     return shell(

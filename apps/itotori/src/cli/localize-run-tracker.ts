@@ -5,60 +5,45 @@ import {
   type ProjectRunProgressStatus,
 } from "@itotori/db";
 import type { LocalizationRunPlane } from "../composition/localize-entrypoint.js";
-import type { ItotoriProjectWorkflowPort } from "../services/project-operations-port.js";
 import type { PhysicalAttemptCostObserver } from "../llm/physical-attempt-policy.js";
 import type { WorkflowPorts } from "../workflow/index.js";
 import { localizeFailureBlocker } from "./localize-failure-blocker.js";
+import {
+  allocateMicros,
+  ceilingMicrosUsd,
+  exactMicrosUsd,
+  reservationIdFor,
+  terminalAttemptBlocker,
+} from "./localize-run-cost.js";
+import {
+  type CostReservation,
+  type CostScope,
+  type RunWorkflow,
+  statusRank,
+} from "./localize-run-tracker-state.js";
+import {
+  isLocalizationPassPause,
+  LocalizationPassPausedError,
+} from "../services/localization-pass-control.js";
 
 const PROGRESS_ROLE = "localize";
 const LEASE_DURATION_SECONDS = 90;
 const LEASE_RENEWAL_INTERVAL_MS = 30_000;
 export const STARTUP_PROGRESS_BATCH_SIZE = 500;
-/** Test-only override; production leaves both values at their conservative defaults. */
 export type LocalizeRunTrackerTiming = {
   readonly leaseDurationSeconds?: number;
   readonly leaseRenewalIntervalMs?: number;
 };
-type RunWorkflow = Pick<
-  ItotoriProjectWorkflowPort,
-  | "createOrResumeRun"
-  | "acquireLease"
-  | "renewLease"
-  | "releaseLease"
-  | "advanceRun"
-  | "recordProgress"
-  | "reserveCost"
-  | "settleCost"
-  | "releaseCost"
-  | "loadLiveReadModel"
-> &
-  Partial<Pick<ItotoriProjectWorkflowPort, "recordProgressBatch">>;
-
-type CostScope = {
-  readonly unitIds: readonly string[];
-  readonly failureStage: string;
-};
-type CostReservation = CostScope & {
-  readonly reservationId: string;
-};
-const statusRank: Record<ProjectRunProgressStatus, number> = {
-  decoded: 1,
-  drafted: 2,
-  QA: 3,
-  accepted: 4,
-  patched: 5,
-};
-/** Couples real port completions and physical LLM attempts to one durable project run. */
 export class LocalizeRunTracker {
   readonly #costScopes = new AsyncLocalStorage<CostScope>();
   readonly #reservations = new Map<string, CostReservation>();
   readonly #statusByUnit = new Map<string, ProjectRunProgressStatus>();
   readonly #costByUnit = new Map<string, number>();
   readonly #failureBlockerByUnit = new Map<string, string>();
-  /** Every durable progress/cost write is retained here until it settles. The
-   * terminal run transition must not race a callback that still owns the DB
-   * service scope. */
+  /** Writes must settle before the terminal transition. */
   readonly #pendingWrites = new Set<Promise<void>>();
+  /** Pause waits for every fanned-out workflow operation to observe abort. */
+  readonly #pendingOperations = new Set<Promise<unknown>>();
   #lease: ProjectRunLease | undefined;
   #renewalTimer: ReturnType<typeof setInterval> | undefined;
   #renewal: Promise<void> | undefined;
@@ -69,6 +54,7 @@ export class LocalizeRunTracker {
     private readonly workflow: RunWorkflow,
     private readonly plane: LocalizationRunPlane,
     private readonly timing: LocalizeRunTrackerTiming = {},
+    private readonly pauseSignal?: AbortSignal,
   ) {}
   async start(unitIds: readonly string[]): Promise<void> {
     await this.workflow.createOrResumeRun({
@@ -95,8 +81,6 @@ export class LocalizeRunTracker {
     }
   }
 
-  /** The observer reaches the exact physical-attempt boundary; memo hits do not
-   * invoke it, so a replay never creates a synthetic reservation or cost. */
   readonly costObserver: PhysicalAttemptCostObserver = {
     onAttemptStarted: async ({ memoKey, attempt, maxAttemptExposureUsd }) => {
       const scope = this.#costScopes.getStore();
@@ -108,8 +92,6 @@ export class LocalizeRunTracker {
         await this.workflow.reserveCost({
           lease: this.lease(),
           reservationId,
-          // This is a measured profile upper bound used solely to enforce the
-          // cap before dispatch; it is never reported as spent progress.
           reservedMicrosUsd: ceilingMicrosUsd(maxAttemptExposureUsd, "max attempt exposure"),
         });
       });
@@ -221,18 +203,22 @@ export class LocalizeRunTracker {
             }),
       },
       store: {
-        readUnitHead: async (unitId, stage) => {
-          const head = await ports.store.readUnitHead(unitId, stage);
-          if (stage === "final" && head !== null) await this.record(unitId, "accepted");
-          return head;
-        },
-        finalizeUnit: async (input) => {
-          const ref = await ports.store.finalizeUnit(input);
-          if (input.stage === "final") await this.record(input.unitId, "accepted");
-          return ref;
-        },
+        readUnitHead: async (unitId, stage) =>
+          await this.guardOperation(async () => {
+            const head = await ports.store.readUnitHead(unitId, stage);
+            if (stage === "final" && head !== null) await this.record(unitId, "accepted");
+            return head;
+          }),
+        finalizeUnit: async (input) =>
+          await this.guardOperation(async () => {
+            const ref = await ports.store.finalizeUnit(input);
+            if (input.stage === "final") await this.record(input.unitId, "accepted");
+            return ref;
+          }),
         runMemoizedStep: async (memoKey, produce) =>
-          await ports.store.runMemoizedStep(memoKey, produce),
+          await this.guardOperation(
+            async () => await ports.store.runMemoizedStep(memoKey, produce),
+          ),
         attemptLineage: () => ports.store.attemptLineage(),
       },
     };
@@ -240,6 +226,13 @@ export class LocalizeRunTracker {
 
   async complete(): Promise<ProjectRunLiveReadModel | null> {
     return await this.finish("completed");
+  }
+
+  async pause(): Promise<ProjectRunLiveReadModel | null> {
+    if (this.#lease === undefined || this.#finished) {
+      return await this.workflow.loadLiveReadModel(this.plane.projectId, this.plane.runId);
+    }
+    return await this.finish("paused");
   }
 
   async fail(): Promise<void> {
@@ -254,21 +247,29 @@ export class LocalizeRunTracker {
     operation: () => Promise<T>,
     transitionAt: "before" | "after" = "after",
   ): Promise<T> {
-    return await this.#costScopes.run({ unitIds, failureStage }, async () => {
-      try {
-        if (transitionAt === "before") {
-          await Promise.all(unitIds.map((unitId) => this.record(unitId, status)));
-        }
-        const value = await operation();
-        if (transitionAt === "after") {
-          await Promise.all(unitIds.map((unitId) => this.record(unitId, status)));
-        }
-        return value;
-      } catch (error: unknown) {
-        await this.recordFailure(unitIds, failureStage, error);
-        throw error;
-      }
-    });
+    return await this.trackOperation(
+      async () =>
+        await this.#costScopes.run({ unitIds, failureStage }, async () => {
+          try {
+            this.throwIfPaused();
+            if (transitionAt === "before") {
+              await Promise.all(unitIds.map((unitId) => this.record(unitId, status)));
+            }
+            const value = await operation();
+            this.throwIfPaused();
+            if (transitionAt === "after") {
+              await Promise.all(unitIds.map((unitId) => this.record(unitId, status)));
+            }
+            return value;
+          } catch (error: unknown) {
+            if (isLocalizationPassPause(this.pauseSignal)) {
+              throw new LocalizationPassPausedError(this.plane.runId);
+            }
+            await this.recordFailure(unitIds, failureStage, error);
+            throw error;
+          }
+        }),
+    );
   }
 
   private async withScope<T>(
@@ -276,14 +277,23 @@ export class LocalizeRunTracker {
     failureStage: string,
     operation: () => Promise<T>,
   ): Promise<T> {
-    return await this.#costScopes.run({ unitIds, failureStage }, async () => {
-      try {
-        return await operation();
-      } catch (error: unknown) {
-        await this.recordFailure(unitIds, failureStage, error);
-        throw error;
-      }
-    });
+    return await this.trackOperation(
+      async () =>
+        await this.#costScopes.run({ unitIds, failureStage }, async () => {
+          try {
+            this.throwIfPaused();
+            const value = await operation();
+            this.throwIfPaused();
+            return value;
+          } catch (error: unknown) {
+            if (isLocalizationPassPause(this.pauseSignal)) {
+              throw new LocalizationPassPausedError(this.plane.runId);
+            }
+            await this.recordFailure(unitIds, failureStage, error);
+            throw error;
+          }
+        }),
+    );
   }
 
   private async withFailure<T>(
@@ -291,12 +301,20 @@ export class LocalizeRunTracker {
     failureStage: string,
     operation: () => Promise<T>,
   ): Promise<T> {
-    try {
-      return await operation();
-    } catch (error: unknown) {
-      await this.recordFailure(unitIds, failureStage, error);
-      throw error;
-    }
+    return await this.trackOperation(async () => {
+      try {
+        this.throwIfPaused();
+        const value = await operation();
+        this.throwIfPaused();
+        return value;
+      } catch (error: unknown) {
+        if (isLocalizationPassPause(this.pauseSignal)) {
+          throw new LocalizationPassPausedError(this.plane.runId);
+        }
+        await this.recordFailure(unitIds, failureStage, error);
+        throw error;
+      }
+    });
   }
 
   private async recordFailure(
@@ -330,7 +348,6 @@ export class LocalizeRunTracker {
         role: PROGRESS_ROLE,
         status: nextStatus,
         costMicrosUsd: this.#costByUnit.get(unitId) ?? 0,
-        // A unit is covered only once its current stage's port has returned.
         coveragePercent: nextStatus === "decoded" ? 0 : 100,
         blockers,
       });
@@ -364,9 +381,12 @@ export class LocalizeRunTracker {
     await Promise.all(unitIds.map(async (unitId) => await this.record(unitId, "decoded")));
   }
 
-  private async finish(status: "completed" | "failed"): Promise<ProjectRunLiveReadModel | null> {
+  private async finish(
+    status: "completed" | "failed" | "paused",
+  ): Promise<ProjectRunLiveReadModel | null> {
     this.stopLeaseRenewal();
     await this.#renewal;
+    await this.drainOperations();
     // Close the gate and drain callbacks before the terminal transition.
     this.#acceptingWrites = false;
     await this.drainWrites();
@@ -403,6 +423,32 @@ export class LocalizeRunTracker {
     while (this.#pendingWrites.size > 0) {
       await Promise.all(this.#pendingWrites);
     }
+  }
+
+  private async trackOperation<T>(operation: () => Promise<T>): Promise<T> {
+    let pending!: Promise<T>;
+    pending = Promise.resolve()
+      .then(operation)
+      .finally(() => {
+        this.#pendingOperations.delete(pending);
+      });
+    this.#pendingOperations.add(pending);
+    return await pending;
+  }
+
+  private async drainOperations(): Promise<void> {
+    while (this.#pendingOperations.size > 0) {
+      await Promise.allSettled(this.#pendingOperations);
+    }
+  }
+
+  private async guardOperation<T>(operation: () => Promise<T>): Promise<T> {
+    return await this.trackOperation(async () => {
+      this.throwIfPaused();
+      const value = await operation();
+      this.throwIfPaused();
+      return value;
+    });
   }
 
   private lease(): ProjectRunLease {
@@ -445,56 +491,10 @@ export class LocalizeRunTracker {
       throw new Error("localize run progress/cost writer was used after the run finished");
     }
   }
-}
 
-function reservationIdFor(memoKey: string, ordinal: number): string {
-  return `llm:${memoKey}:${ordinal}`;
-}
-
-/** Reject fractional micros rather than inventing a rounded billed amount. */
-function exactMicrosUsd(value: string, label: string): number {
-  const match = /^(\d+)(?:\.(\d+))?$/u.exec(value);
-  if (match === null || (match[2]?.length ?? 0) > 6) {
-    throw new Error(`${label} is not representable in whole micros-USD`);
+  private throwIfPaused(): void {
+    if (isLocalizationPassPause(this.pauseSignal)) {
+      throw new LocalizationPassPausedError(this.plane.runId);
+    }
   }
-  const whole = Number(match[1]);
-  const fraction = `${match[2] ?? ""}${"0".repeat(6 - (match[2]?.length ?? 0))}`;
-  const micros = whole * 1_000_000 + Number(fraction);
-  if (!Number.isSafeInteger(micros)) throw new Error(`${label} is outside the project-run range`);
-  return micros;
-}
-
-function ceilingMicrosUsd(value: string, label: string): number {
-  const match = /^(\d+)(?:\.(\d+))?$/u.exec(value);
-  if (match === null || (match[2]?.length ?? 0) > 18) {
-    throw new Error(`${label} must be a non-negative decimal USD value`);
-  }
-  const whole = Number(match[1]);
-  const fraction = match[2] ?? "";
-  const micros =
-    whole * 1_000_000 +
-    Number(`${fraction.slice(0, 6)}${"0".repeat(Math.max(0, 6 - fraction.length))}`);
-  if (!Number.isSafeInteger(micros)) throw new Error(`${label} is outside the project-run range`);
-  return micros + (Number(fraction.slice(6) || "0") === 0 ? 0 : 1);
-}
-
-/** Spread one real physical-call charge deterministically across the units that
- * actually shared that call. The allocations always sum to the billed micros. */
-function allocateMicros(amount: number, unitIds: readonly string[]): ReadonlyMap<string, number> {
-  const ids = [...new Set(unitIds)].sort();
-  if (ids.length === 0 || amount === 0) return new Map();
-  const each = Math.floor(amount / ids.length);
-  const remainder = amount % ids.length;
-  return new Map(ids.map((unitId, index) => [unitId, each + (index < remainder ? 1 : 0)]));
-}
-
-/** No source/target text is copied into progress. This is the operator-visible
- * projection of the durable physical-attempt facts, including explicit nulls. */
-function terminalAttemptBlocker(
-  execution: Parameters<PhysicalAttemptCostObserver["onAttemptCompleted"]>[0]["execution"],
-): string {
-  if (execution.kind === "completed") return "draft-failed:billing-unknown";
-  const status =
-    execution.failure.httpStatus === null ? "unknown" : String(execution.failure.httpStatus);
-  return `draft-failed:${execution.failure.kind}:http-status:${status}:billing-unknown`;
 }

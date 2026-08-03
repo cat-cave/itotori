@@ -17,7 +17,7 @@ export function deterministicProvider(input: {
   readonly targetSkeleton?: string;
   /** Test-only transport hook. It observes a real provider request before this
    * deterministic HTTP seam returns its response; it never substitutes a role. */
-  readonly beforeResponse?: (role: ProviderRole) => void | Promise<void>;
+  readonly beforeResponse?: (role: ProviderRole, request: Request) => void | Promise<void>;
 }) {
   let localizationSnapshotId = input.localizationSnapshotId;
   let bibleRenderingId = input.bibleRenderingId;
@@ -45,7 +45,7 @@ export function deterministicProvider(input: {
         bibleRenderingId ??= seed.bibleRenderingIds[0];
       }
       calls.push({ role, prompt, response });
-      await input.beforeResponse?.(role);
+      await input.beforeResponse?.(role, request);
       return structuredProviderResponse(response, 0.000001);
     },
     count(role: ProviderRole): number {

@@ -48,6 +48,7 @@ import {
 } from "./api-settings-and-membership-types.js";
 import {
   ApiLaunchPassResponse,
+  ApiLocalizationPassControlResponse,
   ApiPatchIterationDeliveryResponse,
   ApiPermissionSetsListResponse,
   ApiPlayAddressableUnitResponse,
@@ -322,6 +323,7 @@ export type ItotoriApiResponseBody =
   | ApiAuthIdentityResponse
   | ApiAuthCapabilitiesResponse
   | ApiLaunchPassResponse
+  | ApiLocalizationPassControlResponse
   | ApiPlayRouteMapResponse
   | ApiPlayFlagAnnotationResponse
   | ApiPlayUnitFeedbackResponse

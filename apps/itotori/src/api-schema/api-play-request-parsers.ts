@@ -3,6 +3,8 @@ import { ApiAuthSessionRecord, ApiMemberRecord } from "./api-settings-and-member
 import {
   ApiLaunchPassRequest,
   ApiLaunchPassResponse,
+  ApiLocalizationPassControlRequest,
+  ApiLocalizationPassControlResponse,
   ApiPermissionSetRecord,
   ApiPlayTargetEditRequest,
 } from "./api-play-session-types.js";
@@ -120,6 +122,46 @@ export function parseLaunchPassRequest(body: unknown): ApiLaunchPassRequest {
     assertString(request.localeBranchId, "ApiLaunchPassRequest.localeBranchId");
     return { localeBranchId: request.localeBranchId };
   });
+}
+
+export function parseLocalizationPassControlRequest(
+  body: unknown,
+): ApiLocalizationPassControlRequest {
+  return parseRequest("ApiLocalizationPassControlRequest", () => {
+    asStrictRecord(
+      body,
+      "ApiLocalizationPassControlRequest",
+      STRICT_API_BODY_KEYS.ApiLocalizationPassControlRequest,
+    );
+    return {};
+  });
+}
+
+export function assertLocalizationPassControlResponse(
+  value: unknown,
+): asserts value is ApiLocalizationPassControlResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiLocalizationPassControlResponse",
+    STRICT_API_BODY_KEYS.ApiLocalizationPassControlResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.projects.pass-control.v1",
+    "ApiLocalizationPassControlResponse.schemaVersion",
+  );
+  assertEnum(
+    response.action,
+    ["pause", "resume"] as const,
+    "ApiLocalizationPassControlResponse.action",
+  );
+  assertString(response.journalRunId, "ApiLocalizationPassControlResponse.journalRunId");
+  if (response.action === "pause") {
+    assertLiteral(response.status, "paused", "ApiLocalizationPassControlResponse.status");
+  } else {
+    assertLiteral(response.status, "running", "ApiLocalizationPassControlResponse.status");
+  }
+  assertDateLike(response.transitionedAt, "ApiLocalizationPassControlResponse.transitionedAt");
 }
 
 /**

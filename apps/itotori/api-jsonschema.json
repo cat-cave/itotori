@@ -747,6 +747,7 @@
             "database_migrations_required",
             "database_unreachable",
             "workflow_failed",
+            "run_transition_rejected",
             "internal_error"
           ]
         },
@@ -853,6 +854,72 @@
         "startedAt"
       ],
       "type": "object"
+    },
+    "ApiLocalizationPassControlRequest": {
+      "additionalProperties": false,
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "ApiLocalizationPassControlResponse": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "pause"
+            },
+            "journalRunId": {
+              "type": "string"
+            },
+            "schemaVersion": {
+              "const": "itotori.projects.pass-control.v1"
+            },
+            "status": {
+              "const": "paused"
+            },
+            "transitionedAt": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "journalRunId",
+            "schemaVersion",
+            "status",
+            "transitionedAt"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "resume"
+            },
+            "journalRunId": {
+              "type": "string"
+            },
+            "schemaVersion": {
+              "const": "itotori.projects.pass-control.v1"
+            },
+            "status": {
+              "const": "running"
+            },
+            "transitionedAt": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "journalRunId",
+            "schemaVersion",
+            "status",
+            "transitionedAt"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "ApiLocalizationRunConfigResponse": {
       "additionalProperties": false,

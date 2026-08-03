@@ -72,6 +72,20 @@ export type LaunchLocalizationPassResult =
       refusalMessage: string;
     };
 
+export type LocalizationPassControlResult =
+  | {
+      action: "pause";
+      journalRunId: string;
+      status: "paused";
+      transitionedAt: Date;
+    }
+  | {
+      action: "resume";
+      journalRunId: string;
+      status: "running";
+      transitionedAt: Date;
+    };
+
 export type ItotoriProjectWorkflowPort = {
   reset(): Promise<void>;
   listLocaleBranchIdentities(projectId: string): Promise<LocaleBranchIdentity[]>;
@@ -116,6 +130,14 @@ export type ItotoriProjectWorkflowPort = {
     projectId: string;
     localeBranchId: string;
   }): Promise<LaunchLocalizationPassResult>;
+  pauseLocalizationPass(input: {
+    projectId: string;
+    journalRunId: string;
+  }): Promise<LocalizationPassControlResult>;
+  resumeLocalizationPass(input: {
+    projectId: string;
+    journalRunId: string;
+  }): Promise<LocalizationPassControlResult>;
 } & {
   ensureRunProjectScope(
     input: Parameters<ItotoriProjectRepositoryPort["ensureRunProjectScope"]>[1],

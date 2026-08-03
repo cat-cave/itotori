@@ -60,6 +60,8 @@ export type ItotoriApiRouteId =
   // ovw-launch-pass-action — the Overview "launch next pass" mutation is
   // `canSteer`-gated (the `draft.write` steer permission).
   | "projects.launchPass"
+  | "projects.pausePass"
+  | "projects.resumePass"
   | "play.routeMap"
   // play-flag-composer — in-the-moment AnnotationComposer flag → canonical
   // context correction via ManualFeedbackImport (feedback.import / canFlag).
@@ -94,6 +96,7 @@ export type ApiErrorResponse = {
     | "database_migrations_required"
     | "database_unreachable"
     | "workflow_failed"
+    | "run_transition_rejected"
     | "internal_error";
   remainingAllowanceMicrosUsd?: number;
   incidentReference?: string;
@@ -107,5 +110,6 @@ export const API_ERROR_RESPONSE_CODES = [
   "database_migrations_required",
   "database_unreachable",
   "workflow_failed",
+  "run_transition_rejected",
   "internal_error",
 ] as const satisfies readonly ApiErrorResponse["code"][];

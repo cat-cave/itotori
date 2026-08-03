@@ -4,7 +4,7 @@
 // data source is exclusively `projects.overview.journal`: normalized run,
 // physical-call, outcome, candidate, QA, and context provenance.
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Badge, DataTable, Panel, StatReadout } from "@itotori/ds";
 import type { ApiCallState } from "../../api-client.js";
 import type { ProjectOverviewReadModel } from "../../project-overview-read-model.js";
@@ -15,6 +15,7 @@ import { formatMicrosUsd } from "../format.js";
 import { EmptyState, ErrorState, LoadingState } from "../states.js";
 import { useWorkflowHandoffToasts } from "../workflow-handoff-toasts.js";
 import { ProducePatchedBuildAction } from "./PassLedgerPanelProducePatchedBuildAction.js";
+import { LocalizationPassControlAction } from "./LocalizationPassControlAction.js";
 import "./PassLedgerPanel.css";
 
 export { ProducePatchedBuildAction };
@@ -34,6 +35,8 @@ export type JournalRunSummaryRow = {
   patchBuild: string;
   failure: string | null;
 };
+
+type ActivePass = { journalRunId: string; status: "running" | "paused" };
 
 /** Pure, lossless display projection over the journal overview rows. */
 export function journalRunSummaryRows(
@@ -74,16 +77,27 @@ export function journalRunSummaryRows(
  * are sourced from the durable attempt/outcome journal.
  */
 export function PassLedgerPanel(): ReactNode {
-  const overview = useApiQuery("projects.overview", {}, "overview");
-  return <PassLedgerPanelBody overview={overview} />;
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const overview = useApiQuery("projects.overview", {}, `overview:${refreshVersion}`);
+  return (
+    <PassLedgerPanelBody
+      overview={overview}
+      onRefresh={() => {
+        setRefreshVersion((version) => version + 1);
+      }}
+    />
+  );
 }
 
 export function PassLedgerPanelBody({
   overview,
+  onRefresh,
 }: {
   overview: ApiCallState<ProjectOverviewReadModel>;
+  onRefresh?: () => void;
 }): ReactNode {
   const caps = useCapsOptional();
+  const [localActivePass, setLocalActivePass] = useState<ActivePass | null>(null);
   const rowCount = overview.state === "ready" ? overview.data.journal.rows.length : null;
   const headline =
     rowCount === null
@@ -93,8 +107,35 @@ export function PassLedgerPanelBody({
         : `Execution journal — ${rowCount} run${rowCount === 1 ? "" : "s"} recorded`;
   const overviewCanSteer = overview.state === "ready" ? overview.data.canSteer : false;
   const canSteer = caps === null ? overviewCanSteer : overviewCanSteer && caps.canSteer;
+  const overviewActivePass =
+    overview.state === "ready" &&
+    (overview.data.journal.latestRow?.status === "running" ||
+      overview.data.journal.latestRow?.status === "paused")
+      ? {
+          journalRunId: overview.data.journal.latestRow.journalRunId,
+          status: overview.data.journal.latestRow.status,
+        }
+      : null;
+  const activePass = localActivePass ?? overviewActivePass;
+  useEffect(() => {
+    if (overview.state !== "ready" || localActivePass === null) return;
+    if (overviewActivePass !== null) {
+      if (
+        localActivePass.journalRunId !== overviewActivePass.journalRunId ||
+        localActivePass.status !== overviewActivePass.status
+      ) {
+        setLocalActivePass(overviewActivePass);
+      }
+      return;
+    }
+    if (
+      overview.data.journal.rows.some((row) => row.journalRunId === localActivePass.journalRunId)
+    ) {
+      setLocalActivePass(null);
+    }
+  }, [localActivePass, overview, overviewActivePass]);
   const steerDenial =
-    caps?.denials.steer ?? (canSteer ? null : "draft.write permission required to launch a pass");
+    caps?.denials.steer ?? (canSteer ? null : "draft.write permission required to control a pass");
   return (
     <Panel
       title={headline}
@@ -102,12 +143,30 @@ export function PassLedgerPanelBody({
       className="itotori-panel--pass-ledger"
       data-panel-state={overview.state}
     >
-      {overview.state === "ready" && (
+      {overview.state === "ready" && activePass === null && (
         <LaunchPassAction
           canSteer={canSteer}
           steerDenial={steerDenial}
           projectId={overview.data.projectId}
           localeBranchId={overview.data.journal.filter.localeBranchId}
+          onStarted={(journalRunId) => {
+            setLocalActivePass({ journalRunId, status: "running" });
+            onRefresh?.();
+          }}
+        />
+      )}
+      {overview.state === "ready" && activePass !== null && (
+        <LocalizationPassControlAction
+          key={`${activePass.journalRunId}:${activePass.status}`}
+          canSteer={canSteer}
+          steerDenial={steerDenial}
+          projectId={overview.data.projectId}
+          journalRunId={activePass.journalRunId}
+          status={activePass.status}
+          onStatusChanged={(status) => {
+            setLocalActivePass({ journalRunId: activePass.journalRunId, status });
+            onRefresh?.();
+          }}
         />
       )}
       {overview.state === "ready" && (
@@ -133,11 +192,13 @@ export function LaunchPassAction({
   projectId,
   localeBranchId,
   steerDenial,
+  onStarted,
 }: {
   canSteer: boolean;
   projectId: string;
   localeBranchId: string | null;
   steerDenial?: string | null;
+  onStarted?: (journalRunId: string) => void;
 }): ReactNode {
   if (localeBranchId === null) return null;
   if (!canSteer) {
@@ -165,15 +226,23 @@ export function LaunchPassAction({
       </div>
     );
   }
-  return <LaunchPassActionBody projectId={projectId} localeBranchId={localeBranchId} />;
+  return (
+    <LaunchPassActionBody
+      projectId={projectId}
+      localeBranchId={localeBranchId}
+      {...(onStarted === undefined ? {} : { onStarted })}
+    />
+  );
 }
 
 function LaunchPassActionBody({
   projectId,
   localeBranchId,
+  onStarted,
 }: {
   projectId: string;
   localeBranchId: string;
+  onStarted?: (journalRunId: string) => void;
 }): ReactNode {
   const { notifyHandoff } = useWorkflowHandoffToasts();
   const [pending, setPending] = useState(false);
@@ -194,6 +263,7 @@ function LaunchPassActionBody({
         } else {
           setOutcome({ kind: "started", journalRunId });
           notifyHandoff({ kind: "pass-launched", journalRunId });
+          onStarted?.(journalRunId);
         }
       } else {
         setOutcome({ kind: "refused", message: result.data.refusalMessage ?? "refused" });

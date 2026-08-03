@@ -56,11 +56,11 @@ import {
   assertEngineCapabilityMatrixDocument,
   createProjectEngineFamilyRegistry,
 } from "./engine-capability-matrix.js";
+import { defaultReadJson, defaultWriteJson } from "./launch-localization-pass.js";
 import {
   createDetachedLocalizationPassRunner,
-  defaultReadJson,
-  defaultWriteJson,
-} from "./launch-localization-pass.js";
+  type LocalizationPassRunnerPort,
+} from "./localization-pass-runner.js";
 import {
   contextSnapshotInputForRun,
   decimalUsdToExactMicros,
@@ -110,7 +110,11 @@ export class ItotoriMissingServiceError extends Error {
 }
 
 export async function withDatabaseItotoriServices<T>(
-  options: { databaseUrl?: string } & ItotoriServiceFactoryOptions,
+  options: {
+    databaseUrl?: string;
+    /** Server factories supply their shared detached-worker coordinator. */
+    passRunner?: LocalizationPassRunnerPort;
+  } & ItotoriServiceFactoryOptions,
   callback: (services: ItotoriApplicationServices) => Promise<T>,
 ): Promise<T> {
   return await withDatabase(async ({ db, pool }) => {
@@ -139,6 +143,7 @@ export async function withDatabaseItotoriServices<T>(
     const wikiRepository = new ItotoriLlmWikiRepository(pool, cipher);
     const memoStore = new ItotoriLlmCallMemoRepository(pool, cipher, contentAccess);
     const snapshotRepository = new ItotoriLlmSnapshotRepository(pool);
+    const passRunConfig = new ItotoriLocalizationPassRunConfigRepository(db);
     const engineFamilyRegistry = projectEngineRegistry();
     const catalogRepository = new ItotoriCatalogRepository(db);
     const unitBoundFeedback = createRepositoryUnitFeedbackPort({
@@ -148,24 +153,26 @@ export async function withDatabaseItotoriServices<T>(
     // Launch-pass opens a detached DB session so the HTTP mutation can return
     // as soon as the durable project run is admitted. Nested
     // withDatabaseItotoriServices reuses the same options (database URL, etc.).
-    const passRunner = createDetachedLocalizationPassRunner({
-      openSession: async (run) => {
-        await withDatabaseItotoriServices(options, async (session) => {
-          const substrate = configuredServicePort(session, "localizationSubstrate");
-          if (substrate === undefined) {
-            throw new Error(
-              "launch-pass refused: localizationSubstrate is not installed on the detached session",
-            );
-          }
-          await run({
-            readJson: defaultReadJson,
-            writeJson: defaultWriteJson,
-            projectWorkflow: session.projectWorkflow,
-            resolvePortSource: (request, perRun) => substrate.resolvePortSource(request, perRun),
+    const passRunner =
+      options.passRunner ??
+      createDetachedLocalizationPassRunner({
+        openSession: async (run) => {
+          await withDatabaseItotoriServices(options, async (session) => {
+            const substrate = configuredServicePort(session, "localizationSubstrate");
+            if (substrate === undefined) {
+              throw new Error(
+                "launch-pass refused: localizationSubstrate is not installed on the detached session",
+              );
+            }
+            await run({
+              readJson: defaultReadJson,
+              writeJson: defaultWriteJson,
+              projectWorkflow: session.projectWorkflow,
+              resolvePortSource: (request, perRun) => substrate.resolvePortSource(request, perRun),
+            });
           });
-        });
-      },
-    });
+        },
+      });
     const services = retiredServiceSurface({
       authorization: new ItotoriAuthorizationService(db, actor),
       catalogRepository: {
@@ -189,7 +196,7 @@ export async function withDatabaseItotoriServices<T>(
         runs: new ItotoriProjectRunRepository(db),
         snapshots: snapshotRepository,
         ledger: new ItotoriModelLedgerRepository(db),
-        passRunConfig: new ItotoriLocalizationPassRunConfigRepository(db),
+        passRunConfig,
         passRunner,
         conformance: new ItotoriConformanceRepository(db),
         defaultTargetLocale: "en-US",
@@ -252,6 +259,23 @@ export async function withDatabaseItotoriServices<T>(
           });
         },
       },
+      localizationRunConfig: {
+        saveRunConfig: async (input) => {
+          const saved = await passRunConfig.saveRunConfig(actor, input);
+          return {
+            schemaVersion: "itotori.settings.localization-run-config.v0",
+            projectId: saved.projectId,
+            localeBranchId: saved.localeBranchId,
+            configPath: saved.configPath,
+            dataRoot: saved.dataRoot,
+            pairPolicyPath: saved.pairPolicyPath,
+            modelId: saved.modelId,
+            providerId: saved.providerId,
+            runDir: saved.runDir,
+            updatedAt: saved.updatedAt.toISOString(),
+          };
+        },
+      },
       localizationSubstrate: {
         async resolvePortSource(request, perRun) {
           const config = localizationConfig();
@@ -287,7 +311,10 @@ export async function withDatabaseItotoriServices<T>(
               styleRevisionHash: config.styleRevisionHash,
               acceptedOutputHeadHash: null,
             },
-            dispatch: localizeDispatchConfig(),
+            dispatch: {
+              ...localizeDispatchConfig(),
+              ...(perRun.abortSignal === undefined ? {} : { signal: perRun.abortSignal }),
+            },
             roles: createProductionRoleBindings(),
             draftBudget: { budgetBytes: 16_384, overlapUnits: 1 },
           });
@@ -328,6 +355,7 @@ export function retiredServiceSurface(
     | "wikiApply"
     | "wikiBuild"
     | "localizationSubstrate"
+    | "localizationRunConfig"
     | "patchbackProduce"
     | "manualFeedback"
     | "unitFeedback"

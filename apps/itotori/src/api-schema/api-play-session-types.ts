@@ -65,6 +65,26 @@ export type ApiLaunchPassResponse = {
   refusalMessage: string | null;
 };
 
+/** The run identity lives in the path; an empty strict object prevents clients
+ * from forging branch, worker, or lifecycle state in a pause/resume request. */
+export type ApiLocalizationPassControlRequest = Record<never, never>;
+
+export type ApiLocalizationPassControlResponse =
+  | {
+      schemaVersion: "itotori.projects.pass-control.v1";
+      action: "pause";
+      journalRunId: string;
+      status: "paused";
+      transitionedAt: string;
+    }
+  | {
+      schemaVersion: "itotori.projects.pass-control.v1";
+      action: "resume";
+      journalRunId: string;
+      status: "running";
+      transitionedAt: string;
+    };
+
 // play-routemap-ui — route/choice tree read-model response. Coverage is derived
 // from the route-choice map status (Fresh -> fresh, Stale -> stale).
 export type ApiPlayRouteMapCoverageState = "fresh" | "stale";

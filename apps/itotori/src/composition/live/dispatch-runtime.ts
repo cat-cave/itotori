@@ -75,6 +75,7 @@ export interface LiveDispatchRuntimeConfig {
  * role's `dispatch*Call(call, runtime)` in EVERY run mode (including test-dev);
  * the role adds its own `readPayload` and the boundary certifies the route. */
 export function createDispatchRuntime(config: LiveDispatchRuntimeConfig): DispatchRuntimeBase {
+  const fetcher = runScopedFetcher(config.fetcher, config.signal);
   const memo: PhysicalStepMemoRuntime = {
     store: config.memoStore,
     profile: config.profile,
@@ -92,18 +93,37 @@ export function createDispatchRuntime(config: LiveDispatchRuntimeConfig): Dispat
       ? undefined
       : createOpenRouterGenerationLookup({
           apiKey,
-          ...(config.fetcher ? { fetcher: config.fetcher } : {}),
+          ...(fetcher ? { fetcher } : {}),
         }));
   return {
     tools: config.tools ?? [],
     contentAccess: config.contentAccess,
     memo,
-    ...(config.fetcher ? { fetcher: config.fetcher } : {}),
+    ...(fetcher ? { fetcher } : {}),
     ...(config.env ? { env: config.env } : {}),
     ...(generationLookup ? { generationLookup } : {}),
     ...(config.onReasoningDetailsContinuity
       ? { onReasoningDetailsContinuity: config.onReasoningDetailsContinuity }
       : {}),
+  };
+}
+
+/** Some adapter calls do not preserve a caller-supplied request signal. Bind
+ * the run signal at the sole HTTP seam too, so an operator pause reaches every
+ * real provider request and generation lookup. */
+function runScopedFetcher(
+  fetcher: DispatchRuntime["fetcher"] | undefined,
+  signal: AbortSignal | undefined,
+): DispatchRuntime["fetcher"] | undefined {
+  if (fetcher === undefined || signal === undefined) return fetcher;
+  return async (input, init) => {
+    const requestSignal = input instanceof Request ? input.signal : undefined;
+    const initSignal = init?.signal ?? undefined;
+    const signals = [signal, requestSignal, initSignal].filter(
+      (candidate): candidate is AbortSignal => candidate !== undefined,
+    );
+    const combined = signals.length === 1 ? signal : AbortSignal.any(signals);
+    return await fetcher(input, { ...init, signal: combined });
   };
 }
 

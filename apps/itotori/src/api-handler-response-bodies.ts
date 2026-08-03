@@ -10,6 +10,7 @@ import type {
   ApiConfigureAuthSsoSettingsRequest,
   ApiConfigureAuthSsoSettingsResponse,
   ApiLaunchPassResponse,
+  ApiLocalizationPassControlResponse,
   ApiMemberInvitationResponse,
   ApiMemberRecord,
   ApiMemberResponse,
@@ -28,7 +29,10 @@ import type {
   PlayTesterTargetEditResponse,
   SelectedPatchExportResponse,
 } from "./play/result-revision-service.js";
-import type { LaunchLocalizationPassResult } from "./services/project-operations-port.js";
+import type {
+  LaunchLocalizationPassResult,
+  LocalizationPassControlResult,
+} from "./services/project-operations-port.js";
 import type { PatchRuntimeLaunchReceipt } from "./play/patch-runtime-launcher.js";
 import { playDeliveryArchivePath } from "./api-routes.js";
 import type {
@@ -55,6 +59,27 @@ export function launchPassResponseBody(
     journalRunId: null,
     startedAt: null,
     refusalMessage: outcome.refusalMessage,
+  };
+}
+
+export function localizationPassControlResponseBody(
+  outcome: LocalizationPassControlResult,
+): ApiLocalizationPassControlResponse {
+  if (outcome.action === "pause") {
+    return {
+      schemaVersion: "itotori.projects.pass-control.v1",
+      action: "pause",
+      journalRunId: outcome.journalRunId,
+      status: "paused",
+      transitionedAt: outcome.transitionedAt.toISOString(),
+    };
+  }
+  return {
+    schemaVersion: "itotori.projects.pass-control.v1",
+    action: "resume",
+    journalRunId: outcome.journalRunId,
+    status: "running",
+    transitionedAt: outcome.transitionedAt.toISOString(),
   };
 }
 
