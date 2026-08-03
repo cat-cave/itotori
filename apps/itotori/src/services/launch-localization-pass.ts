@@ -118,7 +118,7 @@ export async function driveLocalizationPass(
   const bridgeJson = deps.readJson(launch.bridgePath);
   assertBridgeBundleV02(bridgeJson);
   const bridge: BridgeBundleV02 = bridgeJson;
-  const { scenes } = projectDecodeStructure(structureJson);
+  const { scenes } = projectDecodeStructure(structureJson, bridge);
 
   const request: RunPolicyRequest = {
     runMode: launch.runMode,

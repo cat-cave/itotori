@@ -43,6 +43,9 @@ export {
   LiveWorkflowFactoryError,
   type InstalledBibleSource,
   type LiveWorkflowFactoryConfig,
+  type BoundLiveWorkflowRoleSeams,
+  type LiveWorkflowRoleBindingFactory,
+  type LiveWorkflowRoleBindingInput,
   type LiveWorkflowRoleSeams,
   type LiveWorkflowStores,
 } from "./factory.js";

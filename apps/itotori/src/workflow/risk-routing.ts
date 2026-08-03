@@ -7,8 +7,9 @@
 //     appearance) gets FULL applicable lane coverage;
 //   - a REPRESENTATIVE-CLEAN unit is deterministically SAMPLED — only a stable
 //     fraction enters the meaning lane, and the rest are trusted.
-// Lane applicability is decode-shaped (voice needs a speaker, continuity needs a
-// route), so a lane never judges a unit it structurally cannot. The whole
+// Lane applicability is decode-shaped (voice needs a speaker and route,
+// continuity needs a route), so a lane never judges a unit it structurally
+// cannot. The whole
 // selection is a pure function of the drafts + gate defects — same inputs, same
 // routing.
 
@@ -80,7 +81,7 @@ function lanesForUnit(input: {
     return input.sampled ? ["Q1"] : [];
   }
   const lanes: ReviewLane[] = ["Q1"];
-  if (input.hasSpeaker) lanes.push("Q2");
+  if (input.hasSpeaker && input.hasRoute) lanes.push("Q2");
   // Terminology (Q3) audits sense on every high-risk line after the exact gate.
   lanes.push("Q3");
   if (input.hasRoute) lanes.push("Q4");

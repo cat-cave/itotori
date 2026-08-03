@@ -64,6 +64,11 @@ function factoryConfig(): LiveWorkflowFactoryConfig {
           throw new Error("the composition proof does not finalize");
         },
       },
+      acceptedTargets: {
+        async listFinalUnits() {
+          return [];
+        },
+      },
       wiki: {
         async listObjects() {
           // No bible is installed: readiness must block instead of fabricating
@@ -188,5 +193,67 @@ describe("bridgeUnitsByUnitKey key resolution (real bridge id shape)", () => {
     expect(() =>
       bridgeUnitsByUnitKey([{ factId: "unit:absent", bridgeUnitId: "absent" }], bridge),
     ).toThrow(/has no bridge unit absent/u);
+  });
+});
+
+describe("scene projection review eligibility", () => {
+  it("uses a revealed bridge speaker for Q2 eligibility and fails closed for reader-unknown", () => {
+    const bridge = loadBridgeBundle();
+    const first = bridge.units[0]!;
+    const structure = parseableWholeGameStructure();
+    const withSpeaker = {
+      ...structure,
+      scenes: structure.scenes.map((scene, sceneIndex) =>
+        sceneIndex === 0
+          ? {
+              ...scene,
+              units: scene.units?.map((unit, unitIndex) =>
+                unitIndex === 0
+                  ? { ...unit, characterId: "char.rin", routeMembership: ["route:proof"] }
+                  : unit,
+              ),
+            }
+          : scene,
+      ),
+    };
+    const readerUnknown = {
+      ...bridge,
+      units: bridge.units.map((unit) =>
+        unit.bridgeUnitId === first.bridgeUnitId
+          ? {
+              ...unit,
+              speaker: {
+                knowledgeState: "reader_unknown" as const,
+                speakerId: "01920000-0000-7000-8000-000000000001",
+                displayName: "Rin",
+                readerLabel: "???",
+              },
+            }
+          : unit,
+      ),
+    };
+    const known = {
+      ...readerUnknown,
+      units: readerUnknown.units.map((unit) =>
+        unit.bridgeUnitId === first.bridgeUnitId
+          ? {
+              ...unit,
+              speaker: {
+                knowledgeState: "known" as const,
+                speakerId: "01920000-0000-7000-8000-000000000001",
+                displayName: "Rin",
+                canonicalNameRef: "char.rin",
+              },
+            }
+          : unit,
+      ),
+    };
+
+    expect(
+      projectDecodeStructure(withSpeaker, readerUnknown).scenes[0]?.units[0]?.speakerId,
+    ).toBeNull();
+    expect(projectDecodeStructure(withSpeaker, known).scenes[0]?.units[0]?.speakerId).toBe(
+      "char.rin",
+    );
   });
 });

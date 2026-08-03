@@ -136,7 +136,10 @@ export function buildQ6CallSpec(
     modelProfileVersion: profile.version,
     requestedModel: profile.model,
     providerPolicy: profile.providerPolicy,
-    parentEventId: refs.parentEventId,
+    parentEventId: sha256({
+      parentEventId: refs.parentEventId,
+      presentationOrder: orderTag,
+    }),
     contextSnapshotId: refs.contextSnapshotId,
     localizationSnapshotId: refs.localizationSnapshotId,
     messages: [

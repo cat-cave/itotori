@@ -160,13 +160,27 @@ describe("RB workflow — stratified review, not uniform (clause 4)", () => {
     const hot = plan.selections.find((sel) => sel.unitId === "hot");
     const cold = plan.selections.find((sel) => sel.unitId === "cold");
     expect(hot?.stratum).toBe("high-risk");
-    expect(hot?.lanes.length).toBeGreaterThan(1);
+    expect(hot?.lanes).toEqual(["Q1", "Q2", "Q3", "Q4"]);
     expect(cold?.stratum).toBe("representative-clean");
     // Not uniform: the clean unit gets strictly fewer lanes than the high-risk one.
     expect(cold?.lanes.length ?? 0).toBeLessThan(hot?.lanes.length ?? 0);
     expect(classifyStratum({ firstAppearance: true, hasGateDefect: false, uncertain: false })).toBe(
       "high-risk",
     );
+  });
+
+  it("does not route a global high-risk line into the route-bound voice lane", () => {
+    const drafted = draftedScene("s1", ["global"], "whole-scene");
+    const highRisk: DraftedScene = { ...drafted, units: [draftFor("global", true)] };
+    const plan = planStratifiedReview(
+      highRisk,
+      [],
+      new Map([["global", { speakerId: "sp", routeId: null, firstAppearance: false }]]),
+    );
+
+    expect(plan.selections[0]?.lanes).toEqual(["Q1", "Q3"]);
+    expect(plan.unitsByLane.has("Q2")).toBe(false);
+    expect(plan.unitsByLane.has("Q4")).toBe(false);
   });
 });
 

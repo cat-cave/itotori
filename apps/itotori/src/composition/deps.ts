@@ -33,6 +33,7 @@ import type { BibleBasis } from "../run-policy/index.js";
 import type {
   DraftMode,
   DraftedScene,
+  GateReport,
   FinalizedUnit,
   LaneVerdict,
   ReviewLane,
@@ -83,6 +84,9 @@ export interface ReviewDeps {
     readonly lane: ReviewLane;
     readonly scene: DraftedScene;
     readonly unitIds: readonly string[];
+    /** The deterministic gate result for this exact draft. Q3 must consume its
+     * actual glossary-exact status rather than re-evaluate a different gate. */
+    readonly gateReport: GateReport;
   }): Promise<readonly LaneVerdict[]>;
 }
 
@@ -121,7 +125,9 @@ export interface AdjudicateDeps {
     readonly defects: readonly Defect[];
     readonly contested: readonly LaneVerdict[];
   }): Q6ReviewInput;
-  buildRefs(input: { readonly unitId: string }): Q6DispatchRefs;
+  /** Refs are derived from the fully assembled blinded contest so a changed
+   * contest receives a new physical memo identity rather than a conflict. */
+  buildRefs(input: Q6ReviewInput): Q6DispatchRefs;
   readonly dispatch: Q6Dispatch;
 }
 
