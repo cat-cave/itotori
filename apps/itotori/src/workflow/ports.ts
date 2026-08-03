@@ -19,6 +19,7 @@
 //                           physical-attempt ledger).
 
 import type { Defect } from "../contracts/index.js";
+import type { WorkflowMemoIdentity } from "./memo-identity.js";
 import type { DeterministicGate } from "../gates/contract-types.js";
 import type { UnitBibleBinding } from "../localized-wiki/ground-truth/index.js";
 import type { BibleBasis } from "../run-policy/index.js";
@@ -65,6 +66,9 @@ export interface DraftPort {
      * later bible edit can reflow only the consumers that cited it. */
     readonly bibleBindingsByUnit?: ReadonlyMap<string, UnitBibleBinding>;
   }): Promise<DraftedScene>;
+  /** Rebuilds live-only P1 finalization state from a validated draft. The
+   * driver invokes this after both a physical result and a durable memo hit. */
+  recordFinalizationData?(drafted: DraftedScene): void;
 }
 
 /** The deterministic-gate outcome for a drafted scene: the fired defects (origin
@@ -239,6 +243,9 @@ export interface WorkflowArtifactStore {
 
 /** The full set of seams the driver composes. */
 export interface WorkflowPorts {
+  /** Durable logical-step scope. Every memoized workflow computation keys this
+   * identity before it reaches the shared step cache. */
+  readonly memoIdentity: WorkflowMemoIdentity;
   readonly readiness: BibleReadinessPort;
   readonly draft: DraftPort;
   readonly gates: GateEvaluationPort;

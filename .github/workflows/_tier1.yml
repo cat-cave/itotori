@@ -91,6 +91,9 @@ jobs:
 
   db:
     name: Tier 1 / postgres
+    # The DB-owned durable proofs run the real Kaifuu + Utsushi seams, so use
+    # the same pinned native artifact as the portable app shards.
+    needs: [native]
     runs-on: ubuntu-latest
     # Provisional cold-run budget (build graph + migrate + strict DB gates).
     # Measure on shadow runs, then tighten.
@@ -115,6 +118,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: ./.github/actions/setup-itotori
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: native-${{ github.sha }}-linux-x64
+          path: .ci/bin
+
+      - name: Wire native bins into env
+        run: |
+          set -euo pipefail
+          chmod +x .ci/bin/kaifuu-cli .ci/bin/utsushi-cli
+          {
+            echo "ITOTORI_KAIFUU_BIN=$PWD/.ci/bin/kaifuu-cli"
+            echo "ITOTORI_UTSUSHI_BIN=$PWD/.ci/bin/utsushi-cli"
+          } >> "$GITHUB_ENV"
 
       - name: Preflight Postgres
         run: |

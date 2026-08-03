@@ -206,6 +206,11 @@ export type ProjectRunPortfolioProgressSummary = {
 
 export interface ItotoriProjectRunRepositoryPort {
   createRun(actor: AuthorizationActor, input: CreateProjectRunInput): Promise<ProjectRunRecord>;
+  /** Re-enter a non-terminal run only when every immutable run binding agrees. */
+  createOrResumeRun(
+    actor: AuthorizationActor,
+    input: CreateProjectRunInput,
+  ): Promise<ProjectRunRecord>;
   advanceRun(actor: AuthorizationActor, input: AdvanceProjectRunInput): Promise<ProjectRunRecord>;
   recordProgress(
     actor: AuthorizationActor,

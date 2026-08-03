@@ -31,6 +31,8 @@ import { projectOutputScope } from "./output-scope.js";
 import { mayShip, resolveWorkflowPolicy } from "./policy.js";
 import { resolveSceneReadiness } from "./readiness.js";
 import { planStratifiedReview, type ReviewPlan } from "./risk-routing.js";
+import { PURE_MTL_WORKFLOW_MEMO_PREFIX, workflowMemoKeyFor } from "./memo-identity.js";
+import type { WorkflowMemoRole, WorkflowMemoStep } from "./memo-identity.js";
 import type { AttemptLineageEntry, FinalizedUnit, GateReport, WorkflowPorts } from "./ports.js";
 import {
   WorkflowSequenceError,
@@ -79,18 +81,17 @@ const PURE_MTL_EXECUTION: WorkflowExecution = {
 /** The literal null Wiki passed to direct P1. Keeping this shared frozen map
  * makes it impossible for an ablation scene to inherit a rendering id. */
 const NULL_WIKI_BIBLE: ReadonlyMap<string, readonly string[]> = new Map();
-const PURE_MTL_ATTEMPT_PREFIX = "pure-mtl:";
-
 function executionFor(policy: ResolvedRunPolicy): WorkflowExecution {
   return policy.bibleBasis === "pure-mtl-ablation" ? PURE_MTL_EXECUTION : QUALIFYING_EXECUTION;
 }
-
-/** Physical workflow steps for the control arm live under an explicit namespace.
- * The qualifier's historic keys remain unchanged; it additionally filters this
- * namespace out when projecting its own lineage report. */
-function memoKeyFor(policy: ResolvedRunPolicy, ...parts: readonly unknown[]): string {
-  const key = stableDigest(...parts);
-  return policy.bibleBasis === "pure-mtl-ablation" ? `${PURE_MTL_ATTEMPT_PREFIX}${key}` : key;
+function memoKeyFor(
+  ports: WorkflowPorts,
+  policy: ResolvedRunPolicy,
+  step: WorkflowMemoStep,
+  role: WorkflowMemoRole | null,
+  ...parts: readonly unknown[]
+): string {
+  return workflowMemoKeyFor({ identity: ports.memoIdentity, policy, step, role, parts });
 }
 
 function reportAttemptLineage(
@@ -99,8 +100,8 @@ function reportAttemptLineage(
 ): readonly AttemptLineageEntry[] {
   const attempts = ports.store.attemptLineage();
   return policy.bibleBasis === "pure-mtl-ablation"
-    ? attempts.filter((attempt) => attempt.memoKey.startsWith(PURE_MTL_ATTEMPT_PREFIX))
-    : attempts.filter((attempt) => !attempt.memoKey.startsWith(PURE_MTL_ATTEMPT_PREFIX));
+    ? attempts.filter((attempt) => attempt.memoKey.startsWith(PURE_MTL_WORKFLOW_MEMO_PREFIX))
+    : attempts.filter((attempt) => !attempt.memoKey.startsWith(PURE_MTL_WORKFLOW_MEMO_PREFIX));
 }
 
 /** The outcome of one scene's pass through the pipeline. */
@@ -184,17 +185,14 @@ async function processScene(
     units: scene.units.filter((unit) => missingSet.has(unit.unitId)),
   };
 
-  // (1) Wiki-first runs resolve the exact localized bible before drafting. The
-  // policy-selected pure-MTL control is the sole exception: it passes the
-  // concrete null Wiki directly to P1 and does not touch the readiness port.
+  // (1) Wiki-first runs resolve the localized bible; pure-MTL passes the null Wiki directly to P1.
   const readiness = execution.needsBibleReadiness
     ? await resolveSceneReadiness(subScene, ports.readiness)
     : { bibleRenderingIdsByUnit: NULL_WIKI_BIBLE, bibleBindingsByUnit: undefined };
 
-  // (2) Draft — whole-scene OR overlapping-chunk — through a memoized physical
-  // step so every attempt is counted and a restart hit is skipped (12c).
+  // (2) Draft through a memoized physical step so every attempt is counted and a restart hit is skipped.
   const mode = chooseDraftMode(subScene.units.length, options);
-  const draftKey = memoKeyFor(policy, "draft", scene.sceneId, mode, missing);
+  const draftKey = memoKeyFor(ports, policy, "draft", "P1", scene.sceneId, mode, missing);
   const draftStep = await ports.store.runMemoizedStep(draftKey, () =>
     ports.draft.draftScene({
       scene: subScene,
@@ -209,6 +207,8 @@ async function processScene(
   const drafted: DraftedScene = draftStep.value;
   assertDraftCoverage(drafted, missing);
   assertDraftBasis(drafted, policy);
+  // Cache hits also rehydrate the live finalizer's P1 state.
+  ports.draft.recordFinalizationData?.(drafted);
 
   // (3) Deterministic gates on each draft — gate defects are deterministic faults.
   const gateReport = await ports.gates.evaluate(drafted);
@@ -250,6 +250,8 @@ async function processScene(
             review: ports.review,
             adjudicate: ports.adjudicate,
             store: ports.store,
+            memoIdentity: ports.memoIdentity,
+            policy,
           })
         : null;
   }
@@ -290,7 +292,7 @@ async function runStratifiedReview(
   ports: WorkflowPorts,
 ): Promise<readonly LaneVerdict[]> {
   const laneJobs = [...plan.unitsByLane.entries()].map(async ([lane, unitIds]) => {
-    const key = memoKeyFor(policy, "review", scene.sceneId, lane, unitIds);
+    const key = memoKeyFor(ports, policy, "review", lane, scene.sceneId, lane, unitIds);
     const step = await ports.store.runMemoizedStep(key, () =>
       ports.review.review({ lane, scene, unitIds, gateReport }),
     );
@@ -384,8 +386,10 @@ export async function runLocalizationWorkflowForPolicy(
   let buildLqa: readonly LaneVerdict[] = [];
   if (finalized.length > 0) {
     const patchKey = memoKeyFor(
+      providerBoundPorts,
       policy,
       "patchback",
+      null,
       ...[...finalized]
         .sort((left, right) => (left.unitId < right.unitId ? -1 : 1))
         .map((unit) => `${unit.unitId}:${unit.ref.contentHash}:${unit.ref.version}`),
@@ -396,16 +400,21 @@ export async function runLocalizationWorkflowForPolicy(
     const currentPatchId = exported.value.patchId;
     patchId = currentPatchId;
     if (execution.runsBuildLqa) {
-      // (11) Downstream Q5 Build-LQA — strictly AFTER patch export, on the patched
-      // result. Its per-unit stage heads make a restart dispatch only units whose
-      // on-screen assessment is absent; the review result itself is memoized too.
+      // (11) Q5 runs after patch export; stage heads dispatch only units lacking on-screen assessment.
       const missingBuildLqa = await missingStageUnits(
         ports.store,
         finalized.map((unit) => unit.unitId),
         "build-lqa",
       );
       if (missingBuildLqa.length > 0) {
-        const q5Key = memoKeyFor(policy, "build-lqa", currentPatchId, ...missingBuildLqa);
+        const q5Key = memoKeyFor(
+          providerBoundPorts,
+          policy,
+          "build-lqa",
+          "Q5",
+          currentPatchId,
+          ...missingBuildLqa,
+        );
         const reviewed = await ports.store.runMemoizedStep(q5Key, async () => {
           const verdicts = await providerBoundPorts.patchback.buildLqaReview({
             patchId: currentPatchId,
@@ -459,9 +468,11 @@ export async function runLocalizationWorkflowForPolicy(
  * remains under the per-run scene scheduler without consuming this portfolio cap. */
 function boundProviderPorts(ports: WorkflowPorts, gate: BoundedConcurrency): WorkflowPorts {
   const hydrateBuildLqaEvidence = ports.patchback.hydrateBuildLqaEvidence;
+  const recordFinalizationData = ports.draft.recordFinalizationData;
   return {
     ...ports,
     draft: {
+      ...(recordFinalizationData === undefined ? {} : { recordFinalizationData }),
       draftScene: async (input) => await gate.run(async () => await ports.draft.draftScene(input)),
     },
     review: {

@@ -15,6 +15,7 @@ const historyTables = [
   "itotori_llm_wiki_versions",
   "itotori_llm_dependency_edges",
   "itotori_llm_human_inputs",
+  "itotori_llm_workflow_step_memos",
 ] as const;
 
 const rebuiltTables = [
@@ -35,6 +36,7 @@ const encryptedColumns = [
   ["itotori_llm_http_attempts", "response_ciphertext"],
   ["itotori_llm_human_inputs", "human_input_ciphertext"],
   ["itotori_llm_wiki_versions", "wiki_ciphertext"],
+  ["itotori_llm_workflow_step_memos", "value_ciphertext"],
 ] as const;
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -46,6 +48,7 @@ const migrationSql = [
   "0106_llm_transcript_snapshots.sql",
   "0108_llm_explicit_unknown_quarantine.sql",
   "0109_wiki_snapshot_binding.sql",
+  "0120_workflow_step_memos.sql",
 ]
   .map((file) => readFileSync(join(here, "..", "migrations", file), "utf8"))
   .join("\n");
@@ -141,7 +144,9 @@ describe("rebuilt LLM persistence migration", () => {
       `,
       [[...historyTables].filter((table) => table !== "itotori_llm_dependency_edges")],
     );
-    expect(lifecycleColumns.rows).toHaveLength(12);
+    expect(lifecycleColumns.rows).toHaveLength(
+      [...historyTables].filter((table) => table !== "itotori_llm_dependency_edges").length * 2,
+    );
     expect(lifecycleColumns.rows.every((column) => column.is_nullable === "NO")).toBe(true);
 
     const truncateTriggers = await pool.query<{ table_name: string }>(

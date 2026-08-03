@@ -11,6 +11,7 @@ const historyTables = [
   "itotori_llm_wiki_versions",
   "itotori_llm_dependency_edges",
   "itotori_llm_human_inputs",
+  "itotori_llm_workflow_step_memos",
 ] as const;
 
 const rebuiltTables = [
@@ -52,6 +53,10 @@ const expectedColumnsByTable = {
     ),
   itotori_llm_human_inputs:
     "input_id input_kind subject_ref human_input_ciphertext human_input_key_ref human_input_content_hash created_at retention_deadline deletion_state deleted_at".split(
+      " ",
+    ),
+  itotori_llm_workflow_step_memos:
+    "memo_key schema_version value_ciphertext value_key_ref value_content_hash created_at retention_deadline deletion_state deleted_at".split(
       " ",
     ),
   itotori_llm_cas_heads:

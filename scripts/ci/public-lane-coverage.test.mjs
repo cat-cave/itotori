@@ -5,7 +5,10 @@ import test from "node:test";
 
 import {
   APP_SUITE_SHARDS,
+  DB_OWNED_LANE,
+  DB_OWNED_APP_PROOFS,
   REQUIRED_CATEGORY_IDS,
+  REQUIRED_DB_OWNED_PROOF_IDS,
   REQUIRED_PUBLIC_CATEGORIES,
   evaluateCoverage,
   extractRecipeBody,
@@ -29,16 +32,22 @@ const realProbe = {
   },
 };
 
-test("all ten required public categories are covered secretlessly against the real tree", () => {
+test("all required public categories and DB-owned proofs are covered against the real tree", () => {
   const result = runCoverage();
   assert.equal(result.ok, true, `coverage gaps: ${result.failures.join("; ")}`);
-  assert.equal(result.rows.length, 10);
+  assert.equal(result.rows.length, 12);
 });
 
 test("the registry covers exactly the ten required category ids", () => {
   assert.equal(REQUIRED_CATEGORY_IDS.length, 10);
   const present = new Set(REQUIRED_PUBLIC_CATEGORIES.map((c) => c.category));
   for (const id of REQUIRED_CATEGORY_IDS) assert.ok(present.has(id), `missing ${id}`);
+});
+
+test("the registry keeps both durable proofs explicitly owned by the DB lane", () => {
+  assert.deepEqual(REQUIRED_DB_OWNED_PROOF_IDS, ["durable-restart", "workflow-memo-model-variant"]);
+  assert.equal(DB_OWNED_APP_PROOFS.length, 2);
+  for (const proof of DB_OWNED_APP_PROOFS) assert.equal(proof.lane, DB_OWNED_LANE);
 });
 
 test("command-selector extraction isolates the meta lane from another scope", () => {
@@ -55,6 +64,35 @@ test("dropping a required category surfaces as a coverage gap", () => {
   const result = evaluateCoverage({ ...realProbe, categories: dropped });
   assert.equal(result.ok, false);
   assert.ok(result.failures.some((f) => f.includes("migration") && f.includes("missing")));
+});
+
+test("dropping a required DB-owned proof surfaces as a coverage gap", () => {
+  const result = evaluateCoverage({
+    ...realProbe,
+    dbOwnedProofs: DB_OWNED_APP_PROOFS.filter((proof) => proof.proof !== "durable-restart"),
+  });
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.failures.some(
+      (failure) => failure.includes("durable-restart") && failure.includes("missing"),
+    ),
+  );
+});
+
+test("moving a DB-owned proof away from the DB lane surfaces as a coverage gap", () => {
+  const result = evaluateCoverage({
+    ...realProbe,
+    dbOwnedProofs: DB_OWNED_APP_PROOFS.map((proof) =>
+      proof.proof === "durable-restart" ? { ...proof, lane: "ci-tier1-ts-public-1of2" } : proof,
+    ),
+  });
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.failures.some(
+      (failure) =>
+        failure.includes("durable-restart") && failure.includes("must be directly owned"),
+    ),
+  );
 });
 
 // --- NEGATIVE: citing a private/secret lane fails the gate -------------------
@@ -118,4 +156,46 @@ test("app-suite shards both run the @itotori/app vitest suite", () => {
     assert.ok(body?.includes("--filter @itotori/app"), `${lane} missing app filter`);
     assert.ok(body?.includes("--shard"), `${lane} missing shard`);
   }
+});
+
+test("DB-owned durable proofs are directly invoked only in the DB lane", () => {
+  const dbRecipe = extractRecipeBody(justfileText, "ci-tier1-db");
+  assert.ok(dbRecipe);
+  for (const proof of DB_OWNED_APP_PROOFS) {
+    const appPath = proof.test.replace("apps/itotori/", "");
+    const exclusion = `--exclude '${appPath}'`;
+    assert.ok(dbRecipe.includes(proof.invocation), `${proof.proof} missing direct DB invocation`);
+    assert.ok(dbRecipe.includes(exclusion), `${proof.proof} reruns in DB's generic app suite`);
+    for (const lane of APP_SUITE_SHARDS) {
+      const shardRecipe = extractRecipeBody(justfileText, lane);
+      assert.ok(shardRecipe?.includes(exclusion), `${proof.proof} is collected by ${lane}`);
+    }
+  }
+});
+
+test("removing a durable proof's DB invocation or public exclusion fails coverage", () => {
+  const proof = DB_OWNED_APP_PROOFS[0];
+  assert.ok(proof);
+  const missingInvocation = evaluateCoverage({
+    ...realProbe,
+    justfileText: justfileText.replace(proof.invocation, "vitest list"),
+  });
+  assert.equal(missingInvocation.ok, false);
+  assert.ok(
+    missingInvocation.failures.some(
+      (failure) => failure.includes(proof.proof) && failure.includes("does not directly invoke"),
+    ),
+  );
+
+  const appPath = proof.test.replace("apps/itotori/", "");
+  const missingPublicExclusion = evaluateCoverage({
+    ...realProbe,
+    justfileText: justfileText.replace(`--exclude '${appPath}'`, ""),
+  });
+  assert.equal(missingPublicExclusion.ok, false);
+  assert.ok(
+    missingPublicExclusion.failures.some(
+      (failure) => failure.includes(proof.proof) && failure.includes("does not exclude"),
+    ),
+  );
 });

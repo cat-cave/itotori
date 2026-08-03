@@ -105,6 +105,12 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     return await this.deps.runs.createRun(this.deps.actor, input);
   }
 
+  async createOrResumeRun(
+    input: Parameters<ItotoriProjectRunRepositoryPort["createOrResumeRun"]>[1],
+  ) {
+    return await this.deps.runs.createOrResumeRun(this.deps.actor, input);
+  }
+
   async advanceRun(input: Parameters<ItotoriProjectRunRepositoryPort["advanceRun"]>[1]) {
     return await this.deps.runs.advanceRun(this.deps.actor, input);
   }

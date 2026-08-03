@@ -18,11 +18,7 @@
 import type { InstalledBible, RequirementOptions } from "../localized-wiki/ground-truth/index.js";
 import type { UnitBibleBinding } from "../localized-wiki/ground-truth/index.js";
 import type { FactSnapshot, OrderedUnitFact } from "../prepass/index.js";
-import type {
-  LocalizeSceneInput,
-  LocalizerRuntimeBase,
-  SceneLocalization,
-} from "../roles/p1/index.js";
+import type { LocalizeSceneInput, LocalizerRuntimeBase } from "../roles/p1/index.js";
 import type { EditLineInput, EditorRuntimeBase } from "../roles/p2/index.js";
 import type { RepairOptions, RepairRequest, RepairRuntimeBase } from "../roles/p3/index.js";
 import type { Q6Dispatch, Q6DispatchRefs, Q6ReviewInput } from "../roles/q6/index.js";
@@ -30,6 +26,7 @@ import type { DeterministicGateInput } from "../gates/index.js";
 import type { NativePatchbackInput } from "../patchback/index.js";
 import type { Defect } from "../contracts/index.js";
 import type { BibleBasis } from "../run-policy/index.js";
+import type { WorkflowMemoIdentity } from "../workflow/memo-identity.js";
 import type {
   DraftMode,
   DraftedScene,
@@ -64,9 +61,9 @@ export interface DraftDeps {
   }): LocalizeSceneInput;
   readonly runtime: LocalizerRuntimeBase;
   /** Records the physical P1 receipts and validated drafts that a later CAS
-   * finalization must seal. The workflow port invokes this only after P1 has
-   * returned a complete, validated scene. */
-  recordFinalizationData?(localized: SceneLocalization): void;
+   * finalization must seal. The driver invokes this after validating either a
+   * new P1 result or a durable P1 step-cache replay. */
+  recordFinalizationData?(drafted: DraftedScene): void;
 }
 
 /** The gate seam: assemble the deterministic-gate input from a drafted scene plus
@@ -157,6 +154,8 @@ export interface PatchbackDeps {
 
 /** The full substrate the live workflow ports adapt into the driver's ports. */
 export interface WorkflowPortDeps {
+  /** Run/model identity carried unchanged into the assembled workflow ports. */
+  readonly memoIdentity: WorkflowMemoIdentity;
   readonly readiness: ReadinessDeps;
   readonly draft: DraftDeps;
   readonly gates: GateDeps;

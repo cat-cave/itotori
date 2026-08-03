@@ -19,10 +19,14 @@ document maps that stable surface without inventing additional recipes.
 Tier-1 public work is partitioned rather than hidden behind aliases:
 
 - `tier1-ts-public-1of2` and `tier1-ts-public-2of2` build TypeScript and run
-  complementary public package/app test partitions.
+  complementary public-owned package/app test partitions. The durable restart
+  and model-variant memo proofs are explicitly excluded from both shards.
 - `tier1-rust-1of3`, `tier1-rust-2of3`, and `tier1-rust-3of3` use Cargo
   nextest partitions.
-- `tier1-db` exercises migration/reset and database-backed tests.
+- `tier1-db` exercises migration/reset and database-backed tests. It directly
+  owns the durable restart and model-variant memo proofs against its Postgres
+  service and native CLI artifact; those tests fail loudly if `DATABASE_URL` is
+  absent.
 - `tier1-mutation` runs the mutation-differential selector.
 - `tier1-behavior` runs the behavior ledger, local evidence verifier,
   fixed-success mutation proof, and private-input failure contracts.

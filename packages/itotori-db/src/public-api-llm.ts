@@ -45,6 +45,11 @@ export type {
   LlmStepUsage,
 } from "./repositories/llm-call-memo-repository.js";
 export {
+  ItotoriWorkflowStepMemoRepository,
+  WorkflowStepMemoConflictError,
+} from "./repositories/workflow-step-memo-repository.js";
+export type { WorkflowStepMemoStore } from "./repositories/workflow-step-memo-repository.js";
+export {
   injectLlmDurabilityFault,
   isLlmDurabilityFault,
   llmDurabilityFaultBoundaries,

@@ -84,6 +84,9 @@ function createReadinessPort(deps: WorkflowPortDeps): BibleReadinessPort {
  * onto the driver's `DraftedScene` under the chosen realization mode. */
 function createDraftPort(deps: WorkflowPortDeps): DraftPort {
   return {
+    ...(deps.draft.recordFinalizationData === undefined
+      ? {}
+      : { recordFinalizationData: deps.draft.recordFinalizationData }),
     async draftScene(input): Promise<DraftedScene> {
       const localizeInput = deps.draft.buildInput(input);
       const localized = await localizeScene(localizeInput, deps.draft.runtime);
@@ -105,8 +108,10 @@ function createDraftPort(deps: WorkflowPortDeps): DraftPort {
         mode: localized.mode === "overlapping-chunks" ? "overlapping-chunk" : "whole-scene",
         batches: localized.batches,
         units,
+        memoKeys: localized.results.flatMap((result) =>
+          result.status === "success" ? [result.memoKey] : [],
+        ),
       };
-      deps.draft.recordFinalizationData?.(localized);
       return drafted;
     },
   };
@@ -202,6 +207,7 @@ function createPatchbackPort(deps: WorkflowPortDeps): PatchbackPort {
  * returned object is exactly what `runLocalizationWorkflow` composes. */
 export function createWorkflowPorts(deps: WorkflowPortDeps): WorkflowPorts {
   return {
+    memoIdentity: deps.memoIdentity,
     readiness: createReadinessPort(deps),
     draft: createDraftPort(deps),
     gates: createGatePort(deps),

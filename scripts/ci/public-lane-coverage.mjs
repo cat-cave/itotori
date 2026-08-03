@@ -30,10 +30,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const repoRoot = resolve(here, "..", "..");
 
 // ---------------------------------------------------------------------------
-// Lane classification. PUBLIC lanes are the secretless per-gate recipes wired
-// into pr-tiers.yml (tier0 + tier1). PRIVATE lanes need staged real corpora, a
-// real browser, or the opt-in real-byte profile and are NEVER a valid coverage
-// citation — a category that can only be proven on a private lane is a gap.
+// Lane classification. PUBLIC lanes are the per-gate recipes wired into
+// pr-tiers.yml (tier0 + tier1); ci-tier1-db gets a disposable Postgres service
+// and the CI-built public native CLI artifact. PRIVATE lanes need staged real
+// corpora, a real browser, or the opt-in real-byte profile and are NEVER a
+// valid coverage citation — a category that can only be proven on a private
+// lane is a gap.
 // ---------------------------------------------------------------------------
 export const PUBLIC_SECRETLESS_LANES = new Set([
   "ci-tier0-meta",
@@ -60,13 +62,37 @@ export const PRIVATE_LANES = new Set([
   "ci-tier1-browser",
 ]);
 
-// The two public app-suite shards. Every apps/itotori/test file is assigned by
-// vitest hash to exactly one of the two, so their UNION covers the whole app
-// suite. An "app-suite-member" citation is proven by asserting BOTH shards run
-// the @itotori/app vitest suite (so the file runs in whichever shard owns it),
-// secretlessly (DATABASE_URL unset → DB-backed siblings skip; the cited fixture
-// tests are DB-free and execute).
+// The two public app-suite shards. Their UNION covers every public-owned app
+// test. The two durable proofs in DB_OWNED_APP_PROOFS are explicitly excluded
+// from both shards and directly invoked by ci-tier1-db: that is collection
+// ownership, not a no-DATABASE_URL skip.
 export const APP_SUITE_SHARDS = ["ci-tier1-ts-public-1of2", "ci-tier1-ts-public-2of2"];
+export const DB_OWNED_LANE = "ci-tier1-db";
+
+// These proofs need live Postgres and intentionally fail loudly if it is
+// absent. Each must be directly invoked in ci-tier1-db and excluded from both
+// portable shards; this registry keeps either side of that ownership split from
+// silently drifting.
+export const DB_OWNED_APP_PROOFS = [
+  {
+    proof: "durable-restart",
+    title: "durable restart",
+    test: "apps/itotori/test/production-localize-restart-live-db.test.ts",
+    marker: "SIGKILLs a production child after P1, then resumes from its durable checkpoint",
+    lane: DB_OWNED_LANE,
+    invocation: "vitest run test/production-localize-restart-live-db.test.ts",
+  },
+  {
+    proof: "workflow-memo-model-variant",
+    title: "model-variant durable memo",
+    test: "apps/itotori/test/workflow-memo-identity-live-db.test.ts",
+    marker: "keeps a model-only variant in a distinct durable checkpoint",
+    lane: DB_OWNED_LANE,
+    invocation: "vitest run test/workflow-memo-identity-live-db.test.ts",
+  },
+];
+
+export const REQUIRED_DB_OWNED_PROOF_IDS = ["durable-restart", "workflow-memo-model-variant"];
 
 // ---------------------------------------------------------------------------
 // The required-category coverage registry. Each entry cites:
@@ -193,7 +219,7 @@ export function extractRecipeBody(justfileText, recipeName) {
         ?.body ?? null
     );
   }
-  if (recipeName.startsWith("ci-tier1-ts-public-")) {
+  if (recipeName.startsWith("ci-tier1-")) {
     const selector = recipeName.slice(3);
     return (
       new RegExp(
@@ -223,12 +249,30 @@ export function extractRecipeBody(justfileText, recipeName) {
   return body.join("\n");
 }
 
+function verifyPublicLane(lane, label, row, failures) {
+  if (PRIVATE_LANES.has(lane)) {
+    row.ok = false;
+    failures.push(`${label}: lane "${lane}" is a PRIVATE/secret lane — not valid public coverage`);
+  } else if (!PUBLIC_SECRETLESS_LANES.has(lane)) {
+    row.ok = false;
+    failures.push(`${label}: lane "${lane}" is not a known public secretless recipe`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Coverage evaluation. Returns { ok, rows, failures } — pure over injected
 // justfile text + a file-exists/read probe so the regression suite can drive
 // mutated inputs without touching the tree.
 // ---------------------------------------------------------------------------
-export function evaluateCoverage({ categories, requiredIds, justfileText, readFile, fileExists }) {
+export function evaluateCoverage({
+  categories,
+  requiredIds,
+  dbOwnedProofs = DB_OWNED_APP_PROOFS,
+  requiredDbOwnedProofIds = REQUIRED_DB_OWNED_PROOF_IDS,
+  justfileText,
+  readFile,
+  fileExists,
+}) {
   const failures = [];
   const rows = [];
 
@@ -243,18 +287,8 @@ export function evaluateCoverage({ categories, requiredIds, justfileText, readFi
     const lanes = entry.proof.kind === "app-suite-member" ? APP_SUITE_SHARDS : [entry.proof.lane];
     const row = { category: entry.category, title: entry.title, test: entry.test, lanes, ok: true };
 
-    // (a) every covering lane is a PUBLIC secretless recipe, never a private one.
-    for (const lane of lanes) {
-      if (PRIVATE_LANES.has(lane)) {
-        row.ok = false;
-        failures.push(
-          `${entry.category}: lane "${lane}" is a PRIVATE/secret lane — not valid public coverage`,
-        );
-      } else if (!PUBLIC_SECRETLESS_LANES.has(lane)) {
-        row.ok = false;
-        failures.push(`${entry.category}: lane "${lane}" is not a known public secretless recipe`);
-      }
-    }
+    // (a) every covering lane is a PUBLIC recipe, never a private one.
+    for (const lane of lanes) verifyPublicLane(lane, entry.category, row, failures);
 
     // (b) the cited test exists and carries its distinguishing marker.
     if (!fileExists(entry.test)) {
@@ -306,6 +340,69 @@ export function evaluateCoverage({ categories, requiredIds, justfileText, readFi
     rows.push(row);
   }
 
+  const presentDbOwnedProofs = new Set(dbOwnedProofs.map((proof) => proof.proof));
+  for (const id of requiredDbOwnedProofIds) {
+    if (!presentDbOwnedProofs.has(id))
+      failures.push(`required DB-owned proof "${id}" is missing from the coverage registry`);
+  }
+
+  for (const proof of dbOwnedProofs) {
+    const row = {
+      category: proof.proof,
+      title: `${proof.title} (DB-owned)`,
+      test: proof.test,
+      lanes: [proof.lane],
+      ok: true,
+    };
+    verifyPublicLane(proof.lane, proof.proof, row, failures);
+
+    if (proof.lane !== DB_OWNED_LANE) {
+      row.ok = false;
+      failures.push(
+        `${proof.proof}: DB-owned proof must be directly owned by "${DB_OWNED_LANE}", not "${proof.lane}"`,
+      );
+    }
+
+    if (!fileExists(proof.test)) {
+      row.ok = false;
+      failures.push(`${proof.proof}: cited test "${proof.test}" does not exist`);
+    } else if (!readFile(proof.test).includes(proof.marker)) {
+      row.ok = false;
+      failures.push(`${proof.proof}: marker "${proof.marker}" not found in "${proof.test}"`);
+    }
+
+    if (!proof.test.startsWith("apps/itotori/test/")) {
+      row.ok = false;
+      failures.push(`${proof.proof}: DB-owned proof must live under apps/itotori/test/`);
+    }
+
+    const dbRecipe = extractRecipeBody(justfileText, proof.lane);
+    if (dbRecipe === null || !dbRecipe.includes(proof.invocation)) {
+      row.ok = false;
+      failures.push(
+        `${proof.proof}: DB lane "${proof.lane}" does not directly invoke "${proof.invocation}"`,
+      );
+    }
+
+    const appPath = proof.test.replace("apps/itotori/", "");
+    const exclusion = `--exclude '${appPath}'`;
+    if (dbRecipe === null || !dbRecipe.includes(exclusion)) {
+      row.ok = false;
+      failures.push(
+        `${proof.proof}: DB lane "${proof.lane}" reruns the proof outside its direct invocation`,
+      );
+    }
+    for (const lane of APP_SUITE_SHARDS) {
+      const shardRecipe = extractRecipeBody(justfileText, lane);
+      if (shardRecipe === null || !shardRecipe.includes(exclusion)) {
+        row.ok = false;
+        failures.push(`${proof.proof}: public shard "${lane}" does not exclude "${appPath}"`);
+      }
+    }
+
+    rows.push(row);
+  }
+
   return { ok: failures.length === 0, rows, failures };
 }
 
@@ -314,6 +411,8 @@ export function runCoverage(root = repoRoot) {
   return evaluateCoverage({
     categories: REQUIRED_PUBLIC_CATEGORIES,
     requiredIds: REQUIRED_CATEGORY_IDS,
+    dbOwnedProofs: DB_OWNED_APP_PROOFS,
+    requiredDbOwnedProofIds: REQUIRED_DB_OWNED_PROOF_IDS,
     justfileText,
     readFile: (p) => readFileSync(join(root, p), "utf8"),
     fileExists: (p) => existsSync(join(root, p)),
@@ -335,7 +434,7 @@ function main() {
     if (check) process.exit(1);
   } else {
     process.stdout.write(
-      `\nall ${result.rows.length} required public categories proven secretless.\n`,
+      `\nall ${REQUIRED_PUBLIC_CATEGORIES.length} required public categories and ${DB_OWNED_APP_PROOFS.length} DB-owned proofs proven in public CI lanes.\n`,
     );
   }
 }
