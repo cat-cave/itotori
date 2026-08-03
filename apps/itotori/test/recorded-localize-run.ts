@@ -278,6 +278,7 @@ export function passingVerdict(
   lane: "Q1" | "Q2" | "Q3" | "Q4" | "Q5",
   unitId: string,
 ): LaneVerdict {
+  const rubric = lane === "Q5" ? "build-lqa" : "meaning";
   return {
     lane,
     verdict: {
@@ -285,7 +286,7 @@ export function passingVerdict(
       reviewId: `review:${lane}:${unitId}`,
       localizationSnapshotId: SNAPSHOT_HASH,
       roleId: lane,
-      rubric: "meaning",
+      rubric,
       unitId,
       basis: { kind: "wiki-first", bibleRenderingIds: ["bible:recorded"] },
       verdict: "PASS",
@@ -295,7 +296,7 @@ export function passingVerdict(
       evidenceIds: ["evidence:recorded"],
       repairConstraint: null,
     },
-  } as LaneVerdict;
+  };
 }
 
 export function deferred() {

@@ -177,6 +177,9 @@ function createAdjudicatePort(deps: WorkflowPortDeps): AdjudicatePort {
 function createPatchbackPort(deps: WorkflowPortDeps): PatchbackPort {
   return {
     async exportPatch(input) {
+      if (deps.patchback.exportPatch !== undefined) {
+        return await deps.patchback.exportPatch(input.finalized);
+      }
       const build = buildNativePatchback(
         deps.patchback.buildInput(input.finalized),
         deps.patchback.translatedBundlePath(input.finalized),

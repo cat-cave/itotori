@@ -1,7 +1,7 @@
 import { structuredProviderResponse } from "./llm-step-test-support.js";
 
 type ReviewMode = "pass" | "cannot-assess";
-type ProviderRole = "P1" | "Q1" | "Q2" | "Q3" | "Q4" | "Q6";
+type ProviderRole = "P1" | "Q1" | "Q2" | "Q3" | "Q4" | "Q5" | "Q6";
 type ProviderCall = {
   readonly role: ProviderRole;
   readonly prompt: string;
@@ -13,6 +13,8 @@ export function deterministicProvider(input: {
   readonly localizationSnapshotId?: string;
   readonly bibleRenderingId?: string;
   readonly voiceRenderingId?: string;
+  /** Controlled P1 output only. Runtime evidence is always produced by native Utsushi. */
+  readonly targetSkeleton?: string;
 }) {
   let localizationSnapshotId = input.localizationSnapshotId;
   let bibleRenderingId = input.bibleRenderingId;
@@ -32,6 +34,7 @@ export function deterministicProvider(input: {
         localizationSnapshotId,
         bibleRenderingId,
         voiceRenderingId,
+        targetSkeleton: input.targetSkeleton,
       });
       if (role === "P1") {
         const seed = localizerSeed(messages);
@@ -69,8 +72,11 @@ function providerResponse(input: {
   readonly localizationSnapshotId: string | undefined;
   readonly bibleRenderingId: string | undefined;
   readonly voiceRenderingId: string | undefined;
+  readonly targetSkeleton: string | undefined;
 }): unknown {
-  if (input.role === "P1") return localizerOutput(localizerSeed(input.messages), input.reviewMode);
+  if (input.role === "P1") {
+    return localizerOutput(localizerSeed(input.messages), input.reviewMode, input.targetSkeleton);
+  }
   const snapshotId = requiredProviderValue(input.localizationSnapshotId, "localization snapshot");
   const bibleId = requiredProviderValue(input.bibleRenderingId, "Bible rendering");
   const unitId = promptUnitId(input.messages);
@@ -87,12 +93,26 @@ function providerResponse(input: {
   if (input.role === "Q4") {
     return passVerdict("Q4", "continuity", unitId, snapshotId, bibleId, [unitId]);
   }
+  if (input.role === "Q5") {
+    return passVerdict(
+      "Q5",
+      "build-lqa",
+      unitId,
+      snapshotId,
+      bibleId,
+      q5EvidenceIds(input.messages),
+    );
+  }
   const evidenceId = input.role === "Q1" ? bibleId : unitId;
   const rubric = input.role === "Q1" ? "meaning" : "terminology";
   return passVerdict(input.role, rubric, unitId, snapshotId, bibleId, [evidenceId]);
 }
 
-function localizerOutput(seed: LocalizerSeed, reviewMode: ReviewMode): unknown {
+function localizerOutput(
+  seed: LocalizerSeed,
+  reviewMode: ReviewMode,
+  targetSkeleton: string | undefined,
+): unknown {
   return {
     schemaVersion: "itotori.draft-batch.v1",
     localizationSnapshotId: seed.localizationSnapshotId,
@@ -103,7 +123,7 @@ function localizerOutput(seed: LocalizerSeed, reviewMode: ReviewMode): unknown {
       .map((skeleton) => ({
         unitId: skeleton.unitId,
         sourceHash: skeleton.sourceHash,
-        targetSkeleton: "Proof.",
+        targetSkeleton: targetSkeleton ?? "Proof.",
         evidenceIds: [skeleton.unitId],
         basis: { kind: seed.draftBasis, bibleRenderingIds: seed.bibleRenderingIds },
         uncertainty:
@@ -116,7 +136,7 @@ function localizerOutput(seed: LocalizerSeed, reviewMode: ReviewMode): unknown {
 
 function passVerdict(
   roleId: Exclude<ProviderRole, "P1">,
-  rubric: "meaning" | "voice" | "terminology" | "continuity" | "adjudication",
+  rubric: "meaning" | "voice" | "terminology" | "continuity" | "build-lqa" | "adjudication",
   unitId: string,
   localizationSnapshotId: string,
   bibleId: string,
@@ -254,8 +274,19 @@ function providerRole(messages: readonly string[]): ProviderRole {
   if (prompt.includes("VOICE and REGISTER CONTINUITY")) return "Q2";
   if (prompt.includes("CONTEXTUAL SENSE and REGISTER")) return "Q3";
   if (prompt.includes("CONTINUITY only: callback")) return "Q4";
+  if (prompt.includes("RESIDUAL TRANSLATION QUALITY AS IT APPEARS ON SCREEN")) return "Q5";
   if (prompt.includes("genuine subjective conflict")) return "Q6";
   throw new Error("provider proof received an unexpected role prompt");
+}
+
+function q5EvidenceIds(messages: readonly string[]): readonly string[] {
+  const prompt = messages.join("\n");
+  const frame = /^FRAME: ([^\s]+)/mu.exec(prompt)?.[1];
+  const accepted = /^EXPECTED ACCEPTED TARGET \(([^)]+)\):$/mu.exec(prompt)?.[1];
+  if (frame === undefined || accepted === undefined) {
+    throw new Error("provider proof Q5 prompt has no frame/accepted evidence ids");
+  }
+  return [frame, accepted];
 }
 
 function promptUnitId(messages: readonly string[]): string {

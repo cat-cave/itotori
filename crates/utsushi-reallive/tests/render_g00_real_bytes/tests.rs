@@ -1,4 +1,4 @@
-use super::synthetic::run_synthetic_skip_surface_proof;
+use super::synthetic::{run_synthetic_skip_surface_proof, run_synthetic_warning_surface_proof};
 use super::title::run_title_render_proof;
 use super::*;
 
@@ -39,4 +39,10 @@ fn render_pass_applies_state_and_rasterises_g00_title2_real_bytes() {
 #[test]
 fn emit_scene_reports_skip_for_undecodable_synthetic_g00() {
     run_synthetic_skip_surface_proof();
+}
+
+/// A best-effort decoder warning must be just as non-final as a hard skip.
+#[test]
+fn emit_scene_reports_warning_for_short_synthetic_g00() {
+    run_synthetic_warning_surface_proof();
 }

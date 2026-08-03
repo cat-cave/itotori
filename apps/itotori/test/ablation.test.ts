@@ -21,6 +21,7 @@ import {
   type AblationRunRequest,
 } from "../src/ablation/index.js";
 import { runLocalizationWorkflow } from "../src/workflow/index.js";
+import { passingVerdict } from "./recorded-localize-run.js";
 import type {
   AttemptContext,
   AttemptLineageEntry,
@@ -282,9 +283,9 @@ function buildPorts(store: FakeStore, rec: Recorder, opts: FakeOptions = {}): Wo
         rec.exportCalls += 1;
         return { patchId: "patch.ablation.1" };
       },
-      async buildLqaReview() {
+      async buildLqaReview(input) {
         rec.buildLqaCalls += 1;
-        return [];
+        return input.unitIds.map((unitId) => passingVerdict("Q5", unitId));
       },
     },
     store: wrappedStore,

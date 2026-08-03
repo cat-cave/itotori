@@ -26,6 +26,7 @@ import {
   type PayloadResolver,
 } from "./dispatch-runtime.js";
 import { ProductionRoleBindingError, voiceRulesFor } from "./production-role-support.js";
+import { createProductionBuildLqaReviewer } from "./production-q5-binding.js";
 import {
   buildQ1ReviewInput,
   buildQ2ReviewInput,
@@ -118,6 +119,12 @@ function bindRunRoles(input: LiveWorkflowRoleBindingInput): BoundLiveWorkflowRol
     runMode: input.scope.runMode,
   });
   const ledger = buildContinuityLedger(input.facts.snapshot);
+  const buildLqa = createProductionBuildLqaReviewer({
+    binding: input,
+    evidence,
+    sealPayload,
+    readPayload,
+  });
 
   return {
     review: {
@@ -143,6 +150,7 @@ function bindRunRoles(input: LiveWorkflowRoleBindingInput): BoundLiveWorkflowRol
         return reviewed.flatMap((verdict) => (verdict === null ? [] : [verdict]));
       },
     },
+    buildLqa,
     adjudicate: {
       buildRefs: (reviewInput) => refsFor("Q6", reviewInput),
       readPayload,

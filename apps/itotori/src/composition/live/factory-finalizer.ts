@@ -13,6 +13,12 @@ import type { FinalizedUnit } from "../../workflow/index.js";
 import type { PatchbackDeps } from "../deps.js";
 import type { RunScopeConfig } from "./assemblers/index.js";
 import type { FinalizeArtifactResolver } from "./artifact-store.js";
+import {
+  createProductionRenderEvidencePatchback,
+  type BuildLqaReviewEvidence,
+  type BuildLqaReviewer,
+  type ProductionRenderEvidencePlan,
+} from "./render-evidence-adapter.js";
 
 /** A malformed persisted bible relation is a factory fault. A merely missing
  * bible entry is not: it is represented by an incomplete installed bible and
@@ -35,6 +41,10 @@ export function createCapturedDraftFinalizer(
   rawBridge: BridgeBundleV02,
   snapshot: FactSnapshot,
   targetLocale: string,
+  options: {
+    readonly renderEvidence?: ProductionRenderEvidencePlan;
+    readonly buildLqaReviewer?: BuildLqaReviewer;
+  } = {},
 ): {
   readonly record: (localized: SceneLocalization) => void;
   readonly resolve: FinalizeArtifactResolver;
@@ -52,6 +62,7 @@ export function createCapturedDraftFinalizer(
     string,
     Extract<AcceptedOutput, { readonly subjectType: "unit" }>
   >();
+  const buildLqaEvidenceByUnit = new Map<string, BuildLqaReviewEvidence>();
   const record = (localized: SceneLocalization): void => {
     const memoKeys = localized.results.flatMap((result) =>
       result.status === "success" ? [result.memoKey] : [],
@@ -83,6 +94,13 @@ export function createCapturedDraftFinalizer(
         `cannot finalize ${input.unitId}: stage ${input.stage} is not a final-stage output`,
       );
     }
+    const buildLqaEvidence =
+      input.stage === "build-lqa" ? buildLqaEvidenceByUnit.get(input.unitId) : undefined;
+    if (input.stage === "build-lqa" && buildLqaEvidence === undefined) {
+      throw new LiveWorkflowFactoryError(
+        `cannot finalize ${input.unitId}: no Q5 render/review evidence was captured for this build`,
+      );
+    }
     const version = (input.priorHead?.version ?? 0) + 1;
     const output = acceptedOutputForCapturedDraft({
       unitId: input.unitId,
@@ -94,11 +112,12 @@ export function createCapturedDraftFinalizer(
       memoKeys: captured.memoKeys,
       scope,
       shippable: input.shippable,
+      ...(buildLqaEvidence === undefined ? {} : { buildLqaEvidence }),
     });
     acceptedByUnit.set(input.unitId, output);
     return {
       outputId: output.outputId,
-      semanticKey: sha256(`${input.unitId}:${input.stage}`),
+      semanticKey: sha256(`${input.unitId}:${input.stage}:${input.contentHash}`),
       schemaVersion: output.schemaVersion,
       outputJson: JSON.stringify(output),
       memoKeys: output.memoKeys,
@@ -106,7 +125,7 @@ export function createCapturedDraftFinalizer(
     };
   };
   const patchDirectory = mkdtempSync(join(tmpdir(), "itotori-native-patch-"));
-  const patchback: PatchbackDeps = {
+  const basePatchback: PatchbackDeps = {
     buildInput(finalized: readonly FinalizedUnit[]): NativePatchbackInput {
       const accepted = finalized.map((unit) => {
         const output = acceptedByUnit.get(unit.unitId);
@@ -143,6 +162,27 @@ export function createCapturedDraftFinalizer(
       );
     },
   };
+  const productionRenderPatchback =
+    options.renderEvidence === undefined
+      ? undefined
+      : createProductionRenderEvidencePatchback({
+          plan: options.renderEvidence,
+          snapshot,
+          buildPatchInput: basePatchback.buildInput,
+          reviewer: options.buildLqaReviewer,
+          recordBuildLqaEvidence(evidence) {
+            for (const receipt of evidence) {
+              const prior = buildLqaEvidenceByUnit.get(receipt.unitId);
+              if (prior !== undefined && !sameBuildLqaEvidence(prior, receipt)) {
+                throw new LiveWorkflowFactoryError(
+                  `Q5 captured conflicting render/review evidence for ${receipt.unitId}`,
+                );
+              }
+              buildLqaEvidenceByUnit.set(receipt.unitId, receipt);
+            }
+          },
+        });
+  const patchback: PatchbackDeps = { ...basePatchback, ...productionRenderPatchback };
   return { record, resolve, patchback };
 }
 
@@ -156,6 +196,7 @@ function acceptedOutputForCapturedDraft(input: {
   readonly memoKeys: readonly string[];
   readonly scope: RunScopeConfig;
   readonly shippable: boolean;
+  readonly buildLqaEvidence?: BuildLqaReviewEvidence;
 }): Extract<AcceptedOutput, { readonly subjectType: "unit" }> {
   const releaseEligibility = input.shippable
     ? {
@@ -181,8 +222,14 @@ function acceptedOutputForCapturedDraft(input: {
     version: input.version,
     ...(input.priorOutputId === undefined ? {} : { supersedesOutputId: input.priorOutputId }),
     parentOutputIds: input.priorOutputId === undefined ? [] : [input.priorOutputId],
-    memoKeys: [...new Set(input.memoKeys)],
-    evidenceIds: [...input.draft.evidenceIds],
+    memoKeys: uniqueStrings([
+      ...input.memoKeys,
+      ...(input.buildLqaEvidence === undefined ? [] : [input.buildLqaEvidence.memoKey]),
+    ]),
+    evidenceIds: uniqueStrings([
+      ...input.draft.evidenceIds,
+      ...buildLqaEvidenceIds(input.buildLqaEvidence),
+    ]),
     acceptedAt: new Date().toISOString(),
     releaseEligibility,
     subjectType: "unit",
@@ -205,9 +252,41 @@ function acceptedOutputForCapturedDraft(input: {
           status: "PASS",
         },
       ],
-      reviewVerdictIds: [],
+      reviewVerdictIds:
+        input.buildLqaEvidence === undefined ? [] : [input.buildLqaEvidence.reviewId],
     },
   };
+}
+
+function buildLqaEvidenceIds(evidence: BuildLqaReviewEvidence | undefined): readonly string[] {
+  if (evidence === undefined) return [];
+  return [
+    evidence.patchId,
+    `render-result:${evidence.renderResultHash.slice("sha256:".length)}`,
+    `render-patched-bytes:${evidence.patchedBytesHash.slice("sha256:".length)}`,
+    evidence.frameId,
+    `render-frame:${evidence.frameContentHash.slice("sha256:".length)}`,
+  ];
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values)];
+}
+
+function sameBuildLqaEvidence(
+  left: BuildLqaReviewEvidence,
+  right: BuildLqaReviewEvidence,
+): boolean {
+  return (
+    left.unitId === right.unitId &&
+    left.patchId === right.patchId &&
+    left.renderResultHash === right.renderResultHash &&
+    left.patchedBytesHash === right.patchedBytesHash &&
+    left.frameId === right.frameId &&
+    left.frameContentHash === right.frameContentHash &&
+    left.reviewId === right.reviewId &&
+    left.memoKey === right.memoKey
+  );
 }
 
 function sha256(value: string): `sha256:${string}` {

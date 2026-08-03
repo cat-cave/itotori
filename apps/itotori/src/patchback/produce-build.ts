@@ -13,7 +13,7 @@
 // build tree once its bytes have been captured into an in-memory archive.
 
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { hashLocalizationArtifact } from "@itotori/db";
 
@@ -26,6 +26,7 @@ import {
 import { bindScopedTargets } from "./bind-scoped-targets.js";
 import { runNativePatchbackApply } from "./index.js";
 import type { NativePatchbackInput } from "./types.js";
+import { sha256 } from "../llm/canonical-json.js";
 import type { NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
 
 /** Every artifact ref a produced playable build carries (delivery + runtime
@@ -68,6 +69,15 @@ export type ProducedAcceptedPatchUnit = {
   targetText: string;
 };
 
+/** Immutable source-runtime tree paired with this patch for evidence capture.
+ * It stays separate from delivery artifacts: a downloadable patch contains
+ * only patched bytes, while a renderer must prove it used the exact original
+ * assets (layout/configuration/backgrounds) that were paired at build time. */
+export type ProducedRuntimeAssets = {
+  root: string;
+  contentHash: string;
+};
+
 /** The self-contained, accepted-output-driven delivery manifest emitted by the
  * native patchback. It has the small structural surface the archive boundary
  * needs while preserving strict PatchExportV02 + accepted-output provenance. */
@@ -84,6 +94,7 @@ export type ProducedPatchbackManifest = {
   targetLocale: string;
   artifactHashes: Record<string, string>;
   artifactRefs: Record<string, string>;
+  runtimeAssets: ProducedRuntimeAssets;
   units: ProducedAcceptedPatchUnit[];
 };
 
@@ -150,9 +161,11 @@ export function produceNativePatchbackBuild(
   for (const key of PRODUCED_PATCHBACK_ARTIFACT_KEYS) {
     artifactHashes[key] = hashLocalizationArtifact(artifactRefs[key]!);
   }
+  const runtimeAssets: ProducedRuntimeAssets = {
+    root: resolve(options.sourceRoot),
+    contentHash: hashLocalizationArtifact(options.sourceRoot),
+  };
 
-  const patchVersionId = `patch-version:${applied.patchExport.patchExportId}`;
-  const runId = options.runId ?? patchVersionId;
   const acceptedByBridgeUnitId = new Map(
     applied.bound.map((bound) => [bound.fact.bridgeUnitId, bound]),
   );
@@ -172,6 +185,28 @@ export function produceNativePatchbackBuild(
       targetText: entry.targetText,
     };
   });
+  // PatchExportV02's UUID identifies the source/export envelope. It is not
+  // sufficient to name a playable build because multiple accepted target sets
+  // may share that envelope. The runtime-facing version therefore commits the
+  // exact patched artifact hashes and the accepted-output target hashes.
+  const patchVersionId = `patch-version:${sha256({
+    patchExportId: applied.patchExport.patchExportId,
+    engineId: applied.apply.engineId,
+    scope: patchReceipt.scope,
+    artifactHashes: {
+      patchTarget: artifactHashes.patchTarget,
+      translatedBridge: artifactHashes.translatedBridge,
+      patchExport: artifactHashes.patchExport,
+    },
+    runtimeAssets: runtimeAssets.contentHash,
+    units: units.map((unit) => ({
+      bridgeUnitId: unit.bridgeUnitId,
+      acceptedOutputId: unit.acceptedOutputId,
+      acceptedTargetHash: unit.acceptedTargetHash,
+      sourceHash: unit.sourceHash,
+    })),
+  }).slice("sha256:".length)}`;
+  const runId = options.runId ?? patchVersionId;
 
   const patch: ProducedPatchbackManifest = {
     patchVersionId,
@@ -184,6 +219,7 @@ export function produceNativePatchbackBuild(
     targetLocale: applied.patchExport.targetLocale,
     artifactHashes,
     artifactRefs,
+    runtimeAssets,
     units,
   };
 

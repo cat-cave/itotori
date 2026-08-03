@@ -326,6 +326,28 @@ describe("workflow driver integration", () => {
     );
   });
 
+  it("does not create clean Build-LQA heads when Q5 returns no PASS coverage", async () => {
+    const events: string[] = [];
+    const store = new TraceStore(events);
+    const base = flowPorts(store, events);
+    const ports: WorkflowPorts = {
+      ...base,
+      patchback: {
+        ...base.patchback,
+        async buildLqaReview(input) {
+          events.push(`q5-red:${input.unitIds.join(",")}`);
+          return [];
+        },
+      },
+    };
+
+    await expect(runLocalizationWorkflow(REQUEST, [flowScene(["u1"])], ports)).rejects.toThrow(
+      "Build-LQA did not return a PASS for every requested unit",
+    );
+    expect(events).toContain("q5-red:u1");
+    expect(await store.readUnitHead("u1", "build-lqa")).toBeNull();
+  });
+
   it("resumes from absent heads, patches all current finals, and memo-skips completed stages", async () => {
     const events: string[] = [];
     const store = new TraceStore(events);

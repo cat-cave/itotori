@@ -7,6 +7,7 @@ use swash::zeno::Format;
 
 use super::{
     Framebuffer, TextLayer,
+    ocr_readback::OcrLayout,
     pixel_gate::{GlyphRaster, PixelBounds, TextRaster},
 };
 
@@ -109,6 +110,7 @@ pub(super) fn rasterise_lines(
                 raster.glyphs.push(GlyphRaster {
                     source: character,
                     coverage_signature: format!("{:x}", signature.finalize()),
+                    line_index,
                     bounds: PixelBounds {
                         left: base_x.max(0) as u32,
                         top: base_y.max(0) as u32,
@@ -187,6 +189,7 @@ pub(super) fn rasterise_lines(
             raster.glyphs.push(GlyphRaster {
                 source: character,
                 coverage_signature: format!("{:x}", signature.finalize()),
+                line_index,
                 bounds,
             });
 
@@ -235,6 +238,78 @@ pub(super) fn rasterise_lines(
         }
     }
     raster
+}
+
+/// Paint a layer and retain only source-free geometry for the emitted-frame
+/// OCR readback. The layout deliberately receives no decoded character or
+/// expected target; matching happens later against the written PNG pixels.
+pub(super) fn rasterise_lines_with_ocr(
+    framebuffer: &mut Framebuffer,
+    layer: &TextLayer,
+    layout: &mut OcrLayout,
+) -> TextRaster {
+    let raster = rasterise_lines(framebuffer, layer, RasterMode::Normal);
+    layout.record(&raster, layer);
+    raster
+}
+
+/// One standard-alphabet glyph template used by public-frame OCR.
+#[derive(Clone)]
+pub(super) struct OcrGlyphCandidate {
+    pub(super) character: char,
+    pub(super) width: u32,
+    pub(super) height: u32,
+    pub(super) left: i32,
+    pub(super) advance: f32,
+    pub(super) coverage: Vec<u8>,
+}
+
+/// Rasterise a fixed, reviewable target-language alphabet independently of
+/// the rendered message. This is a candidate library, not a projection of
+/// decoded/replayed text.
+pub(super) fn ocr_candidates(scale: u32) -> Vec<OcrGlyphCandidate> {
+    const CANDIDATE_ALPHABET: &str = concat!(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+        "!\\\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+        "…‘’“”–—¡¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞß",
+        "àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ"
+    );
+    let font = font();
+    let px = scale.max(1) as f32;
+    let glyph_metrics = font.glyph_metrics(&[]).scale(px);
+    let charmap = font.charmap();
+    let mut context = ScaleContext::new();
+    let mut scaler = context.builder(font).size(px).hint(false).build();
+    let mut render = Render::new(&[Source::Outline]);
+    render.format(Format::Alpha);
+
+    CANDIDATE_ALPHABET
+        .chars()
+        .filter_map(|character| {
+            let glyph_id = charmap.map(character);
+            if glyph_id == 0 {
+                return None;
+            }
+            let advance = glyph_metrics.advance_width(glyph_id);
+            let image = render.render(&mut scaler, glyph_id)?;
+            let placement = image.placement;
+            (placement.width > 0 && placement.height > 0).then(|| OcrGlyphCandidate {
+                character,
+                width: placement.width,
+                height: placement.height,
+                left: placement.left,
+                advance,
+                coverage: image.data.clone(),
+            })
+        })
+        .collect()
+}
+
+/// Standard space advance for gap-only word reconstruction in OCR output.
+pub(super) fn ocr_space_advance(scale: u32) -> f32 {
+    let font = font();
+    let glyph_metrics = font.glyph_metrics(&[]).scale(scale.max(1) as f32);
+    glyph_metrics.advance_width(font.charmap().map(' '))
 }
 
 #[cfg(test)]

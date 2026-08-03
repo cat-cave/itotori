@@ -24,12 +24,17 @@ import { createWorkflowPorts } from "./workflow-ports.js";
 import type { WorkflowPortDeps } from "./deps.js";
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import type { PhysicalAttemptCostObserver } from "../llm/physical-attempt-policy.js";
+import type { ProductionRenderEvidencePlan } from "./live/render-evidence-adapter.js";
 
 /** Per-invocation decode artifacts. The live service owns DB/auth/dispatch;
  * callers must provide the matching structure and bridge for each run. */
 export interface LocalizationPerRunInput {
   readonly structureJson: unknown;
   readonly bridge: BridgeBundleV02;
+  /** The physical patched-byte plan for a qualifying invocation. This is
+   * supplied at the localize boundary rather than inferred from persistence or
+   * an environment variable. */
+  readonly renderEvidence?: ProductionRenderEvidencePlan;
   /**
    * The durable identity the CLI has assigned to this invocation. The live
    * factory binds it to the snapshots it creates; offline/API callers that do

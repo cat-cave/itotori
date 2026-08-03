@@ -161,7 +161,12 @@ fn patch_render_composes_patchback_and_render_on_real_bytes() {
     assert_eq!(render["pixelGate"]["status"], "passed");
     assert_eq!(
         render["pixelGate"]["checks"],
-        serde_json::json!(["visible-delta", "expected-bounds", "distinct-glyph-masks"]),
+        serde_json::json!([
+            "visible-delta",
+            "expected-bounds",
+            "distinct-glyph-masks",
+            "complete-scene",
+        ]),
         "the render proof must assert rasterised pixels, not the decoded line"
     );
     assert_eq!(render["renderedLineCount"], 1);

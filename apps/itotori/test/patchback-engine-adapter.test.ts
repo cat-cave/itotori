@@ -128,6 +128,7 @@ describe("generic producer selects the engine adapter", () => {
     expect(produced.patch.engineId).toBe("reallive");
     expect(produced.patch.patchReceipt.engineId).toBe("reallive");
     expect(produced.patch.patchReceipt.scope).toBe("dialogue+choices");
+    expect(produced.patch.runtimeAssets.contentHash).toMatch(/^sha256:[0-9a-f]{64}$/u);
     expect(calls[0]).toContain("--engine");
     expect(calls[0]).toContain("reallive");
     expect(calls[0]).toContain("--bundle");

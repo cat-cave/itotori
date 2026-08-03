@@ -138,6 +138,10 @@ export interface AdjudicateDeps {
 export interface PatchbackDeps {
   buildInput(finalized: readonly FinalizedUnit[]): NativePatchbackInput;
   translatedBundlePath(finalized: readonly FinalizedUnit[]): string;
+  /** Physical production patchback. When present it applies bytes through the
+   * registered engine adapter and retains the hash-bound manifest Q5 renders.
+   * The older export builder remains available to offline/pure-MTL proofs. */
+  exportPatch?(finalized: readonly FinalizedUnit[]): Promise<{ readonly patchId: string }>;
   buildLqa(input: {
     readonly patchId: string;
     readonly unitIds: readonly string[];

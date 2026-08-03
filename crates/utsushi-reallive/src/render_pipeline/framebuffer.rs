@@ -4,6 +4,7 @@ use crate::graphics_objects::{HitRect, WipeColour};
 
 use super::{
     ChoiceOverlay, ChoiceWindow, ObjectButtonChoiceWindow, RGBA_BYTES_PER_PIXEL, TextLayer, font,
+    ocr_readback::OcrLayout,
     pixel_gate::{self, PixelGateError},
 };
 
@@ -128,15 +129,7 @@ impl Framebuffer {
     /// Paint a [`TextLayer`] and return glyph-coverage pixels (not backdrop
     /// pixels).
     pub fn draw_text(&mut self, layer: &TextLayer) -> u64 {
-        if let Some(backdrop) = layer.backdrop {
-            self.fill_rect_blended(
-                backdrop.x,
-                backdrop.y,
-                backdrop.width,
-                backdrop.height,
-                backdrop.colour,
-            );
-        }
+        self.paint_text_backdrop(layer);
         let mut painted = font::draw_lines(self, layer);
         if let Some(name_box) = &layer.name_box {
             painted += self.draw_text(name_box);
@@ -144,10 +137,11 @@ impl Framebuffer {
         painted
     }
 
-    /// Paint text and validate the pixels that changed, not merely the input
-    /// string. The regular `draw_text` remains available for diagnostics and
-    /// layout probes; screenshot emission must use this checked boundary.
-    pub(crate) fn draw_text_checked(&mut self, layer: &TextLayer) -> Result<u64, PixelGateError> {
+    /// Paint just one layer's backing box. The emitted-frame OCR uses this as
+    /// a pixel baseline before it reopens the completed public PNG; no text
+    /// bytes are copied into that baseline. An attached name box is a later
+    /// paint operation, just as it is in [`Self::draw_text`].
+    pub(crate) fn paint_text_backdrop(&mut self, layer: &TextLayer) {
         if let Some(backdrop) = layer.backdrop {
             self.fill_rect_blended(
                 backdrop.x,
@@ -157,6 +151,40 @@ impl Framebuffer {
                 backdrop.colour,
             );
         }
+    }
+
+    /// Paint text and validate the pixels that changed, not merely the input
+    /// string. The regular `draw_text` remains available for diagnostics and
+    /// layout probes; screenshot emission must use this checked boundary.
+    pub(crate) fn draw_text_checked(&mut self, layer: &TextLayer) -> Result<u64, PixelGateError> {
+        self.paint_text_backdrop(layer);
+        self.draw_text_checked_without_backdrop(layer)
+    }
+
+    /// Checked text draw that additionally records source-free body geometry
+    /// for later OCR of the persisted public frame. Attached speaker-name
+    /// glyphs remain in the image but are intentionally not part of the body
+    /// text readback.
+    pub(crate) fn draw_text_checked_with_ocr(
+        &mut self,
+        layer: &TextLayer,
+        layout: &mut OcrLayout,
+    ) -> Result<u64, PixelGateError> {
+        self.paint_text_backdrop(layer);
+        let before = self.pixels.clone();
+        let raster = font::rasterise_lines_with_ocr(self, layer, layout);
+        pixel_gate::assert_visible(&raster, pixel_gate::PixelDelta::between(&before, self))?;
+        let mut painted = raster.coverage_pixels;
+        if let Some(name_box) = &layer.name_box {
+            painted += self.draw_text_checked(name_box)?;
+        }
+        Ok(painted)
+    }
+
+    fn draw_text_checked_without_backdrop(
+        &mut self,
+        layer: &TextLayer,
+    ) -> Result<u64, PixelGateError> {
         let before = self.pixels.clone();
         let raster = font::rasterise_lines(self, layer, font::RasterMode::Normal);
         pixel_gate::assert_visible(&raster, pixel_gate::PixelDelta::between(&before, self))?;

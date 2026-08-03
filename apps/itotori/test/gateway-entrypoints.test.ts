@@ -250,6 +250,12 @@ describe("gateway entrypoints", () => {
           localeBranchId: "gateway-branch",
           leaseOwnerId: "gateway-driver",
         },
+        renderEvidence: {
+          sourceRoot: "/fixture/gateway/source",
+          buildRoot: "/fixture/gateway/build",
+          patchScope: "dialogue-only",
+          runId: "gateway-run",
+        },
       },
     );
     expect(resolveApiPorts).toHaveBeenCalledWith(

@@ -12,7 +12,7 @@ use crate::g00::G00Warning;
 use crate::graphics_objects::GraphicsPlane;
 use utsushi_core::substrate::FrameArtifact;
 
-use super::RedactionPolicy;
+use super::{RedactionPolicy, ocr_readback::RasterOcrReadback};
 
 /// Why a graphics object contributed NO pixels during compositing.
 ///
@@ -91,9 +91,8 @@ pub struct ObjectWarning {
 /// while rasterising a stack: the objects it skipped (with reasons) and
 /// the non-fatal decode warnings it observed. An empty [`Self::is_empty`]
 /// report means the frame is a COMPLETE render of the stack; a non-empty
-/// skip list means at least one object was dropped and the frame is
-/// incomplete. This is what keeps a render artifact from looking complete
-/// when it is not.
+/// skip or warning means the frame is not a final render proof. This is what
+/// keeps a render artifact from looking complete when it is not.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RenderReport {
     /// Objects that contributed no pixels, with the reason for each.
@@ -109,10 +108,10 @@ impl RenderReport {
         self.skipped_objects.is_empty() && self.warnings.is_empty()
     }
 
-    /// True when at least one object was DROPPED (contributed no pixels)
-    /// so the rendered frame is incomplete regardless of warnings.
+    /// True when an object was dropped OR a decoder had to repair its bytes.
+    /// Either condition means the frame is not a complete, final proof.
     pub fn is_incomplete(&self) -> bool {
-        !self.skipped_objects.is_empty()
+        !self.skipped_objects.is_empty() || !self.warnings.is_empty()
     }
 }
 
@@ -130,12 +129,15 @@ pub struct SceneScreenshots {
     pub private_png_sha256: String,
     /// The redaction policy the PUBLIC frame was rendered under.
     pub redaction: RedactionPolicy,
+    /// OCR text independently read back from the exact persisted PUBLIC PNG.
+    /// This is body-layer evidence only; a speaker name box remains visible
+    /// in the frame but is not conflated with the current message body.
+    pub ocr: RasterOcrReadback,
     /// Objects that were DROPPED while compositing the full-fidelity
-    /// buffer (empty for a complete render). A non-empty list means the
-    /// emitted frame does NOT contain every object in the scene — e.g. an
-    /// un-decodable `BACK.g00` background reports here as
-    /// [`SkipReason::DecodeFailed`] instead of silently succeeding. See
-    /// [`Self::is_incomplete`].
+    /// buffer. A non-empty list means the emitted frame does NOT contain
+    /// every object in the scene — e.g. an un-decodable `BACK.g00`
+    /// background reports here as [`SkipReason::DecodeFailed`] instead of
+    /// silently succeeding. See [`Self::is_incomplete`].
     pub skipped_objects: Vec<SkippedObject>,
     /// Non-fatal g00 decode warnings observed while compositing the
     /// full-fidelity buffer (previously discarded).
@@ -143,10 +145,10 @@ pub struct SceneScreenshots {
 }
 
 impl SceneScreenshots {
-    /// True when at least one object was dropped during compositing, so
-    /// the emitted frame is NOT a complete render of the scene. A
-    /// consumer treats an incomplete frame as a non-final proof artifact.
+    /// True when an object was dropped or a g00 decode warning required
+    /// best-effort pixels. Either condition makes the frame a non-final
+    /// proof artifact.
     pub fn is_incomplete(&self) -> bool {
-        !self.skipped_objects.is_empty()
+        !self.skipped_objects.is_empty() || !self.decode_warnings.is_empty()
     }
 }

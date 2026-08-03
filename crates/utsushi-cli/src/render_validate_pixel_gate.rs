@@ -2,12 +2,35 @@
 
 use serde_json::{Value, json};
 
-/// The caller reaches this only after `emit_scene_screenshots` accepted the
-/// post-blend glyph pixels. Keep selection/decode evidence separate from this
-/// raster verdict.
-pub(super) fn passed() -> Value {
+/// Project the renderer-owned pixel verdict. A frame with a dropped graphics
+/// object is real, but incomplete: preserve that evidence and make it fail
+/// closed instead of promoting it to a clean render proof.
+pub(super) fn scene_verdict(
+    incomplete: bool,
+    skipped_object_count: usize,
+    decode_warning_count: usize,
+) -> Value {
+    if incomplete {
+        return json!({
+            "status": "failed",
+            "checks": [
+                "visible-delta",
+                "expected-bounds",
+                "distinct-glyph-masks",
+                "complete-scene",
+            ],
+            "failedChecks": ["complete-scene"],
+            "skippedObjectCount": skipped_object_count,
+            "decodeWarningCount": decode_warning_count,
+        });
+    }
     json!({
         "status": "passed",
-        "checks": ["visible-delta", "expected-bounds", "distinct-glyph-masks"],
+        "checks": [
+            "visible-delta",
+            "expected-bounds",
+            "distinct-glyph-masks",
+            "complete-scene",
+        ],
     })
 }

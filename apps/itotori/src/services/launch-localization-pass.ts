@@ -42,6 +42,9 @@ export type LocalizationLaunchConfigDocument = {
   readonly runMode: RunModeValue;
   readonly contextScope: ContextScopeValue;
   readonly outputScope: OutputScope;
+  /** Optional engine-owned real background asset used only when a headless
+   * scene inherits graphics from an earlier scene. */
+  readonly runtimeBackgroundAsset?: string;
   readonly wholeSceneMaxUnits?: number;
 };
 
@@ -145,6 +148,18 @@ export async function driveLocalizationPass(
     structureJson,
     bridge,
     projectRun,
+    renderEvidence: {
+      // The pass record owns both roots: `dataRoot` is the read-only extracted
+      // runtime and `runDir` is the operator-owned output location. Keep the
+      // physical plan at the invocation boundary; no renderer guesses a path.
+      sourceRoot: input.config.dataRoot,
+      buildRoot: join(input.config.runDir, "patch-builds"),
+      patchScope: patchbackScopeForOutputScope(launch.outputScope),
+      runId: journalRunId,
+      ...(launch.runtimeBackgroundAsset === undefined
+        ? {}
+        : { backgroundAsset: launch.runtimeBackgroundAsset }),
+    },
   });
   if (source.runPlane === undefined) {
     throw new Error("launch-pass run plane is not configured by the localization substrate");
@@ -292,12 +307,14 @@ export function parseLaunchConfigDocument(
     }
     wholeSceneMaxUnits = record.wholeSceneMaxUnits;
   }
+  const runtimeBackgroundAsset = optionalPathField(record, "runtimeBackgroundAsset", configPath);
   return {
     structurePath: resolveAgainst(baseDir, structurePath),
     bridgePath: resolveAgainst(baseDir, bridgePath),
     runMode,
     contextScope,
     outputScope,
+    ...(runtimeBackgroundAsset === undefined ? {} : { runtimeBackgroundAsset }),
     ...(wholeSceneMaxUnits === undefined ? {} : { wholeSceneMaxUnits }),
   };
 }
@@ -325,6 +342,27 @@ function requiredPathField(
     throw new Error(`launch-pass config at ${configPath} requires a non-empty ${field}`);
   }
   return value.trim();
+}
+
+function optionalPathField(
+  record: Record<string, unknown>,
+  field: "runtimeBackgroundAsset",
+  configPath: string,
+): string | undefined {
+  const value = record[field];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`launch-pass config at ${configPath} has an invalid ${field}`);
+  }
+  return value.trim();
+}
+
+function patchbackScopeForOutputScope(
+  outputScope: OutputScope,
+): "dialogue-only" | "dialogue+choices" {
+  if (outputScope === "dialogue-only") return "dialogue-only";
+  if (outputScope === "dialogue-and-choices") return "dialogue+choices";
+  throw new Error(`launch-pass physical Build-LQA does not support output scope '${outputScope}'`);
 }
 
 function resolveAgainst(baseDir: string, path: string): string {
