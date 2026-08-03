@@ -1,63 +1,40 @@
-// Production patched-byte render evidence for Build-LQA.
-//
-// The adapter joins the existing generic native patch producer with the runtime
-// launcher registry. It owns no engine coordinate parser and never writes a
-// substitute image: a selected runtime adapter replays the hash-verified patch
-// and captures its E2 frame, while this layer only projects those receipts into
-// the shared RenderAndOcrResult contract and runs the shared deterministic gate.
-
 import { Buffer } from "node:buffer";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import type { AcceptedOutput, Defect, RenderAndOcrResult } from "../../contracts/index.js";
+import type { Defect, RenderAndOcrResult } from "../../contracts/index.js";
 import { RenderAndOcrResultSchema } from "../../contracts/index.js";
 import { renderOcrGate } from "../../gates/index.js";
 import { canonicalJson, sha256 } from "../../llm/canonical-json.js";
 import { type NativePatchbackInput, type PatchbackScope } from "../../patchback/index.js";
-import {
-  produceNativePatchbackBuild,
-  type ProducedPatchbackManifest,
-} from "../../patchback/produce-build.js";
+import { produceNativePatchbackBuild } from "../../patchback/produce-build.js";
 import { createRuntimeLauncherRegistry } from "../../play/patch-runtime-launcher.js";
 import type { FactSnapshot } from "../../prepass/index.js";
 import type { FinalizedUnit, LaneVerdict } from "../../workflow/index.js";
 import type { PatchbackDeps } from "../deps.js";
+import {
+  persistBuildLqaEvidence,
+  persistRenderEvidencePatch,
+  recoverBuildLqaEvidence,
+  recoverRenderEvidencePatch,
+  type BuildLqaReviewEvidence,
+  type RenderEvidenceAcceptedOutput,
+  type RenderEvidencePatchSurface,
+} from "./render-evidence-persistence.js";
 
-type AcceptedUnitOutput = Extract<AcceptedOutput, { readonly subjectType: "unit" }>;
+export type { BuildLqaReviewEvidence } from "./render-evidence-persistence.js";
+type AcceptedUnitOutput = RenderEvidenceAcceptedOutput;
 
-/** Physical, per-invocation paths supplied by the operator through the kept
- * localize boundary. `buildRoot` is only used to create a fresh owned child;
- * completed evidence remains there for inspection rather than being cleaned up. */
 export type ProductionRenderEvidencePlan = {
   readonly sourceRoot: string;
   readonly buildRoot: string;
   readonly patchScope: PatchbackScope;
   readonly runId: string;
-  /** Required only when the selected scene inherits a background from an
-   * earlier scene; Utsushi still decodes this real asset from the patch tree. */
   readonly backgroundAsset?: string;
 };
 
-/** The Q5 role binder receives the already-validated runtime fact, not a
- * renderer capability. This keeps the reviewer read-only over the evidence. */
-/** Q5's verified provider memo and verdict identity. The physical adapter
- * augments this reviewer-owned receipt with its patched-byte frame facts before
- * the finalizer seals the build-LQA accepted output. */
 export type BuildLqaReviewerReceipt = {
   readonly unitId: string;
-  readonly reviewId: string;
-  readonly memoKey: string;
-};
-
-/** The content-free provenance sealed into a build-LQA accepted output. */
-export type BuildLqaReviewEvidence = {
-  readonly unitId: string;
-  readonly patchId: string;
-  readonly renderResultHash: string;
-  readonly patchedBytesHash: string;
-  readonly frameId: string;
-  readonly frameContentHash: string;
   readonly reviewId: string;
   readonly memoKey: string;
 };
@@ -66,8 +43,6 @@ export type BuildLqaReviewer = (input: {
   readonly render: RenderAndOcrResult;
   readonly accepted: readonly AcceptedUnitOutput[];
   readonly unitIds: readonly string[];
-  /** Q5 supplies its provider-backed receipt; the physical adapter verifies
-   * coverage and adds frame/build hashes before finalization. */
   readonly recordReceipt?: (receipt: BuildLqaReviewerReceipt) => void;
 }) => Promise<readonly LaneVerdict[]>;
 
@@ -83,22 +58,19 @@ export class RenderEvidenceAdapterError extends Error {
 }
 
 type StoredPatch = {
-  readonly patch: ProducedPatchbackManifest;
-  readonly input: NativePatchbackInput;
+  readonly patch: RenderEvidencePatchSurface;
+  readonly accepted: readonly AcceptedUnitOutput[];
   readonly buildRoot: string;
 };
 
-/** Extend the captured finalizer's standard patchback seam with the physical
- * producer and mandatory Q5 evidence pass. It is deliberately unavailable
- * without a per-run physical plan; callers then fail rather than emitting
- * invented frames. */
 export function createProductionRenderEvidencePatchback(input: {
   readonly plan: ProductionRenderEvidencePlan;
   readonly snapshot: FactSnapshot;
   readonly buildPatchInput: (finalized: readonly FinalizedUnit[]) => NativePatchbackInput;
   readonly reviewer: BuildLqaReviewer | undefined;
+  readonly recoveredAccepted?: readonly AcceptedUnitOutput[];
   readonly recordBuildLqaEvidence?: (evidence: readonly BuildLqaReviewEvidence[]) => void;
-}): Pick<PatchbackDeps, "exportPatch" | "buildLqa"> {
+}): Pick<PatchbackDeps, "exportPatch" | "buildLqa" | "hydrateBuildLqaEvidence"> {
   const producedByPatchId = new Map<string, StoredPatch>();
   return {
     async exportPatch(finalized) {
@@ -110,15 +82,27 @@ export function createProductionRenderEvidencePatchback(input: {
         scope: input.plan.patchScope,
         runId: input.plan.runId,
       });
-      producedByPatchId.set(produced.patch.patchVersionId, {
+      const patch = persistRenderEvidencePatch({
+        configuredBuildRoot: input.plan.buildRoot,
+        runId: input.plan.runId,
+        buildRoot,
         patch: produced.patch,
-        input: patchInput,
+        accepted: patchInput.accepted,
+      });
+      producedByPatchId.set(produced.patch.patchVersionId, {
+        patch,
+        accepted: patchInput.accepted,
         buildRoot,
       });
       return { patchId: produced.patch.patchVersionId };
     },
     async buildLqa(request) {
-      const stored = producedByPatchId.get(request.patchId);
+      const stored = storedPatchFor({
+        producedByPatchId,
+        plan: input.plan,
+        patchId: request.patchId,
+        recoveredAccepted: input.recoveredAccepted ?? [],
+      });
       if (stored === undefined) {
         throw new RenderEvidenceAdapterError(
           "missing-patch",
@@ -131,7 +115,7 @@ export function createProductionRenderEvidencePatchback(input: {
           "Build-LQA has no installed Q5 reviewer binding",
         );
       }
-      const accepted = acceptedForUnits(stored.input.accepted, request.unitIds);
+      const accepted = acceptedForUnits(stored.accepted, request.unitIds);
       const render = await renderAndOcrPatchedBuild({
         snapshot: input.snapshot,
         patch: stored.patch,
@@ -174,23 +158,33 @@ export function createProductionRenderEvidencePatchback(input: {
         verdicts,
         receipts,
       });
+      persistBuildLqaEvidence({
+        configuredBuildRoot: input.plan.buildRoot,
+        runId: input.plan.runId,
+        patchId: stored.patch.patchVersionId,
+        evidence,
+      });
       input.recordBuildLqaEvidence?.(evidence);
       return verdicts;
+    },
+    async hydrateBuildLqaEvidence(request) {
+      const evidence = recoverBuildLqaEvidence({
+        configuredBuildRoot: input.plan.buildRoot,
+        runId: input.plan.runId,
+        patchId: request.patchId,
+        reviews: q5ReviewIds(request.unitIds, request.verdicts),
+      });
+      input.recordBuildLqaEvidence?.(evidence);
     },
   };
 }
 
-/** Capture actual runtime frames for a previously produced patch. Exported for
- * focused real-byte tests; it never accepts a frame, OCR string, or native-run
- * simulation from a caller. */
 export async function renderAndOcrPatchedBuild(input: {
   readonly snapshot: FactSnapshot;
-  readonly patch: ProducedPatchbackManifest;
+  readonly patch: RenderEvidencePatchSurface;
   readonly accepted: readonly AcceptedUnitOutput[];
   readonly unitIds: readonly string[];
   readonly buildRoot: string;
-  /** Game assets paired with the patch; selected engines decide how to consume
-   * them, while all rendered script bytes remain in the verified patch. */
   readonly runtimeAssetRoot: string;
   readonly backgroundAsset?: string;
 }): Promise<RenderAndOcrResult> {
@@ -208,9 +202,6 @@ export async function renderAndOcrPatchedBuild(input: {
       );
     }
     const captureRoot = mkdtempSync(join(input.buildRoot, "q5-runtime-frame-"));
-    // The native public artifact root must begin empty. Keep reports in a
-    // sibling scratch directory; the runtime removes their content after it
-    // has verified the captured public frame.
     const reportRoot = mkdtempSync(join(input.buildRoot, "q5-runtime-reports-"));
     const captureId = sha256({
       patchId: input.patch.patchVersionId,
@@ -326,6 +317,35 @@ function ownedBuildRoot(configuredRoot: string): string {
   return mkdtempSync(join(root, "itotori-q5-build-"));
 }
 
+function storedPatchFor(input: {
+  readonly producedByPatchId: Map<string, StoredPatch>;
+  readonly plan: ProductionRenderEvidencePlan;
+  readonly patchId: string;
+  readonly recoveredAccepted: readonly AcceptedUnitOutput[];
+}): StoredPatch | undefined {
+  const inMemory = input.producedByPatchId.get(input.patchId);
+  if (inMemory !== undefined) return inMemory;
+  let recovered: ReturnType<typeof recoverRenderEvidencePatch>;
+  try {
+    recovered = recoverRenderEvidencePatch({
+      configuredBuildRoot: input.plan.buildRoot,
+      runtimeAssetRoot: input.plan.sourceRoot,
+      runId: input.plan.runId,
+      patchId: input.patchId,
+      accepted: input.recoveredAccepted,
+    });
+  } catch {
+    throw new RenderEvidenceAdapterError(
+      "missing-patch",
+      "Build-LQA could not recover the hash-bound patched-byte manifest",
+    );
+  }
+  if (recovered === undefined) return undefined;
+  const stored: StoredPatch = recovered;
+  input.producedByPatchId.set(input.patchId, stored);
+  return stored;
+}
+
 function acceptedForUnits(
   accepted: readonly AcceptedUnitOutput[],
   unitIds: readonly string[],
@@ -388,6 +408,36 @@ function observation(
         ? `${kind} observation passed on the captured frame`
         : `${kind} observation failed on the captured frame`,
   } as const;
+}
+
+function q5ReviewIds(
+  unitIds: readonly string[],
+  verdicts: readonly LaneVerdict[],
+): readonly { readonly unitId: string; readonly reviewId: string }[] {
+  const requested = new Set(unitIds);
+  const reviews = verdicts.map(({ lane, verdict }) => {
+    if (
+      lane !== "Q5" ||
+      verdict.roleId !== "Q5" ||
+      verdict.rubric !== "build-lqa" ||
+      verdict.verdict !== "PASS"
+    ) {
+      throw new RenderEvidenceAdapterError("reviewer-receipt", "memoized Q5 verdict is invalid");
+    }
+    return { unitId: verdict.unitId, reviewId: verdict.reviewId };
+  });
+  if (
+    requested.size !== unitIds.length ||
+    reviews.length !== requested.size ||
+    new Set(reviews.map((review) => review.unitId)).size !== reviews.length ||
+    reviews.some((review) => !requested.has(review.unitId))
+  ) {
+    throw new RenderEvidenceAdapterError(
+      "reviewer-receipt",
+      "memoized Q5 verdict coverage is invalid",
+    );
+  }
+  return reviews;
 }
 
 function buildLqaEvidence(input: {

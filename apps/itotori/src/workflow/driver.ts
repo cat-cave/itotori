@@ -416,6 +416,11 @@ export async function runLocalizationWorkflowForPolicy(
         });
         buildLqa = reviewed.value;
         assertCleanBuildLqa(missingBuildLqa, buildLqa);
+        await providerBoundPorts.patchback.hydrateBuildLqaEvidence?.({
+          patchId: currentPatchId,
+          unitIds: missingBuildLqa,
+          verdicts: buildLqa,
+        });
         await Promise.all(
           missingBuildLqa.map((unitId) =>
             providerBoundPorts.store.finalizeUnit({
@@ -453,6 +458,7 @@ export async function runLocalizationWorkflowForPolicy(
 /** Gate only operations that can contact a model provider; store/readiness work
  * remains under the per-run scene scheduler without consuming this portfolio cap. */
 function boundProviderPorts(ports: WorkflowPorts, gate: BoundedConcurrency): WorkflowPorts {
+  const hydrateBuildLqaEvidence = ports.patchback.hydrateBuildLqaEvidence;
   return {
     ...ports,
     draft: {
@@ -475,6 +481,7 @@ function boundProviderPorts(ports: WorkflowPorts, gate: BoundedConcurrency): Wor
         await gate.run(async () => await ports.patchback.exportPatch(input)),
       buildLqaReview: async (input) =>
         await gate.run(async () => await ports.patchback.buildLqaReview(input)),
+      ...(hydrateBuildLqaEvidence === undefined ? {} : { hydrateBuildLqaEvidence }),
     },
   };
 }

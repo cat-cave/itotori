@@ -147,9 +147,8 @@ export class LocalizeRunTracker {
     },
   };
 
-  /** Wrap only the workflow boundaries whose successful completion proves a
-   * concrete per-unit transition. No end-of-run fill is performed. */
   wrapPorts(ports: WorkflowPorts): WorkflowPorts {
+    const hydrateBuildLqaEvidence = ports.patchback.hydrateBuildLqaEvidence;
     return {
       ...ports,
       readiness: {
@@ -212,6 +211,16 @@ export class LocalizeRunTracker {
           await this.withScope(input.unitIds, "build-lqa", () =>
             ports.patchback.buildLqaReview(input),
           ),
+        ...(hydrateBuildLqaEvidence === undefined
+          ? {}
+          : {
+              hydrateBuildLqaEvidence: async (input) =>
+                await this.withScope(
+                  input.unitIds,
+                  "build-lqa",
+                  async () => await hydrateBuildLqaEvidence(input),
+                ),
+            }),
       },
       store: {
         readUnitHead: async (unitId, stage) => {

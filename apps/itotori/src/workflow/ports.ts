@@ -152,6 +152,12 @@ export interface PatchbackPort {
     readonly patchId: string;
     readonly unitIds: readonly string[];
   }): Promise<readonly LaneVerdict[]>;
+  /** Restores physical Q5 evidence for a memo hit before build-LQA CAS sealing. */
+  hydrateBuildLqaEvidence?(input: {
+    readonly patchId: string;
+    readonly unitIds: readonly string[];
+    readonly verdicts: readonly LaneVerdict[];
+  }): Promise<void>;
 }
 
 /** A finalized unit head reference — the content-addressed identity the store

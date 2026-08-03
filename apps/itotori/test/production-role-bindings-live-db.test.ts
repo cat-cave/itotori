@@ -233,6 +233,8 @@ postgresDescribe("production Q5 fixture over live Postgres", () => {
           console.log(
             JSON.stringify({
               q5ProductionProof: {
+                runTransitions: ["queued", "running", "completed"],
+                completedRun: outputs.get("summary.json"),
                 terminalStatus: live?.run.status,
                 qCounts: {
                   Q1: qualifyingTransport.count("Q1"),
@@ -307,6 +309,14 @@ postgresDescribe("production Q5 fixture over live Postgres", () => {
             expect(failingRenderTransport.count("Q1")).toBeGreaterThan(0);
             expect(failingRenderTransport.count("Q4")).toBeGreaterThan(0);
             expect(failingRenderTransport.count("Q5")).toBe(0);
+            console.log(
+              JSON.stringify({
+                q5FailureDirectionRun: {
+                  terminalStatus: live?.run.status,
+                  q5ProviderCalls: failingRenderTransport.count("Q5"),
+                },
+              }),
+            );
           },
         );
       } finally {

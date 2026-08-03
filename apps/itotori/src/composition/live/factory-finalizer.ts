@@ -44,6 +44,12 @@ export function createCapturedDraftFinalizer(
   options: {
     readonly renderEvidence?: ProductionRenderEvidencePlan;
     readonly buildLqaReviewer?: BuildLqaReviewer;
+    /** Schema-validated final heads supplied by the encrypted CAS reader when
+     * a fresh factory resumes after patch export. */
+    readonly recoveredFinalOutputs?: readonly Extract<
+      AcceptedOutput,
+      { readonly subjectType: "unit" }
+    >[];
   } = {},
 ): {
   readonly record: (localized: SceneLocalization) => void;
@@ -62,6 +68,18 @@ export function createCapturedDraftFinalizer(
     string,
     Extract<AcceptedOutput, { readonly subjectType: "unit" }>
   >();
+  for (const output of options.recoveredFinalOutputs ?? []) {
+    if (
+      output.stage !== "final" ||
+      output.localizationSnapshotId !== scope.localizationSnapshotId
+    ) {
+      throw new LiveWorkflowFactoryError("recovered final output is outside this localization run");
+    }
+    if (acceptedByUnit.has(output.subjectId)) {
+      throw new LiveWorkflowFactoryError(`recovered final output repeats ${output.subjectId}`);
+    }
+    acceptedByUnit.set(output.subjectId, output);
+  }
   const buildLqaEvidenceByUnit = new Map<string, BuildLqaReviewEvidence>();
   const record = (localized: SceneLocalization): void => {
     const memoKeys = localized.results.flatMap((result) =>
@@ -78,17 +96,6 @@ export function createCapturedDraftFinalizer(
     }
   };
   const resolve: FinalizeArtifactResolver = (input) => {
-    const captured = byUnit.get(input.unitId);
-    if (captured === undefined) {
-      throw new LiveWorkflowFactoryError(
-        `cannot finalize ${input.unitId}: no validated P1 draft was captured for this run`,
-      );
-    }
-    if (captured.memoKeys.length === 0) {
-      throw new LiveWorkflowFactoryError(
-        `cannot finalize ${input.unitId}: P1 produced no verified physical memo receipt`,
-      );
-    }
     if (input.stage !== "final" && input.stage !== "build-lqa") {
       throw new LiveWorkflowFactoryError(
         `cannot finalize ${input.unitId}: stage ${input.stage} is not a final-stage output`,
@@ -101,10 +108,36 @@ export function createCapturedDraftFinalizer(
         `cannot finalize ${input.unitId}: no Q5 render/review evidence was captured for this build`,
       );
     }
+    if (input.stage === "build-lqa" && buildLqaEvidence !== undefined) {
+      const final = acceptedByUnit.get(input.unitId);
+      if (final === undefined || final.stage !== "final") {
+        throw new LiveWorkflowFactoryError(
+          `cannot finalize ${input.unitId}: no verified final accepted output is available for Q5`,
+        );
+      }
+      const output = acceptedOutputForBuildLqa({
+        final,
+        version: (input.priorHead?.version ?? 0) + 1,
+        priorOutputId: input.priorHead?.outputId,
+        shippable: input.shippable,
+        buildLqaEvidence,
+      });
+      return finalizedArtifact(input, output);
+    }
+    const captured = byUnit.get(input.unitId);
+    if (captured === undefined) {
+      throw new LiveWorkflowFactoryError(
+        `cannot finalize ${input.unitId}: no validated P1 draft was captured for this run`,
+      );
+    }
+    if (captured.memoKeys.length === 0) {
+      throw new LiveWorkflowFactoryError(
+        `cannot finalize ${input.unitId}: P1 produced no verified physical memo receipt`,
+      );
+    }
     const version = (input.priorHead?.version ?? 0) + 1;
     const output = acceptedOutputForCapturedDraft({
       unitId: input.unitId,
-      stage: input.stage,
       version,
       priorOutputId: input.priorHead?.outputId,
       draft: captured.draft,
@@ -112,17 +145,9 @@ export function createCapturedDraftFinalizer(
       memoKeys: captured.memoKeys,
       scope,
       shippable: input.shippable,
-      ...(buildLqaEvidence === undefined ? {} : { buildLqaEvidence }),
     });
     acceptedByUnit.set(input.unitId, output);
-    return {
-      outputId: output.outputId,
-      semanticKey: sha256(`${input.unitId}:${input.stage}:${input.contentHash}`),
-      schemaVersion: output.schemaVersion,
-      outputJson: JSON.stringify(output),
-      memoKeys: output.memoKeys,
-      sourceHash: output.sourceHash,
-    };
+    return finalizedArtifact(input, output);
   };
   const patchDirectory = mkdtempSync(join(tmpdir(), "itotori-native-patch-"));
   const basePatchback: PatchbackDeps = {
@@ -170,6 +195,9 @@ export function createCapturedDraftFinalizer(
           snapshot,
           buildPatchInput: basePatchback.buildInput,
           reviewer: options.buildLqaReviewer,
+          recoveredAccepted: [...acceptedByUnit.values()].filter(
+            (output) => output.stage === "final",
+          ),
           recordBuildLqaEvidence(evidence) {
             for (const receipt of evidence) {
               const prior = buildLqaEvidenceByUnit.get(receipt.unitId);
@@ -188,7 +216,6 @@ export function createCapturedDraftFinalizer(
 
 function acceptedOutputForCapturedDraft(input: {
   readonly unitId: string;
-  readonly stage: "final" | "build-lqa";
   readonly version: number;
   readonly priorOutputId: string | undefined;
   readonly draft: Draft;
@@ -196,7 +223,6 @@ function acceptedOutputForCapturedDraft(input: {
   readonly memoKeys: readonly string[];
   readonly scope: RunScopeConfig;
   readonly shippable: boolean;
-  readonly buildLqaEvidence?: BuildLqaReviewEvidence;
 }): Extract<AcceptedOutput, { readonly subjectType: "unit" }> {
   const releaseEligibility = input.shippable
     ? {
@@ -218,24 +244,18 @@ function acceptedOutputForCapturedDraft(input: {
       };
   return {
     schemaVersion: "itotori.accepted-output.v1",
-    outputId: `accepted:${input.unitId}:${input.stage}:v${input.version}`,
+    outputId: `accepted:${input.unitId}:final:v${input.version}`,
     version: input.version,
     ...(input.priorOutputId === undefined ? {} : { supersedesOutputId: input.priorOutputId }),
     parentOutputIds: input.priorOutputId === undefined ? [] : [input.priorOutputId],
-    memoKeys: uniqueStrings([
-      ...input.memoKeys,
-      ...(input.buildLqaEvidence === undefined ? [] : [input.buildLqaEvidence.memoKey]),
-    ]),
-    evidenceIds: uniqueStrings([
-      ...input.draft.evidenceIds,
-      ...buildLqaEvidenceIds(input.buildLqaEvidence),
-    ]),
+    memoKeys: uniqueStrings(input.memoKeys),
+    evidenceIds: uniqueStrings(input.draft.evidenceIds),
     acceptedAt: new Date().toISOString(),
     releaseEligibility,
     subjectType: "unit",
     subjectId: input.unitId,
     localizationSnapshotId: input.scope.localizationSnapshotId,
-    stage: input.stage,
+    stage: "final",
     sourceHash: input.draft.sourceHash,
     value: {
       targetSkeleton: input.draft.targetSkeleton,
@@ -252,9 +272,63 @@ function acceptedOutputForCapturedDraft(input: {
           status: "PASS",
         },
       ],
-      reviewVerdictIds:
-        input.buildLqaEvidence === undefined ? [] : [input.buildLqaEvidence.reviewId],
+      reviewVerdictIds: [],
     },
+  };
+}
+
+/** Seal Q5 against the final accepted output itself. This gives a restarted
+ * factory the same P1 provenance, basis, and target that the original patch
+ * used; only verified Q5 evidence is appended here. */
+function acceptedOutputForBuildLqa(input: {
+  readonly final: Extract<AcceptedOutput, { readonly subjectType: "unit" }>;
+  readonly version: number;
+  readonly priorOutputId: string | undefined;
+  readonly shippable: boolean;
+  readonly buildLqaEvidence: BuildLqaReviewEvidence;
+}): Extract<AcceptedOutput, { readonly subjectType: "unit" }> {
+  if ((input.final.releaseEligibility.kind === "shippable") !== input.shippable) {
+    throw new LiveWorkflowFactoryError(
+      "Q5 finalization changed the final output's release posture",
+    );
+  }
+  return {
+    ...input.final,
+    outputId: `accepted:${input.final.subjectId}:build-lqa:v${input.version}`,
+    version: input.version,
+    ...(input.priorOutputId === undefined ? {} : { supersedesOutputId: input.priorOutputId }),
+    parentOutputIds: uniqueStrings([
+      input.final.outputId,
+      ...(input.priorOutputId === undefined ? [] : [input.priorOutputId]),
+    ]),
+    memoKeys: uniqueStrings([...input.final.memoKeys, input.buildLqaEvidence.memoKey]),
+    evidenceIds: uniqueStrings([
+      ...input.final.evidenceIds,
+      ...buildLqaEvidenceIds(input.buildLqaEvidence),
+    ]),
+    acceptedAt: new Date().toISOString(),
+    stage: "build-lqa",
+    value: {
+      ...input.final.value,
+      reviewVerdictIds: uniqueStrings([
+        ...input.final.value.reviewVerdictIds,
+        input.buildLqaEvidence.reviewId,
+      ]),
+    },
+  };
+}
+
+function finalizedArtifact(
+  input: Parameters<FinalizeArtifactResolver>[0],
+  output: Extract<AcceptedOutput, { readonly subjectType: "unit" }>,
+) {
+  return {
+    outputId: output.outputId,
+    semanticKey: sha256(`${input.unitId}:${input.stage}:${input.contentHash}`),
+    schemaVersion: output.schemaVersion,
+    outputJson: JSON.stringify(output),
+    memoKeys: output.memoKeys,
+    sourceHash: output.sourceHash,
   };
 }
 

@@ -105,6 +105,39 @@ export type ProducedPatchbackBuild = {
   cleanup(): void;
 };
 
+/** Derive the stable identity of one hash-bound produced patch. Kept exported
+ * so a durable Q5 recovery receipt can independently prove that its artifact
+ * paths and accepted-output bindings still name the cached patch id. */
+export function producedPatchVersionId(input: {
+  readonly patchExportId: string;
+  readonly engineId: PatchbackEngineId;
+  readonly scope: PatchbackScope;
+  readonly artifactHashes: Record<string, string>;
+  readonly runtimeAssets: Pick<ProducedRuntimeAssets, "contentHash">;
+  readonly units: readonly Pick<
+    ProducedAcceptedPatchUnit,
+    "bridgeUnitId" | "acceptedOutputId" | "acceptedTargetHash" | "sourceHash"
+  >[];
+}): string {
+  return `patch-version:${sha256({
+    patchExportId: input.patchExportId,
+    engineId: input.engineId,
+    scope: input.scope,
+    artifactHashes: {
+      patchTarget: input.artifactHashes.patchTarget,
+      translatedBridge: input.artifactHashes.translatedBridge,
+      patchExport: input.artifactHashes.patchExport,
+    },
+    runtimeAssets: input.runtimeAssets.contentHash,
+    units: input.units.map((unit) => ({
+      bridgeUnitId: unit.bridgeUnitId,
+      acceptedOutputId: unit.acceptedOutputId,
+      acceptedTargetHash: unit.acceptedTargetHash,
+      sourceHash: unit.sourceHash,
+    })),
+  }).slice("sha256:".length)}`;
+}
+
 /**
  * Splice the accepted targets into a real playable build via the native apply
  * seam and record the hash-bound artifact manifest. The returned accepted-
@@ -189,23 +222,14 @@ export function produceNativePatchbackBuild(
   // sufficient to name a playable build because multiple accepted target sets
   // may share that envelope. The runtime-facing version therefore commits the
   // exact patched artifact hashes and the accepted-output target hashes.
-  const patchVersionId = `patch-version:${sha256({
+  const patchVersionId = producedPatchVersionId({
     patchExportId: applied.patchExport.patchExportId,
     engineId: applied.apply.engineId,
     scope: patchReceipt.scope,
-    artifactHashes: {
-      patchTarget: artifactHashes.patchTarget,
-      translatedBridge: artifactHashes.translatedBridge,
-      patchExport: artifactHashes.patchExport,
-    },
-    runtimeAssets: runtimeAssets.contentHash,
-    units: units.map((unit) => ({
-      bridgeUnitId: unit.bridgeUnitId,
-      acceptedOutputId: unit.acceptedOutputId,
-      acceptedTargetHash: unit.acceptedTargetHash,
-      sourceHash: unit.sourceHash,
-    })),
-  }).slice("sha256:".length)}`;
+    artifactHashes,
+    runtimeAssets,
+    units,
+  });
   const runId = options.runId ?? patchVersionId;
 
   const patch: ProducedPatchbackManifest = {

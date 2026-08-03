@@ -298,6 +298,7 @@ export async function createLiveWorkflowPortDeps(
     {
       ...(config.renderEvidence === undefined ? {} : { renderEvidence: config.renderEvidence }),
       ...(roles.buildLqa === undefined ? {} : { buildLqaReviewer: roles.buildLqa }),
+      recoveredFinalOutputs: acceptedTargets.map((record) => record.acceptedOutput),
     },
   );
   const finalizeArtifact = config.finalizeArtifact ?? capturedFinalizer.resolve;

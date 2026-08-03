@@ -146,6 +146,13 @@ export interface PatchbackDeps {
     readonly patchId: string;
     readonly unitIds: readonly string[];
   }): Promise<readonly LaneVerdict[]>;
+  /** Rebind persisted real Q5 evidence when a memoized Build-LQA verdict is
+   * replayed after process restart, before its CAS output is sealed. */
+  hydrateBuildLqaEvidence?(input: {
+    readonly patchId: string;
+    readonly unitIds: readonly string[];
+    readonly verdicts: readonly LaneVerdict[];
+  }): Promise<void>;
 }
 
 /** The full substrate the live workflow ports adapt into the driver's ports. */
