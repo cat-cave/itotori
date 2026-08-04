@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "catalog-context-project-scope",
+    "title": "catalog-context project scope",
+    "marker": "catalog-context project scope"
+  }
+}

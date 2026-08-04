@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "wiki-object-persistence",
+    "title": "Wiki object persistence",
+    "marker": "strict WikiObject persistence over real contracts"
+  }
+}

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";

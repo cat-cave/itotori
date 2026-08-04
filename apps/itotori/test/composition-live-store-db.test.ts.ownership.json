@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "workflow-artifact-store",
+    "title": "workflow artifact store",
+    "marker": "live workflow artifact store — real CAS round-trip"
+  }
+}

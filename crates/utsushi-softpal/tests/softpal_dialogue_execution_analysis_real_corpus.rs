@@ -1,3 +1,4 @@
+// @itotori-real-bytes-proof
 //! Text-free evidence for the dialogue-execution investigation.
 //!
 //! This test deliberately reports offsets, dispatch keys, state-shape counts,

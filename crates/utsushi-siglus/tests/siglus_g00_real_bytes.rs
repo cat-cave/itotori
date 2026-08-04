@@ -1,3 +1,4 @@
+// @itotori-real-bytes-proof
 //! Env-gated, multi-title proof for the production Siglus G00 capture path.
 //!
 //! The two roots are intentionally explicit rather than checked into a test

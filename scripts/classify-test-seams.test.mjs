@@ -1,3 +1,4 @@
+// @itotori-meta-check
 // fe-test-behavior-standard — regression suite for the test-seam classifier.
 //
 // Proves each detector fires on a synthetic MATCHING snippet and stays silent

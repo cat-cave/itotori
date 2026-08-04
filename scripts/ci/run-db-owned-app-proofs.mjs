@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Run every DB-owned app proof by its manifest path. This is collection
-// ownership: the portable Vitest configuration excludes these files entirely.
+// Run every DB-owned app proof discovered from its adjacent declaration. This
+// is collection ownership: the portable Vitest configuration excludes them.
 
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";

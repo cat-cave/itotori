@@ -1,3 +1,4 @@
+// @itotori-meta-check
 import assert from "node:assert/strict";
 import test from "node:test";
 import { evaluateRendererContract, fontsConfigLeak } from "./assert-renderer-contract.mjs";

@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "production-role-bindings",
+    "title": "production role bindings",
+    "marker": "production Q5 fixture over live Postgres"
+  }
+}

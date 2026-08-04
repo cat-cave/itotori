@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // strictness-ci-guard-bans-laxity-reintroduction — CI guard that makes the
 // strictness pass self-enforcing. Once the strictness cluster tightened the
 // repo (reasons on every `#[ignore]`/`#[allow(...)]`, max-strict clippy,
@@ -45,6 +46,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { execSync } from "node:child_process";
+
+import { discoverRealBytesProofs } from "./real-bytes-proof-manifest.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
@@ -242,8 +245,8 @@ export function checkRelaxedFloors(path, contents) {
 
 // ---- Rule 5: real-bytes crate not covered by the lane --------------------
 // Parse the `-p <crate>` set the `ci-real-bytes` recipe passes to `cargo test`.
-// Manifest-selected proofs live in `real-bytes-lane.mjs`, so parse those
-// declared package entries too; either source is coverage by the periodic lane.
+// Adjacent real-byte proof declarations own additional package entries, so
+// derive those package names too; either source is coverage by the periodic lane.
 export function parseLaneCrates(justfileText) {
   const lines = justfileText.replaceAll("\\n", "\n").split(/\r?\n/u);
   const delegated = justfileText.includes('if (selector === "real-bytes")');
@@ -277,10 +280,15 @@ export function parseLaneCrates(justfileText) {
   return crates;
 }
 
-export function parseManifestProofCrates(laneText) {
-  return new Set(
-    [...laneText.matchAll(/args:\s*\[\s*"test",\s*"-p",\s*"([^"]+)"/gu)].map((match) => match[1]),
-  );
+export function proofPackages(proofs) {
+  const packages = new Set();
+  for (const proof of proofs) {
+    if (typeof proof?.package !== "string" || proof.package.length === 0) {
+      throw new Error("real-bytes proof declaration has no package");
+    }
+    packages.add(proof.package);
+  }
+  return packages;
 }
 
 // A crate "owns a real-bytes test" if it contains a `*_real_bytes.rs` file OR
@@ -373,9 +381,17 @@ function runAudit() {
   const commandSurface = readRepoFile("scripts/developer-command.mjs");
   const justfile = readRepoFile("justfile");
   const laneCrates = parseLaneCrates(commandSurface ?? justfile ?? "");
-  const manifestRunner = readRepoFile("scripts/real-bytes-lane.mjs");
-  for (const crate of manifestRunner ? parseManifestProofCrates(manifestRunner) : []) {
-    laneCrates.add(crate);
+  try {
+    for (const crate of proofPackages(discoverRealBytesProofs(repoRoot))) {
+      laneCrates.add(crate);
+    }
+  } catch (error) {
+    violations.push({
+      file: "scripts/real-bytes-proof-manifest.mjs",
+      line: 0,
+      rule: "real-bytes proof declarations are invalid",
+      excerpt: error instanceof Error ? error.message : String(error),
+    });
   }
   violations.push(...evaluateRealBytesCoverage(realBytesCrates, laneCrates));
 

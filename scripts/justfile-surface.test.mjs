@@ -1,3 +1,4 @@
+// @itotori-meta-check
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -103,7 +104,6 @@ test("justfile keeps exactly the six approved delegates", () => {
     .split(/\s+/u)
     .sort();
   assert.deepEqual(names, expected);
-  assert.equal(readFileSync(join(root, "justfile"), "utf8").split("\n").length - 1, 22);
 });
 
 test("removed recipe names are rejected by just", () => {

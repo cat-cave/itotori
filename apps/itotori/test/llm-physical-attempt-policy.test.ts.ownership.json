@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "llm-physical-attempt-policy",
+    "title": "LLM physical attempt policy",
+    "marker": "physical attempt policy"
+  }
+}

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // ALPHA-004: Alpha engine capability matrix generator.
 //
 // This is the stable public and CLI façade. The generator's input registry,

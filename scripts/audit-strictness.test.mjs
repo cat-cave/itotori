@@ -1,3 +1,4 @@
+// @itotori-meta-check
 // strictness-ci-guard-bans-laxity-reintroduction — regression suite.
 //
 // Proves each of the guard's rules fires on a synthetic VIOLATING snippet and
@@ -16,7 +17,7 @@ import {
   checkDenyBans,
   checkRelaxedFloors,
   parseLaneCrates,
-  parseManifestProofCrates,
+  proofPackages,
   crateOwnsRealBytes,
   evaluateRealBytesCoverage,
 } from "./audit-strictness.mjs";
@@ -164,10 +165,12 @@ test("rule 5 parses Cargo package flag variants and continuations", () => {
   assert.deepEqual([...parseLaneCrates(lane)].sort(), ["first", "fourth", "second", "third"]);
 });
 
-test("rule 5 recognizes manifest-selected proof packages", () => {
-  const runner =
-    'const proof = { args: ["test", "-p", "utsushi-siglus", "--test", "observe_real_bytes"] };';
-  assert.deepEqual([...parseManifestProofCrates(runner)], ["utsushi-siglus"]);
+test("rule 5 recognizes packages discovered from adjacent proof declarations", () => {
+  assert.deepEqual(
+    [...proofPackages([{ package: "utsushi-siglus" }, { package: "kaifuu-siglus" }])].sort(),
+    ["kaifuu-siglus", "utsushi-siglus"],
+  );
+  assert.throws(() => proofPackages([{}]), /real-bytes proof declaration has no package/u);
 });
 
 test("rule 5 flags every uncovered real-bytes crate (allowlist is now empty)", () => {

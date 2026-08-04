@@ -1,5 +1,6 @@
+// @itotori-meta-check
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,6 +10,7 @@ import {
   appLiveEvidencePlaywrightFiles,
   appLiveEvidencePlaywrightTestPaths,
   appLiveEvidenceVitestFiles,
+  discoverLiveEvidenceSuites,
   liveEvidenceSuites,
   publicAppVitestExclusionArguments,
   suitesForLiveEvidenceRunner,
@@ -35,6 +37,54 @@ test("every private suite has one concrete named owner", () => {
     assert.equal(suite.file.startsWith(appPrefix), true, suite.file);
     assert.equal(existsSync(path.join(root, suite.file)), true, suite.file);
     assert.equal(LIVE_EVIDENCE_RUNNERS.includes(suite.runner), true, suite.runner);
+  }
+});
+
+test("adjacent declarations derive ownership and reject an unowned private suite", () => {
+  const fixture = mkdtempSync(path.join(tmpdir(), "itotori-live-evidence-manifest-"));
+  try {
+    writeLiveEvidenceSuite(
+      fixture,
+      "apps/itotori/test/live-evidence/fixture-real.test.ts",
+      "real-bytes",
+    );
+    writeLiveEvidenceSuite(
+      fixture,
+      "apps/itotori/test/live-evidence/fixture-model.test.ts",
+      "model-profile",
+    );
+    writeLiveEvidenceSuite(
+      fixture,
+      "apps/itotori/e2e/live-evidence/fixture-browser.e2e.ts",
+      "browser-real-bytes",
+    );
+
+    assert.deepEqual(discoverLiveEvidenceSuites(fixture), [
+      {
+        file: "apps/itotori/test/live-evidence/fixture-real.test.ts",
+        framework: "vitest",
+        runner: "real-bytes",
+      },
+      {
+        file: "apps/itotori/test/live-evidence/fixture-model.test.ts",
+        framework: "vitest",
+        runner: "model-profile",
+      },
+      {
+        file: "apps/itotori/e2e/live-evidence/fixture-browser.e2e.ts",
+        framework: "playwright",
+        runner: "browser-real-bytes",
+      },
+    ]);
+
+    const unowned = path.join(fixture, "apps/itotori/test/live-evidence/fixture-unowned.test.ts");
+    writeFileSync(unowned, "export {};\n");
+    assert.throws(
+      () => discoverLiveEvidenceSuites(fixture),
+      /live evidence suite has no adjacent declaration: .*fixture-unowned\.test\.ts/u,
+    );
+  } finally {
+    rmSync(fixture, { force: true, recursive: true });
   }
 });
 
@@ -143,3 +193,10 @@ test("a named runner rejects a receipt containing a skipped test", () => {
     rmSync(directory, { force: true, recursive: true });
   }
 });
+
+function writeLiveEvidenceSuite(root, file, runner) {
+  const suitePath = path.join(root, file);
+  mkdirSync(path.dirname(suitePath), { recursive: true });
+  writeFileSync(suitePath, "export {};\n");
+  writeFileSync(`${suitePath}.live-evidence.json`, `${JSON.stringify({ runner })}\n`);
+}

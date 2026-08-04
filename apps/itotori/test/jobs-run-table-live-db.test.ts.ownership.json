@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "jobs-run-table",
+    "title": "jobs run table",
+    "marker": "jobs run table over persisted provider runs"
+  }
+}

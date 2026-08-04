@@ -1,0 +1,8 @@
+{
+  "schema": "itotori.coverage-parity-real-only-surface.v1",
+  "id": "avg32_scn2k_tail_clip_under_backreference",
+  "family": "reallive",
+  "surface": "AVG32 / SCN2k LZSS 'clip the final back-reference against the declared uncompressed size' branch, reached only when a compressed stream ends with a back-reference that overshoots the target buffer.",
+  "why_real_only": "The synthetic G00 (type-1/type-2) and Seen.txt corpora are compressed LITERAL-ONLY (compress_avg32_literal / encode_all_literals), so decode is input-bounded and never reaches the out_size clip. Authoring a tail-overshoot back-reference stream is possible but adds no decode-LOGIC coverage beyond what is already covered below.",
+  "logic_still_covered_by": "The back-reference COPY logic (distance/run-length/window) is exercised by the utsushi-reallive decompressor synthetic unit tests (synthetic_pure_back_references_round_trip and siblings) and the type-0 G00 fixture's trailing back-reference token; only the exact out_size CLIP arithmetic is real-only."
+}

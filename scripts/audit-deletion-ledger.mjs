@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // CI guard: deletion-ledger reality check.
 //
 // The ledger (scripts/lint/deletion-ledger.json) freezes the exact old app

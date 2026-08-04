@@ -1,8 +1,8 @@
+// @itotori-meta-check
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  EXPECTED_IGNORED_PRIVATE_CORPUS,
   buildNextestPartitionReceipt,
   summarizeNextestListReport,
 } from "./nextest-partition-receipt.mjs";
@@ -14,7 +14,7 @@ function testCase(ignored, status, reason) {
   };
 }
 
-function listReport({ selected = 2, partitionNonselected = 3, ignored = 169 } = {}) {
+function listReport({ selected = 2, partitionNonselected = 3, ignored = 4 } = {}) {
   const testcases = {};
   for (let index = 0; index < selected; index += 1) {
     testcases[`selected-${index}`] = testCase(false, "matches");
@@ -39,7 +39,7 @@ test("builds a zero-CI-skip receipt while keeping partition and corpus exclusion
   const receipt = buildNextestPartitionReceipt({
     lane: "tier1-rust-1of3",
     listReport: listReport(),
-    runReport: `${summary(1, 0)}${summary(2, 172)}`,
+    runReport: `${summary(1, 0)}${summary(2, 7)}`,
   });
 
   assert.deepEqual(receipt, {
@@ -47,17 +47,19 @@ test("builds a zero-CI-skip receipt while keeping partition and corpus exclusion
     executed: 2,
     ciSkipped: 0,
     partitionNonselected: 3,
-    ignoredPrivateCorpus: EXPECTED_IGNORED_PRIVATE_CORPUS,
-    rawNextestSkipped: 172,
-    listed: 174,
+    ignoredPrivateCorpus: 4,
+    rawNextestSkipped: 7,
+    listed: 9,
   });
 });
 
-test("rejects an expanded ignored private-corpus inventory", () => {
-  assert.throws(
-    () => summarizeNextestListReport(listReport({ ignored: 170 })),
-    /expected 169, found 170/u,
-  );
+test("derives the ignored private-corpus inventory from each nextest list", () => {
+  assert.deepEqual(summarizeNextestListReport(listReport({ ignored: 5 })), {
+    listed: 10,
+    selected: 2,
+    partitionNonselected: 3,
+    ignoredPrivateCorpus: 5,
+  });
 });
 
 test("rejects a filter mismatch outside the partition ownership state", () => {
@@ -79,7 +81,7 @@ test("rejects a nextest run that executes a different count than the listed part
       buildNextestPartitionReceipt({
         lane: "tier1-rust-2of3",
         listReport: listReport(),
-        runReport: summary(1, 172),
+        runReport: summary(1, 7),
       }),
     /listed 2 selected tests, run reported 1/u,
   );
@@ -91,9 +93,9 @@ test("rejects unaccounted raw nextest skips", () => {
       buildNextestPartitionReceipt({
         lane: "tier1-rust-3of3",
         listReport: listReport(),
-        runReport: summary(2, 171),
+        runReport: summary(2, 6),
       }),
-    /expected 172 partition-or-private-corpus exclusions, run reported 171/u,
+    /expected 7 partition-or-private-corpus exclusions, run reported 6/u,
   );
 });
 

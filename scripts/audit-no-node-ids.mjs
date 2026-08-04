@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // CI guard: no node-id references in tracked text artifacts.
 //
 // A "node id" is a roadmap / ticket cross-ref (`<PREFIX>-<number>`, a

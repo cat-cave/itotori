@@ -1,3 +1,4 @@
+// @itotori-real-bytes-proof
 //! Env-gated E1 observation proof over two independently supplied Siglus
 //! installations. Copyrighted scene bytes stay outside the repository.
 

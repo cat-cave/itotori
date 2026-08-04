@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // CI guard: the temporary TanStack AI / OpenRouter SDK pin stays exact.
 //
 // Asserts that apps/itotori, the root pnpm.overrides entry, and pnpm-lock.yaml

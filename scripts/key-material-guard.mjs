@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // Guard the Git index against private-key filenames and PEM private-key headers.
 //
 // The index is the enforcement boundary: it includes tracked files and staged

@@ -1,3 +1,4 @@
+// @itotori-real-bytes-proof
 //! Launch hydration through the request VFS.
 //!
 //! The synthetic case deliberately gives the port an input root that does not

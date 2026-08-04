@@ -1,3 +1,4 @@
+// @itotori-catalog-replay-db
 // Database-backed scenarios remain registered through this façade.
 import "./catalog-recorded-importers.test.vndb-import.js";
 import "./catalog-recorded-importers.test.seed-hints.js";

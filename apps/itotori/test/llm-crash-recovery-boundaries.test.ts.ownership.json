@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "llm-crash-recovery",
+    "title": "LLM crash recovery",
+    "marker": "substrate crash recovery at every physical call boundary"
+  }
+}

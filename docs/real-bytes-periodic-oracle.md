@@ -102,3 +102,7 @@ The failure message on every red path prints this same re-derive hint.
 Stage (A) reads the corpora in place under the configured corpus roots,
 read-only, exactly like `just test real-bytes`. No copyrighted bytes are copied or
 committed; only the derived, non-copyrighted coverage manifest is tracked.
+
+The local real-byte lane discovers its Cargo commands from package/test markers
+and adjacent `*.real-bytes-proof.json` declarations. A new proof changes its
+own package or test declaration, never a shared engine-to-command map.

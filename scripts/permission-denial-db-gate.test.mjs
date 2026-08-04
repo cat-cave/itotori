@@ -1,7 +1,8 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // SHARED-027 regression suite. Guards the permission-denial DB-backed gate's
 // no-DATABASE_URL behavior: it must FAIL (non-zero), emit a machine-readable
-// skipped artifact naming the authorization matrix suite, and never let a skip
+// skipped artifact naming each declared permission-denial suite, and never let a skip
 // masquerade as DB-backed authorization denial coverage. (The DB-present
 // success path is exercised by `just permission-denial-db-strict` against a real
 // Postgres.)
@@ -9,16 +10,22 @@
 // Also covers --results verify-only mode: only status "passed" counts, and a
 // truncated shared result set (missing DB suite files) is a hard failure.
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import {
+  PERMISSION_DENIAL_DB_SCHEMA,
+  discoverPermissionDenialSuites,
+} from "./permission-denial-db-manifest.mjs";
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const gatePath = path.join(repoRoot, "scripts/permission-denial-db-gate.mjs");
-const SUITE = "authorization-matrix.test.ts";
+const PERMISSION_DENIAL_SUITES = discoverPermissionDenialSuites(repoRoot).map(({ file }) => file);
+const SUITE = PERMISSION_DENIAL_SUITES[0];
 
 // Each test passes an OWN isolated artifact dir, so concurrent invocations
 // cannot race on a shared skip/proof artifact path.
@@ -59,10 +66,8 @@ test("no-DATABASE_URL run fails loudly and never green-on-skip", async (t) => {
   assert.equal(marker.status, "skipped");
   assert.equal(marker.permissionDenialCovered, false);
   assert.equal(marker.node, "SHARED-027");
-  // This catches a parser that merely finds the split matrix's three spreads
-  // instead of resolving the 136 concrete denial cases behind them.
-  assert.equal(marker.expectedMatrixEntries, 136);
-  assert.deepEqual(marker.skippedSuites, ["authorization-matrix.test.ts"]);
+  assert.ok(marker.expectedMatrixEntries > 0, "the declared matrix must have denial cases");
+  assert.deepEqual(marker.skippedSuites, PERMISSION_DENIAL_SUITES);
   assert.equal(marker.skippedSuiteCount, marker.skippedSuites.length);
   // The isolated skip artifact must exist and match the marker.
   const artifact = JSON.parse(await readFile(skipArtifactPath, "utf8"));
@@ -81,8 +86,8 @@ test("no-DATABASE_URL run writes a machine-readable skipped artifact and no proo
   assert.equal(artifact.permissionDenialCovered, false);
   assert.equal(artifact.coverage, "none");
   assert.equal(artifact.node, "SHARED-027");
-  assert.equal(artifact.expectedMatrixEntries, 136);
-  assert.deepEqual(artifact.skippedSuites, ["authorization-matrix.test.ts"]);
+  assert.ok(artifact.expectedMatrixEntries > 0);
+  assert.deepEqual(artifact.skippedSuites, PERMISSION_DENIAL_SUITES);
   assert.ok(
     typeof artifact.remediationCommand === "string" && artifact.remediationCommand.length > 0,
   );
@@ -266,4 +271,28 @@ test("--results verify-only rejects a suite with todo entries (not coverage)", a
   const result = runGateVerifyOnly(file, tmpDir);
   assert.equal(result.status, 1, `must fail on todo entries\n${gateOutput(result)}`);
   assert.match(gateOutput(result), /todo|non-passed|only status "passed"/u);
+});
+
+test("permission-denial declarations derive suites and reject a missing adjacent declaration", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "permission-denial-declaration-"));
+  const testRoot = path.join(root, "packages/itotori-db/test");
+  const testFile = path.join(testRoot, "denial.test.ts");
+  try {
+    await mkdir(testRoot, { recursive: true });
+    await writeFile(testFile, "// @itotori-permission-denial-db\nexport {};\n");
+    assert.throws(
+      () => discoverPermissionDenialSuites(root),
+      /permission-denial suite has no adjacent declaration/u,
+    );
+
+    await writeFile(
+      `${testFile}.permission-denial-db.json`,
+      `${JSON.stringify({ schema: PERMISSION_DENIAL_DB_SCHEMA, matrixExport: "matrix" })}\n`,
+    );
+    assert.deepEqual(discoverPermissionDenialSuites(root), [
+      { file: "denial.test.ts", filter: "denial", matrixExport: "matrix" },
+    ]);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
 });

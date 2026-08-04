@@ -1,0 +1,6 @@
+{
+  "schema": "itotori.coverage-parity-instantiation.v1",
+  "family": "reallive",
+  "group": "opener_marker",
+  "test": "synthetic_scene_contains_every_opener_marker"
+}

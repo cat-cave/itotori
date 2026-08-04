@@ -1,0 +1,14 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "memo-fault",
+    "title": "physical model step durability",
+    "marker": "physical model step durability"
+  },
+  "coverage": {
+    "id": "memo-fault",
+    "title": "memo/fault",
+    "marker": "memoizes every model step"
+  }
+}

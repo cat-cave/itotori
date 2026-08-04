@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // CI guard: no direct legacy ModelProvider invocation.
 //
 // This is the public façade for the provider-invocation audit. The AST and

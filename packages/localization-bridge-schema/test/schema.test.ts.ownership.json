@@ -1,0 +1,10 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-ts-public-1of2"],
+  "coverage": {
+    "id": "strict-schema",
+    "title": "strict schema",
+    "marker": "localization bridge schema"
+  },
+  "recipeToken": "@itotori/localization-bridge-schema"
+}

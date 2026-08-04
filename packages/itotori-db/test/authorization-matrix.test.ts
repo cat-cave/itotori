@@ -1,3 +1,4 @@
+// @itotori-permission-denial-db
 // Database-backed scenarios remain registered through this façade.
 export { repositoryPermissionGateMatrix } from "./authorization-matrix.test.core.js";
 

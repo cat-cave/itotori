@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";

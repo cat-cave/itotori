@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "localize-cli-project-scope",
+    "title": "localize CLI project scope",
+    "marker": "localize CLI project-scope provisioning"
+  }
+}

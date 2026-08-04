@@ -1,3 +1,4 @@
+// @itotori-catalog-replay-db
 // CATALOG-076: durable catalog replay VALIDATION record.
 //
 // Proves the durable validation artifact emitted from a real replay run:

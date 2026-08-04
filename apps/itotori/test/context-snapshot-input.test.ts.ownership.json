@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "context-snapshot-persistence",
+    "title": "context snapshot persistence",
+    "marker": "context snapshot input persistence"
+  }
+}

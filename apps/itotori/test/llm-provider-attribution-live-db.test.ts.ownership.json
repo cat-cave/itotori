@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "provider-attribution",
+    "title": "provider attribution",
+    "marker": "physical provider-attribution ledger"
+  }
+}

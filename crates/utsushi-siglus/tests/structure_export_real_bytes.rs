@@ -1,3 +1,4 @@
+// @itotori-real-bytes-proof
 //! Optional real-byte proof for the Siglus common structure projection.
 //!
 //! The corpus is private and read-only. Configured runs must exercise two

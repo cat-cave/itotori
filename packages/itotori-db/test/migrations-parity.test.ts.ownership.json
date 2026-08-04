@@ -1,0 +1,10 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier0-meta"],
+  "coverage": {
+    "id": "migration",
+    "title": "migration",
+    "marker": "migrations registration parity"
+  },
+  "recipeToken": "migrations-parity.test.ts"
+}

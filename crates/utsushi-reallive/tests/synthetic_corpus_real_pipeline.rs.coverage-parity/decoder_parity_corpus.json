@@ -1,0 +1,6 @@
+{
+  "schema": "itotori.coverage-parity-instantiation.v1",
+  "family": "reallive",
+  "group": "decoder_parity_corpus",
+  "test": "synthetic_archives_decode_clean_and_frame_round_trip_through_real_pipeline"
+}

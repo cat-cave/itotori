@@ -1,3 +1,4 @@
+// @itotori-real-bytes-proof
 //! Live Siglus corpus proof against the real read-only `/archive/vault`.
 //! Both siglus_corpus_one and siglus_corpus_two are held as **portable installs** (bare
 //! `by-id` artifacts), bypassing DVD copy protection entirely. This proof

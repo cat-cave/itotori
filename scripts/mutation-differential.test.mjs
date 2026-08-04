@@ -1,3 +1,4 @@
+// @itotori-meta-check
 // Regression suite for scripts/mutation-differential.mjs — exercises the pure
 // harness logic (mutation application, kill/escape/compile-error classification,
 // mutation-set well-formedness) WITHOUT invoking cargo, so it runs in the fast
@@ -14,6 +15,7 @@ import {
   REAL_GUARDS,
   applyMutation,
   classifyOutcome,
+  deriveRealGuards,
 } from "./mutation-differential.mjs";
 
 const repoRoot = new URL("..", import.meta.url).pathname;
@@ -86,6 +88,16 @@ test("mutation ids are unique and reference a known real-bytes guard family", ()
     assert.ok(Array.isArray(m.guardCrates) && m.guardCrates.length > 0, `${m.id}: no guardCrates`);
     assert.ok(REAL_GUARDS[m.realFamily], `${m.id}: unknown realFamily ${m.realFamily}`);
   }
+});
+
+test("real-byte guards are derived from each family's mutation guard-crate union", () => {
+  assert.deepEqual(
+    deriveRealGuards([
+      { realFamily: "example", guardCrates: ["crate-a"] },
+      { realFamily: "example", guardCrates: ["crate-b", "crate-a"] },
+    ]),
+    { example: { crates: ["crate-a", "crate-b"], ignored: true } },
+  );
 });
 
 test("strict RealLive opcode corpus tests remain opt-in outside the synthetic mutation lane", () => {

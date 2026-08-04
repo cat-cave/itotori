@@ -1,3 +1,4 @@
+// @itotori-meta-check
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -7,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { inspectIndex, sensitivePathReason } from "./key-material-guard.mjs";
+import { discoverMetaChecks } from "./meta-check-manifest.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const scriptPath = join(here, "key-material-guard.mjs");
@@ -107,10 +109,10 @@ test("CLI passes a clean index and states its detection limit", () => {
 });
 
 test("the meta gate runs the guard test before the guard", () => {
-  const command = readFileSync(join(here, "developer-command.mjs"), "utf8");
-  const testInvocation = "node --test scripts/key-material-guard.test.mjs";
-  const guardInvocation = "node scripts/key-material-guard.mjs";
-  assert.ok(command.includes(testInvocation));
-  assert.ok(command.includes(guardInvocation));
-  assert.ok(command.indexOf(testInvocation) < command.indexOf(guardInvocation));
+  const checks = discoverMetaChecks(join(here, ".."));
+  const testEntry = checks.find(({ owner }) => owner === "scripts/key-material-guard.test.mjs");
+  const guardEntry = checks.find(({ owner }) => owner === "scripts/key-material-guard.mjs");
+  assert.deepEqual(testEntry?.args, ["--test", "scripts/key-material-guard.test.mjs"]);
+  assert.deepEqual(guardEntry?.args, ["scripts/key-material-guard.mjs"]);
+  assert.ok(checks.indexOf(testEntry) < checks.indexOf(guardEntry));
 });

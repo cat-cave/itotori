@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "durable-restart",
+    "title": "durable restart",
+    "marker": "SIGKILLs a production child after P1, then resumes from its durable checkpoint"
+  }
+}

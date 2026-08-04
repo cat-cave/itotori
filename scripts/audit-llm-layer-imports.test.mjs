@@ -1,3 +1,4 @@
+// @itotori-meta-check
 // Regression suite for the LLM-layer import-boundary guard.
 //
 // Proves every rule catches a planted violation and a clean file passes:

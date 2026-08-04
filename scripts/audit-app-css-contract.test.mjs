@@ -1,3 +1,4 @@
+// @itotori-meta-check
 // Regression suite for the app-css contract guard.
 //
 // Proves the guard catches the two defect classes that shipped invisibly —

@@ -1,0 +1,6 @@
+{
+  "schema": "itotori.coverage-parity-instantiation.v1",
+  "family": "reallive",
+  "group": "g00_type",
+  "test": "synthetic_g00_images_instantiate_every_g00_type"
+}

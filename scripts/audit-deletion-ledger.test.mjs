@@ -1,3 +1,4 @@
+// @itotori-meta-check
 // Regression suite for the deletion-ledger CI guard.
 //
 // Proves the guard catches every mismatch kind: a missing path, a stale line

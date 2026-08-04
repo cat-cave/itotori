@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // synthetic-fixture-coverage-catalogue-per-engine (P2).
 //
 // Emits a COVERAGE MANIFEST: every UNIQUE component the REAL-VALIDATED

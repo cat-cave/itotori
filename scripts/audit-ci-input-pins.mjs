@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // CI guard: workflow inputs must be immutable and toolchains centrally installed.
 //
 // Third-party GitHub Actions run repository-controlled code in CI. A symbolic

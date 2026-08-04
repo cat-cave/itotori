@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // Static CI guard for test registrations that do not execute, plus the
 // intentionally separate private-corpus Rust ignore inventory.
 
@@ -17,12 +18,12 @@ import {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const repoRoot = path.resolve(here, "..");
-export const MAX_RUST_IGNORED_TESTS = 169;
 
 const sourceExtension = /\.(?:[cm]?[jt]sx?)$/u;
 const testPath = /(?:^|\/)(?:test|tests|e2e)\/|\.(?:test|spec|e2e)\.(?:[cm]?[jt]sx?)$/u;
 const testApiNames = new Set(["describe", "it", "test", "context", "suite"]);
 const nonExecutingModifiers = new Set(["skip", "todo", "skipIf", "runIf"]);
+const rustIgnoreAttribute = /^\s*#\s*\[\s*ignore\s*=/u;
 
 function isDistPath(file) {
   return file.split("/").includes("dist");
@@ -47,6 +48,25 @@ export function listWorkingTreeFiles(root = repoRoot) {
     .split("\0")
     .filter(Boolean)
     .sort();
+}
+
+function gitText(root, args) {
+  return execFileSync("git", args, { cwd: root, encoding: "utf8" });
+}
+
+/** Resolve the public-main comparison point without trusting the current tree as its own baseline. */
+export function mergeBaseWithMain(root = repoRoot) {
+  for (const ref of ["refs/remotes/origin/main", "refs/heads/main"]) {
+    try {
+      const revision = gitText(root, ["merge-base", ref, "HEAD"]).trim();
+      if (revision !== "") return revision;
+    } catch {
+      // A fixture or local clone may have only one of the conventional main refs.
+    }
+  }
+  throw new Error(
+    "cannot derive Rust ignored-test baseline: expected origin/main or main to share history with HEAD",
+  );
 }
 
 export function isTestSource(file) {
@@ -278,7 +298,7 @@ export function scanSkippedTestSource(root = repoRoot) {
 
 function ignoredAttributeLocations(file, contents) {
   const locations = [];
-  const pattern = /^\s*#\s*\[\s*ignore\s*=/gmu;
+  const pattern = new RegExp(rustIgnoreAttribute.source, "gmu");
   for (const match of contents.matchAll(pattern)) {
     const offset = match.index ?? 0;
     const line = contents.slice(0, offset).split("\n").length;
@@ -304,13 +324,52 @@ export function countRustIgnoredTests(root = repoRoot) {
   return { files, locations, count: locations.length };
 }
 
+/** Derive the committed Rust ignore inventory from the branch's public-main merge base. */
+export function mergeBaseRustIgnoredTests(root = repoRoot) {
+  const revision = mergeBaseWithMain(root);
+  const files = gitText(root, ["ls-tree", "-r", "-z", "--name-only", revision, "--", "crates"])
+    .split("\0")
+    .filter((file) => isRustSource(file))
+    .sort();
+  const locations = [];
+  for (const file of files) {
+    locations.push(
+      ...ignoredAttributeLocations(file, gitText(root, ["show", `${revision}:${file}`])),
+    );
+  }
+  return { revision, files, locations, count: locations.length };
+}
+
+/** Find direct changes to reasoned Rust ignore attributes since the merge base. */
+export function changedRustIgnoreAttributes(root = repoRoot, revision = mergeBaseWithMain(root)) {
+  return gitText(root, [
+    "diff",
+    "--no-ext-diff",
+    "--no-renames",
+    "--unified=0",
+    revision,
+    "--",
+    "crates",
+  ])
+    .split("\n")
+    .filter((line) => /^[+-]/u.test(line) && rustIgnoreAttribute.test(line.slice(1)))
+    .map((line) => ({ kind: line[0] === "+" ? "added" : "removed", source: line.slice(1).trim() }));
+}
+
 export function evaluateGuard(root = repoRoot) {
   const tests = scanSkippedTestSource(root);
   const rust = countRustIgnoredTests(root);
+  const rustBaseline = mergeBaseRustIgnoredTests(root);
+  const rustChanges = changedRustIgnoreAttributes(root, rustBaseline.revision);
   return {
     ...tests,
     rust,
-    ok: tests.violations.length === 0 && rust.count === MAX_RUST_IGNORED_TESTS,
+    rustBaseline,
+    rustChanges,
+    ok:
+      tests.violations.length === 0 &&
+      rust.count === rustBaseline.count &&
+      rustChanges.length === 0,
   };
 }
 
@@ -331,10 +390,11 @@ function runCli() {
   const result = evaluateGuard(root);
   process.stdout.write(
     `zero-skipped-test guard: ${result.files.length} JS/TS test source file(s) scanned; ` +
-      `Rust #[ignore = ...] count ${result.rust.count}/${MAX_RUST_IGNORED_TESTS}.\n`,
+      `Rust #[ignore = ...] count ${result.rust.count}/${result.rustBaseline.count} ` +
+      `from merge-base ${result.rustBaseline.revision.slice(0, 12)}.\n`,
   );
   process.stdout.write(
-    "Limit: the AST scan recognizes conventional test APIs and direct process.env registration conditions; dynamic aliases and runtime-generated registrations are outside its scope. The Rust inventory scans reasoned attributes in crates/ source and does not claim they executed.\n",
+    "Limit: the AST scan recognizes conventional test APIs and direct process.env registration conditions; dynamic aliases and runtime-generated registrations are outside its scope. The Rust inventory compares reasoned attributes in crates/ source with the origin/main (or main) merge base and does not claim they executed.\n",
   );
 
   if (result.violations.length > 0) {
@@ -345,14 +405,22 @@ function runCli() {
       process.stderr.write(`  ${violation.location}: ${violation.kind}\n`);
     }
   }
-  if (result.rust.count !== MAX_RUST_IGNORED_TESTS) {
+  if (result.rust.count !== result.rustBaseline.count) {
     process.stderr.write(
-      result.rust.count > MAX_RUST_IGNORED_TESTS
+      result.rust.count > result.rustBaseline.count
         ? `zero-skipped-test guard: FAILED — Rust ignored-test count grew from ` +
-            `${MAX_RUST_IGNORED_TESTS} to ${result.rust.count}.\n`
+            `${result.rustBaseline.count} to ${result.rust.count}.\n`
         : `zero-skipped-test guard: FAILED — Rust ignored-test count changed from ` +
-            `${MAX_RUST_IGNORED_TESTS} to ${result.rust.count}.\n`,
+            `${result.rustBaseline.count} to ${result.rust.count}.\n`,
     );
+  }
+  if (result.rustChanges.length > 0) {
+    process.stderr.write(
+      "zero-skipped-test guard: FAILED — Rust ignored-test attributes changed from the merge-base inventory.\n",
+    );
+    for (const change of result.rustChanges) {
+      process.stderr.write(`  ${change.kind}: ${change.source}\n`);
+    }
   }
   if (!result.ok) process.exitCode = 1;
 }

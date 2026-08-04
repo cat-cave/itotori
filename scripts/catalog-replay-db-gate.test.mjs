@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // CATALOG-072 regression suite. Guards the catalog-replay DB-backed gate's
 // no-DATABASE_URL behavior: it must FAIL (non-zero), emit a machine-readable
 // skipped artifact naming the catalog replay/idempotency suites, and never let
@@ -8,12 +9,17 @@
 // Also covers --results verify-only mode: only status "passed" counts, and a
 // truncated shared result set is a hard failure.
 import assert from "node:assert/strict";
-import { readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+
+import {
+  CATALOG_REPLAY_DB_SCHEMA,
+  discoverCatalogReplaySuites,
+} from "./catalog-replay-db-manifest.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const gatePath = path.join(repoRoot, "scripts/catalog-replay-db-gate.mjs");
@@ -21,12 +27,7 @@ const skipArtifactPath = path.join(repoRoot, ".tmp/itotori-db/catalog-replay-ski
 const proofArtifactPath = path.join(repoRoot, ".tmp/itotori-db/catalog-replay-proof.json");
 const generalSkipMarkerPath = path.join(repoRoot, ".tmp/itotori-db/no-database-skipped.json");
 
-const CATALOG_SUITES = [
-  "catalog-crawler-repository.test.ts",
-  "catalog-recorded-importers.test.ts",
-  "catalog-dlsite-demand.test.ts",
-  "catalog-replay-validation-artifact.test.ts",
-];
+const CATALOG_SUITES = discoverCatalogReplaySuites(repoRoot).map(({ file }) => file);
 const SUITE = CATALOG_SUITES[0];
 
 function runGateWithoutDb() {
@@ -76,12 +77,7 @@ test("no-DATABASE_URL run writes a machine-readable skipped artifact and no proo
   assert.equal(artifact.replayCovered, false);
   assert.equal(artifact.coverage, "none");
   assert.equal(artifact.contract, "CATALOG-065");
-  assert.deepEqual([...artifact.skippedSuites].sort(), [
-    "catalog-crawler-repository.test.ts",
-    "catalog-dlsite-demand.test.ts",
-    "catalog-recorded-importers.test.ts",
-    "catalog-replay-validation-artifact.test.ts",
-  ]);
+  assert.deepEqual([...artifact.skippedSuites].sort(), [...CATALOG_SUITES].sort());
   assert.ok(
     typeof artifact.remediationCommand === "string" && artifact.remediationCommand.length > 0,
   );
@@ -233,4 +229,28 @@ test("--results verify-only rejects a suite with todo entries (not coverage)", a
   assert.equal(result.status, 1, `must fail on todo entries\n${gateOutput(result)}`);
   assert.match(gateOutput(result), /todo|non-passed|only status "passed"/u);
   await rm(file, { force: true });
+});
+
+test("catalog replay declarations derive suites and reject a missing adjacent declaration", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "catalog-replay-declaration-"));
+  const testRoot = path.join(root, "packages/itotori-db/test");
+  const testFile = path.join(testRoot, "replay.test.ts");
+  try {
+    await mkdir(testRoot, { recursive: true });
+    await writeFile(testFile, `// @itotori-catalog-replay-db\nexport {};\n`);
+    assert.throws(
+      () => discoverCatalogReplaySuites(root),
+      /catalog replay suite has no adjacent declaration/u,
+    );
+
+    await writeFile(
+      `${testFile}.catalog-replay-db.json`,
+      `${JSON.stringify({ schema: CATALOG_REPLAY_DB_SCHEMA })}\n`,
+    );
+    assert.deepEqual(discoverCatalogReplaySuites(root), [
+      { file: "replay.test.ts", filter: "replay" },
+    ]);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
 });

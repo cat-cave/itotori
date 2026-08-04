@@ -1,3 +1,4 @@
+// @itotori-meta-check
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -7,9 +8,10 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
-  MAX_RUST_IGNORED_TESTS,
+  changedRustIgnoreAttributes,
   countRustIgnoredTests,
   findSkippedTestViolations,
+  mergeBaseRustIgnoredTests,
   repoRoot,
 } from "./zero-skipped-test-guard.mjs";
 
@@ -20,17 +22,27 @@ function withGitFixture(files, run) {
   const root = mkdtempSync(join(tmpdir(), "itotori-zero-skips-"));
   try {
     execFileSync("git", ["init", "--quiet"], { cwd: root });
-    const fixtureFiles = Object.keys(files).some((file) => file.startsWith("crates/"))
-      ? files
-      : {
-          ...files,
-          "crates/example/tests/private.rs": privateCorpusIgnoreFixture(MAX_RUST_IGNORED_TESTS),
-        };
-    for (const [file, contents] of Object.entries(fixtureFiles)) {
+    for (const [file, contents] of Object.entries(files)) {
       const target = join(root, file);
       mkdirSync(dirname(target), { recursive: true });
       writeFileSync(target, contents);
     }
+    execFileSync("git", ["add", ...Object.keys(files)], { cwd: root });
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.name=fixture",
+        "-c",
+        "user.email=fixture@example.test",
+        "commit",
+        "--quiet",
+        "-m",
+        "baseline",
+      ],
+      { cwd: root },
+    );
+    execFileSync("git", ["update-ref", "refs/remotes/origin/main", "HEAD"], { cwd: root });
     run(root);
   } finally {
     rmSync(root, { force: true, recursive: true });
@@ -100,7 +112,7 @@ test("CLI fails on an untracked reintroduced describe.skip and passes once remov
       writeFileSync(join(root, "apps/example/test/proof.test.ts"), 'describe("runs", () => {});\n');
       const accepted = runGuard(root);
       assert.equal(accepted.status, 0, accepted.stderr);
-      assert.match(accepted.stdout, /Rust #\[ignore = \.\.\.\] count 169\/169/u);
+      assert.match(accepted.stdout, /Rust #\[ignore = \.\.\.\] count 0\/0 from merge-base/u);
     },
   );
 });
@@ -119,28 +131,43 @@ test("does not scan generated dist test-shaped files", () => {
   );
 });
 
-test("current crate source reports the 169-test Rust ignore inventory", () => {
-  assert.equal(countRustIgnoredTests(repoRoot).count, MAX_RUST_IGNORED_TESTS);
+test("current crate source matches its merge-base-derived Rust ignore inventory", () => {
+  assert.equal(countRustIgnoredTests(repoRoot).count, mergeBaseRustIgnoredTests(repoRoot).count);
 });
 
-test("Rust inventory reports the exact current ceiling and fails on a 170th ignore", () => {
-  const ignoredTests = privateCorpusIgnoreFixture(MAX_RUST_IGNORED_TESTS + 1);
-  withGitFixture({ "crates/example/tests/private.rs": ignoredTests }, (root) => {
-    assert.equal(countRustIgnoredTests(root).count, MAX_RUST_IGNORED_TESTS + 1);
+test("Rust inventory derives its ceiling from the merge base and fails on a new ignore", () => {
+  withGitFixture({ "crates/example/tests/private.rs": privateCorpusIgnoreFixture(1) }, (root) => {
+    writeFileSync(join(root, "crates/example/tests/private.rs"), privateCorpusIgnoreFixture(2));
+    assert.equal(countRustIgnoredTests(root).count, 2);
     const rejected = runGuard(root);
     assert.equal(rejected.status, 1);
-    assert.match(rejected.stdout, /count 170\/169/u);
-    assert.match(rejected.stderr, /grew from 169 to 170/u);
+    assert.match(rejected.stdout, /count 2\/1 from merge-base/u);
+    assert.match(rejected.stderr, /grew from 1 to 2/u);
+    assert.match(rejected.stderr, /attributes changed from the merge-base inventory/u);
   });
 });
 
 test("Rust inventory rejects a missing private-corpus ignore", () => {
-  const ignoredTests = privateCorpusIgnoreFixture(MAX_RUST_IGNORED_TESTS - 1);
-  withGitFixture({ "crates/example/tests/private.rs": ignoredTests }, (root) => {
+  withGitFixture({ "crates/example/tests/private.rs": privateCorpusIgnoreFixture(2) }, (root) => {
+    writeFileSync(join(root, "crates/example/tests/private.rs"), privateCorpusIgnoreFixture(1));
     const rejected = runGuard(root);
     assert.equal(rejected.status, 1);
-    assert.match(rejected.stdout, /count 168\/169/u);
-    assert.match(rejected.stderr, /changed from 169 to 168/u);
+    assert.match(rejected.stdout, /count 1\/2 from merge-base/u);
+    assert.match(rejected.stderr, /changed from 2 to 1/u);
+  });
+});
+
+test("Rust inventory rejects an equal-sized replacement from its merge-base inventory", () => {
+  withGitFixture({ "crates/example/tests/private.rs": privateCorpusIgnoreFixture(1) }, (root) => {
+    writeFileSync(
+      join(root, "crates/example/tests/private.rs"),
+      privateCorpusIgnoreFixture(1).replace("private corpus", "different private corpus"),
+    );
+    assert.equal(countRustIgnoredTests(root).count, mergeBaseRustIgnoredTests(root).count);
+    assert.equal(changedRustIgnoreAttributes(root).length, 2);
+    const rejected = runGuard(root);
+    assert.equal(rejected.status, 1);
+    assert.match(rejected.stderr, /attributes changed from the merge-base inventory/u);
   });
 });
 
