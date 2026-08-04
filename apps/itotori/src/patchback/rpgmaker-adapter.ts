@@ -56,6 +56,24 @@ export const rpgMakerPatchbackAdapter: EnginePatchbackAdapter = {
   probeSource(root: string): string | null {
     return findRpgMakerDataRoot(root);
   },
+  buildProduceInputMaterialization(request) {
+    return {
+      extract: {
+        engine: "rpg-maker",
+        gameDir: request.sourceRoot,
+        gameId: request.gameId,
+        gameVersion: request.gameVersion,
+        sourceProfileId: request.sourceProfileId,
+        sourceLocale: request.sourceLocale,
+        bundleOutputPath: request.bridgePath,
+      },
+      structure: {
+        engine: "rpg-maker",
+        bridgePath: request.bridgePath,
+        outputPath: request.structurePath,
+      },
+    };
+  },
   buildApplyArgs(request: EnginePatchbackApplyRequest): string[] {
     return [
       "patch",

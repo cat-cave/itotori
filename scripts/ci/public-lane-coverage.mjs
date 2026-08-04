@@ -98,12 +98,21 @@ export const DB_OWNED_APP_PROOFS = [
     lane: DB_OWNED_LANE,
     invocation: "vitest run test/production-localize-pause-live-db.test.ts",
   },
+  {
+    proof: "patchback-produce-engine-detection",
+    title: "source-detected multi-engine patchback",
+    test: "apps/itotori/test/patchback-produce-endpoint-engine-detection.test.ts",
+    marker: "source-detected multi-engine dashboard patchback",
+    lane: DB_OWNED_LANE,
+    invocation: "vitest run test/patchback-produce-endpoint-engine-detection.test.ts",
+  },
 ];
 
 export const REQUIRED_DB_OWNED_PROOF_IDS = [
   "durable-restart",
   "workflow-memo-model-variant",
   "durable-pause-resume",
+  "patchback-produce-engine-detection",
 ];
 
 // ---------------------------------------------------------------------------

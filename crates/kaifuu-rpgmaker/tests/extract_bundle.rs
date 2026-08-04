@@ -12,7 +12,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use kaifuu_rpgmaker::{BridgeOpts, ExtractError, FindingKind, extract_game_dir};
+use kaifuu_rpgmaker::{
+    BridgeOpts, ExtractError, FindingKind, QuotedSpan, Scanner, extract_game_dir,
+};
 
 /// Descend (bounded BFS) from the staged corpus root to the RPG Maker `www`
 /// directory (the one that holds `data/`). The LustMemory corpus is staged
@@ -164,6 +166,38 @@ fn synthetic_www_tree_extracts_dialogue_choice_scroll_db_and_unknown_finding() {
                 == Some("rpgmaker.escape.V")
         ),
         "escape code must be a protected span"
+    );
+
+    // The bridge coordinate is the exact raw quoted-string span in the
+    // source file, not a decoded-text or serializer-relative offset.
+    let map_bytes = fs::read(data.join("Map001.json")).expect("read synthetic map bytes");
+    let range = dialogue.source_location["range"]
+        .as_object()
+        .expect("dialogue sourceLocation.range");
+    let start = usize::try_from(
+        range["startByte"]
+            .as_u64()
+            .expect("range.startByte is an unsigned integer"),
+    )
+    .expect("range.startByte fits usize");
+    let end = usize::try_from(
+        range["endByte"]
+            .as_u64()
+            .expect("range.endByte is an unsigned integer"),
+    )
+    .expect("range.endByte fits usize");
+    let expected_raw = b"\"Hello \\\\v[1]!\"";
+    let expected_start = map_bytes
+        .windows(expected_raw.len())
+        .position(|window| window == expected_raw)
+        .expect("synthetic dialogue literal is present");
+    assert_eq!(start, expected_start, "range begins at the opening quote");
+    assert_eq!(end, expected_start + expected_raw.len());
+    assert_eq!(&map_bytes[start..end], expected_raw);
+    assert_eq!(
+        Scanner::decode_span(&map_bytes, QuotedSpan { start, end })
+            .expect("range remains a decodable JSON string"),
+        dialogue.source_text,
     );
 
     // Findings: plugin (356) + unknown (70), never silently dropped.

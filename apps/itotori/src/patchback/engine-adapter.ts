@@ -15,7 +15,9 @@
 // a new `if (engine === ...)` branch in the producer.
 
 import { runNativeCli, type NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
+import type { KaifuuExtractArgs } from "../extract/kaifuu-extract-seam.js";
 import type { RuntimeLauncherAdapterFactory } from "../play/runtime-launcher-registry.js";
+import type { StructureProviderSource } from "../structure-export/structure-provider-registry.js";
 
 /** The patch-back engines the app can select. Each maps 1:1 to a kaifuu-cli
  * `patch --engine <id>` implementation and to one registered adapter. */
@@ -63,6 +65,25 @@ export type EnginePatchbackApplyResult = {
   status: number;
   stdout: string;
   stderr: string;
+};
+
+/** Inputs an engine-owned adapter needs to materialize the current source into
+ * the common bridge + narrative-structure artifacts consumed by dashboard
+ * production. The generic loader owns scratch lifecycle and native execution;
+ * the adapter owns the engine-specific extract and structure request shapes. */
+export type PatchbackProduceInputMaterializationRequest = {
+  sourceRoot: string;
+  gameId: string;
+  gameVersion: string;
+  sourceProfileId: string;
+  sourceLocale: string;
+  bridgePath: string;
+  structurePath: string;
+};
+
+export type PatchbackProduceInputMaterializationPlan = {
+  extract: KaifuuExtractArgs;
+  structure: StructureProviderSource;
 };
 
 /** A typed, engine-discriminated patch receipt persisted alongside the produced
@@ -131,6 +152,14 @@ export interface EnginePatchbackAdapter {
    */
   probeSource(root: string): string | null;
   /**
+   * Build this engine's extract + structure requests for dashboard byte
+   * production. Omitted adapters fail closed; callers never substitute another
+   * engine's source layout or native invocation.
+   */
+  buildProduceInputMaterialization?(
+    request: PatchbackProduceInputMaterializationRequest,
+  ): PatchbackProduceInputMaterializationPlan;
+  /**
    * Build the exact `kaifuu patch --engine <id>` argv (without the resolver
    * prefix). `request.sourceRoot` is already the adapter's resolved source
    * root. Pure so a test can assert the invocation without spawning.
@@ -169,9 +198,19 @@ export function enginePatchbackAdapter(engineId: PatchbackEngineId): EnginePatch
  * to RealLive" seam the CLI patch command selects through.
  */
 export function detectPatchbackEngine(sourceRoot: string): EnginePatchbackAdapter {
-  const matched = enginePatchbackAdapters().filter(
-    (adapter) => adapter.probeSource(sourceRoot) !== null,
-  );
+  return detectPatchbackEngineFromAdapters(sourceRoot, enginePatchbackAdapters());
+}
+
+/**
+ * Apply source detection against an explicit adapter set. The production
+ * registry passes every registered adapter; retaining this pure form lets
+ * callers prove that removing an adapter cannot silently select another one.
+ */
+export function detectPatchbackEngineFromAdapters(
+  sourceRoot: string,
+  adapters: readonly EnginePatchbackAdapter[],
+): EnginePatchbackAdapter {
+  const matched = adapters.filter((adapter) => adapter.probeSource(sourceRoot) !== null);
   if (matched.length === 0) {
     throw new PatchbackEngineSelectionError(
       "no-engine-detected",

@@ -157,9 +157,10 @@ export async function runStructureExportHandler(
   const provider = resolveStructureProvider(engine);
   const source = provider.parseCli(args);
   const result: StructureProviderResult = runStructureProvider(source);
+  const status = result.execution === "native-process" ? result.process.status : 0;
   process.stdout.write(
     `${JSON.stringify(
-      { engine: provider.engine, outputPath: source.outputPath, status: result.status },
+      { engine: provider.engine, outputPath: source.outputPath, status },
       null,
       2,
     )}\n`,

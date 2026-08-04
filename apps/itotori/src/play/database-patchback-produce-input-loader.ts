@@ -1,7 +1,4 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { tmpdir } from "node:os";
 
 import {
   type AuthorizationActor,
@@ -12,14 +9,11 @@ import {
   requirePermission,
 } from "@itotori/db";
 
-import { type BridgeBundleV02, assertBridgeBundleV02 } from "@itotori/localization-bridge-schema";
-
 import { AcceptedOutputSchema } from "../contracts/index.js";
-import { runKaifuuExtract } from "../extract/kaifuu-extract-seam.js";
+import type { PatchbackEngineId } from "../patchback/adapters.js";
+import { materializePatchbackProduceInput } from "../patchback/produce-input-materialization.js";
 import { type NativePatchbackInput, type AcceptedUnitOutput } from "../patchback/types.js";
 import { buildFactSnapshot } from "../prepass/index.js";
-import { type NarrativeStructure } from "../structure/index.js";
-import { runStructureProvider } from "../structure-export/structure-provider-registry.js";
 import type {
   PatchbackProduceInputLoaderPort,
   PatchbackProduceRequest,
@@ -78,6 +72,7 @@ export class DatabasePatchbackProduceInputLoader implements PatchbackProduceInpu
     input: NativePatchbackInput;
     sourceRoot: string;
     scope: "dialogue-only" | "dialogue+choices";
+    engineId: PatchbackEngineId;
     runId: string;
   } | null> {
     await requirePermission(this.#database, actor, permissionValues.draftWrite);
@@ -87,9 +82,8 @@ export class DatabasePatchbackProduceInputLoader implements PatchbackProduceInpu
       return null;
     }
 
-    const sourceRoot = requireRealLiveSourceRoot(run.data_root);
-    const { bridge, structure } = materializeNativeInputs({
-      sourceRoot,
+    const { bridge, engineId, sourceRoot, structure } = materializePatchbackProduceInput({
+      dataRoot: run.data_root,
       gameId: run.game_id,
       gameVersion: run.game_version,
       sourceProfileId: run.source_profile_id,
@@ -116,7 +110,7 @@ export class DatabasePatchbackProduceInputLoader implements PatchbackProduceInpu
         rawBridge: bridge,
         workScope: {
           inScopeUnitFactIds: snapshot.orderedUnits
-            .filter((fact) => scope === "dialogue+choices" || fact.linkKind === "line")
+            .filter((fact) => isFactInPatchbackScope(fact, scope))
             .map((fact) => fact.factId),
         },
         sourceLocale: run.source_locale,
@@ -124,6 +118,7 @@ export class DatabasePatchbackProduceInputLoader implements PatchbackProduceInpu
       },
       sourceRoot,
       scope,
+      engineId,
       runId: run.snapshot_id,
     };
   }
@@ -243,89 +238,6 @@ export class DatabasePatchbackProduceInputLoader implements PatchbackProduceInpu
   }
 }
 
-function requireRealLiveSourceRoot(dataRoot: string): string {
-  const configuredRoot = resolve(dataRoot);
-  const sourceRoot = findRealLiveSourceRoot(configuredRoot);
-  if (sourceRoot === null) {
-    throw new Error(
-      "configured patchback source root is not a RealLive game root: " + configuredRoot,
-    );
-  }
-  return sourceRoot;
-}
-
-function findRealLiveSourceRoot(root: string): string | null {
-  const pending = [root];
-  while (pending.length > 0) {
-    const current = pending.pop()!;
-    if (
-      existsSync(join(current, "REALLIVEDATA", "Seen.txt")) &&
-      existsSync(join(current, "REALLIVEDATA", "Gameexe.ini"))
-    ) {
-      return current;
-    }
-    let entries: string[];
-    try {
-      entries = readdirSync(current);
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (entry === "REALLIVEDATA") continue;
-      const child = join(current, entry);
-      try {
-        if (statSync(child).isDirectory()) pending.push(child);
-      } catch {
-        // The source root can be a mounted retail directory. Ignore an
-        // unreadable child and keep looking for its declared game root.
-      }
-    }
-  }
-  return null;
-}
-
-function materializeNativeInputs(input: {
-  sourceRoot: string;
-  gameId: string;
-  gameVersion: string;
-  sourceProfileId: string;
-  sourceLocale: string;
-}): {
-  bridge: BridgeBundleV02;
-  structure: NarrativeStructure;
-} {
-  const scratchRoot = mkdtempSync(join(tmpdir(), "itotori-patchback-input-"));
-  const bridgePath = join(scratchRoot, "bridge.json");
-  const structurePath = join(scratchRoot, "structure.json");
-  try {
-    runKaifuuExtract({
-      engine: "reallive",
-      gameRoot: input.sourceRoot,
-      gameId: input.gameId,
-      gameVersion: input.gameVersion,
-      sourceProfileId: input.sourceProfileId,
-      sourceLocale: input.sourceLocale,
-      wholeSeen: true,
-      bundleOutputPath: bridgePath,
-    });
-    runStructureProvider({
-      engine: "reallive",
-      gameexePath: join(input.sourceRoot, "REALLIVEDATA", "Gameexe.ini"),
-      seenPath: join(input.sourceRoot, "REALLIVEDATA", "Seen.txt"),
-      outputPath: structurePath,
-      bridgePath,
-    });
-    const bridge = JSON.parse(readFileSync(bridgePath, "utf8")) as unknown;
-    assertBridgeBundleV02(bridge);
-    return {
-      bridge,
-      structure: JSON.parse(readFileSync(structurePath, "utf8")) as NarrativeStructure,
-    };
-  } finally {
-    rmSync(scratchRoot, { recursive: true, force: true });
-  }
-}
-
 function nativeScopeFor(translationScope: string | null): "dialogue-only" | "dialogue+choices" {
   return translationScope === "dialogue-only" || translationScope === null
     ? "dialogue-only"
@@ -339,8 +251,8 @@ function assertFinalizedPatchbackInput(input: {
   scope: "dialogue-only" | "dialogue+choices";
 }): void {
   const acceptedById = new Map(input.accepted.map((output) => [output.subjectId, output]));
-  const scopedFacts = input.snapshot.orderedUnits.filter(
-    (fact) => input.scope === "dialogue+choices" || fact.linkKind === "line",
+  const scopedFacts = input.snapshot.orderedUnits.filter((fact) =>
+    isFactInPatchbackScope(fact, input.scope),
   );
 
   for (const fact of scopedFacts) {
@@ -376,4 +288,11 @@ function assertFinalizedPatchbackInput(input: {
       throw new Error("final accepted output source hash is stale for " + output.subjectId);
     }
   }
+}
+
+function isFactInPatchbackScope(
+  fact: NativePatchbackInput["snapshot"]["orderedUnits"][number],
+  scope: "dialogue-only" | "dialogue+choices",
+): boolean {
+  return fact.linkKind === "line" || (scope === "dialogue+choices" && fact.linkKind === "choice");
 }

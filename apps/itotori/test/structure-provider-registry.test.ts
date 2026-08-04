@@ -35,7 +35,7 @@ describe("StructureProvider registry", () => {
       },
     });
 
-    expect(result.status).toBe(0);
+    expect(result).toMatchObject({ execution: "native-process", process: { status: 0 } });
     expect(calls).toEqual([
       {
         command: "cargo",
@@ -64,8 +64,9 @@ describe("StructureProvider registry", () => {
   });
 
   it("runs the Softpal native producer through the shared Utsushi seam", () => {
-    expect(registeredStructureEngines()).toEqual(["reallive", "softpal", "siglus"]);
+    expect(registeredStructureEngines()).toEqual(["reallive", "softpal", "siglus", "rpg-maker"]);
     expect(structureProviderCapabilities().map((capability) => capability.implemented)).toEqual([
+      true,
       true,
       true,
       true,
@@ -88,7 +89,7 @@ describe("StructureProvider registry", () => {
       },
     });
 
-    expect(result.status).toBe(0);
+    expect(result).toMatchObject({ execution: "native-process", process: { status: 0 } });
     expect(calls).toEqual([
       {
         command: "cargo",
@@ -132,7 +133,7 @@ describe("StructureProvider registry", () => {
       },
     });
 
-    expect(result.status).toBe(0);
+    expect(result).toMatchObject({ execution: "native-process", process: { status: 0 } });
     expect(calls[0]?.args.slice(-9)).toEqual([
       "structure",
       "--engine",

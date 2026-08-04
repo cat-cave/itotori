@@ -24,6 +24,9 @@ export type NarrativeBridgeRef = {
   sourceUnitKey: string;
   runtimeObjectId?: string;
 };
+/** Semantic scope of a bridge-linked structure unit. Non-narrative surfaces
+ * remain source-bound facts but are excluded from dialogue translation scope. */
+export type NarrativeLinkKind = "line" | "choice" | "non-narrative";
 
 export type NarrativeMessage = {
   order: number;
@@ -76,6 +79,8 @@ export type NarrativeChoice = {
 export type NarrativeUnit = {
   unitId: string;
   bridgeRef: NarrativeBridgeRef;
+  /** Omitted by older V2 providers; consumers infer line/choice from choiceId. */
+  linkKind?: NarrativeLinkKind;
   surfaceKind: string;
   sourceText: string;
   characterId: string | null;

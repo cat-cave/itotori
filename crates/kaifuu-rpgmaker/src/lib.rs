@@ -172,6 +172,12 @@ pub enum ExtractError {
         #[source]
         source: serde_json::Error,
     },
+    #[error("kaifuu.rpgmaker.source_location: {file} {pointer}: {detail}")]
+    SourceLocation {
+        file: String,
+        pointer: String,
+        detail: String,
+    },
     #[error("kaifuu.rpgmaker.bridge: {0}")]
     Bridge(#[from] BridgeProduceError),
 }
@@ -248,6 +254,7 @@ pub fn extract_game_dir(
         };
         // Only emit an asset for files that produced at least one unit.
         if acc.units.len() > units_before {
+            attach_source_ranges(file, &bytes, &mut acc.units[units_before..])?;
             assets.push(FileAsset {
                 file: file.clone(),
                 source_hash,
@@ -262,6 +269,41 @@ pub fn extract_game_dir(
         findings: acc.findings,
         opaque_commands: acc.opaque_commands,
     })
+}
+
+/// Attach byte-accurate JSON-string spans after the walkers have identified
+/// parsed values. The scanner reads the original bytes, so these coordinates
+/// are also the ones the byte-preserving patchback writer targets.
+fn attach_source_ranges(
+    file: &str,
+    bytes: &[u8],
+    units: &mut [ProtoUnit],
+) -> Result<(), ExtractError> {
+    for unit in units {
+        let pointer = unit.pointer_string();
+        let span = Scanner::new(bytes).locate(&unit.pointer).map_err(|error| {
+            ExtractError::SourceLocation {
+                file: file.to_string(),
+                pointer: pointer.clone(),
+                detail: error.to_string(),
+            }
+        })?;
+        let decoded =
+            Scanner::decode_span(bytes, span).map_err(|error| ExtractError::SourceLocation {
+                file: file.to_string(),
+                pointer: pointer.clone(),
+                detail: error.to_string(),
+            })?;
+        if decoded != unit.text {
+            return Err(ExtractError::SourceLocation {
+                file: file.to_string(),
+                pointer,
+                detail: "raw JSON string does not match parsed unit text".to_string(),
+            });
+        }
+        unit.source_range = Some(span);
+    }
+    Ok(())
 }
 
 /// Dispatch one data file to its walker. Returns the file's bridge asset
