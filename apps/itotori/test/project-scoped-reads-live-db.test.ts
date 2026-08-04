@@ -18,7 +18,9 @@ import { benchmarkReportFixture, findingRecordFixture } from "./api-fixtures.js"
  * is stamped as the most recently updated project during seeding.
  */
 
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
+
+const postgresDescribe = requireLivePostgres(describe);
 
 type SeedProject = {
   projectId: string;

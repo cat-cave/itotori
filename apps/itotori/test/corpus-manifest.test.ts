@@ -10,11 +10,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  assertCorpusEvidenceMatchesManifest,
   assertCorpusManifest,
   assertPinnedCorpusInputs,
   deriveCorpusEvidence,
-  fingerprintFile,
   parseCorpusManifestJson,
   registerCorpusManifestJson,
   resolveCorpus,
@@ -59,11 +57,6 @@ function readRegisteredManifest(): CorpusManifest {
 }
 
 const MANIFEST = readRegisteredManifest();
-const CORPUS_RESOLUTION = resolveCorpus(MANIFEST);
-
-if (CORPUS_RESOLUTION.kind === "skip") {
-  process.stderr.write(`PRIVATE_CORPUS_SKIP: ${CORPUS_RESOLUTION.reason}\n`);
-}
 
 function assertReviewedAnchors(manifest: CorpusManifest): void {
   expect(manifest.contentAddress.manifestSha256).toBe(EXPECTED_MANIFEST_SHA256);
@@ -267,20 +260,4 @@ describe("registered private corpus manifest", () => {
       rmSync(parent, { force: true, recursive: true });
     }
   });
-
-  it.skipIf(CORPUS_RESOLUTION.kind === "skip")(
-    "derives and exactly matches the complete registered 129-unit corpus scope",
-    () => {
-      if (CORPUS_RESOLUTION.kind !== "ready") throw new Error("private corpus was unavailable");
-      const corpus = CORPUS_RESOLUTION.corpus;
-      expect(fingerprintFile(corpus.inputPaths.seenTxt!).sha256).toBe(EXPECTED_SEEN_SHA256);
-      expect(fingerprintFile(corpus.inputPaths.gameexeIni!).sha256).toBe(EXPECTED_GAMEEXE_SHA256);
-      const evidence = deriveCorpusEvidence(corpus, MANIFEST);
-      assertCorpusEvidenceMatchesManifest(evidence, MANIFEST);
-      process.stdout.write(
-        `PRIVATE_CORPUS_MATCH: 129/129 units; manifest=${MANIFEST.contentAddress.manifestSha256}; source-built native CLIs accepted.\n`,
-      );
-    },
-    900_000,
-  );
 });

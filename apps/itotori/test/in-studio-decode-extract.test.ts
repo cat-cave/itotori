@@ -19,7 +19,6 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { resolvePrivateCorpus } from "../src/private-inventory.js";
 import { createDecodeExtractRunner } from "../src/extract/decode-extract-runner.js";
 import {
   buildExtractArgs,
@@ -234,35 +233,4 @@ describe("parseProjectDecodeExtractRequest (wire contract)", () => {
       parseProjectDecodeExtractRequest({ engine: "softpal", gameRoot: "/g", scene: 1 }),
     ).toThrow(/scene is not supported by the softpal adapter/u);
   });
-});
-
-// ---------------------------------------------------------------------------
-// ENV-GATED real-primary_corpus proof — the runner drives the REAL kaifuu-cli.
-// ---------------------------------------------------------------------------
-
-const REAL_CORPUS_ROOT = resolvePrivateCorpus("reallive", 1, "encrypted");
-
-describe("in-studio decode/extract runner (env-gated real-primary_corpus byte proof)", () => {
-  it.skipIf(!REAL_CORPUS_ROOT)(
-    "produces a REAL v0.2 bridge from a real game root via the real kaifuu-cli (per-scene)",
-    async () => {
-      const sceneEnv = undefined;
-      const scene = sceneEnv ? Number.parseInt(sceneEnv, 10) : 2031;
-      // No injected runExtract -> the REAL kaifuu-cli runs.
-      const runner = createDecodeExtractRunner();
-      const outcome = await runner.runDecodeExtract({
-        engine: "reallive",
-        gameId: "primary_corpus-real",
-        gameVersion: "1.0",
-        sourceProfileId: "primary_corpus-hd-real",
-        sourceLocale: "ja-JP",
-        gameRoot: REAL_CORPUS_ROOT,
-        scene,
-      });
-      expect(outcome.mode).toBe("per-scene");
-      expect(outcome.bridge.schemaVersion).toBe("0.2.0");
-      expect(outcome.bridge.units.length).toBeGreaterThan(0);
-    },
-    300_000,
-  );
 });

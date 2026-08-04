@@ -75,15 +75,16 @@ Use the lowest suitable fixture layer:
 
 Database tests require a real database when they claim persistence behavior.
 `just test db` is the required database selector; it fails if the required
-database is unavailable. A package test that explicitly reports its database
-skip has not tested persistence and must not be reported as a database pass.
+database is unavailable. Portable package checks must not imply that database
+persistence was validated.
 
-When `DATABASE_URL` is unset, `pnpm --filter @itotori/db test` deliberately
-skips all 69 database suites and says that it did not validate the DB layer.
-The DB Vitest configuration has `fileParallelism: false`: every suite migrates
-an isolated schema under one Postgres advisory lock, so parallel file execution
-queues migrations and can hit the 90-second hook timeout. This skip proves
-neither database behavior nor test success; use `just test db` for that.
+`pnpm --filter @itotori/db test` runs only portable verifier checks; it does
+not collect database suites. `pnpm --filter @itotori/db test:db` owns those
+suites and fails loudly when `DATABASE_URL` is absent. The DB Vitest
+configuration has `fileParallelism: false`: every suite migrates an isolated
+schema under one Postgres advisory lock, so parallel file execution queues
+migrations and can hit the 90-second hook timeout. Use `just test db` for the
+database proof.
 
 ## Guard boundaries
 
@@ -95,10 +96,12 @@ The repository’s structural guards are intentionally narrow claims:
   extension counts and limits. It cannot inspect untracked or ignored files,
   untracked generated output, or source files with other extensions.
 - The test-collection guard compares conventional `*.test.*` files on disk
-  under `packages/` and `apps/` with every configured Vitest project plus the
-  DB Node-runner manifest. It currently reports
-  `307 on disk, 307 collected, 0 uncollected`. It verifies configured discovery
-  only: a collected suite can still fail when its test bodies run.
+  under `packages/` and `apps/` with every configured Vitest project, the DB
+  Node-runner manifest, and checked named ownership for DB-backed and private
+  evidence suites. It currently reports `329 on disk, 290 public collection
+receipts, 41 explicit non-public owners, 0 uncollected`. It verifies
+  configured discovery only: a collected suite can still fail when its test
+  bodies run.
 - The game-name guard scans tracked UTF-8 text using structural identity shapes,
   not a title list, and checks a limited Shift-JIS byte-literal form. It cannot
   reliably identify arbitrary prose names, opaque bytes, non-UTF-8 files, or

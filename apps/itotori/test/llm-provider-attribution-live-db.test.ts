@@ -11,7 +11,9 @@ import {
 } from "./llm-step-test-support.js";
 import { reviewVerdictExample } from "./contract-fixtures-core.js";
 
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
+
+const postgresDescribe = requireLivePostgres(describe);
 
 it("captures an OpenRouter generation ID from the first SSE chunk", async () => {
   const observer = createTransportObserver(async () =>

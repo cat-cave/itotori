@@ -3,8 +3,8 @@
 // This deliberately starts the normal Itotori HTTP server with a trusted,
 // server-held descriptor.  The browser receives only the opaque session id;
 // it cannot choose a point-table entry, filesystem path, or redaction mode.
-// The retail corpora are never committed, so this skips when the established
-// Softpal research root is absent.
+// The retail corpora are never committed, so this named proof fails loudly when
+// the established Softpal research root is absent.
 
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -13,10 +13,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { expect, test, type Page } from "@playwright/test";
-import { resolvePrivateCorpus } from "../src/private-inventory.js";
-import { BrowserPlayerSessionManager } from "../src/play/browser-player-session.js";
-import { createItotoriServer } from "../src/server.js";
-import type { ItotoriReadOnlyServiceFactory } from "../src/services/database-services.js";
+import { resolvePrivateCorpus } from "../../src/private-inventory.js";
+import { BrowserPlayerSessionManager } from "../../src/play/browser-player-session.js";
+import { createItotoriServer } from "../../src/server.js";
+import type { ItotoriReadOnlyServiceFactory } from "../../src/services/database-services.js";
 
 const softpalRoot = resolvePrivateCorpus("softpal", 1, "plain");
 const corpora = [
@@ -29,11 +29,15 @@ const corpusReady =
   corpora.every(({ id }) => existsSync(join(softpalRoot, `softpal-${id.at(-1)}`, "data.pac")));
 
 test.describe("Softpal browser player", () => {
-  test.skip(!corpusReady, "configure the staged Softpal corpora in the private inventory");
   test.slow();
 
   for (const corpus of corpora) {
     test(`steps two distinct decoded ${corpus.id} frames through the browser`, async ({ page }) => {
+      if (!corpusReady || !softpalRoot) {
+        throw new Error(
+          "Softpal browser-player real-byte proof requires both staged Softpal corpora in the private inventory",
+        );
+      }
       const artifactRoot = await mkdtemp(join(tmpdir(), `itotori-${corpus.id}-browser-`));
       const session = `softpal-${corpus.id}`;
       const sessions = new BrowserPlayerSessionManager();
@@ -43,7 +47,7 @@ test.describe("Softpal browser player", () => {
         browserPlayerLaunches: {
           [session]: {
             engine: "softpal",
-            gameRoot: join(softpalRoot!, `softpal-${corpus.id.at(-1)}`),
+            gameRoot: join(softpalRoot, `softpal-${corpus.id.at(-1)}`),
             artifactRoot,
             pointId: corpus.pointId,
           },

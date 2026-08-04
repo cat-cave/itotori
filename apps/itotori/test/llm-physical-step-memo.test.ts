@@ -16,7 +16,9 @@ import {
   toolProviderResponse,
 } from "./llm-step-test-support.js";
 
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
+
+const postgresDescribe = requireLivePostgres(describe);
 
 postgresDescribe("physical model step durability", () => {
   it("requires usage from middleware or the validated durable receipt", () => {

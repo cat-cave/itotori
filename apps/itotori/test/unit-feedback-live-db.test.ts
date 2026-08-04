@@ -11,7 +11,9 @@ import { ItotoriProjectRepository } from "../../../packages/itotori-db/src/repos
 import { testProjectEngineFamilyRegistry } from "../../../packages/itotori-db/test/project-engine-family-registry.js";
 import { createItotoriServer } from "../src/server.js";
 
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
+
+const postgresDescribe = requireLivePostgres(describe);
 const localActor: AuthorizationActor = { userId: localUserId };
 const note = "The branch reaches this line with the wrong speaker.";
 const servers: ReturnType<typeof createItotoriServer>[] = [];

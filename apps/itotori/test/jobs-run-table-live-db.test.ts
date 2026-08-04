@@ -19,7 +19,9 @@ import {
 } from "../../../packages/itotori-db/test/draft-job-fixtures.js";
 import { createItotoriServer } from "../src/server.js";
 
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
+
+const postgresDescribe = requireLivePostgres(describe);
 const localActor: AuthorizationActor = { userId: localUserId };
 const servers: ReturnType<typeof createItotoriServer>[] = [];
 

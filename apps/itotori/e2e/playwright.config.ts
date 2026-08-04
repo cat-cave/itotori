@@ -1,6 +1,8 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 
+import { appLiveEvidencePlaywrightTestPaths } from "../../../scripts/live-evidence-suite-manifest.mjs";
+
 // Playwright smoke for the current Itotori shell served by src/server.ts.
 // The server renders the real built HTML for dashboard/play deep links; the
 // browser test fulfills only the closed fixture API surface it
@@ -27,6 +29,7 @@ const PORT = 4322;
 export default defineConfig({
   testDir: fileURLToPath(new URL(".", import.meta.url)),
   testMatch: /.*\.e2e\.ts$/,
+  testIgnore: appLiveEvidencePlaywrightTestPaths,
   fullyParallel: false,
   workers: 1,
   retries: 0,

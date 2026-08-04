@@ -26,6 +26,16 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  DB_OWNED_APP_PROOFS,
+  DB_OWNED_APP_TEST_FILES,
+  DB_OWNED_LANE,
+  REQUIRED_DB_OWNED_PROOF_IDS,
+} from "./db-owned-app-proofs.mjs";
+import { databaseAppVitestArguments } from "./run-db-owned-app-proofs.mjs";
+
+export { DB_OWNED_APP_PROOFS, DB_OWNED_APP_TEST_FILES, DB_OWNED_LANE, REQUIRED_DB_OWNED_PROOF_IDS };
+
 const here = dirname(fileURLToPath(import.meta.url));
 export const repoRoot = resolve(here, "..", "..");
 
@@ -62,58 +72,10 @@ export const PRIVATE_LANES = new Set([
   "ci-tier1-browser",
 ]);
 
-// The two public app-suite shards. Their UNION covers every public-owned app
-// test. The DB-owned durable proofs in DB_OWNED_APP_PROOFS are explicitly excluded
-// from both shards and directly invoked by ci-tier1-db: that is collection
-// ownership, not a no-DATABASE_URL skip.
+// The two public app-suite shards cover every portable app test. The DB-owned
+// set is excluded by the portable Vitest configuration and invoked by its
+// exact manifest in ci-tier1-db: that is collection ownership, not a skip.
 export const APP_SUITE_SHARDS = ["ci-tier1-ts-public-1of2", "ci-tier1-ts-public-2of2"];
-export const DB_OWNED_LANE = "ci-tier1-db";
-
-// These proofs need live Postgres and intentionally fail loudly if it is
-// absent. Each must be directly invoked in ci-tier1-db and excluded from both
-// portable shards; this registry keeps either side of that ownership split from
-// silently drifting.
-export const DB_OWNED_APP_PROOFS = [
-  {
-    proof: "durable-restart",
-    title: "durable restart",
-    test: "apps/itotori/test/production-localize-restart-live-db.test.ts",
-    marker: "SIGKILLs a production child after P1, then resumes from its durable checkpoint",
-    lane: DB_OWNED_LANE,
-    invocation: "vitest run test/production-localize-restart-live-db.test.ts",
-  },
-  {
-    proof: "workflow-memo-model-variant",
-    title: "model-variant durable memo",
-    test: "apps/itotori/test/workflow-memo-identity-live-db.test.ts",
-    marker: "keeps a model-only variant in a distinct durable checkpoint",
-    lane: DB_OWNED_LANE,
-    invocation: "vitest run test/workflow-memo-identity-live-db.test.ts",
-  },
-  {
-    proof: "durable-pause-resume",
-    title: "user pause/resume",
-    test: "apps/itotori/test/production-localize-pause-live-db.test.ts",
-    marker: "pauses live provider work, resumes the same run, and reuses its 0120 checkpoint",
-    lane: DB_OWNED_LANE,
-    invocation: "vitest run test/production-localize-pause-live-db.test.ts",
-  },
-  {
-    proof: "patchback-produce-engine-detection",
-    title: "source-detected multi-engine patchback",
-    test: "apps/itotori/test/patchback-produce-endpoint-engine-detection.test.ts",
-    marker: "source-detected multi-engine dashboard patchback",
-    lane: DB_OWNED_LANE,
-    invocation: "vitest run test/patchback-produce-endpoint-engine-detection.test.ts",
-  },
-];
-
-export const REQUIRED_DB_OWNED_PROOF_IDS = [
-  "durable-restart",
-  "workflow-memo-model-variant",
-  "durable-pause-resume",
-  "patchback-produce-engine-detection",
-];
 
 // ---------------------------------------------------------------------------
 // The required-category coverage registry. Each entry cites:
@@ -149,7 +111,7 @@ export const REQUIRED_PUBLIC_CATEGORIES = [
     title: "memo/fault",
     test: "apps/itotori/test/llm-physical-step-memo.test.ts",
     marker: "memoizes every model step",
-    proof: { kind: "app-suite-member" },
+    proof: { kind: "db-owned-app-member" },
   },
   {
     category: "tool",
@@ -296,6 +258,8 @@ export function evaluateCoverage({
 }) {
   const failures = [];
   const rows = [];
+  const dbAppArguments = databaseAppVitestArguments();
+  const portableAppConfig = readFile("apps/itotori/vitest.config.ts");
 
   // Every required category id must be present in the registry (no drop).
   const present = new Set(categories.map((c) => c.category));
@@ -305,7 +269,12 @@ export function evaluateCoverage({
   }
 
   for (const entry of categories) {
-    const lanes = entry.proof.kind === "app-suite-member" ? APP_SUITE_SHARDS : [entry.proof.lane];
+    const lanes =
+      entry.proof.kind === "app-suite-member"
+        ? APP_SUITE_SHARDS
+        : entry.proof.kind === "db-owned-app-member"
+          ? [DB_OWNED_LANE]
+          : [entry.proof.lane];
     const row = { category: entry.category, title: entry.title, test: entry.test, lanes, ok: true };
 
     // (a) every covering lane is a PUBLIC recipe, never a private one.
@@ -353,6 +322,23 @@ export function evaluateCoverage({
           );
         }
       }
+    } else if (entry.proof.kind === "db-owned-app-member") {
+      const appPath = entry.test.replace("apps/itotori/", "");
+      const dbRecipe = extractRecipeBody(justfileText, DB_OWNED_LANE);
+      if (!dbOwnedProofs.some((proof) => proof.test === entry.test)) {
+        row.ok = false;
+        failures.push(
+          `${entry.category}: cited DB-owned test is absent from the ownership registry`,
+        );
+      }
+      if (!dbAppArguments.includes(appPath)) {
+        row.ok = false;
+        failures.push(`${entry.category}: DB-owned runner does not collect "${appPath}"`);
+      }
+      if (dbRecipe === null || !dbRecipe.includes("run-db-owned-app-proofs.mjs")) {
+        row.ok = false;
+        failures.push(`${entry.category}: DB lane does not invoke the exact DB-owned app runner`);
+      }
     } else {
       row.ok = false;
       failures.push(`${entry.category}: unknown proof kind "${entry.proof.kind}"`);
@@ -372,17 +358,10 @@ export function evaluateCoverage({
       category: proof.proof,
       title: `${proof.title} (DB-owned)`,
       test: proof.test,
-      lanes: [proof.lane],
+      lanes: [DB_OWNED_LANE],
       ok: true,
     };
-    verifyPublicLane(proof.lane, proof.proof, row, failures);
-
-    if (proof.lane !== DB_OWNED_LANE) {
-      row.ok = false;
-      failures.push(
-        `${proof.proof}: DB-owned proof must be directly owned by "${DB_OWNED_LANE}", not "${proof.lane}"`,
-      );
-    }
+    verifyPublicLane(DB_OWNED_LANE, proof.proof, row, failures);
 
     if (!fileExists(proof.test)) {
       row.ok = false;
@@ -397,27 +376,35 @@ export function evaluateCoverage({
       failures.push(`${proof.proof}: DB-owned proof must live under apps/itotori/test/`);
     }
 
-    const dbRecipe = extractRecipeBody(justfileText, proof.lane);
-    if (dbRecipe === null || !dbRecipe.includes(proof.invocation)) {
+    const dbRecipe = extractRecipeBody(justfileText, DB_OWNED_LANE);
+    if (dbRecipe === null || !dbRecipe.includes("run-db-owned-app-proofs.mjs")) {
       row.ok = false;
       failures.push(
-        `${proof.proof}: DB lane "${proof.lane}" does not directly invoke "${proof.invocation}"`,
+        `${proof.proof}: DB lane "${DB_OWNED_LANE}" does not invoke the exact DB-owned app runner`,
       );
     }
 
     const appPath = proof.test.replace("apps/itotori/", "");
-    const exclusion = `--exclude '${appPath}'`;
-    if (dbRecipe === null || !dbRecipe.includes(exclusion)) {
+    if (!dbAppArguments.includes(appPath)) {
+      row.ok = false;
+      failures.push(`${proof.proof}: DB-owned runner does not collect "${appPath}"`);
+    }
+    if (!portableAppConfig.includes("DB_OWNED_APP_TEST_FILES")) {
       row.ok = false;
       failures.push(
-        `${proof.proof}: DB lane "${proof.lane}" reruns the proof outside its direct invocation`,
+        `${proof.proof}: portable app configuration does not exclude the DB-owned registry`,
       );
     }
     for (const lane of APP_SUITE_SHARDS) {
       const shardRecipe = extractRecipeBody(justfileText, lane);
-      if (shardRecipe === null || !shardRecipe.includes(exclusion)) {
+      if (
+        shardRecipe === null ||
+        !shardRecipe.includes("--filter @itotori/app") ||
+        !shardRecipe.includes("vitest") ||
+        !shardRecipe.includes("--shard")
+      ) {
         row.ok = false;
-        failures.push(`${proof.proof}: public shard "${lane}" does not exclude "${appPath}"`);
+        failures.push(`${proof.proof}: public shard "${lane}" does not run the portable app suite`);
       }
     }
 

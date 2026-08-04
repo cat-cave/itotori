@@ -11,6 +11,7 @@ import { produceNativePatchbackBuild } from "../src/patchback/produce-build.js";
 import type { FactSnapshot } from "../src/prepass/index.js";
 import { withDatabaseItotoriServices } from "../src/services/database-services.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
 import {
   commandArgs,
   commandDeps,
@@ -27,7 +28,7 @@ import {
   type RealLiveQ5Fixture,
 } from "./production-role-bindings-reallive-fixture.support.js";
 
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+const postgresDescribe = requireLivePostgres(describe);
 const previousEnvironment = new Map<string, string | undefined>();
 let runtimeFixture: RealLiveQ5Fixture | undefined;
 

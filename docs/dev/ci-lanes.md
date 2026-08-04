@@ -19,14 +19,13 @@ document maps that stable surface without inventing additional recipes.
 Tier-1 public work is partitioned rather than hidden behind aliases:
 
 - `tier1-ts-public-1of2` and `tier1-ts-public-2of2` build TypeScript and run
-  complementary public-owned package/app test partitions. The durable restart
-  and model-variant memo proofs are explicitly excluded from both shards.
+  complementary portable package/app test partitions. DB-owned app proofs are
+  excluded from both shards by the checked ownership registry.
 - `tier1-rust-1of3`, `tier1-rust-2of3`, and `tier1-rust-3of3` use Cargo
   nextest partitions.
-- `tier1-db` exercises migration/reset and database-backed tests. It directly
-  owns the durable restart and model-variant memo proofs against its Postgres
-  service and native CLI artifact; those tests fail loudly if `DATABASE_URL` is
-  absent.
+- `tier1-db` exercises migration/reset and every registry-owned database-backed
+  app/package proof against its Postgres service and native CLI artifact; those
+  tests fail loudly if `DATABASE_URL` is absent.
 - `tier1-mutation` runs the mutation-differential selector.
 - `tier1-behavior` runs the behavior ledger, local evidence verifier,
   fixed-success mutation proof, and private-input failure contracts.
@@ -55,9 +54,10 @@ the environment; absence is a hard failure. `just ci private-real-bytes` runs
 the legacy local preflight and then fails closed because the protected external
 evidence agent is not installed. Its old candidate-controlled private workflow
 is quarantined and has no pull-request trigger, private runner, checkout, or
-artifact upload. `just test real-bytes`, `just test
-real-bytes-oracle`, and `just test real-bytes-oracle-drift` are named evidence
-commands, not substitutes for a public lane.
+artifact upload. `just test real-bytes`, `just test model-profile`, and `just
+test browser-real-bytes` invoke exact manifest-owned evidence bodies and reject
+missing inputs or skipped receipts; the oracle selectors schedule the broader
+real-byte check. None substitutes for a public lane.
 
 These lanes can establish only the evidence they actually run. A static pass
 does not prove browser rendering, and a successful public fixture test does not

@@ -13,7 +13,9 @@ import { ItotoriPrincipalRepository } from "../src/repositories/principal-reposi
 import { authAccountMemberships } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "./live-postgres-suite.js";
+
+const postgresDescribe = requireLivePostgres(describe);
 const localActor: AuthorizationActor = { userId: localUserId };
 
 class ProofCipher implements LlmMemoCipher {

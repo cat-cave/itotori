@@ -1,4 +1,4 @@
-// Env-gated real-primary_corpus oracle: a real rendered frame resolves through the
+// Named real-primary_corpus oracle: a real rendered frame resolves through the
 // EXISTING sanitized artifact server + the DEFAULT-REDACTED frame surface.
 //
 // Runs only when `private inventory row` points at a real RealLive install
@@ -18,7 +18,7 @@
 //   - tampering the ref hash is an explicit hash-mismatch;
 //   - a missing artifact is an explicit missing error.
 // NO bytes are committed: every artifact lives in an OS temp dir. When the
-// corpus is not staged the test prints a visible skip note.
+// corpus is not staged the dedicated evidence lane fails loudly.
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -28,12 +28,12 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
-import { resolvePrivateCorpus } from "../src/private-inventory.js";
+import { resolvePrivateCorpus } from "../../src/private-inventory.js";
 
-import { runNativeCli } from "../src/native-bin/cli-bin-resolver.js";
-import { runUtsushiStructureExport } from "../src/structure-export/utsushi-structure-seam.js";
-import { createItotoriServer } from "../src/server.js";
-import type { ItotoriReadOnlyServiceFactory } from "../src/services/database-services.js";
+import { runNativeCli } from "../../src/native-bin/cli-bin-resolver.js";
+import { runUtsushiStructureExport } from "../../src/structure-export/utsushi-structure-seam.js";
+import { createItotoriServer } from "../../src/server.js";
+import type { ItotoriReadOnlyServiceFactory } from "../../src/services/database-services.js";
 import {
   buildMediaIndex,
   buildMediaRef,
@@ -42,7 +42,7 @@ import {
   sanitizedArtifactFetcher,
   MediaResolutionError,
   type MediaRevealGrant,
-} from "../src/wiki/media-index.js";
+} from "../../src/wiki/media-index.js";
 
 const allowReveal = (async (callback) =>
   await callback({
@@ -85,17 +85,13 @@ const ADMIN_VIEW: MediaRevealGrant = {
 };
 
 describe("real-primary_corpus media ref resolution through the sanitized server", () => {
-  const corpus = realCorpus();
-  if (!corpus) {
-    console.warn(
-      "[wiki-media-index-real-bytes] private inventory has no selected corpus — skipping the real-frame resolution oracle.",
-    );
-    it.skip("real corpus not staged in the private inventory");
-    return;
-  }
-
   it("PROOF: a real rendered frame resolves redacted-by-default; reveal/tamper/missing fail loud", async () => {
-    const c = corpus;
+    const c = realCorpus();
+    if (!c) {
+      throw new Error(
+        "wiki-media-index real-byte proof requires the selected RealLive corpus in the private inventory",
+      );
+    }
     const workDir = mkdtempSync(join(tmpdir(), "itotori-media-real-"));
     const structurePath = join(workDir, "structure.json");
     const managedDir = join(workDir, "managed");

@@ -1,5 +1,8 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
+
+import { DB_OWNED_APP_TEST_FILES } from "../../scripts/ci/db-owned-app-proofs.mjs";
+import { appLiveEvidenceVitestFiles } from "../../scripts/live-evidence-suite-manifest.mjs";
 
 // App tests include several real-Postgres flows through
 // `isolatedMigratedContext`. Each creates and migrates a schema, and migration
@@ -21,5 +24,8 @@ const liveDatabaseTestTimeouts = process.env.DATABASE_URL
 // the default node environment, so this config ONLY adds the JSX transform.
 export default defineConfig({
   plugins: [react()],
-  test: liveDatabaseTestTimeouts,
+  test: {
+    ...liveDatabaseTestTimeouts,
+    exclude: [...configDefaults.exclude, ...DB_OWNED_APP_TEST_FILES, ...appLiveEvidenceVitestFiles],
+  },
 });

@@ -8,14 +8,13 @@ import {
   type LlmMemoSingleflightInput,
   type LlmMemoSingleflightResult,
 } from "@itotori/db";
-import { expect, it } from "vitest";
 
 import {
   CALL_SPEC_SCHEMA_VERSION,
   REVIEW_VERDICT_SCHEMA_VERSION,
   type CallSpec,
 } from "../src/contracts/index.js";
-import { dispatch, type DispatchRuntime, type DispatchTool } from "../src/llm/dispatch.js";
+import { type DispatchRuntime, type DispatchTool } from "../src/llm/dispatch.js";
 import { reviewVerdictExample } from "./contract-fixtures-core.js";
 import { TEST_MODEL_PROFILE } from "./llm-step-test-support.js";
 
@@ -303,48 +302,3 @@ export function faultAt(boundary: "in-flight" | "after-tool-result") {
     },
   };
 }
-
-export const liveEnabled = Boolean(process.env.OPENROUTER_API_KEY);
-
-(liveEnabled ? it : it.skip)(
-  "accepts a real structured response with an explicitly unknown served pair",
-  async () => {
-    const prompt = `Return exactly one PASS review verdict for synthetic unit unit:1. Use schemaVersion ${REVIEW_VERDICT_SCHEMA_VERSION}, reviewId review:live:1, localizationSnapshotId ${HASH_B}, roleId Q1, rubric meaning, unitId unit:1, wiki-first basis with bibleRenderingIds [rendering:1], severity none, null span/category/repairConstraint, and evidenceIds [fact:unit:1].`;
-    const spec = callSpec(prompt, {
-      providerPolicy: {
-        allowFallbacks: true,
-        zdr: true,
-        dataCollection: "deny",
-        requireParameters: true,
-      },
-    });
-    const result = await dispatch(spec, {
-      env: process.env,
-      tools: [],
-      contentAccess: { requireContentRead: async () => undefined },
-      memo: {
-        store: new MemoryMemoStore(),
-        profile: TEST_MODEL_PROFILE,
-        admission: {
-          scope: "test:llm-dispatch-live",
-          confirmedCostCapUsd: "10", // cost-audit-allow: synthetic live-test cap, not a billed model cost
-        },
-        snapshots: {
-          decodeRevisionHash: HASH_A,
-          glossaryRevisionHash: HASH_B,
-          styleRevisionHash: HASH_A,
-          acceptedOutputHeadHash: HASH_B,
-        },
-      },
-      readPayload: async () => prompt,
-    });
-
-    expect(result).toMatchObject({
-      status: "success",
-      verification: "explicit-unknown",
-      generationId: null,
-      served: { status: "unknown" },
-    });
-  },
-  360_000,
-);
