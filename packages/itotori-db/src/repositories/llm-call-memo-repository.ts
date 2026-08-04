@@ -18,6 +18,7 @@ import {
   injectLlmDurabilityFault,
   type LlmDurabilityFaultInjector,
 } from "./llm-durability-faults.js";
+import type { LlmProviderBudgetCohortActivation } from "./llm-provider-budget-cohort-repository.js";
 
 export interface LlmMemoCipher {
   seal(plaintext: string): Promise<{ ciphertext: Uint8Array; keyRef: string }>;
@@ -64,6 +65,11 @@ export interface LlmAttemptFailure {
 export interface LlmSpendAdmission {
   scope: string;
   confirmedCostCapUsd: string;
+  /** Present for a production project run; omitted by legacy single-scope callers. */
+  runScope?: string;
+  cohortId?: string;
+  /** Identifies the durable cohort that the run lifecycle activated before attempts begin. */
+  cohort?: LlmProviderBudgetCohortActivation;
   maxAttemptExposureUsd: string;
   deadlineMs: number;
 }

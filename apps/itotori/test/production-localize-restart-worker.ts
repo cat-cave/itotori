@@ -70,6 +70,7 @@ export async function runProductionLocalizeRestartWorker(inputValue: unknown): P
           projectWorkflow: services.projectWorkflow,
           resolvePortSource: async (request, perRun) =>
             await services.localizationSubstrate.resolvePortSource(request, perRun),
+          providerBudgetCohorts: services.localizationSubstrate.providerBudgetCohorts,
           localizeRunTrackerTiming: {
             // The interrupted owner must expire promptly; the replacement gets
             // a normal-lived test lease while it completes Q1–Q5 and patchback.

@@ -20,6 +20,11 @@ import {
   type LocalizationPerRunInput,
   type LocalizationPortSource,
 } from "../composition/localize-entrypoint.js";
+import {
+  providerBudgetCohort,
+  type LocalizationProviderBudgetCohort,
+  type LocalizationProviderBudgetCohorts,
+} from "../composition/provider-budget-cohort.js";
 import { projectDecodeStructure } from "../composition/live/scene-projection.js";
 import { withPhysicalAttemptCostObserver } from "../llm/physical-attempt-cost-context.js";
 import { LocalizeRunTracker, type LocalizeRunTrackerTiming } from "./localize-run-tracker.js";
@@ -69,6 +74,10 @@ export interface LocalizeCommandDeps {
     request: RunPolicyRequest,
     perRun: LocalizationPerRunInput,
   ): LocalizationPortSource | Promise<LocalizationPortSource>;
+  /** The durable provider-budget cohort lifecycle supplied by live composition. */
+  readonly providerBudgetCohorts?: LocalizationProviderBudgetCohorts;
+  /** A portfolio registers its initial members before it starts child runs. */
+  readonly admissionCohort?: LocalizationProviderBudgetCohort;
   /** Test-only lease timing override used by interrupted-run integration proofs. */
   readonly localizeRunTrackerTiming?: LocalizeRunTrackerTiming;
   log?(message: string): void;
@@ -157,6 +166,8 @@ export async function runLocalizeCommand(
     localeBranchId: requiredFlag(args, "--locale-branch-id"),
     leaseOwnerId: optionalFlag(args, "--lease-owner-id") ?? `localize:${runId}`,
   };
+  const providerBudgetMember = { projectId: projectRun.projectId, runId: projectRun.runId };
+  const admissionCohort = deps.admissionCohort ?? providerBudgetCohort([providerBudgetMember]);
   await deps.projectWorkflow.ensureRunProjectScope(
     localizeProjectScope(args, { bridge, structureJson, ...projectRun }),
   );
@@ -185,25 +196,36 @@ export async function runLocalizeCommand(
             : { backgroundAsset: runtimeBackgroundAsset }),
         }
       : undefined;
-  const source = await deps.resolvePortSource(request, {
+  const perRun = {
     structureJson,
     bridge,
     projectRun,
+    admissionCohort,
     ...(renderEvidence === undefined ? {} : { renderEvidence }),
-  });
-  if (source.runPlane === undefined) {
-    throw new Error("localize run plane is not configured by the localization substrate");
-  }
-  assertRunPlaneIdentity(source, projectRun);
-  const tracker = new LocalizeRunTracker(
-    deps.projectWorkflow,
-    source.runPlane,
-    deps.localizeRunTrackerTiming,
-  );
+  };
   let report: Awaited<ReturnType<typeof runLocalization>>;
   let live: Awaited<ReturnType<ItotoriProjectWorkflowPort["loadLiveReadModel"]>>;
+  let tracker: LocalizeRunTracker | undefined;
+  const ownsProviderBudgetCohort = deps.admissionCohort === undefined;
+  const providerBudgetCohorts = deps.providerBudgetCohorts;
+  let providerBudgetCohortActive = false;
+  let workFailed = false;
   try {
+    const source = await deps.resolvePortSource(request, perRun);
+    if (source.runPlane === undefined) {
+      throw new Error("localize run plane is not configured by the localization substrate");
+    }
+    assertRunPlaneIdentity(source, projectRun);
+    tracker = new LocalizeRunTracker(
+      deps.projectWorkflow,
+      source.runPlane,
+      deps.localizeRunTrackerTiming,
+    );
     await tracker.start(scenes.flatMap((scene) => scene.units.map((unit) => unit.unitId)));
+    if (ownsProviderBudgetCohort && providerBudgetCohorts !== undefined) {
+      await providerBudgetCohorts.activate(admissionCohort);
+      providerBudgetCohortActive = true;
+    }
     const ports = tracker.wrapPorts(portsWithRunCostObserver(source, tracker));
     report = await withPhysicalAttemptCostObserver(
       tracker.costObserver,
@@ -211,13 +233,25 @@ export async function runLocalizeCommand(
     );
     live = await tracker.complete();
   } catch (error: unknown) {
-    try {
-      await tracker.fail();
-    } catch {
-      // The original workflow error tells the operator why work stopped. The
-      // run-plane's failed transition/release was still attempted above.
+    workFailed = true;
+    if (tracker !== undefined) {
+      try {
+        await tracker.fail();
+      } catch {
+        // The original workflow error tells the operator why work stopped. The
+        // run-plane's failed transition/release was still attempted above.
+      }
     }
     throw error;
+  } finally {
+    if (providerBudgetCohortActive && providerBudgetCohorts !== undefined) {
+      try {
+        await providerBudgetCohorts.release(admissionCohort, providerBudgetMember);
+      } catch (releaseError: unknown) {
+        if (!workFailed) throw releaseError;
+        reportProviderBudgetReleaseFailure(deps.log, releaseError);
+      }
+    }
   }
 
   // Project a summary that carries NO source/target script text (copyrighted on
@@ -258,6 +292,23 @@ function patchbackScopeForOutputScope(
   throw new Error(
     `localize refused: physical Build-LQA does not support output scope '${outputScope}'`,
   );
+}
+
+function reportProviderBudgetReleaseFailure(
+  log: ((message: string) => void) | undefined,
+  error: unknown,
+): void {
+  try {
+    (log ?? ((message: string) => process.stderr.write(`${message}\n`)))(
+      `localize provider budget cohort release failed: ${errorMessage(error)}`,
+    );
+  } catch {
+    // A diagnostic cannot replace the original workflow failure.
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function assertRunPlaneIdentity(

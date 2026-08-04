@@ -6,62 +6,66 @@ import type {
   LlmMemoSingleflightInput,
   LlmStepExecution,
 } from "./llm-call-memo-repository.js";
+import {
+  ItotoriLlmProviderBudgetCohortRepository,
+  lockLlmProviderBudgetProfile,
+  LlmProviderBudgetCohortMemberUnavailableError,
+} from "./llm-provider-budget-cohort-repository.js";
+import {
+  assertProviderBudgetCohortAdmission,
+  resolveProviderBudgetRunAdmission,
+  type LlmProviderBudgetRunAdmission,
+} from "./llm-provider-budget-admission.js";
+import {
+  LlmPhysicalStepFailedError,
+  LlmRetriesExhaustedError,
+  LlmSpendAdmissionDeniedError,
+  type LlmSpendAdmissionDiagnostic,
+  type LlmSpendAdmissionDenyReason,
+  type LlmSpendExposureReport,
+} from "./llm-http-attempt-errors.js";
 
-export interface LlmSpendExposureReport {
-  admissionScope: string;
-  confirmedCostUsd: string;
-  billingUnknownAttemptCount: number;
-  boundedInFlightExposureUsd: string;
-  inFlightAttemptCount: number;
-  exhaustedRetryStepCount: number;
-}
-
-export class LlmRetriesExhaustedError extends Error {
-  constructor(
-    readonly memoKey: string,
-    readonly attemptCount = 3,
-  ) {
-    super(`physical model step exhausted ${attemptCount} attempts for ${memoKey}`);
-    this.name = "LlmRetriesExhaustedError";
-  }
-}
-
-export class LlmPhysicalStepFailedError extends Error {
-  constructor(
-    readonly memoKey: string,
-    readonly failureClass: "permanent" | "in-flight",
-    readonly attemptStatus: string,
-    readonly httpStatus: number | null,
-  ) {
-    super(`physical model step ${failureClass} failure prevents dispatch for ${memoKey}`);
-    this.name = "LlmPhysicalStepFailedError";
-  }
-}
-
-export class LlmSpendAdmissionDeniedError extends Error {
-  constructor(readonly report: LlmSpendExposureReport) {
-    super(`confirmed spend reached the admission cap for ${report.admissionScope}`);
-    this.name = "LlmSpendAdmissionDeniedError";
-  }
-}
+export {
+  LlmPhysicalStepFailedError,
+  LlmRetriesExhaustedError,
+  LlmSpendAdmissionDeniedError,
+} from "./llm-http-attempt-errors.js";
+export type {
+  LlmSpendAdmissionDiagnostic,
+  LlmSpendAdmissionDenyReason,
+  LlmSpendExposureReport,
+} from "./llm-http-attempt-errors.js";
 
 type Queryable = Pick<DatabaseContext["pool"], "query">;
+type AdmissionScopeColumn = "admission_scope" | "admission_run_scope";
 
 export class ItotoriLlmHttpAttemptRepository {
+  readonly #cohorts: ItotoriLlmProviderBudgetCohortRepository;
+
   constructor(
     private readonly pool: DatabaseContext["pool"],
     private readonly cipher: LlmMemoCipher,
-  ) {}
+  ) {
+    this.#cohorts = new ItotoriLlmProviderBudgetCohortRepository(pool);
+  }
 
   async readSpendExposure(
     admissionScope: string,
     queryable: Queryable = this.pool,
   ): Promise<LlmSpendExposureReport> {
+    return await this.readSpendExposureForColumn(admissionScope, "admission_scope", queryable);
+  }
+
+  private async readSpendExposureForColumn(
+    admissionScope: string,
+    scopeColumn: AdmissionScopeColumn,
+    queryable: Queryable,
+  ): Promise<LlmSpendExposureReport> {
     assertScope(admissionScope);
     const exposure = await queryable.query<ExposureRow>(
       `
         with scoped as (
-          select * from itotori_llm_http_attempts where admission_scope = $1
+          select * from itotori_llm_http_attempts where ${scopeColumn} = $1
         ), exhausted as (
           select attempt.memo_key
           from scoped attempt
@@ -151,6 +155,13 @@ export class ItotoriLlmHttpAttemptRepository {
     assertDecimal(admission.confirmedCostCapUsd, "confirmed cost cap");
     assertDecimal(admission.maxAttemptExposureUsd, "attempt exposure ceiling");
     assertScope(admission.scope);
+    const runAdmission = resolveProviderBudgetRunAdmission(admission.runScope, admission.cohortId);
+    assertProviderBudgetCohortAdmission(
+      admission.scope,
+      admission.confirmedCostCapUsd,
+      runAdmission,
+      admission.cohort,
+    );
     if (!Number.isSafeInteger(admission.deadlineMs) || admission.deadlineMs <= 0) {
       throw new Error("physical attempt deadline must be a positive safe integer");
     }
@@ -158,16 +169,21 @@ export class ItotoriLlmHttpAttemptRepository {
     const deadlineAt = new Date(Date.parse(attempt.startedAt) + admission.deadlineMs).toISOString();
     await client.query("begin");
     try {
-      const report = await this.readSpendExposure(admission.scope, client);
-      const denied = await client.query<{ denied: boolean }>(
-        "select $1::numeric >= $2::numeric as denied",
-        [report.confirmedCostUsd, admission.confirmedCostCapUsd],
-      );
-      if (denied.rows[0]?.denied) throw new LlmSpendAdmissionDeniedError(report);
+      await lockLlmProviderBudgetProfile(client, admission.scope);
+      await this.denyStrictCap({
+        client,
+        scope: admission.scope,
+        scopeColumn: "admission_scope",
+        capUsd: admission.confirmedCostCapUsd,
+        requestedExposureUsd: admission.maxAttemptExposureUsd,
+        reason: "profile-cap",
+      });
+      await this.admitRunShare(client, admission, runAdmission);
       await client.query(
         `
           insert into itotori_llm_http_attempts (
-            attempt_id, memo_key, attempt_ordinal, admission_scope,
+            attempt_id, memo_key, attempt_ordinal,
+            admission_scope, admission_run_scope, admission_cohort_id,
             request_ciphertext, request_key_ref, request_content_hash, request_hash,
             attempt_status, failure_class, http_status, generation_id,
             served_pair_status, served_model, served_provider, verification_status,
@@ -176,12 +192,12 @@ export class ItotoriLlmHttpAttemptRepository {
             billing_state, cost_usd, reported_cost_usd, max_exposure_usd,
             started_at, deadline_at, completed_at, retention_deadline
           ) values (
-            $1, $2, $3, $4, $5, $6, $7, $8,
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
             'in-flight', null, null, null,
             'unknown', null, null, 'pending', '[]'::jsonb, null, null, null, null,
-            'billing_unknown', null, null, $9,
-            $10::timestamptz, $11::timestamptz, null,
-            $10::timestamptz + interval '7 days'
+            'billing_unknown', null, null, $11,
+            $12::timestamptz, $13::timestamptz, null,
+            $12::timestamptz + interval '7 days'
           )
         `,
         [
@@ -189,6 +205,8 @@ export class ItotoriLlmHttpAttemptRepository {
           input.memoKey,
           attempt.ordinal,
           admission.scope,
+          runAdmission?.scope ?? admission.scope,
+          runAdmission?.cohortId ?? null,
           request.ciphertext,
           request.keyRef,
           hash(input.requestJson),
@@ -203,6 +221,119 @@ export class ItotoriLlmHttpAttemptRepository {
       await client.query("rollback");
       throw error;
     }
+  }
+
+  private async admitRunShare(
+    client: PoolClient,
+    admission: LlmMemoSingleflightInput["admission"],
+    runAdmission: LlmProviderBudgetRunAdmission | undefined,
+  ): Promise<void> {
+    try {
+      if (runAdmission === undefined) return;
+      const member = await this.#cohorts.activeMember(
+        {
+          profileScope: admission.scope,
+          cohortId: runAdmission.cohortId,
+          runScope: runAdmission.scope,
+        },
+        client,
+      );
+      await this.denyStrictCap({
+        client,
+        scope: runAdmission.scope,
+        scopeColumn: "admission_run_scope",
+        capUsd: member.runCostCapUsd,
+        requestedExposureUsd: admission.maxAttemptExposureUsd,
+        reason: "run-share",
+      });
+    } catch (error: unknown) {
+      if (error instanceof LlmProviderBudgetCohortMemberUnavailableError) {
+        await this.denyUnavailableCohort(client, admission);
+      }
+      throw error;
+    }
+  }
+
+  private async denyUnavailableCohort(
+    client: PoolClient,
+    admission: LlmMemoSingleflightInput["admission"],
+  ): Promise<never> {
+    const totals = await this.readAdmissionTotals(admission.scope, "admission_scope", client);
+    const report = await this.readSpendExposureForColumn(
+      admission.scope,
+      "admission_scope",
+      client,
+    );
+    throw new LlmSpendAdmissionDeniedError(
+      {
+        reason: "profile-cohort-busy",
+        scope: admission.scope,
+        capUsd: admission.confirmedCostCapUsd,
+        ...totals,
+        requestedExposureUsd: admission.maxAttemptExposureUsd,
+      },
+      report,
+    );
+  }
+
+  private async denyStrictCap(input: {
+    readonly client: PoolClient;
+    readonly scope: string;
+    readonly scopeColumn: AdmissionScopeColumn;
+    readonly capUsd: string;
+    readonly requestedExposureUsd: string;
+    readonly reason: LlmSpendAdmissionDenyReason;
+  }): Promise<void> {
+    const totals = await this.readAdmissionTotals(input.scope, input.scopeColumn, input.client);
+    const denied = await input.client.query<{ denied: boolean }>(
+      "select $1::numeric + $2::numeric + $3::numeric > $4::numeric as denied",
+      [
+        totals.confirmedCostUsd,
+        totals.reservedExposureUsd,
+        input.requestedExposureUsd,
+        input.capUsd,
+      ],
+    );
+    if (!denied.rows[0]?.denied) return;
+    const report = await this.readSpendExposureForColumn(
+      input.scope,
+      input.scopeColumn,
+      input.client,
+    );
+    throw new LlmSpendAdmissionDeniedError(
+      {
+        reason: input.reason,
+        scope: input.scope,
+        capUsd: input.capUsd,
+        ...totals,
+        requestedExposureUsd: input.requestedExposureUsd,
+      },
+      report,
+    );
+  }
+
+  private async readAdmissionTotals(
+    scope: string,
+    scopeColumn: AdmissionScopeColumn,
+    queryable: Queryable,
+  ): Promise<AdmissionTotals> {
+    const totals = await queryable.query<AdmissionTotalsRow>(
+      `
+        select
+          coalesce(sum(cost_usd) filter (where billing_state = 'confirmed'), 0)::text
+            as confirmed_cost_usd,
+          coalesce(sum(max_exposure_usd) filter (where attempt_status = 'in-flight'), 0)::text
+            as reserved_exposure_usd
+        from itotori_llm_http_attempts
+        where ${scopeColumn} = $1
+      `,
+      [scope],
+    );
+    const row = totals.rows[0];
+    return {
+      confirmedCostUsd: normalizeDecimal(row?.confirmed_cost_usd ?? "0"),
+      reservedExposureUsd: normalizeDecimal(row?.reserved_exposure_usd ?? "0"),
+    };
   }
 
   async finish(
@@ -314,6 +445,9 @@ type AttemptStateRow = {
   http_status: number | null;
   expired: boolean;
 };
+
+type AdmissionTotals = { readonly confirmedCostUsd: string; readonly reservedExposureUsd: string };
+type AdmissionTotalsRow = { confirmed_cost_usd: string; reserved_exposure_usd: string };
 
 function attemptId(memoKey: string, ordinal: number): string {
   return hash({ memoKey, ordinal });

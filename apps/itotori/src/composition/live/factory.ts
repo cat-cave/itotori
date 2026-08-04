@@ -1,8 +1,3 @@
-// The live localization factory — source the concrete workflow substrate for a
-// single, already-admitted run. It deliberately builds no bible: missing source
-// objects or renderings remain absent from the installed bible, so readiness
-// reports the blocking requirement instead of inventing a fallback.
-
 import {
   ItotoriLlmAcceptedOutputRepository,
   ItotoriLlmCallMemoRepository,
@@ -34,7 +29,6 @@ import {
   SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
   parseNarrativeStructure,
 } from "../../structure/index.js";
-import { resolveRoleModelProfile } from "../../llm/role-model-profiles.js";
 import type { RunPolicyRequest } from "../../run-policy/index.js";
 import type { LocalizationPerRunInput } from "../localize-entrypoint.js";
 import type { WorkflowMemoIdentity } from "../../workflow/memo-identity.js";
@@ -170,38 +164,7 @@ export interface LiveWorkflowFactoryConfig {
   readonly maxStepAttempts?: number;
 }
 
-/** Build the P1-measured dispatch posture used by the long-lived production
- * substrate. The certified role profile is the model-routing authority; the
- * operator supplies the bounded spend values and OpenRouter credential at the
- * environment boundary rather than through a command flag. */
-export function productionLocalizeDispatchConfig(input: {
-  readonly env: Readonly<Record<string, string | undefined>>;
-  readonly maxAttemptExposureUsd: string;
-  readonly confirmedCostCapUsd: string;
-  /** A deterministic HTTP transport is an integration-proof seam only; normal
-   * production composition omits it and uses the platform fetch boundary. */
-  readonly fetcher?: LiveDispatchRuntimeConfig["fetcher"];
-}): Pick<LiveWorkflowFactoryConfig, "dispatch">["dispatch"] {
-  const apiKey = input.env.OPENROUTER_API_KEY;
-  if (apiKey === undefined || apiKey.length === 0) {
-    throw new LiveWorkflowFactoryError("OPENROUTER_API_KEY is required for a live localize run");
-  }
-  const draftProfile = resolveRoleModelProfile("P1");
-  return {
-    profile: {
-      name: draftProfile.modelProfile,
-      version: draftProfile.version,
-      deadlines: { normalMs: 30_000, deepMs: 300_000 },
-      maxAttemptExposureUsd: input.maxAttemptExposureUsd,
-    },
-    admission: {
-      scope: `localize:${draftProfile.profileId}`,
-      confirmedCostCapUsd: input.confirmedCostCapUsd,
-    },
-    env: input.env,
-    ...(input.fetcher === undefined ? {} : { fetcher: input.fetcher }),
-  };
-}
+export { productionLocalizeDispatchConfig } from "./production-localize-dispatch-config.js";
 
 /** Build the installed target bible from the persisted source objects and target
  * renderings. Renderings for another locale are excluded; missing renderings

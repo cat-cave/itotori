@@ -4,9 +4,18 @@ import { describe, expect, it, vi } from "vitest";
 import { runApiLocalize } from "../src/api/localize-route.js";
 import { runApiPlay } from "../src/api/play-route.js";
 import { runApiWiki } from "../src/api/wiki-route.js";
-import { runLocalizeCommand } from "../src/cli/localize-command.js";
+import { runLocalizeCommand, type LocalizeCommandDeps } from "../src/cli/localize-command.js";
+import {
+  LocalizePortfolioExecutionError,
+  runLocalizePortfolioCommand,
+} from "../src/cli/localize-portfolio-command.js";
 import { runPlayCommand } from "../src/cli/play-command.js";
 import { runWikiCommand } from "../src/cli/wiki-command.js";
+import type {
+  LocalizationProviderBudgetCohort,
+  LocalizationProviderBudgetCohortMember,
+  LocalizationProviderBudgetCohorts,
+} from "../src/composition/provider-budget-cohort.js";
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import type {
   AttemptContext,
@@ -183,18 +192,34 @@ describe("gateway entrypoints", () => {
     const apiStore = new GatewayStore();
     const cliWrites = new Map<string, unknown>();
     const cliWorkflow = commandRunWorkflow();
-    const resolveCliPorts = vi.fn(() => ({
-      ports: gatewayPorts(cliStore),
-      runPlane: {
-        projectId: "gateway-project",
-        runId: "gateway-run",
-        localeBranchId: "gateway-branch",
-        contextSnapshotId: "gateway-context",
-        localizationSnapshotId: "gateway-localization",
-        capMicrosUsd: 100,
-        leaseOwnerId: "gateway-driver",
+    const lifecycleEvents: string[] = [];
+    const activate = vi.fn(async (_cohort: LocalizationProviderBudgetCohort) => {
+      lifecycleEvents.push("activate");
+    });
+    const release = vi.fn(
+      async (
+        _cohort: LocalizationProviderBudgetCohort,
+        _member: LocalizationProviderBudgetCohortMember,
+      ) => {
+        lifecycleEvents.push("release");
       },
-    }));
+    );
+    const providerBudgetCohorts: LocalizationProviderBudgetCohorts = { activate, release };
+    const resolveCliPorts = vi.fn(() => {
+      lifecycleEvents.push("source");
+      return {
+        ports: gatewayPorts(cliStore),
+        runPlane: {
+          projectId: "gateway-project",
+          runId: "gateway-run",
+          localeBranchId: "gateway-branch",
+          contextSnapshotId: "gateway-context",
+          localizationSnapshotId: "gateway-localization",
+          capMicrosUsd: 100,
+          leaseOwnerId: "gateway-driver",
+        },
+      };
+    });
     const resolveApiPorts = vi.fn(() => ({ ports: gatewayPorts(apiStore) }));
 
     await runLocalizeCommand(
@@ -228,8 +253,9 @@ describe("gateway entrypoints", () => {
           readJson: (path) => (path === "bridge.json" ? bridge : structure),
           writeJson: (path, value) => cliWrites.set(path, value),
         },
-        projectWorkflow: cliWorkflow as never,
+        projectWorkflow: cliWorkflow,
         resolvePortSource: resolveCliPorts,
+        providerBudgetCohorts,
       },
     );
     const apiReport = await runApiLocalize(
@@ -243,7 +269,7 @@ describe("gateway entrypoints", () => {
     expect(apiStore.patchCalls).toBe(1);
     expect(resolveCliPorts).toHaveBeenCalledWith(
       expect.objectContaining({ runMode: "production" }),
-      {
+      expect.objectContaining({
         structureJson: structure,
         bridge,
         projectRun: {
@@ -258,7 +284,10 @@ describe("gateway entrypoints", () => {
           patchScope: "dialogue-only",
           runId: "gateway-run",
         },
-      },
+        admissionCohort: expect.objectContaining({
+          members: [{ projectId: "gateway-project", runId: "gateway-run" }],
+        }),
+      }),
     );
     expect(resolveApiPorts).toHaveBeenCalledWith(
       expect.objectContaining({ runMode: "production" }),
@@ -266,6 +295,87 @@ describe("gateway entrypoints", () => {
     );
     expect(cliWrites.get("cli-run.json")).toMatchObject({ patchId: "patch:gateway" });
     expect(apiReport.patchId).toBe("patch:gateway");
+    expect(activate).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(release.mock.calls[0]?.[0]).toBe(activate.mock.calls[0]?.[0]);
+    expect(release.mock.calls[0]?.[1]).toEqual({
+      projectId: "gateway-project",
+      runId: "gateway-run",
+    });
+    expect(lifecycleEvents).toEqual(["source", "activate", "release"]);
+  });
+
+  it("activates a complete portfolio cohort before children and releases every member", async () => {
+    const events: string[] = [];
+    const activate = vi.fn(async (cohort: LocalizationProviderBudgetCohort) => {
+      events.push(`activate:${cohort.members.map((member) => member.runId).join(",")}`);
+    });
+    const release = vi.fn(
+      async (
+        _cohort: LocalizationProviderBudgetCohort,
+        member: LocalizationProviderBudgetCohortMember,
+      ) => {
+        events.push(`release:${member.runId}`);
+      },
+    );
+    const providerBudgetCohorts: LocalizationProviderBudgetCohorts = { activate, release };
+    const runs = ["cohort-run-1", "cohort-run-2", "cohort-run-3"];
+    const portfolio = {
+      maxConcurrency: 3,
+      runs: runs.map((runId) => ({
+        structure: "structure.json",
+        bridge: "bridge.json",
+        projectId: `cohort-project-${runId.slice(-1)}`,
+        runId,
+        localeBranchId: `cohort-branch-${runId.slice(-1)}`,
+        targetLocale: "en-US",
+        sourceRoot: "/fixture/cohort/source",
+        buildRoot: "/fixture/cohort/build",
+        runMode: "production",
+        costCapMicrosUsd: 100,
+      })),
+    };
+
+    await expect(
+      runLocalizePortfolioCommand(["localize-portfolio", "--portfolio", "portfolio.json"], {
+        io: {
+          readJson: (path) =>
+            path === "portfolio.json" ? portfolio : path === "bridge.json" ? bridge : structure,
+          writeJson: () => undefined,
+        },
+        projectWorkflow: commandRunWorkflow(),
+        providerBudgetCohorts,
+        resolvePortSource: (_request, perRun) => {
+          const runId = perRun.projectRun?.runId;
+          if (runId === undefined) throw new Error("portfolio child run identity is missing");
+          events.push(`source:${runId}`);
+          if (runId === "cohort-run-2") throw new Error("early source failure");
+          return {
+            ports: gatewayPorts(new GatewayStore()),
+            runPlane: {
+              ...perRun.projectRun,
+              contextSnapshotId: "cohort-context",
+              localizationSnapshotId: "cohort-localization",
+              capMicrosUsd: 100,
+            },
+          };
+        },
+      }),
+    ).rejects.toBeInstanceOf(LocalizePortfolioExecutionError);
+
+    expect(activate).toHaveBeenCalledTimes(1);
+    const cohort = activate.mock.calls[0]?.[0];
+    expect(cohort?.members).toEqual(
+      portfolio.runs.map(({ projectId, runId }) => ({ projectId, runId })),
+    );
+    expect(events[0]).toBe("activate:cohort-run-1,cohort-run-2,cohort-run-3");
+    expect(events.filter((event) => event.startsWith("source:"))).toHaveLength(3);
+    expect(release.mock.calls.map(([, member]) => member.runId).sort()).toEqual([
+      "cohort-run-1",
+      "cohort-run-2",
+      "cohort-run-3",
+    ]);
+    for (const [releasedCohort] of release.mock.calls) expect(releasedCohort).toBe(cohort);
   });
 
   it("routes wiki build/object requests and patch play through their new ports", async () => {
@@ -354,7 +464,7 @@ describe("gateway entrypoints", () => {
   });
 });
 
-function commandRunWorkflow() {
+function commandRunWorkflow(): LocalizeCommandDeps["projectWorkflow"] {
   const lease = {
     projectId: "gateway-project",
     runId: "gateway-run",

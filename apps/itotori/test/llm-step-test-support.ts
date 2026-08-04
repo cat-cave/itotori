@@ -4,6 +4,7 @@ import {
   type DatabaseContext,
   type LlmDurabilityFaultInjector,
   type LlmMemoCipher,
+  type LlmSpendAdmission,
 } from "@itotori/db";
 import { z } from "zod";
 import {
@@ -69,7 +70,10 @@ export function dispatchHarness(input: {
   signal?: AbortSignal;
   profile?: MeasuredModelProfile;
   retry?: Partial<RetryRuntime>;
-  admission?: { scope: string; confirmedCostCapUsd: string };
+  admission?: Pick<
+    LlmSpendAdmission,
+    "scope" | "confirmedCostCapUsd" | "runScope" | "cohortId" | "cohort"
+  >;
   durabilityFaults?: LlmDurabilityFaultInjector;
 }): { runtime: DispatchRuntime; transportCalls: () => number } {
   const responses = [...input.responses];

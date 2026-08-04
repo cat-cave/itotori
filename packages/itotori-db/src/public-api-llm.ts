@@ -142,6 +142,25 @@ export {
   LlmRetriesExhaustedError,
   LlmSpendAdmissionDeniedError,
 } from "./repositories/llm-http-attempt-repository.js";
-export type { LlmSpendExposureReport } from "./repositories/llm-http-attempt-repository.js";
+export type {
+  LlmSpendAdmissionDiagnostic,
+  LlmSpendAdmissionDenyReason,
+  LlmSpendExposureReport,
+} from "./repositories/llm-http-attempt-repository.js";
+export {
+  ItotoriLlmProviderBudgetCohortRepository,
+  LlmProviderBudgetCohortBusyError,
+  LlmProviderBudgetCohortDefinitionMismatchError,
+  LlmProviderBudgetCohortMemberUnavailableError,
+} from "./repositories/llm-provider-budget-cohort-repository.js";
+export type {
+  LlmProviderBudgetCohortActivation,
+  LlmProviderBudgetCohortActivationResult,
+  LlmProviderBudgetCohortMember,
+  LlmProviderBudgetCohortMemberLookup,
+  LlmProviderBudgetCohortMemberReservation,
+  LlmProviderBudgetCohortRelease,
+  LlmProviderBudgetCohortReleaseResult,
+} from "./repositories/llm-provider-budget-cohort-repository.js";
 export { ItotoriLlmRetentionRepository } from "./repositories/llm-retention-repository.js";
 export type { LlmRetentionDeletionReport } from "./repositories/llm-retention-repository.js";

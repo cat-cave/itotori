@@ -25,6 +25,7 @@ import type { WorkflowPortDeps } from "./deps.js";
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import type { PhysicalAttemptCostObserver } from "../llm/physical-attempt-policy.js";
 import type { ProductionRenderEvidencePlan } from "./live/render-evidence-adapter.js";
+import type { LocalizationProviderBudgetCohort } from "./provider-budget-cohort.js";
 
 /** Per-invocation decode artifacts. The live service owns DB/auth/dispatch;
  * callers must provide the matching structure and bridge for each run. */
@@ -49,6 +50,10 @@ export interface LocalizationPerRunInput {
     readonly localeBranchId: string;
     readonly leaseOwnerId: string;
   };
+  /** The complete declared provider-budget cohort this durable run belongs to.
+   * Its membership snapshot is immutable; Postgres recomputes active members'
+   * shares after a durable member release. */
+  readonly admissionCohort?: LocalizationProviderBudgetCohort;
 }
 
 /** Durable run-plane coordinates returned by a live localization substrate.
