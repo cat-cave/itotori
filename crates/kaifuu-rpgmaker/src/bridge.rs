@@ -238,10 +238,16 @@ fn build_unit_json(
         })
         .collect();
 
-    let source_location = json!({
+    let mut source_location = json!({
         "containerKey": format!("rpgmaker:{}", unit.file),
         "entryPath": unit.pointer,
     });
+    if let Some(range) = unit.source_range {
+        source_location["range"] = json!({
+            "startByte": range.start,
+            "endByte": range.end,
+        });
+    }
 
     let speaker = match (&unit.surface_kind, &unit.speaker) {
         (SurfaceKind::Dialogue { .. }, Some(speaker)) => json!({

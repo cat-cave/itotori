@@ -22,11 +22,13 @@ import type {
   NarrativeChoice,
   NarrativeEngineEvidence,
   NarrativeMessage,
+  NarrativeLinkKind,
   NarrativeSceneId,
   NarrativeStructure,
   NarrativeUnit,
 } from "./types.js";
 import { realliveByteRange } from "./reallive-evidence.js";
+import { sourceRangeByteRange } from "./source-range-evidence.js";
 import {
   ConflictingNarrativeLinkError,
   DanglingBridgeRefError,
@@ -44,9 +46,6 @@ export {
   SourceBindingMismatchError,
   UnreferencedLocalizationUnitError,
 };
-
-/** Whether a bound narrative element is a spoken/narrated line or a choice option. */
-export type NarrativeLinkKind = "line" | "choice";
 
 /**
  * One narrative element that claims a bridge unit, normalized across the
@@ -89,7 +88,7 @@ function requireByteRange(
   evidence: NarrativeEngineEvidence | undefined,
   locator: string,
 ): ByteRangeV02 {
-  const range = realliveByteRange(evidence);
+  const range = sourceRangeByteRange(evidence) ?? realliveByteRange(evidence);
   if (range === undefined) {
     throw new IncompleteNarrativeLinkError(
       locator,
@@ -199,7 +198,7 @@ function choiceLink(
 
 function unitLink(unit: NarrativeUnit, sceneId: NarrativeSceneId, locator: string): NarrativeLink {
   return {
-    kind: unit.choiceId != null ? "choice" : "line",
+    kind: unit.linkKind ?? (unit.choiceId != null ? "choice" : "line"),
     bridgeUnitId: unit.bridgeRef.bridgeUnitId,
     sourceUnitKey: unit.bridgeRef.sourceUnitKey,
     sceneId,
@@ -313,9 +312,9 @@ const NARRATIVE_LINE_SURFACE_KINDS: ReadonlySet<string> = new Set(["dialogue", "
  * binds ONLY a narrative/dialogue line surface (see
  * {@link NARRATIVE_LINE_SURFACE_KINDS}). */
 function kindMatchesSurface(kind: NarrativeLinkKind, surfaceKind: string): boolean {
-  return kind === "choice"
-    ? surfaceKind === "choice_label"
-    : NARRATIVE_LINE_SURFACE_KINDS.has(surfaceKind);
+  if (kind === "choice") return surfaceKind === "choice_label";
+  if (kind === "line") return NARRATIVE_LINE_SURFACE_KINDS.has(surfaceKind);
+  return surfaceKind !== "choice_label" && !NARRATIVE_LINE_SURFACE_KINDS.has(surfaceKind);
 }
 
 /** Recompute the unit's declared `sourceHash` from its `sourceText` (the

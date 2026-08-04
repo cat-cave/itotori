@@ -58,6 +58,27 @@ export const realLivePatchbackAdapter: EnginePatchbackAdapter = {
   probeSource(root: string): string | null {
     return findRealLiveRoot(root);
   },
+  buildProduceInputMaterialization(request) {
+    return {
+      extract: {
+        engine: "reallive",
+        gameRoot: request.sourceRoot,
+        gameId: request.gameId,
+        gameVersion: request.gameVersion,
+        sourceProfileId: request.sourceProfileId,
+        sourceLocale: request.sourceLocale,
+        wholeSeen: true,
+        bundleOutputPath: request.bridgePath,
+      },
+      structure: {
+        engine: "reallive",
+        gameexePath: join(request.sourceRoot, "REALLIVEDATA", "Gameexe.ini"),
+        seenPath: join(request.sourceRoot, "REALLIVEDATA", "Seen.txt"),
+        bridgePath: request.bridgePath,
+        outputPath: request.structurePath,
+      },
+    };
+  },
   buildApplyArgs(request: EnginePatchbackApplyRequest): string[] {
     const args = [
       "patch",

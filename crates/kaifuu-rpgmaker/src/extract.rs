@@ -8,6 +8,7 @@ use serde_json::Value;
 
 use crate::codes::{CodeClass, TextRole, classify};
 use crate::escape::{EscapeSpan, scan_escape_spans};
+use crate::json_locate::QuotedSpan;
 use crate::recognize::{
     OpaqueCommandSpec, PluginCommandRecognition, ScriptCommandRecognition, classify_plugin_command,
     classify_script_command,
@@ -62,6 +63,11 @@ pub struct ProtoUnit {
     pub spans: Vec<EscapeSpan>,
     /// Raw speaker label attached to a dialogue line, when known.
     pub speaker: Option<String>,
+    /// Exact raw JSON-string span in `file`, including the quote bytes.
+    ///
+    /// Walkers construct units from parsed JSON, so this is attached later
+    /// by [`crate::extract_game_dir`] against the original file bytes.
+    pub source_range: Option<QuotedSpan>,
 }
 
 impl ProtoUnit {
@@ -176,6 +182,7 @@ impl ExtractAcc {
             text: text.to_string(),
             spans,
             speaker,
+            source_range: None,
         });
     }
 
@@ -208,6 +215,7 @@ impl ExtractAcc {
             text: full_text.to_string(),
             spans,
             speaker: None,
+            source_range: None,
         });
     }
 

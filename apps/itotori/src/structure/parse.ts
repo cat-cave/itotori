@@ -19,6 +19,7 @@ const NarrativeEngineEvidenceSchema = z.record(z.string(), z.unknown());
 const SelectionControlSchema = z.enum(["button-object", "text-window", "none"]);
 const EdgeResolutionSchema = z.enum(["resolved", "unknown", "unresolved"]);
 const EvidenceTierSchema = z.enum(["E0", "E1", "E2", "E3"]);
+const NarrativeLinkKindSchema = z.enum(["line", "choice", "non-narrative"]);
 const RgbSchema = z.tuple([
   z.number().int().min(0).max(255),
   z.number().int().min(0).max(255),
@@ -140,6 +141,7 @@ const SceneV2Schema = z
           .object({
             unitId: IdentifierSchema,
             bridgeRef: BridgeRefSchema,
+            linkKind: NarrativeLinkKindSchema.optional(),
             surfaceKind: IdentifierSchema,
             sourceText: z.string(),
             characterId: SubjectIdSchema.nullable(),

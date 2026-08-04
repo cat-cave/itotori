@@ -21,8 +21,9 @@ import type {
 
 export const FACT_SNAPSHOT_SCHEMA_VERSION = "itotori.fact-snapshot.v1" as const;
 
-/** Whether a materialized unit is a narrated/spoken line or a choice option. */
-export type FactLinkKind = "line" | "choice";
+/** Semantic scope of a source-bound unit. Non-narrative units retain complete
+ * source coverage but are outside the dashboard's dialogue translation scopes. */
+export type FactLinkKind = "line" | "choice" | "non-narrative";
 
 /** Route scope a fact applies under, mirroring the ContextSnapshot snapshot
  * fact scope so materialized facts commit into it without re-derivation. */

@@ -11,6 +11,7 @@ import {
   type UtsushiProcessResult,
   type RunUtsushiStructureResult,
 } from "./utsushi-structure-seam.js";
+import { writeRpgMakerBridgeStructure } from "./rpgmaker-bridge-structure.js";
 
 export type RealliveStructureSource = {
   engine: "reallive";
@@ -44,15 +45,23 @@ export type SiglusStructureSource = {
   log?: (message: string) => void;
 };
 
+export type RpgMakerStructureSource = {
+  engine: "rpg-maker";
+  bridgePath: string;
+  outputPath: string;
+};
+
 export type StructureProviderSource =
   | RealliveStructureSource
   | SoftpalStructureSource
-  | SiglusStructureSource;
+  | SiglusStructureSource
+  | RpgMakerStructureSource;
 
 type StructureSourceByEngine = {
   reallive: RealliveStructureSource;
   softpal: SoftpalStructureSource;
   siglus: SiglusStructureSource;
+  "rpg-maker": RpgMakerStructureSource;
 };
 
 export type StructureEngineId = keyof StructureSourceByEngine;
@@ -63,7 +72,9 @@ export type StructureProviderCapability = {
   implemented: boolean;
 };
 
-export type StructureProviderResult = RunUtsushiStructureResult;
+export type StructureProviderResult =
+  | { execution: "native-process"; process: RunUtsushiStructureResult }
+  | { execution: "in-process"; outputPath: string };
 
 export interface StructureProvider<E extends StructureEngineId> {
   readonly engine: E;
@@ -127,18 +138,21 @@ const realliveStructureProvider: StructureProvider<"reallive"> = {
     };
   },
   run(source) {
-    return runUtsushiStructureExport({
-      engine: source.engine,
-      gameexePath: source.gameexePath,
-      seenPath: source.seenPath,
-      outputPath: source.outputPath,
-      ...(source.bridgePath === undefined ? {} : { bridgePath: source.bridgePath }),
-      ...(source.entryScene === undefined ? {} : { entryScene: source.entryScene }),
-      ...(source.maxScenes === undefined ? {} : { maxScenes: source.maxScenes }),
-      ...(source.env === undefined ? {} : { env: source.env }),
-      ...(source.runProcess === undefined ? {} : { runProcess: source.runProcess }),
-      ...(source.log === undefined ? {} : { log: source.log }),
-    });
+    return {
+      execution: "native-process",
+      process: runUtsushiStructureExport({
+        engine: source.engine,
+        gameexePath: source.gameexePath,
+        seenPath: source.seenPath,
+        outputPath: source.outputPath,
+        ...(source.bridgePath === undefined ? {} : { bridgePath: source.bridgePath }),
+        ...(source.entryScene === undefined ? {} : { entryScene: source.entryScene }),
+        ...(source.maxScenes === undefined ? {} : { maxScenes: source.maxScenes }),
+        ...(source.env === undefined ? {} : { env: source.env }),
+        ...(source.runProcess === undefined ? {} : { runProcess: source.runProcess }),
+        ...(source.log === undefined ? {} : { log: source.log }),
+      }),
+    };
   },
 };
 
@@ -157,14 +171,17 @@ const softpalStructureProvider: StructureProvider<"softpal"> = {
     };
   },
   run(source) {
-    return runUtsushiStructureExport({
-      engine: source.engine,
-      gameRoot: source.gameRoot,
-      outputPath: source.outputPath,
-      ...(source.env === undefined ? {} : { env: source.env }),
-      ...(source.runProcess === undefined ? {} : { runProcess: source.runProcess }),
-      ...(source.log === undefined ? {} : { log: source.log }),
-    });
+    return {
+      execution: "native-process",
+      process: runUtsushiStructureExport({
+        engine: source.engine,
+        gameRoot: source.gameRoot,
+        outputPath: source.outputPath,
+        ...(source.env === undefined ? {} : { env: source.env }),
+        ...(source.runProcess === undefined ? {} : { runProcess: source.runProcess }),
+        ...(source.log === undefined ? {} : { log: source.log }),
+      }),
+    };
   },
 };
 
@@ -184,15 +201,38 @@ const siglusStructureProvider: StructureProvider<"siglus"> = {
     };
   },
   run(source) {
-    return runUtsushiStructureExport({
-      engine: source.engine,
-      scenePath: source.scenePath,
-      gameexePath: source.gameexePath,
-      outputPath: source.outputPath,
-      ...(source.env === undefined ? {} : { env: source.env }),
-      ...(source.runProcess === undefined ? {} : { runProcess: source.runProcess }),
-      ...(source.log === undefined ? {} : { log: source.log }),
-    });
+    return {
+      execution: "native-process",
+      process: runUtsushiStructureExport({
+        engine: source.engine,
+        scenePath: source.scenePath,
+        gameexePath: source.gameexePath,
+        outputPath: source.outputPath,
+        ...(source.env === undefined ? {} : { env: source.env }),
+        ...(source.runProcess === undefined ? {} : { runProcess: source.runProcess }),
+        ...(source.log === undefined ? {} : { log: source.log }),
+      }),
+    };
+  },
+};
+
+const rpgMakerStructureProvider: StructureProvider<"rpg-maker"> = {
+  engine: "rpg-maker",
+  capability: {
+    engine: "rpg-maker",
+    summary: "Bridge-linked whole-game narrative structure projection",
+    implemented: true,
+  },
+  parseCli(args) {
+    return {
+      engine: "rpg-maker",
+      bridgePath: requiredFlag(args, "--bridge"),
+      outputPath: requiredFlag(args, "--output"),
+    };
+  },
+  run(source) {
+    writeRpgMakerBridgeStructure(source);
+    return { execution: "in-process", outputPath: source.outputPath };
   },
 };
 
@@ -200,6 +240,7 @@ const STRUCTURE_PROVIDERS: Readonly<Record<StructureEngineId, AnyStructureProvid
   reallive: defineStructureProvider(realliveStructureProvider),
   softpal: defineStructureProvider(softpalStructureProvider),
   siglus: defineStructureProvider(siglusStructureProvider),
+  "rpg-maker": defineStructureProvider(rpgMakerStructureProvider),
 };
 
 export function registeredStructureEngines(): StructureEngineId[] {

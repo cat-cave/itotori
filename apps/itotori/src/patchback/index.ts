@@ -42,6 +42,7 @@ export {
   applyEnginePatchback,
   enginePatchbackApplyArgs,
   detectPatchbackEngine,
+  detectPatchbackEngineFromAdapters,
   resolvePatchbackAdapter,
   enginePatchbackAdapter,
   enginePatchbackAdapters,
@@ -62,6 +63,11 @@ export {
   type PatchbackEngineReceipt,
   type PatchbackScope,
 } from "./adapters.js";
+export {
+  materializePatchbackProduceInput,
+  type MaterializePatchbackProduceInputRequest,
+  type PatchbackProduceInputMaterialization,
+} from "./produce-input-materialization.js";
 export {
   replayObserve,
   replayValidateArgs,
