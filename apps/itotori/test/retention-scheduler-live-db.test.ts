@@ -13,7 +13,9 @@ import {
   type RetentionSchedulerEvent,
 } from "../src/services/retention-scheduler.js";
 
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
+
+const postgresDescribe = requireLivePostgres(describe);
 
 postgresDescribe("server retention scheduler", () => {
   it("runs after the server listens and deletes expired persisted ciphertext", async () => {

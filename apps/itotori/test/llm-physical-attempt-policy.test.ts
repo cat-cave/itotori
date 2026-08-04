@@ -18,7 +18,9 @@ import {
   toolProviderResponse,
 } from "./llm-step-test-support.js";
 
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
+
+const postgresDescribe = requireLivePostgres(describe);
 
 postgresDescribe("physical attempt policy", () => {
   it("retries a 429 with bounded jitter three times and reports exhausted retries", async () => {

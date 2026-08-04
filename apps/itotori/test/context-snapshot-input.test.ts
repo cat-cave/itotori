@@ -7,7 +7,9 @@ import { buildContextSnapshotInput } from "../src/prepass/index.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import { buildRb024Snapshot, loadBridgeBundle } from "./support/gate-fixtures.js";
 
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
+
+const postgresDescribe = requireLivePostgres(describe);
 
 const REVISIONS = {
   decodeRef: revision("decode"),

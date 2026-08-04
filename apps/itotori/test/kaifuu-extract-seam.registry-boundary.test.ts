@@ -1,8 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { resolvePrivateCorpus } from "../src/private-inventory.js";
 import {
   extractCapabilities,
   registeredExtractEngines,
@@ -94,29 +90,5 @@ describe("extract-adapter registry", () => {
         "not-declared",
       ]),
     ).toThrow(/out_of_profile_cipher_method/u);
-  });
-});
-
-describe("runKaifuuExtract (env-gated real Softpal byte oracle)", () => {
-  const softpalRoot = resolvePrivateCorpus("softpal", 1, "plain");
-  const gated = softpalRoot === undefined || softpalRoot.length === 0 || !existsSync(softpalRoot);
-  it.skipIf(gated)("drives the real softpal extract seam and writes a real bridge bundle", () => {
-    const workDir = mkdtempSync(join(tmpdir(), "itotori-softpal-real-"));
-    const bridgePath = join(workDir, "bridge.json");
-    try {
-      const res = runKaifuuExtract({
-        engine: "softpal",
-        gameRoot: softpalRoot!,
-        bundleOutputPath: bridgePath,
-      });
-      expect(res.engine).toBe("softpal");
-      expect(res.mode).toBe("whole-game");
-      expect(res.status).toBe(0);
-      const bridge = JSON.parse(readFileSync(bridgePath, "utf8")) as { units?: unknown[] };
-      expect(Array.isArray(bridge.units)).toBe(true);
-      expect(bridge.units!.length).toBeGreaterThan(0);
-    } finally {
-      rmSync(workDir, { recursive: true, force: true });
-    }
   });
 });

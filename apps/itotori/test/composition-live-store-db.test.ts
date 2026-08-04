@@ -24,7 +24,9 @@ import {
 // explicitly-unknown physical memo through the real dispatch boundary against a live
 // Postgres, then finalizes and reads back a real accepted-output CAS head. No
 // live LLM/network: the recorded-transport path only.
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
+
+const postgresDescribe = requireLivePostgres(describe);
 const SNAPSHOT_ID = `sha256:${"a".repeat(64)}` as const;
 
 postgresDescribe("live workflow artifact store — real CAS round-trip", () => {

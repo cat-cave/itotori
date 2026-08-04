@@ -19,7 +19,9 @@ import {
   structuredProviderResponse,
 } from "./llm-step-test-support.js";
 
-export const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
+
+export const postgresDescribe = requireLivePostgres(describe);
 
 export const verdict = () => structuredProviderResponse(reviewVerdictExample);
 

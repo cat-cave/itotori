@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -357,88 +354,5 @@ test("public no-secret defaults render and round-trip unchanged", () => {
   for (const [key, value] of Object.entries(values)) {
     const line = rendered.split("\n").find((l) => l.startsWith(`${key}=`));
     assert.equal(decodeComposeEnvFileValue(line.slice(key.length + 1)), String(value));
-  }
-});
-
-// Real compose-config proof: write a minimal compose file + generated env file
-// with a `$`-bearing password and confirm `docker compose config` reports the
-// credential unchanged. Skipped when no `docker compose` CLI is present (e.g.
-// minimal CI images); the encoder-model tests above still prove preservation.
-//
-// SEMANTIC comparison (not a naive substring match): `docker compose config`
-// RE-ESCAPES every literal `$` in a resolved value back to `$$` — in BOTH its
-// yaml and `--format json` output — so the rendered config is itself
-// re-interpolatable. So the encoder preserving `p$4ssw0rd` is REPORTED by
-// compose as `p$$4ssw0rd`: that `$$` is CORRECT compose output escaping, not a
-// bug (the old test's substring match on the raw credential false-failed on it).
-// The honest check therefore compares the reported value against the credential
-// with that documented `$`->`$$` output-escaping applied (split/join, since a
-// `"$$"` string replacement would collapse back to a single `$`). Podman's
-// `docker` shim delegates compose parsing to podman-compose (divergent dotenv
-// semantics), so we skip when the CLI is podman-backed and rely on the
-// compose-go model tests above.
-test("docker compose config preserves a $-bearing generated credential", (t) => {
-  let composeVersion;
-  try {
-    composeVersion = execFileSync("docker", ["compose", "version"], { encoding: "utf8" });
-  } catch {
-    t.skip("no docker compose CLI available");
-    return;
-  }
-  if (/podman/iu.test(composeVersion)) {
-    t.skip("docker command delegates compose parsing to podman-compose");
-    return;
-  }
-
-  const dir = mkdtempSync(path.join(tmpdir(), "univ022-compose-"));
-  writeFileSync(
-    path.join(dir, "docker-compose.yml"),
-    [
-      "services:",
-      "  postgres:",
-      "    image: postgres:18",
-      "    environment:",
-      "      POSTGRES_PASSWORD: ${ITOTORI_DB_PASSWORD:-itotori}",
-      "",
-    ].join("\n"),
-  );
-
-  // Representative UNIV-022 credentials: a bare `$` (which the previous
-  // double-quoted encoder let Compose interpolate away), a literal `$$`, plus
-  // spaces/quotes/backslashes. `${DEFINED_VAR}` is deliberately excluded here:
-  // compose-go keeps it literal inside single quotes, but the podman-compose
-  // provider expands it against the OS env — a tool divergence, not an encoder
-  // fault — so the brace-ref preservation is asserted by the compose-model
-  // round-trip tests above (which follow compose-go semantics), not this one.
-  for (const credential of ["p$4ssw0rd", "a$$b", "sp ace$x", 'q"q$y', "back\\slash$z"]) {
-    const values = composeEnvValues({
-      DATABASE_URL: `postgres://itotori:${encodeURIComponent(credential)}@127.0.0.1:56000/itotori`,
-    });
-    writeFileSync(path.join(dir, "gen.env"), renderComposeEnvFile(values));
-    const out = execFileSync(
-      "docker",
-      ["compose", "--env-file", "gen.env", "config", "--format", "json"],
-      { cwd: dir, encoding: "utf8" },
-    );
-    // `--format json` normalizes `environment` to either a map or a `KEY=VALUE`
-    // string array depending on the compose version; handle both so this stays
-    // a robust SEMANTIC check (never a shape-dependent false-fail on the runner).
-    const env = JSON.parse(out).services?.postgres?.environment;
-    const resolved = Array.isArray(env)
-      ? env
-          .find((entry) => entry.startsWith("POSTGRES_PASSWORD="))
-          ?.slice("POSTGRES_PASSWORD=".length)
-      : env?.POSTGRES_PASSWORD;
-    // compose config re-escapes each literal `$` as `$$` in its output (so the
-    // rendered config re-interpolates back to the same value). Apply that same
-    // documented output-escaping to the expected credential; equality then proves
-    // the resolved internal value equals the credential byte-for-byte.
-    const expected = credential.split("$").join("$$");
-    assert.equal(
-      resolved,
-      expected,
-      `compose config must resolve POSTGRES_PASSWORD to ${JSON.stringify(credential)} ` +
-        `(reported with compose's $->$$ output escaping as ${JSON.stringify(expected)})`,
-    );
   }
 });

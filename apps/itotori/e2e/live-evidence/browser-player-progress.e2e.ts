@@ -7,17 +7,15 @@
 // that the move was the one the reader asked for.
 //
 // Nothing here is stubbed: real dashboard server, real engine child process,
-// real archive bytes, real Chromium. It is skipped — never faked — when the
-// private inventory lacks the runtime descriptor, because those bytes are not
-// redistributable and cannot live in the repo.
+// real archive bytes, real Chromium. The dedicated evidence runner fails if
+// the private inventory lacks the runtime descriptor, because those bytes are
+// not redistributable and cannot live in the repo.
 
 import { expect, test, type Page } from "@playwright/test";
-import { realliveBrowserPlayerLaunchFromInventory } from "../src/play/reallive-browser-player-launch.js";
+import { realliveBrowserPlayerLaunchFromInventory } from "../../src/play/reallive-browser-player-launch.js";
 
 const launch = realliveBrowserPlayerLaunchFromInventory();
 const session = "e2e";
-
-const descriptorPresent = launch !== undefined;
 
 // One engine frame is multiple megabytes of base64 over the wire, and the
 // engine rasterises a fresh one per input, so each step is seconds not
@@ -25,7 +23,6 @@ const descriptorPresent = launch !== undefined;
 const STEP_TIMEOUT_MS = 120_000;
 
 test.describe("browser player progress", () => {
-  test.skip(!descriptorPresent, "configure the selected RealLive corpus in the private inventory");
   test.slow();
 
   test("successive inputs through the browser move the VM to distinct addresses", async ({
@@ -77,6 +74,11 @@ async function addressAfterChoice(
 }
 
 async function openPlayer(page: Page): Promise<void> {
+  if (!launch) {
+    throw new Error(
+      "browser-player progress real-byte proof requires the selected RealLive corpus in the private inventory",
+    );
+  }
   const query = new URLSearchParams({ session });
   await page.goto(`/play/player?${query.toString()}`);
   await expect(page.locator("[data-live-player-panel]")).toBeVisible({ timeout: STEP_TIMEOUT_MS });

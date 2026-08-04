@@ -19,7 +19,9 @@ import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-te
 import { wikiObjectExample } from "./contract-fixtures-core.js";
 import { TestMemoCipher } from "./llm-step-test-support.js";
 
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
+
+const postgresDescribe = requireLivePostgres(describe);
 const CREATED_AT = "2026-07-15T12:00:00.000Z";
 const UPSTREAM_ID = "wiki:upstream:1";
 

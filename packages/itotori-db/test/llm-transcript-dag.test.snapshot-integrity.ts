@@ -17,7 +17,9 @@ import {
 } from "../src/repositories/llm-snapshot-repository.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "./live-postgres-suite.js";
+
+const postgresDescribe = requireLivePostgres(describe);
 
 class ProofCipher implements LlmMemoCipher {
   readonly #keys = new Map<string, Buffer>();

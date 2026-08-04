@@ -4,7 +4,9 @@ import { FULL_ROSTER } from "../src/run-policy/index.js";
 import { withDatabaseItotoriServices } from "../src/services/database-services.js";
 import { loadBridgeBundle, wholeGameStructure } from "./support/gate-fixtures.js";
 
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
+
+const postgresDescribe = requireLivePostgres(describe);
 const launchEnvironment = {
   OPENROUTER_API_KEY: "launch-pass-test-key",
   ITOTORI_TARGET_LOCALE: "en-US",

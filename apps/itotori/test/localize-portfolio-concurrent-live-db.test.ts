@@ -28,7 +28,9 @@ import {
   type RunIdentity,
 } from "./recorded-localize-run.js";
 
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
+
+const postgresDescribe = requireLivePostgres(describe);
 
 postgresDescribe("localize portfolio concurrent over Postgres", () => {
   beforeAll(() => {

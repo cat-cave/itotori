@@ -20,11 +20,11 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 
 import { describe, expect, it } from "vitest";
-import { resolvePrivateCorpus } from "../src/private-inventory.js";
+import { resolvePrivateCorpus } from "../../src/private-inventory.js";
 
-import { runKaifuuExtract } from "../src/extract/kaifuu-extract-seam.js";
-import { runNativeCli } from "../src/native-bin/cli-bin-resolver.js";
-import { applyEnginePatchback } from "../src/patchback/index.js";
+import { runKaifuuExtract } from "../../src/extract/kaifuu-extract-seam.js";
+import { runNativeCli } from "../../src/native-bin/cli-bin-resolver.js";
+import { applyEnginePatchback } from "../../src/patchback/index.js";
 
 type RealCorpus = { label: string; root: string | undefined };
 type RawBundle = {
@@ -35,9 +35,6 @@ const realCorpora: readonly RealCorpus[] = [
   { label: "real-corpus-1", root: resolvePrivateCorpus("rpg-maker-mv-mz", 1, "plain") },
   { label: "real-corpus-2", root: resolvePrivateCorpus("rpg-maker-mv-mz", 2, "plain") },
 ];
-const enabled = realCorpora.every(
-  (corpus) => typeof corpus.root === "string" && existsSync(corpus.root),
-);
 
 /** Resolve an engine `www/` directory from a direct path or a bounded mounted
  * parent. `data/System.json` is the generic engine marker. */
@@ -87,10 +84,15 @@ function hashTree(root: string): Map<string, string> {
   return hashes;
 }
 
-describe.skipIf(!enabled)("RPG Maker production extract and patch on real bytes", () => {
+describe("RPG Maker production extract and patch on real bytes", () => {
   for (const corpus of realCorpora) {
     it(`${corpus.label} extracts, patches, and delta-applies JSON text`, () => {
-      const sourceRoot = resolveWwwDir(corpus.root!);
+      if (!corpus.root || !existsSync(corpus.root)) {
+        throw new Error(
+          `RPG Maker real-byte proof requires staged corpus ${corpus.label} in the private inventory`,
+        );
+      }
+      const sourceRoot = resolveWwwDir(corpus.root);
       const workDir = mkdtempSync(join(tmpdir(), "itotori-rpgmaker-real-"));
       try {
         const bridgePath = join(workDir, "bridge.json");

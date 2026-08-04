@@ -14,23 +14,22 @@ import { join } from "node:path";
 
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import { describe, expect, it } from "vitest";
-import { resolvePrivateCorpus } from "../src/private-inventory.js";
+import { resolvePrivateCorpus } from "../../src/private-inventory.js";
 
-import { createFieldMemoCipher } from "../src/composition/live/field-cipher.js";
-import { runKaifuuExtract } from "../src/extract/kaifuu-extract-seam.js";
-import { buildFactSnapshot } from "../src/prepass/index.js";
-import { createItotoriServer } from "../src/server.js";
+import { createFieldMemoCipher } from "../../src/composition/live/field-cipher.js";
+import { runKaifuuExtract } from "../../src/extract/kaifuu-extract-seam.js";
+import { buildFactSnapshot } from "../../src/prepass/index.js";
+import { createItotoriServer } from "../../src/server.js";
 import {
   withDatabaseItotoriServices,
   type ItotoriServiceFactory,
-} from "../src/services/database-services.js";
-import { runUtsushiStructureExport } from "../src/structure-export/utsushi-structure-seam.js";
-import type { NarrativeStructure } from "../src/structure/types.js";
-import type { AcceptedUnitOutput } from "../src/patchback/index.js";
-import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
+} from "../../src/services/database-services.js";
+import { runUtsushiStructureExport } from "../../src/structure-export/utsushi-structure-seam.js";
+import type { NarrativeStructure } from "../../src/structure/types.js";
+import type { AcceptedUnitOutput } from "../../src/patchback/index.js";
+import { isolatedMigratedContext } from "../../../../packages/itotori-db/test/db-test-context.js";
 
 const realGameRoot = resolvePrivateCorpus("reallive", 1, "encrypted");
-const canRun = Boolean(process.env.DATABASE_URL && realGameRoot && existsSync(realGameRoot));
 
 type RawHttpResponse = {
   statusCode: number;
@@ -195,71 +194,79 @@ function tarEntry(bytes: Buffer, wantedPath: string): Buffer | null {
 }
 
 describe("POST /api/patchback/produce — finalized CAS run, real primary_corpus bytes", () => {
-  it.skipIf(!canRun)(
-    "loads final accepted outputs and returns a real patched tar through production composition",
-    async () => {
-      const root = findRealLiveRoot(realGameRoot!);
-      expect(root).not.toBeNull();
-      const workRoot = mkdtempSync(join(tmpdir(), "itotori-patchback-endpoint-"));
-      const bridgePath = join(workRoot, "bridge.json");
-      const structurePath = join(workRoot, "structure.json");
-      const sourceSeen = readFileSync(join(root!, "REALLIVEDATA", "Seen.txt"));
-      const database = await isolatedMigratedContext();
-      const previousFieldCipherKey = process.env.ITOTORI_FIELD_CIPHER_KEY;
-      process.env.ITOTORI_FIELD_CIPHER_KEY ??= Buffer.alloc(32, 11).toString("base64");
-      try {
-        runKaifuuExtract({
-          engine: "reallive",
-          gameRoot: root!,
-          gameId: "primary_corpus-hd",
-          gameVersion: "real",
-          sourceProfileId: "primary_corpus-hd",
-          sourceLocale: "ja-JP",
-          wholeSeen: true,
-          bundleOutputPath: bridgePath,
-        });
-        runUtsushiStructureExport({
-          engine: "reallive",
-          gameexePath: join(root!, "REALLIVEDATA", "Gameexe.ini"),
-          seenPath: join(root!, "REALLIVEDATA", "Seen.txt"),
-          outputPath: structurePath,
-          bridgePath,
-        });
-        const bridge = JSON.parse(readFileSync(bridgePath, "utf8")) as BridgeBundleV02;
-        const structure = JSON.parse(readFileSync(structurePath, "utf8")) as NarrativeStructure;
-        const snapshot = buildFactSnapshot(structure, bridge);
-        const projectId = "project-patchback-real";
-        const localeBranchId = "branch-patchback-real";
-        const contextSnapshotId = sha256("patchback-produce-context");
-        const localizationSnapshotId = sha256("patchback-produce-finalized-run");
-        const cipher = createFieldMemoCipher(process.env);
-        const memoKey = sha256("patchback-produce-memo");
+  it("loads final accepted outputs and returns a real patched tar through production composition", async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("patchback produce endpoint real-byte proof requires DATABASE_URL");
+    }
+    if (!realGameRoot || !existsSync(realGameRoot)) {
+      throw new Error(
+        "patchback produce endpoint real-byte proof requires the selected RealLive corpus in the private inventory",
+      );
+    }
+    const root = findRealLiveRoot(realGameRoot);
+    if (!root) {
+      throw new Error("patchback produce endpoint real-byte proof could not find REALLIVEDATA");
+    }
+    const workRoot = mkdtempSync(join(tmpdir(), "itotori-patchback-endpoint-"));
+    const bridgePath = join(workRoot, "bridge.json");
+    const structurePath = join(workRoot, "structure.json");
+    const sourceSeen = readFileSync(join(root, "REALLIVEDATA", "Seen.txt"));
+    const database = await isolatedMigratedContext();
+    const previousFieldCipherKey = process.env.ITOTORI_FIELD_CIPHER_KEY;
+    process.env.ITOTORI_FIELD_CIPHER_KEY ??= Buffer.alloc(32, 11).toString("base64");
+    try {
+      runKaifuuExtract({
+        engine: "reallive",
+        gameRoot: root,
+        gameId: "primary_corpus-hd",
+        gameVersion: "real",
+        sourceProfileId: "primary_corpus-hd",
+        sourceLocale: "ja-JP",
+        wholeSeen: true,
+        bundleOutputPath: bridgePath,
+      });
+      runUtsushiStructureExport({
+        engine: "reallive",
+        gameexePath: join(root, "REALLIVEDATA", "Gameexe.ini"),
+        seenPath: join(root, "REALLIVEDATA", "Seen.txt"),
+        outputPath: structurePath,
+        bridgePath,
+      });
+      const bridge = JSON.parse(readFileSync(bridgePath, "utf8")) as BridgeBundleV02;
+      const structure = JSON.parse(readFileSync(structurePath, "utf8")) as NarrativeStructure;
+      const snapshot = buildFactSnapshot(structure, bridge);
+      const projectId = "project-patchback-real";
+      const localeBranchId = "branch-patchback-real";
+      const contextSnapshotId = sha256("patchback-produce-context");
+      const localizationSnapshotId = sha256("patchback-produce-finalized-run");
+      const cipher = createFieldMemoCipher(process.env);
+      const memoKey = sha256("patchback-produce-memo");
 
-        await database.pool.query(
-          `
+      await database.pool.query(
+        `
             insert into itotori_workspaces (workspace_id, name)
             values ('workspace-patchback-real', 'Patchback real bytes')
           `,
-        );
-        await database.pool.query(
-          `
+      );
+      await database.pool.query(
+        `
             insert into itotori_projects (
               project_id, workspace_id, project_key, name, source_locale, status,
               game_id, game_version, source_profile_id
             ) values ($1, 'workspace-patchback-real', 'patchback-real', 'Patchback real', 'ja-JP',
               'active', 'primary_corpus-hd', 'real', 'primary_corpus-hd')
           `,
-          [projectId],
-        );
-        await database.pool.query(
-          `
+        [projectId],
+      );
+      await database.pool.query(
+        `
             insert into itotori_source_revisions (source_revision_id, project_id, revision_kind, value)
             values ('revision-patchback-real', $1, 'content_hash', $2)
           `,
-          [projectId, bridge.sourceBundleHash],
-        );
-        await database.pool.query(
-          `
+        [projectId, bridge.sourceBundleHash],
+      );
+      await database.pool.query(
+        `
             insert into itotori_source_bundles (
               source_bundle_id, project_id, source_bundle_revision_id, bridge_id,
               schema_version, source_bundle_hash, source_locale, extractor_name,
@@ -269,48 +276,48 @@ describe("POST /api/patchback/produce — finalized CAS run, real primary_corpus
               $3, $4, 'ja-JP', 'kaifuu', 'real', $5, 0
             )
           `,
-          [
-            projectId,
-            bridge.bridgeId,
-            bridge.schemaVersion,
-            bridge.sourceBundleHash,
-            bridge.units.length,
-          ],
-        );
-        await database.pool.query(
-          `
+        [
+          projectId,
+          bridge.bridgeId,
+          bridge.schemaVersion,
+          bridge.sourceBundleHash,
+          bridge.units.length,
+        ],
+      );
+      await database.pool.query(
+        `
             insert into itotori_locale_branches (
               locale_branch_id, project_id, source_bundle_id, target_locale, branch_name, status
             ) values ($1, $2, 'bundle-patchback-real', 'en-US', 'Patchback real', 'active')
           `,
-          [localeBranchId, projectId],
-        );
-        await database.pool.query(
-          `
+        [localeBranchId, projectId],
+      );
+      await database.pool.query(
+        `
             insert into itotori_localization_pass_run_configs (
               project_id, locale_branch_id, config_path, data_root, pair_policy_path,
               model_id, provider_id, run_dir
             ) values ($1, $2, '/dev/null', $3, '/dev/null', 'real', 'real', '/tmp')
           `,
-          [projectId, localeBranchId, realGameRoot],
-        );
-        await database.pool.query(
-          `
+        [projectId, localeBranchId, realGameRoot],
+      );
+      await database.pool.query(
+        `
             insert into itotori_translation_scope_settings (locale_branch_id, project_id, scope)
             values ($1, $2, 'dialogue-and-choices')
           `,
-          [localeBranchId, projectId],
-        );
-        await database.pool.query(
-          `
+        [localeBranchId, projectId],
+      );
+      await database.pool.query(
+        `
             insert into itotori_llm_context_snapshots (
               snapshot_id, schema_version, snapshot_content_hash, snapshot_identity, created_at
             ) values ($1, 'itotori.context-snapshot.v1', $1, '{}'::jsonb, now())
           `,
-          [contextSnapshotId],
-        );
-        await database.pool.query(
-          `
+        [contextSnapshotId],
+      );
+      await database.pool.query(
+        `
             insert into itotori_llm_localization_snapshots (
               snapshot_id, schema_version, snapshot_content_hash, context_snapshot_id,
               snapshot_identity, created_at
@@ -319,16 +326,16 @@ describe("POST /api/patchback/produce — finalized CAS run, real primary_corpus
               jsonb_build_object('targetLanguage', 'en-US', 'localeBranchId', $3::text), now()
             )
           `,
-          [localizationSnapshotId, contextSnapshotId, localeBranchId],
-        );
-        await database.pool.query("begin");
-        const memoText = "patchback produce endpoint fixture memo";
-        const memoRequest = await cipher.seal(memoText);
-        const memoResponse = await cipher.seal(memoText);
-        const memoOutcome = await cipher.seal(memoText);
-        const memoContentHash = sha256(memoText);
-        await database.pool.query(
-          `
+        [localizationSnapshotId, contextSnapshotId, localeBranchId],
+      );
+      await database.pool.query("begin");
+      const memoText = "patchback produce endpoint fixture memo";
+      const memoRequest = await cipher.seal(memoText);
+      const memoResponse = await cipher.seal(memoText);
+      const memoOutcome = await cipher.seal(memoText);
+      const memoContentHash = sha256(memoText);
+      await database.pool.query(
+        `
             insert into itotori_llm_call_memos (
               memo_key, semantic_hash, schema_version,
               request_ciphertext, request_key_ref, request_content_hash,
@@ -345,32 +352,32 @@ describe("POST /api/patchback/produce — finalized CAS run, real primary_corpus
               'unknown', 'billing_unknown', now(), now() + interval '30 days'
             )
           `,
-          [
-            memoKey,
-            sha256("patchback-produce-memo-semantic"),
-            Buffer.from(memoRequest.ciphertext),
-            memoRequest.keyRef,
-            memoContentHash,
-            Buffer.from(memoResponse.ciphertext),
-            memoResponse.keyRef,
-            Buffer.from(memoOutcome.ciphertext),
-            memoOutcome.keyRef,
-          ],
-        );
+        [
+          memoKey,
+          sha256("patchback-produce-memo-semantic"),
+          Buffer.from(memoRequest.ciphertext),
+          memoRequest.keyRef,
+          memoContentHash,
+          Buffer.from(memoResponse.ciphertext),
+          memoResponse.keyRef,
+          Buffer.from(memoOutcome.ciphertext),
+          memoOutcome.keyRef,
+        ],
+      );
 
-        for (const [index, fact] of snapshot.orderedUnits.entries()) {
-          const output = acceptedOutput({
-            factId: fact.factId,
-            sourceHash: fact.sourceHash,
-            target: targetFor(bridge, fact.bridgeUnitId, index),
-            localizationSnapshotId,
-            memoKey,
-          });
-          const outputJson = JSON.stringify(output);
-          const sealed = await cipher.seal(outputJson);
-          const outputHash = sha256(outputJson);
-          await database.pool.query(
-            `
+      for (const [index, fact] of snapshot.orderedUnits.entries()) {
+        const output = acceptedOutput({
+          factId: fact.factId,
+          sourceHash: fact.sourceHash,
+          target: targetFor(bridge, fact.bridgeUnitId, index),
+          localizationSnapshotId,
+          memoKey,
+        });
+        const outputJson = JSON.stringify(output);
+        const sealed = await cipher.seal(outputJson);
+        const outputHash = sha256(outputJson);
+        await database.pool.query(
+          `
               insert into itotori_llm_accepted_outputs (
                 output_id, semantic_key, schema_version, output_version,
                 parent_output_ids, memo_keys, snapshot_kind, snapshot_id,
@@ -381,58 +388,56 @@ describe("POST /api/patchback/produce — finalized CAS run, real primary_corpus
                 'unit', $6, 'final', $7, $8, $9, $10, now(), now() + interval '365 days'
               )
             `,
-            [
-              output.outputId,
-              sha256("semantic:" + output.outputId),
-              output.schemaVersion,
-              [memoKey],
-              localizationSnapshotId,
-              output.subjectId,
-              output.sourceHash,
-              Buffer.from(sealed.ciphertext),
-              sealed.keyRef,
-              outputHash,
-            ],
-          );
-          await database.pool.query(
-            `
+          [
+            output.outputId,
+            sha256("semantic:" + output.outputId),
+            output.schemaVersion,
+            [memoKey],
+            localizationSnapshotId,
+            output.subjectId,
+            output.sourceHash,
+            Buffer.from(sealed.ciphertext),
+            sealed.keyRef,
+            outputHash,
+          ],
+        );
+        await database.pool.query(
+          `
               insert into itotori_llm_cas_heads (
                 head_namespace, snapshot_id, subject_type, subject_id, head_stage,
                 head_id, head_version, head_content_hash, updated_at
               ) values ('accepted-output', $1, 'unit', $2, 'final', $3, 1, $4, now())
             `,
-            [localizationSnapshotId, output.subjectId, output.outputId, outputHash],
-          );
-        }
-
-        await database.pool.query("commit");
-
-        const serviceFactory: ItotoriServiceFactory = async (callback, options) =>
-          await withDatabaseItotoriServices(
-            { databaseUrl: database.databaseUrl, sessionId: options?.sessionId },
-            callback,
-          );
-        await withServer(serviceFactory, async (origin) => {
-          const response = await requestProduce(
-            origin,
-            JSON.stringify({ runId: localizationSnapshotId }),
-          );
-          expect(response.statusCode).toBe(200);
-          expect(response.body.byteLength).toBeGreaterThan(1024);
-          const patchedSeen = tarEntry(response.body, "REALLIVEDATA/Seen.txt");
-          expect(patchedSeen).not.toBeNull();
-          expect(patchedSeen!.equals(sourceSeen)).toBe(false);
-        });
-      } finally {
-        if (previousFieldCipherKey === undefined) {
-          delete process.env.ITOTORI_FIELD_CIPHER_KEY;
-        } else {
-          process.env.ITOTORI_FIELD_CIPHER_KEY = previousFieldCipherKey;
-        }
-        await database.close();
-        rmSync(workRoot, { recursive: true, force: true });
+          [localizationSnapshotId, output.subjectId, output.outputId, outputHash],
+        );
       }
-    },
-    600_000,
-  );
+
+      await database.pool.query("commit");
+
+      const serviceFactory: ItotoriServiceFactory = async (callback, options) =>
+        await withDatabaseItotoriServices(
+          { databaseUrl: database.databaseUrl, sessionId: options?.sessionId },
+          callback,
+        );
+      await withServer(serviceFactory, async (origin) => {
+        const response = await requestProduce(
+          origin,
+          JSON.stringify({ runId: localizationSnapshotId }),
+        );
+        expect(response.statusCode).toBe(200);
+        expect(response.body.byteLength).toBeGreaterThan(1024);
+        const patchedSeen = tarEntry(response.body, "REALLIVEDATA/Seen.txt");
+        expect(patchedSeen).not.toBeNull();
+        expect(patchedSeen!.equals(sourceSeen)).toBe(false);
+      });
+    } finally {
+      if (previousFieldCipherKey === undefined) {
+        delete process.env.ITOTORI_FIELD_CIPHER_KEY;
+      } else {
+        process.env.ITOTORI_FIELD_CIPHER_KEY = previousFieldCipherKey;
+      }
+      await database.close();
+      rmSync(workRoot, { recursive: true, force: true });
+    }
+  }, 600_000);
 });

@@ -34,6 +34,10 @@ function shell(script) {
   run("bash", ["-eu", "-o", "pipefail", "-c", script]);
 }
 
+function shellWithArgs(script, scriptArgs) {
+  run("bash", ["-eu", "-o", "pipefail", "-c", script, "developer-command", ...scriptArgs]);
+}
+
 function oneOf(kind, value, values) {
   if (!values.includes(value))
     fail(`unknown ${kind} "${value}"; expected one of: ${values.join(", ")}`);
@@ -48,7 +52,7 @@ function check(scope, forwarded) {
   if (scope === "ts") return shell("pnpm exec vp check\npnpm exec vp run ts:typecheck");
   if (scope === "rust")
     return shell(
-      "cargo fmt --check\ncargo check --workspace\ncargo clippy --workspace --all-targets --all-features -- -D warnings\ncargo deny check",
+      "node scripts/zero-skipped-test-guard.mjs\ncargo fmt --check\ncargo check --workspace\ncargo clippy --workspace --all-targets --all-features -- -D warnings\ncargo deny check",
     );
   if (scope === "meta")
     return shell(`
@@ -78,6 +82,11 @@ node --test scripts/audit-strictness.test.mjs
 node scripts/audit-strictness.mjs
 node --test scripts/classify-test-seams.test.mjs
 node --test scripts/test-collection-guard.test.mjs
+node --test scripts/live-evidence-suite-manifest.test.mjs
+node --test scripts/zero-skipped-test-guard.test.mjs
+node scripts/zero-skipped-test-guard.mjs
+node --test scripts/no-placeholder-throws-guard.test.mjs
+node scripts/no-placeholder-throws-guard.mjs
 node --test scripts/audit-no-hardcoded-roles.test.mjs
 node scripts/audit-no-hardcoded-roles.mjs
 node --test scripts/audit-no-direct-provider-invoke.test.mjs
@@ -109,6 +118,8 @@ node scripts/assert-tanstack-openrouter-pin.mjs
 node --test scripts/audit-llm-loc-budget.test.mjs
 node scripts/audit-llm-loc-budget.mjs
 node --test scripts/ci/assert-renderer-contract.test.mjs
+node --test scripts/ci/run-db-owned-app-proofs.test.mjs
+node --test scripts/ci/nextest-partition-receipt.test.mjs
 node --test scripts/ci/public-lane-coverage.test.mjs
 node scripts/ci/public-lane-coverage.mjs --check
 node --test scripts/ci/behavior-gate-mode.test.mjs
@@ -144,10 +155,37 @@ cargo test -p utsushi-softpal --test softpal_runtime_real_corpus --test softpal_
 `;
 }
 
+function runRustPartitionWithReceipt(partition, forwarded) {
+  return shellWithArgs(
+    `report_dir="$(mktemp -d)"
+preserve_reports() {
+  status="$?"
+  if [ "$status" -eq 0 ]; then
+    rm -rf "$report_dir"
+  else
+    printf 'tier1 Rust partition receipt reports preserved at %s\\n' "$report_dir" >&2
+  fi
+}
+trap preserve_reports EXIT
+cargo nextest list --workspace --partition "hash:${partition}/3" --message-format json "$@" > "$report_dir/list.json"
+if cargo nextest run --workspace --partition "hash:${partition}/3" "$@" 2> "$report_dir/run.stderr"; then
+  cat "$report_dir/run.stderr" >&2
+else
+  status="$?"
+  cat "$report_dir/run.stderr" >&2
+  exit "$status"
+fi
+node scripts/ci/nextest-partition-receipt.mjs --lane "tier1-rust-${partition}of3" --list-report "$report_dir/list.json" --run-report "$report_dir/run.stderr"`,
+    forwarded,
+  );
+}
+
 function test(selector, forwarded) {
   const selectors = [
     "all",
     "browser",
+    "browser-real-bytes",
+    "model-profile",
     "real-bytes",
     "real-bytes-oracle",
     "real-bytes-oracle-drift",
@@ -172,12 +210,17 @@ test -n "$bin" && test -x "$bin"
 pnpm --filter @itotori/app e2e
 pnpm --filter @itotori/runtime-web-review e2e
 `);
+  if (selector === "browser-real-bytes")
+    return run("node", ["scripts/run-live-evidence-suite.mjs", "browser-real-bytes", ...forwarded]);
+  if (selector === "model-profile")
+    return shell(
+      "pnpm exec vp run ts:build\nnode scripts/run-live-evidence-suite.mjs model-profile",
+    );
   if (selector === "real-bytes")
     return shell(
       `node scripts/real-bytes-lane.mjs
 pnpm exec vp run ts:build
-pnpm --filter @itotori/app exec vitest run test/rpgmaker-production-real-bytes.test.ts --exclude '**/.direnv/**'
-pnpm --filter @itotori/app exec vitest run test/patchback-produce-build.test.ts --exclude '**/.direnv/**'
+node scripts/run-live-evidence-suite.mjs real-bytes
 cargo test -p kaifuu-core --test xp3_real_bytes_roundtrip
 cargo test -p kaifuu-reallive -p utsushi-reallive -p utsushi-siglus -p kaifuu-siglus -p kaifuu-cli -p utsushi-cli -p kaifuu-rpgmaker -p kaifuu-engine-fixture -p kaifuu-nexas -- --ignored
 cargo test -p utsushi-core --test composite_asset_package_real_bytes
@@ -283,25 +326,17 @@ function ci(lane, forwarded) {
   }
   if (lane === "tier1-ts-public-1of2")
     return shell(
-      "pnpm exec vp run ts:build\npnpm --filter @itotori/localization-bridge-schema test\npnpm --filter @itotori/runtime-web-review test\npnpm --filter @itotori/ds test:dom\npnpm --filter @itotori/app exec vitest run --shard=1/2 --exclude '**/.direnv/**' --exclude 'test/production-localize-restart-live-db.test.ts' --exclude 'test/workflow-memo-identity-live-db.test.ts' --exclude 'test/production-localize-pause-live-db.test.ts' --exclude 'test/patchback-produce-endpoint-engine-detection.test.ts'",
+      "pnpm exec vp run ts:build\npnpm --filter @itotori/localization-bridge-schema test\npnpm --filter @itotori/runtime-web-review test\npnpm --filter @itotori/ds test:dom\npnpm --filter @itotori/app exec vitest run --shard=1/2 --exclude '**/.direnv/**'",
     );
   if (lane === "tier1-ts-public-2of2")
     return shell(
-      "pnpm exec vp run ts:build\npnpm --filter @itotori/db test\npnpm --filter @itotori/app exec vitest run --shard=2/2 --exclude '**/.direnv/**' --exclude 'test/production-localize-restart-live-db.test.ts' --exclude 'test/workflow-memo-identity-live-db.test.ts' --exclude 'test/production-localize-pause-live-db.test.ts' --exclude 'test/patchback-produce-endpoint-engine-detection.test.ts'",
+      "pnpm exec vp run ts:build\npnpm --filter @itotori/db test:verify-permissions\npnpm --filter @itotori/db test:verify-event-queue-indexes\npnpm --filter @itotori/app exec vitest run --shard=2/2 --exclude '**/.direnv/**'",
     );
   const rustPartition = /^tier1-rust-([1-3])of3$/u.exec(lane)?.[1];
-  if (rustPartition !== undefined)
-    return run("cargo", [
-      "nextest",
-      "run",
-      "--workspace",
-      "--partition",
-      `hash:${rustPartition}/3`,
-      ...forwarded,
-    ]);
+  if (rustPartition !== undefined) return runRustPartitionWithReceipt(rustPartition, forwarded);
   if (lane === "tier1-db")
     return shell(
-      "pnpm exec vp run ts:build\nnode apps/itotori/dist/cli.js db-migrate\nnode apps/itotori/dist/cli.js db-reset\npnpm --filter @itotori/db test:db\nnode scripts/assert-db-tests-not-skipped.mjs\npnpm --filter @itotori/app exec vitest run test/production-localize-restart-live-db.test.ts --exclude '**/.direnv/**'\npnpm --filter @itotori/app exec vitest run test/workflow-memo-identity-live-db.test.ts --exclude '**/.direnv/**'\npnpm --filter @itotori/app exec vitest run test/production-localize-pause-live-db.test.ts --exclude '**/.direnv/**'\npnpm --filter @itotori/app exec vitest run test/patchback-produce-endpoint-engine-detection.test.ts --exclude '**/.direnv/**'\npnpm --filter @itotori/app exec vitest run --exclude '**/.direnv/**' --exclude 'test/production-localize-restart-live-db.test.ts' --exclude 'test/workflow-memo-identity-live-db.test.ts' --exclude 'test/production-localize-pause-live-db.test.ts' --exclude 'test/patchback-produce-endpoint-engine-detection.test.ts'",
+      "pnpm exec vp run ts:build\nnode apps/itotori/dist/cli.js db-migrate\nnode apps/itotori/dist/cli.js db-reset\nnode --test scripts/itotori-db-compose-cli.test.mjs\npnpm --filter @itotori/db test:db\nnode scripts/assert-db-tests-not-skipped.mjs\nnode scripts/ci/run-db-owned-app-proofs.mjs",
     );
   if (lane === "tier1-browser")
     return shell(

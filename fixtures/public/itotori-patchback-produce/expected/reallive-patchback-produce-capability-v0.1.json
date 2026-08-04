@@ -10,7 +10,7 @@
   "deliverySurface": "POST /api/patchback/produce",
   "artifactKeys": ["patchTarget", "translatedBridge", "patchApply", "patchExport"],
   "realBytes": {
-    "suite": "apps/itotori/test/patchback-produce-build.test.ts",
+    "suite": "apps/itotori/test/live-evidence/patchback-produce-build-real-bytes.test.ts",
     "strictLane": "just test real-bytes",
     "corpusEnvironment": ["private inventory row", "private inventory row"],
     "minimumDistinctGames": 2,

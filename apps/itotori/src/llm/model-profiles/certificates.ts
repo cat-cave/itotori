@@ -7,8 +7,8 @@ import type { RegisteredModelProfileCertificate } from "../role-model-profiles.j
  * proof of the current reconciliation contract.
  *
  * The entry below is the verbatim artifact emitted by the live DeepSeek V4
- * Flash probe (`apps/itotori/test/llm-model-profile-live.test.ts`) on a real
- * ZDR-scoped OpenRouter call. The detached attestation is checked against the
+ * Flash probe (`apps/itotori/test/live-evidence/llm-model-profile-live.test.ts`)
+ * on a real ZDR-scoped OpenRouter call. The detached attestation is checked against the
  * release certifier public key when this registry is loaded; it is not a
  * certificate-authored checksum.
  */

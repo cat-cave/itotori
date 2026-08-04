@@ -15,6 +15,7 @@ import {
   repoRoot,
   runCoverage,
 } from "./public-lane-coverage.mjs";
+import { databaseAppVitestArguments } from "./run-db-owned-app-proofs.mjs";
 
 const justfileText = readFileSync(join(repoRoot, "scripts", "developer-command.mjs"), "utf8");
 const realProbe = {
@@ -35,7 +36,7 @@ const realProbe = {
 test("all required public categories and DB-owned proofs are covered against the real tree", () => {
   const result = runCoverage();
   assert.equal(result.ok, true, `coverage gaps: ${result.failures.join("; ")}`);
-  assert.equal(result.rows.length, 14);
+  assert.equal(result.rows.length, REQUIRED_PUBLIC_CATEGORIES.length + DB_OWNED_APP_PROOFS.length);
 });
 
 test("the registry covers exactly the ten required category ids", () => {
@@ -44,15 +45,17 @@ test("the registry covers exactly the ten required category ids", () => {
   for (const id of REQUIRED_CATEGORY_IDS) assert.ok(present.has(id), `missing ${id}`);
 });
 
-test("the registry keeps all durable proofs explicitly owned by the DB lane", () => {
-  assert.deepEqual(REQUIRED_DB_OWNED_PROOF_IDS, [
+test("the registry keeps every live-Postgres app proof explicitly owned by the DB lane", () => {
+  assert.equal(DB_OWNED_LANE, "ci-tier1-db");
+  assert.equal(DB_OWNED_APP_PROOFS.length, 28);
+  assert.equal(REQUIRED_DB_OWNED_PROOF_IDS.length, DB_OWNED_APP_PROOFS.length);
+  for (const id of [
     "durable-restart",
     "workflow-memo-model-variant",
     "durable-pause-resume",
     "patchback-produce-engine-detection",
-  ]);
-  assert.equal(DB_OWNED_APP_PROOFS.length, 4);
-  for (const proof of DB_OWNED_APP_PROOFS) assert.equal(proof.lane, DB_OWNED_LANE);
+  ])
+    assert.ok(REQUIRED_DB_OWNED_PROOF_IDS.includes(id), id);
 });
 
 test("command-selector extraction isolates the meta lane from another scope", () => {
@@ -84,18 +87,15 @@ test("dropping a required DB-owned proof surfaces as a coverage gap", () => {
   );
 });
 
-test("moving a DB-owned proof away from the DB lane surfaces as a coverage gap", () => {
+test("removing a DB-owned category member surfaces as a coverage gap", () => {
   const result = evaluateCoverage({
     ...realProbe,
-    dbOwnedProofs: DB_OWNED_APP_PROOFS.map((proof) =>
-      proof.proof === "durable-restart" ? { ...proof, lane: "ci-tier1-ts-public-1of2" } : proof,
-    ),
+    dbOwnedProofs: DB_OWNED_APP_PROOFS.filter((proof) => proof.proof !== "memo-fault"),
   });
   assert.equal(result.ok, false);
   assert.ok(
     result.failures.some(
-      (failure) =>
-        failure.includes("durable-restart") && failure.includes("must be directly owned"),
+      (failure) => failure.includes("memo-fault") && failure.includes("ownership registry"),
     ),
   );
 });
@@ -163,44 +163,35 @@ test("app-suite shards both run the @itotori/app vitest suite", () => {
   }
 });
 
-test("DB-owned durable proofs are directly invoked only in the DB lane", () => {
+test("DB-owned app proofs are collected by the DB runner and excluded from portable discovery", () => {
   const dbRecipe = extractRecipeBody(justfileText, "ci-tier1-db");
   assert.ok(dbRecipe);
+  assert.ok(dbRecipe.includes("run-db-owned-app-proofs.mjs"));
+  const argumentsForDb = databaseAppVitestArguments();
+  const portableConfig = readFileSync(join(repoRoot, "apps/itotori/vitest.config.ts"), "utf8");
+  assert.ok(portableConfig.includes("DB_OWNED_APP_TEST_FILES"));
   for (const proof of DB_OWNED_APP_PROOFS) {
     const appPath = proof.test.replace("apps/itotori/", "");
-    const exclusion = `--exclude '${appPath}'`;
-    assert.ok(dbRecipe.includes(proof.invocation), `${proof.proof} missing direct DB invocation`);
-    assert.ok(dbRecipe.includes(exclusion), `${proof.proof} reruns in DB's generic app suite`);
+    assert.ok(argumentsForDb.includes(appPath), `${proof.proof} missing DB runner invocation`);
     for (const lane of APP_SUITE_SHARDS) {
       const shardRecipe = extractRecipeBody(justfileText, lane);
-      assert.ok(shardRecipe?.includes(exclusion), `${proof.proof} is collected by ${lane}`);
+      assert.ok(
+        shardRecipe?.includes("--filter @itotori/app"),
+        `${proof.proof} is collected by ${lane}`,
+      );
     }
   }
 });
 
-test("removing a durable proof's DB invocation or public exclusion fails coverage", () => {
-  const proof = DB_OWNED_APP_PROOFS[0];
-  assert.ok(proof);
+test("removing the DB-owned runner invocation fails coverage", () => {
   const missingInvocation = evaluateCoverage({
     ...realProbe,
-    justfileText: justfileText.replace(proof.invocation, "vitest list"),
+    justfileText: justfileText.replace("run-db-owned-app-proofs.mjs", "unowned-app-proofs.mjs"),
   });
   assert.equal(missingInvocation.ok, false);
   assert.ok(
     missingInvocation.failures.some(
-      (failure) => failure.includes(proof.proof) && failure.includes("does not directly invoke"),
-    ),
-  );
-
-  const appPath = proof.test.replace("apps/itotori/", "");
-  const missingPublicExclusion = evaluateCoverage({
-    ...realProbe,
-    justfileText: justfileText.replace(`--exclude '${appPath}'`, ""),
-  });
-  assert.equal(missingPublicExclusion.ok, false);
-  assert.ok(
-    missingPublicExclusion.failures.some(
-      (failure) => failure.includes(proof.proof) && failure.includes("does not exclude"),
+      (failure) => failure.includes("DB lane") && failure.includes("DB-owned app runner"),
     ),
   );
 });

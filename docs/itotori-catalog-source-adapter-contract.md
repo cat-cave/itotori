@@ -155,10 +155,10 @@ durable evidence of CATALOG-065 replay conformance, rather than pointing only at
 ## Verifying the contract (DB-backed local gate)
 
 The replay and idempotency tests that prove this contract are DB-classified: they drive an isolated
-migrated Postgres via `packages/itotori-db/test/db-test-context.ts`, so the fast-local
-`pnpm --filter @itotori/db test` without configured database access **skips** them with a
-prominent, machine-readable marker. A skipped suite is _not_ replay coverage — a green fast-local run
-proves nothing about the CATALOG-065 replay path.
+migrated Postgres via `packages/itotori-db/test/db-test-context.ts`. The portable
+`pnpm --filter @itotori/db test` command does not collect them; the DB-owned
+`test:db` runner fails loudly without configured database access. A portable
+green run is not replay coverage and proves nothing about the CATALOG-065 path.
 
 To prove the replay path actually ran against a database, use the CATALOG-072 DB-backed local gate:
 

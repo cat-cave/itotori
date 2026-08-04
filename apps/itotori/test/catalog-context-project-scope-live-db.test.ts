@@ -7,7 +7,9 @@ import {
   withDatabaseItotoriServices,
 } from "../src/services/database-services.js";
 
-const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
+
+const postgresDescribe = requireLivePostgres(describe);
 
 type CatalogContextProject = {
   projectId: string;

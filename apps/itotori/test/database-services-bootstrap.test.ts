@@ -3,7 +3,9 @@ import { ItotoriPrincipalRepository, localUserId } from "@itotori/db";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import { withDatabaseItotoriServices } from "../src/services/database-services.js";
 
-const postgresDescribe = process.env.DATABASE_URL === undefined ? describe.skip : describe;
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
+
+const postgresDescribe = requireLivePostgres(describe);
 const fieldCipherKey = Buffer.alloc(32, 11).toString("base64");
 
 let priorFieldCipherKey: string | undefined;

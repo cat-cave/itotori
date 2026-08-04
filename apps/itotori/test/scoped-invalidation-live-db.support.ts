@@ -32,7 +32,9 @@ import {
 } from "./llm-step-test-support.js";
 import { buildRb024Snapshot, loadBridgeBundle, makeAccepted } from "./support/gate-fixtures.js";
 
-export const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
+import { requireLivePostgres } from "../../../packages/itotori-db/test/live-postgres-suite.js";
+
+export const postgresDescribe = requireLivePostgres(describe);
 
 export const CREATED_AT = "2026-07-15T12:00:00.000Z";
 
