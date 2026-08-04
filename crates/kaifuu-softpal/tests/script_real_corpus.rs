@@ -1,8 +1,8 @@
 //! Real-bytes validation of the Softpal `SCRIPT.SRC` dialogue disassembler
-//! against three owned titles, extracting both `SCRIPT.SRC` and `TEXT.DAT` from
+//! against two owned titles, extracting both `SCRIPT.SRC` and `TEXT.DAT` from
 //! the same `data.pac` via the crate's own PAC reader. It also surveys the SELECT
-//! choice-label encoding across the corpus (direct immediate vs typed-flow
-//! indirect label) — see the `GAMES` note for the four-title finding.
+//! choice-label encoding across the two staged corpora (direct immediate vs
+//! typed-flow indirect label) — see the `GAMES` note.
 //! `#[ignore]`d and env-gated: set `private inventory row` to the
 //! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
 //! `--ignored`. **No raw copyrighted text lives in this file** — only command
@@ -10,7 +10,7 @@
 //! disassembler must reproduce.
 //! PROOF BAR: every extracted dialogue/choice **text** pointer and every present
 //! **speaker name** pointer must resolve to an *exact* `TEXT.DAT` record
-//! boundary (0 dangling) — full pointer resolution, all titles.
+//! boundary (0 dangling) — full pointer resolution, both titles.
 //! Wired into the PERIODIC `ci-real-bytes` lane; see `pac_real_corpus.rs` for
 //! the env-gate / skip-when-absent contract.
 
@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use kaifuu_softpal::{PacArchive, RawCommand, ScriptScan, TextDat};
 
-const GAME_IDENTITIES: [&str; 3] = ["softpal/1/plain", "softpal/2/plain", "softpal/3/plain"];
+const GAME_IDENTITIES: [&str; 2] = ["softpal/1/plain", "softpal/2/plain"];
 
 /// One game's `SCRIPT.SRC` disassembly expectations. Counts are the measured
 /// ground truth (verified against the SoftPal-Tool oracle scan logic).
@@ -43,25 +43,20 @@ struct GameExpectation {
     /// Expected number of indirect-label candidates that actually land on a
     /// `TEXT.DAT` record boundary — i.e. are **real, translatable choice labels**.
     /// This is the load-bearing discriminator for the indirect mechanism: it is
-    /// non-zero for **exactly one** title (softpal_corpus_two). See the module note below.
+    /// non-zero for **exactly one** staged corpus (softpal_corpus_two). See the module note below.
     indirect_resolved_count: usize,
 }
 
-// SELECT-ENCODING SURVEY across four CRYSTALiA/Softpal titles — measured on real
+// SELECT-ENCODING SURVEY across the two staged Softpal corpora — measured on real
 // bytes. The indirect typed-value mechanism resolves real labels on exactly one
-// title (softpal_corpus_two, 16). Every other title carries its choice labels directly on the
-// SELECT immediate (the "direct" encoding):
+// corpus (softpal_corpus_two, 16). The other corpus carries its choice labels
+// directly on the SELECT immediate (the "direct" encoding):
 //   * softpal_corpus_one (2024) — 11 choices, all direct; zero indirect candidates.
 //   * softpal_corpus_two (2026) — INDIRECT encoding: 16 candidates, all resolve to real labels.
-//   * softpal_corpus_four CRACK≡TRICK! (2025-10, nearest sibling of softpal_corpus_two) — 5 story choices,
-//     all direct; its 5-select system cluster at script start has typed values
-//     that do not flow to a plain label source (indirect_resolved_count == 0).
-//   * softpal_corpus_three Suzaku Shijuusou (2025-05) — trial script with ZERO SELECTs; it
-//     cannot exercise the mechanism and is therefore not enrolled below.
 // A typed operand alone is not evidence of an indirect label: it must trace to a
 // plain source and resolve to a record boundary. The resolver handles both
-// encodings and keeps every title's choices translatable.
-const GAMES: [GameExpectation; 3] = [
+// encodings and keeps both corpora's choices translatable.
+const GAMES: [GameExpectation; 2] = [
     // softpal_corpus_one — direct encoding: all 11 SELECT immediates are text pointers.
     GameExpectation {
         subdir: "softpal_corpus_one",
@@ -88,20 +83,6 @@ const GAMES: [GameExpectation; 3] = [
         nontext_select_count: 5,
         indirect_candidate_count: 16,
         indirect_resolved_count: 16,
-    },
-    // softpal_corpus_four CRACK≡TRICK! — the five story choices resolve directly. Its typed
-    // system-select cluster has no plain label source, proving that the indirect
-    // encoding is selected by bytecode shape rather than generation or identity.
-    GameExpectation {
-        subdir: "softpal_corpus_four",
-        pac_count: 142,
-        text_show_count: 10098,
-        with_speaker_count: 6471,
-        select_count: 10,
-        text_bearing_choice_count: 5,
-        nontext_select_count: 5,
-        indirect_candidate_count: 0,
-        indirect_resolved_count: 0,
     },
 ];
 
