@@ -6,11 +6,13 @@ import {
   type LlmDurabilityFaultInjector,
   type LlmMemoSingleflightInput,
   type LlmMemoSingleflightResult,
+  type LlmSpendAdmission,
   type LlmStepAttemptContext,
   type LlmStepExecution,
 } from "@itotori/db";
 import type { CallSpec } from "../contracts/index.js";
 import { currentPhysicalAttemptCostObserver } from "./physical-attempt-cost-context.js";
+import { startRunCostAdmission } from "./run-cost-admission.js";
 
 const MAX_PHYSICAL_ATTEMPTS = 3;
 const MAX_JITTER_MS = 8_000;
@@ -31,12 +33,11 @@ export interface RetryRuntime {
 
 export interface PhysicalAttemptRuntime {
   profile: MeasuredModelProfile;
-  admission: { scope: string; confirmedCostCapUsd: string };
-  /**
-   * A run-local observer that reserves bounded exposure immediately before a
-   * real provider attempt and settles only the provider-confirmed result. It
-   * is absent outside a project-run driver, so memo replay remains write-free.
-   */
+  admission: Pick<
+    LlmSpendAdmission,
+    "scope" | "confirmedCostCapUsd" | "runScope" | "cohortId" | "cohort"
+  >;
+  /** Run-local reservation observer; absent outside a project-run driver. */
   runCostObserver?: PhysicalAttemptCostObserver;
   signal?: AbortSignal;
   retry?: Partial<RetryRuntime>;
@@ -240,14 +241,14 @@ export async function memoizedPhysicalAttempt(input: {
           readonly execution: LlmStepExecution;
         }
       | undefined;
+    let observerStartError: unknown;
     const stored = await input.store.singleflight({
       ...input.memo,
       ...(input.runtime.durabilityFaults
         ? { durabilityFaults: input.runtime.durabilityFaults }
         : {}),
       admission: {
-        scope: input.runtime.admission.scope,
-        confirmedCostCapUsd: input.runtime.admission.confirmedCostCapUsd,
+        ...input.runtime.admission,
         maxAttemptExposureUsd: input.runtime.profile.maxAttemptExposureUsd,
         deadlineMs,
       },
@@ -255,11 +256,16 @@ export async function memoizedPhysicalAttempt(input: {
         input.observer.beginAttempt();
         const deadline = attemptDeadline(deadlineMs, input.runtime.signal, input.observer);
         try {
-          await runCostObserver?.onAttemptStarted({
+          const failedStart = await startRunCostAdmission({
+            observer: runCostObserver,
             memoKey: input.memo.memoKey,
             attempt,
             maxAttemptExposureUsd: input.runtime.profile.maxAttemptExposureUsd,
           });
+          if (failedStart !== undefined) {
+            observerStartError = failedStart.error;
+            return failedStart.execution;
+          }
           const execution = await input.execute(attempt, deadline.control);
           terminalAttempt = { attempt, execution };
           return execution;
@@ -274,6 +280,7 @@ export async function memoizedPhysicalAttempt(input: {
         ...terminalAttempt,
       });
     }
+    if (observerStartError !== undefined) throw observerStartError;
     if (stored.kind === "completed") return stored;
     if (stored.failure.classification !== "transient") {
       throw new LlmPhysicalAttemptError(stored.failure);

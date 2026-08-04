@@ -1,6 +1,7 @@
 import { ItotoriLlmWikiRepository } from "@itotori/db";
 import { expect } from "vitest";
 import { createFieldMemoCipher } from "../src/composition/live/index.js";
+import { providerBudgetCohort } from "../src/composition/provider-budget-cohort.js";
 import { LocalizedRenderingSchema, WikiObjectSchema } from "../src/contracts/index.js";
 import { FULL_ROSTER, type RunPolicyRequest } from "../src/run-policy/index.js";
 import type { ItotoriApplicationServices } from "../src/services/database-services.js";
@@ -83,6 +84,7 @@ export function commandDeps(
       },
     },
     projectWorkflow: services.projectWorkflow,
+    providerBudgetCohorts: services.localizationSubstrate.providerBudgetCohorts,
     resolvePortSource: (
       request: RunPolicyRequest,
       perRun: Parameters<
@@ -164,6 +166,13 @@ export async function seedStyleBible(input: {
     localizationSnapshotId: after.runPlane.localizationSnapshotId,
     bibleRenderingId,
     voiceRenderingId,
+    activateProviderBudget: async () => {
+      const cohorts = input.services.localizationSubstrate.providerBudgetCohorts;
+      if (cohorts === undefined) throw new Error("Q5 fixture has no provider-budget lifecycle");
+      await cohorts.activate(
+        providerBudgetCohort([{ projectId: input.projectId, runId: input.runId }]),
+      );
+    },
   };
 }
 function qualifyingRequest(runMode: RoleBindingRunMode): RunPolicyRequest {

@@ -68,6 +68,7 @@ import {
 } from "./localization-production-config.js";
 import { ItotoriProjectWorkflowService } from "./project-workflow-service.js";
 import { ItotoriAuthorizationService } from "../auth.js";
+import { createProductionLocalizationProviderBudget } from "./localization-provider-budget.js";
 
 /** The remaining command/API surfaces require a new-pipeline composition
  * substrate. The retired DB factory must never silently reconstruct the old
@@ -126,15 +127,12 @@ export async function withDatabaseItotoriServices<T>(
     const cipher = createFieldMemoCipher(process.env);
     let config: ReturnType<typeof productionLocalizationConfig> | undefined;
     const localizationConfig = () => (config ??= productionLocalizationConfig(process.env));
-    const localizeDispatchConfig = () => {
-      const current = localizationConfig();
-      return productionLocalizeDispatchConfig({
-        env: process.env,
-        maxAttemptExposureUsd: current.maxAttemptExposureUsd,
-        confirmedCostCapUsd: current.confirmedCostCapUsd,
-        ...(options.providerFetcher === undefined ? {} : { fetcher: options.providerFetcher }),
-      });
-    };
+    const localizationProviderBudget = createProductionLocalizationProviderBudget({
+      pool,
+      env: process.env,
+      config: localizationConfig,
+      ...(options.providerFetcher === undefined ? {} : { fetcher: options.providerFetcher }),
+    });
     const wikiObjectApi = new WikiObjectApiService({
       wiki: new ItotoriLlmWikiRepository(pool, cipher),
       humanInputs: new ItotoriLlmHumanInputRepository(pool, cipher),
@@ -169,6 +167,9 @@ export async function withDatabaseItotoriServices<T>(
               writeJson: defaultWriteJson,
               projectWorkflow: session.projectWorkflow,
               resolvePortSource: (request, perRun) => substrate.resolvePortSource(request, perRun),
+              ...(substrate.providerBudgetCohorts === undefined
+                ? {}
+                : { providerBudgetCohorts: substrate.providerBudgetCohorts }),
             });
           });
         },
@@ -207,7 +208,7 @@ export async function withDatabaseItotoriServices<T>(
       wikiObjectApi,
       wikiApply: {
         runner: createLiveWikiEnhancementRunner({
-          dispatchConfig: localizeDispatchConfig,
+          dispatchConfig: localizationProviderBudget.dispatchConfig,
           memoStore,
           contentAccess,
           snapshots: () => {
@@ -249,7 +250,7 @@ export async function withDatabaseItotoriServices<T>(
             repository: wikiRepository,
             memoStore,
             contentAccess,
-            dispatch: localizeDispatchConfig(),
+            dispatch: localizationProviderBudget.dispatchConfig(),
             dispatchSnapshots: {
               decodeRevisionHash: config.decodeRevisionHash,
               glossaryRevisionHash: config.glossaryRevisionHash,
@@ -277,6 +278,7 @@ export async function withDatabaseItotoriServices<T>(
         },
       },
       localizationSubstrate: {
+        providerBudgetCohorts: localizationProviderBudget.providerBudgetCohorts,
         async resolvePortSource(request, perRun) {
           const config = localizationConfig();
           const contextSnapshot = await snapshotRepository.putContext(
@@ -292,6 +294,7 @@ export async function withDatabaseItotoriServices<T>(
             acceptedBibleHead: null,
             acceptedTargetOutputHead: null,
           });
+          const dispatch = localizationProviderBudget.dispatchConfig(perRun);
           const substrate = createProductionLiveLocalizationSubstrate({
             database: db,
             actor,
@@ -312,7 +315,7 @@ export async function withDatabaseItotoriServices<T>(
               acceptedOutputHeadHash: null,
             },
             dispatch: {
-              ...localizeDispatchConfig(),
+              ...dispatch,
               ...(perRun.abortSignal === undefined ? {} : { signal: perRun.abortSignal }),
             },
             roles: createProductionRoleBindings(),

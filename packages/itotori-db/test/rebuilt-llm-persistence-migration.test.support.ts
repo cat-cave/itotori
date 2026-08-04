@@ -20,6 +20,8 @@ const rebuiltTables = [
   "itotori_llm_cas_heads",
   "itotori_llm_context_snapshots",
   "itotori_llm_localization_snapshots",
+  "itotori_llm_provider_budget_cohorts",
+  "itotori_llm_provider_budget_cohort_members",
 ] as const;
 
 const expectedColumnsByTable = {
@@ -32,7 +34,7 @@ const expectedColumnsByTable = {
       " ",
     ),
   itotori_llm_http_attempts:
-    "attempt_id memo_key attempt_ordinal request_ciphertext request_key_ref request_content_hash response_ciphertext response_key_ref response_content_hash request_hash attempt_status http_status generation_id billing_state cost_usd started_at completed_at retention_deadline deletion_state deleted_at admission_scope failure_class max_exposure_usd deadline_at served_pair_status served_model served_provider verification_status router_attempts prompt_token_count completion_token_count reasoning_token_count cached_token_count reported_cost_usd".split(
+    "attempt_id memo_key attempt_ordinal request_ciphertext request_key_ref request_content_hash response_ciphertext response_key_ref response_content_hash request_hash attempt_status http_status generation_id billing_state cost_usd started_at completed_at retention_deadline deletion_state deleted_at admission_scope admission_run_scope admission_cohort_id failure_class max_exposure_usd deadline_at served_pair_status served_model served_provider verification_status router_attempts prompt_token_count completion_token_count reasoning_token_count cached_token_count reported_cost_usd".split(
       " ",
     ),
   itotori_llm_conversation_events:
@@ -67,6 +69,14 @@ const expectedColumnsByTable = {
     "snapshot_id schema_version snapshot_content_hash snapshot_identity created_at".split(" "),
   itotori_llm_localization_snapshots:
     "snapshot_id schema_version snapshot_content_hash context_snapshot_id snapshot_identity created_at".split(
+      " ",
+    ),
+  itotori_llm_provider_budget_cohorts:
+    "profile_scope cohort_id profile_cost_cap_usd member_count cohort_state created_at released_at".split(
+      " ",
+    ),
+  itotori_llm_provider_budget_cohort_members:
+    "profile_scope cohort_id project_id run_id admission_run_scope run_cost_cap_usd member_state created_at released_at".split(
       " ",
     ),
 } as const satisfies Record<(typeof rebuiltTables)[number], readonly string[]>;
@@ -144,13 +154,13 @@ export async function insertAttempt(
   await pool.query(
     `
       insert into itotori_llm_http_attempts (
-        attempt_id, memo_key, attempt_ordinal, admission_scope,
+        attempt_id, memo_key, attempt_ordinal, admission_scope, admission_run_scope,
         request_ciphertext, request_key_ref, request_content_hash, request_hash,
         attempt_status, failure_class, served_pair_status, verification_status,
         router_attempts, billing_state, max_exposure_usd,
         started_at, deadline_at, completed_at, retention_deadline
       ) values (
-        $1, $2, $3, 'migration-test', decode('04', 'hex'), 'key/attempt', $4, $5,
+        $1, $2, $3, 'migration-test', 'migration-test', decode('04', 'hex'), 'key/attempt', $4, $5,
         'transport-error', 'transient', 'unknown', 'quarantined', '[]'::jsonb,
         'billing_unknown', 0,
         now(), now(), now(), now() + interval '1 day'

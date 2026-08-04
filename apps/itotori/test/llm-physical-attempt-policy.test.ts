@@ -137,6 +137,56 @@ postgresDescribe("physical attempt policy", () => {
     }
   });
 
+  it("terminally releases an admission when the run cost observer rejects before transport", async () => {
+    const context = await isolatedMigratedContext();
+    const cipher = new TestMemoCipher();
+    try {
+      const prompt = "Reject this attempt before a provider request.";
+      const harness = dispatchHarness({
+        pool: context.pool,
+        cipher,
+        prompt,
+        responses: [structuredProviderResponse(reviewVerdictExample)],
+      });
+      await expect(
+        dispatch(physicalCallSpec(prompt), {
+          ...harness.runtime,
+          memo: {
+            ...harness.runtime.memo,
+            runCostObserver: {
+              onAttemptStarted: async () => {
+                throw new Error("project run cost cap rejected this attempt");
+              },
+              onAttemptCompleted: async () => undefined,
+            },
+          },
+        }),
+      ).resolves.toMatchObject({ status: "failure", failureKind: "transport" });
+      expect(harness.transportCalls()).toBe(0);
+      const attempt = await context.pool.query<{
+        attempt_status: string;
+        billing_state: string;
+        completed_at: Date | null;
+      }>(`
+        select attempt_status, billing_state, completed_at
+        from itotori_llm_http_attempts
+      `);
+      expect(attempt.rows).toEqual([
+        {
+          attempt_status: "transport-error",
+          billing_state: "billing_unknown",
+          completed_at: expect.any(Date),
+        },
+      ]);
+      const report = await new ItotoriLlmCallMemoRepository(context.pool, cipher, {
+        requireContentRead: async () => undefined,
+      }).readSpendExposure("test:llm-step");
+      expect(report.boundedInFlightExposureUsd).toBe("0");
+    } finally {
+      await context.close();
+    }
+  });
+
   it("applies the selected measured normal or deep profile deadline to every attempt", async () => {
     const context = await isolatedMigratedContext();
     const cipher = new TestMemoCipher();
@@ -260,7 +310,7 @@ postgresDescribe("physical attempt policy", () => {
     }
   });
 
-  it("reports confirmed, unknown, and bounded in-flight exposure without reservation rows", async () => {
+  it("reports confirmed, unknown, and bounded in-flight exposure", async () => {
     const context = await isolatedMigratedContext();
     const cipher = new TestMemoCipher();
     const repository = new ItotoriLlmCallMemoRepository(context.pool, cipher, {
@@ -381,7 +431,7 @@ async function insertConfirmedAttempt(
   await pool.query(
     `
       insert into itotori_llm_http_attempts (
-        attempt_id, memo_key, attempt_ordinal, admission_scope,
+        attempt_id, memo_key, attempt_ordinal, admission_scope, admission_run_scope,
         request_ciphertext, request_key_ref, request_content_hash, request_hash,
         attempt_status, failure_class, http_status, generation_id,
         served_pair_status, served_model, served_provider, verification_status,
@@ -389,11 +439,11 @@ async function insertConfirmedAttempt(
         billing_state, cost_usd, max_exposure_usd,
         started_at, deadline_at, completed_at, retention_deadline
       ) values (
-        'attempt:confirmed', $1, 1, $2,
+        'attempt:confirmed', $1, 1, $2, $2,
         decode('01', 'hex'), 'test-key', $3, $4,
         'transport-error', 'transient', null, 'generation:reconciled',
         'unknown', null, null, 'quarantined', '[]'::jsonb,
-        'confirmed', $5, 0, now(), now(), now(), now() + interval '1 day'
+        'confirmed', $5, $5, now(), now(), now(), now() + interval '1 day'
       )
     `,
     [STEP_HASH_A, scope, STEP_HASH_A, STEP_HASH_B, costUsd],

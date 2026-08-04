@@ -260,6 +260,7 @@ export type {
   LocalizationPerRunInput,
   LocalizationPortSource,
 } from "./composition/localize-entrypoint.js";
+export type { LocalizationProviderBudgetCohorts } from "./composition/provider-budget-cohort.js";
 export type { PlayEntrypointDeps } from "./composition/play-entrypoint.js";
 export type { PatchRuntimeLaunchReceipt } from "./play/patch-runtime-launcher.js";
 export type { RunPolicyRequest } from "./run-policy/index.js";

@@ -246,6 +246,8 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
    * refuses loudly when it is missing — it never routes to the old service.
    */
   localizationSubstrate?: {
+    /** Durable activation/release for the profile's provider-budget members. */
+    readonly providerBudgetCohorts?: deps.LocalizationProviderBudgetCohorts;
     resolvePortSource(
       request: deps.RunPolicyRequest,
       perRun: deps.LocalizationPerRunInput,

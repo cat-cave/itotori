@@ -185,6 +185,9 @@ export async function runLocalize(
       },
       projectWorkflow: services.projectWorkflow,
       resolvePortSource: (request, perRun) => substrate.resolvePortSource(request, perRun),
+      ...(substrate.providerBudgetCohorts === undefined
+        ? {}
+        : { providerBudgetCohorts: substrate.providerBudgetCohorts }),
     });
   });
 }
@@ -207,6 +210,9 @@ export async function runLocalizePortfolio(
       },
       projectWorkflow: services.projectWorkflow,
       resolvePortSource: (request, perRun) => substrate.resolvePortSource(request, perRun),
+      ...(substrate.providerBudgetCohorts === undefined
+        ? {}
+        : { providerBudgetCohorts: substrate.providerBudgetCohorts }),
     });
   });
 }

@@ -173,6 +173,12 @@ export const DB_OWNED_APP_PROOFS = Object.freeze([
     test: "apps/itotori/test/patchback-produce-endpoint-engine-detection.test.ts",
     marker: "source-detected multi-engine dashboard patchback",
   },
+  {
+    proof: "provider-budget-fair-share",
+    title: "provider budget fair share",
+    test: "apps/itotori/test/production-provider-budget-live-db.test.ts",
+    marker: "gives three concurrent runs stored fair shares under the profile cap",
+  },
 ]);
 
 export const DB_OWNED_APP_TEST_FILES = Object.freeze(

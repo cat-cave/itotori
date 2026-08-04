@@ -75,6 +75,19 @@ const BillingSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("billing-unknown") }).strict(),
 ]);
 
+export const SpendAdmissionDiagnosticSchema = z
+  .object({
+    reason: z.enum(["profile-cap", "run-share", "profile-cohort-busy"]),
+    scope: RouteValueSchema,
+    capUsd: DecimalUsdSchema,
+    confirmedCostUsd: DecimalUsdSchema,
+    reservedExposureUsd: DecimalUsdSchema,
+    requestedExposureUsd: DecimalUsdSchema,
+  })
+  .strict();
+
+export type SpendAdmissionDiagnostic = z.infer<typeof SpendAdmissionDiagnosticSchema>;
+
 const ValidationDefectSchema = z
   .object({
     path: z.array(z.union([z.string().max(256), NonNegativeIntegerSchema])).max(64),
@@ -157,6 +170,7 @@ export const CallResultSchema = z.union([
       verification: z.enum(["unverified", "quarantined", "explicit-unknown", "verified"]),
       usage: TokenUsageSchema.nullable(),
       billing: BillingSchema,
+      admission: SpendAdmissionDiagnosticSchema.optional(),
       defects: z.array(ValidationDefectSchema).max(256),
       events: DispatchEventsSchema,
     })

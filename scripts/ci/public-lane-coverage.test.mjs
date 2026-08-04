@@ -47,13 +47,14 @@ test("the registry covers exactly the ten required category ids", () => {
 
 test("the registry keeps every live-Postgres app proof explicitly owned by the DB lane", () => {
   assert.equal(DB_OWNED_LANE, "ci-tier1-db");
-  assert.equal(DB_OWNED_APP_PROOFS.length, 28);
+  assert.equal(DB_OWNED_APP_PROOFS.length, 29);
   assert.equal(REQUIRED_DB_OWNED_PROOF_IDS.length, DB_OWNED_APP_PROOFS.length);
   for (const id of [
     "durable-restart",
     "workflow-memo-model-variant",
     "durable-pause-resume",
     "patchback-produce-engine-detection",
+    "provider-budget-fair-share",
   ])
     assert.ok(REQUIRED_DB_OWNED_PROOF_IDS.includes(id), id);
 });

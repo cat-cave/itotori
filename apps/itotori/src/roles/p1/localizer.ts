@@ -91,7 +91,7 @@ export interface SceneLocalization {
 
 export class LocalizeError extends Error {
   constructor(
-    readonly code: "dispatch-failure" | "gate-rejection" | "bible-context",
+    readonly code: "dispatch-failure" | "gate-rejection" | "bible-context" | "spend-admission",
     detail: string,
   ) {
     super(`p1 localize ${code}: ${detail}`);
@@ -161,6 +161,14 @@ function requireBatch(result: CallResult): DraftBatch {
       throw new LocalizeError(
         "gate-rejection",
         result.defects[0]?.message ?? "content gate rejected output",
+      );
+    }
+    if (result.failureKind === "spend-admission" && result.admission !== undefined) {
+      const admission = result.admission;
+      throw new LocalizeError(
+        "spend-admission",
+        `${admission.reason}: cap ${admission.capUsd}, confirmed ${admission.confirmedCostUsd}, ` +
+          `reserved ${admission.reservedExposureUsd}, request ${admission.requestedExposureUsd}`,
       );
     }
     throw new LocalizeError("dispatch-failure", `segment dispatch failed: ${result.failureKind}`);

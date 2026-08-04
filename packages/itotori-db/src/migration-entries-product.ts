@@ -251,4 +251,8 @@ export const productMigrationEntries = [
     id: "0120_workflow_step_memos",
     file: "0120_workflow_step_memos.sql",
   },
+  {
+    id: "0121_llm_provider_budget_run_share",
+    file: "0121_llm_provider_budget_run_share.sql",
+  },
 ] as const;

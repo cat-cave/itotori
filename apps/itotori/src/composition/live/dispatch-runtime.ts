@@ -17,7 +17,7 @@
 // `RepairDeps.repairRuntime`). `createCertifiedDispatch` closes it over a payload
 // resolver to form the `Q6Dispatch` seam the adjudication port dispatches through.
 
-import type { LlmCallMemoStore, LlmContentReadAuthorizer } from "@itotori/db";
+import type { LlmCallMemoStore, LlmContentReadAuthorizer, LlmSpendAdmission } from "@itotori/db";
 import type { CallResult, CallSpec, EncryptedPayloadRef } from "../../contracts/index.js";
 import { dispatch, type DispatchRuntime, type DispatchTool } from "../../llm/dispatch.js";
 import {
@@ -50,7 +50,10 @@ export interface LiveDispatchRuntimeConfig {
   /** The measured model profile (deadlines + per-attempt exposure ceiling). */
   readonly profile: MeasuredModelProfile;
   /** The confirmed spend admission this run's calls draw against. */
-  readonly admission: { readonly scope: string; readonly confirmedCostCapUsd: string };
+  readonly admission: Pick<
+    LlmSpendAdmission,
+    "scope" | "confirmedCostCapUsd" | "runScope" | "cohortId" | "cohort"
+  >;
   /** The run snapshot revision hashes the memo keys bind to. */
   readonly snapshots: RunSnapshotRevisions;
   /** The tools the role may fan out to; drafting/editing use none. */

@@ -22,11 +22,13 @@ export {
   PhysicalStepMemoSchema,
   PhysicalStepMemoValueSchema,
   ServedPairSchema,
+  SpendAdmissionDiagnosticSchema,
 } from "./calls-result.js";
 export type {
   CallResult,
   PhysicalStepMemo,
   PhysicalStepMemoKey,
   PhysicalStepMemoValue,
+  SpendAdmissionDiagnostic,
   TerminalOutput,
 } from "./calls-result.js";

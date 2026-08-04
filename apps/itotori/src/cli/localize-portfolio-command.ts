@@ -1,5 +1,9 @@
 import { optionalFlag, requiredFlag } from "./flags.js";
 import { runLocalizeCommand, type LocalizeCommandDeps } from "./localize-command.js";
+import {
+  providerBudgetCohort,
+  type LocalizationProviderBudgetCohort,
+} from "../composition/provider-budget-cohort.js";
 
 export type LocalizePortfolioRunSpec = {
   readonly structure: string;
@@ -49,40 +53,110 @@ export async function runLocalizePortfolioCommand(
       ? parsed
       : { ...parsed, maxConcurrency: positiveIntegerText(maxInFlight, "--max-in-flight") };
   const maxConcurrency = Math.min(spec.maxConcurrency ?? spec.runs.length, spec.runs.length);
-  const limit = semaphore(maxConcurrency);
-  const settled = await Promise.allSettled(
-    spec.runs.map((run) =>
-      limit(async () => await runLocalizeCommand(buildArgv(run), depsForRun(run, deps))),
-    ),
+  const admissionCohort = providerBudgetCohort(
+    spec.runs.map(({ projectId, runId }) => ({ projectId, runId })),
   );
-
-  const outcomes = settled.map((entry, index) => outcomeFor(spec.runs[index]!, entry));
-  const completedCount = outcomes.filter((o) => o.status === "completed").length;
-  const result: LocalizePortfolioResult = {
-    maxConcurrency,
-    completedCount,
-    failedCount: outcomes.length - completedCount,
-    outcomes,
+  const providerBudgetCohorts = deps.providerBudgetCohorts;
+  let providerBudgetCohortActive = false;
+  let workFailed = false;
+  const releasedMemberKeys = new Set<string>();
+  const releaseMember = async (
+    member: LocalizationProviderBudgetCohort["members"][number],
+  ): Promise<void> => {
+    if (!providerBudgetCohortActive || providerBudgetCohorts === undefined) return;
+    const key = cohortMemberKey(member);
+    if (releasedMemberKeys.has(key)) return;
+    await providerBudgetCohorts.release(admissionCohort, member);
+    releasedMemberKeys.add(key);
   };
+  try {
+    if (providerBudgetCohorts !== undefined) {
+      await providerBudgetCohorts.activate(admissionCohort);
+      providerBudgetCohortActive = true;
+    }
+    const limit = semaphore(maxConcurrency);
+    const settled = await Promise.allSettled(
+      spec.runs.map((run) => {
+        const member = cohortMemberForRun(admissionCohort, run);
+        return limit(async () => {
+          let childFailed = false;
+          try {
+            await runLocalizeCommand(buildArgv(run), depsForRun(run, deps, admissionCohort));
+          } catch (error: unknown) {
+            childFailed = true;
+            throw error;
+          } finally {
+            try {
+              await releaseMember(member);
+            } catch (releaseError: unknown) {
+              if (!childFailed) throw releaseError;
+              reportProviderBudgetReleaseFailure(deps.log, releaseError);
+            }
+          }
+        });
+      }),
+    );
 
-  const summary = {
-    maxConcurrency: result.maxConcurrency,
-    completedCount: result.completedCount,
-    failedCount: result.failedCount,
-    outcomes: result.outcomes.map(({ projectId, runId, status }) => ({
-      projectId,
-      runId,
-      status,
-    })),
-  };
-  const outputPath = optionalFlag(args, "--output");
-  if (outputPath !== undefined) deps.io.writeJson(outputPath, summary);
-  else {
-    (deps.log ?? ((m: string) => process.stdout.write(`${m}\n`)))(JSON.stringify(summary, null, 2));
+    const outcomes = settled.map((entry, index) => outcomeFor(spec.runs[index]!, entry));
+    const completedCount = outcomes.filter((o) => o.status === "completed").length;
+    const result: LocalizePortfolioResult = {
+      maxConcurrency,
+      completedCount,
+      failedCount: outcomes.length - completedCount,
+      outcomes,
+    };
+
+    const summary = {
+      maxConcurrency: result.maxConcurrency,
+      completedCount: result.completedCount,
+      failedCount: result.failedCount,
+      outcomes: result.outcomes.map(({ projectId, runId, status }) => ({
+        projectId,
+        runId,
+        status,
+      })),
+    };
+    const outputPath = optionalFlag(args, "--output");
+    if (outputPath !== undefined) deps.io.writeJson(outputPath, summary);
+    else {
+      (deps.log ?? ((m: string) => process.stdout.write(`${m}\n`)))(
+        JSON.stringify(summary, null, 2),
+      );
+    }
+
+    if (result.failedCount > 0) throw new LocalizePortfolioExecutionError(result);
+    return result;
+  } catch (error: unknown) {
+    workFailed = true;
+    throw error;
+  } finally {
+    if (providerBudgetCohortActive && providerBudgetCohorts !== undefined) {
+      const releases = await Promise.allSettled(
+        admissionCohort.members.map(async (member) => await releaseMember(member)),
+      );
+      const rejected = releases.find((release) => release.status === "rejected");
+      if (rejected !== undefined && rejected.status === "rejected") {
+        if (!workFailed) throw rejected.reason;
+        reportProviderBudgetReleaseFailure(deps.log, rejected.reason);
+      }
+    }
   }
+}
 
-  if (result.failedCount > 0) throw new LocalizePortfolioExecutionError(result);
-  return result;
+function cohortMemberForRun(
+  cohort: LocalizationProviderBudgetCohort,
+  run: Pick<LocalizePortfolioRunSpec, "projectId" | "runId">,
+): LocalizationProviderBudgetCohort["members"][number] {
+  const member = cohort.members.find(
+    (candidate) =>
+      candidate.projectId === run.projectId.trim() && candidate.runId === run.runId.trim(),
+  );
+  if (member === undefined) throw new Error("provider budget cohort is missing a portfolio member");
+  return member;
+}
+
+function cohortMemberKey(member: LocalizationProviderBudgetCohort["members"][number]): string {
+  return JSON.stringify([member.projectId, member.runId]);
 }
 
 function parsePortfolio(value: unknown): {
@@ -138,9 +212,18 @@ function parseRunSpec(value: unknown, index: number): LocalizePortfolioRunSpec {
   };
 }
 
-function depsForRun(run: LocalizePortfolioRunSpec, deps: LocalizeCommandDeps): LocalizeCommandDeps {
+function depsForRun(
+  run: LocalizePortfolioRunSpec,
+  deps: LocalizeCommandDeps,
+  admissionCohort: LocalizationProviderBudgetCohort,
+): LocalizeCommandDeps {
   return {
-    ...deps,
+    io: deps.io,
+    projectWorkflow: deps.projectWorkflow,
+    admissionCohort,
+    ...(deps.localizeRunTrackerTiming === undefined
+      ? {}
+      : { localizeRunTrackerTiming: deps.localizeRunTrackerTiming }),
     // The aggregate portfolio report is the only concurrent stdout document.
     log: () => undefined,
     resolvePortSource: async (request, perRun) => {
@@ -184,6 +267,23 @@ function buildArgv(run: LocalizePortfolioRunSpec): string[] {
     argv.push("--whole-scene-max-units", String(run.wholeSceneMaxUnits));
   }
   return argv;
+}
+
+function reportProviderBudgetReleaseFailure(
+  log: ((message: string) => void) | undefined,
+  error: unknown,
+): void {
+  try {
+    (log ?? ((message: string) => process.stderr.write(`${message}\n`)))(
+      `localize portfolio provider budget cohort release failed: ${errorMessage(error)}`,
+    );
+  } catch {
+    // A diagnostic cannot replace the original portfolio failure.
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function outcomeFor(

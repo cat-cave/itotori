@@ -108,9 +108,9 @@ postgresDescribe("production Q5 fixture over live Postgres", () => {
           qualifyingTransport.setLocalizationSnapshotId(seeded.localizationSnapshotId);
           qualifyingTransport.setBibleRenderingId(seeded.bibleRenderingId);
           qualifyingTransport.setVoiceRenderingId(seeded.voiceRenderingId);
-
           const unitId = seeded.deps.readiness.snapshot.orderedUnits[0]?.factId;
           if (unitId === undefined) throw new Error("Q5 fixture has no unit");
+          await seeded.activateProviderBudget();
           const adjudicate = createWorkflowPorts(seeded.deps).adjudicate;
           const contest = {
             unitId,

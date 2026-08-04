@@ -24,6 +24,8 @@ const rebuiltTables = [
   "itotori_llm_cas_heads",
   "itotori_llm_context_snapshots",
   "itotori_llm_localization_snapshots",
+  "itotori_llm_provider_budget_cohorts",
+  "itotori_llm_provider_budget_cohort_members",
 ] as const;
 
 const encryptedColumns = [
@@ -49,6 +51,7 @@ const migrationSql = [
   "0108_llm_explicit_unknown_quarantine.sql",
   "0109_wiki_snapshot_binding.sql",
   "0120_workflow_step_memos.sql",
+  "0121_llm_provider_budget_run_share.sql",
 ]
   .map((file) => readFileSync(join(here, "..", "migrations", file), "utf8"))
   .join("\n");
@@ -244,14 +247,14 @@ describe("rebuilt LLM persistence migration", () => {
       pool.query(
         `
           insert into itotori_llm_http_attempts (
-            attempt_id, memo_key, attempt_ordinal, admission_scope,
+            attempt_id, memo_key, attempt_ordinal, admission_scope, admission_run_scope,
             request_ciphertext, request_key_ref, request_content_hash, request_hash,
             attempt_status, failure_class, generation_id,
             served_pair_status, served_model, served_provider, verification_status,
             router_attempts, billing_state, max_exposure_usd,
             started_at, deadline_at, completed_at, retention_deadline
           ) values (
-            'attempt-without-generation', $1, 1, 'migration-test',
+            'attempt-without-generation', $1, 1, 'migration-test', 'migration-test',
             decode('14', 'hex'), 'key/illegal-attempt', $2, $3,
             'transport-error', 'permanent', null,
             'confirmed', 'served-model', 'served-provider', 'quarantined',

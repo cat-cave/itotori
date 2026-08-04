@@ -60,6 +60,7 @@ import { providerTerminalSchema, terminalOutputSchema } from "./terminal-output.
 import { gateRejectionDiagnostic } from "./dispatch-gates.js";
 import { hasRequiredUsage, terminalOutputFromReceipt } from "./dispatch-output-recovery.js";
 import { Semaphore, addUsage, finishReason, type UsageAccumulator } from "./dispatch-primitives.js";
+import { admissionFailureFields } from "./admission-failure.js";
 
 export { hasRequiredUsage, terminalOutputFromReceipt } from "./dispatch-output-recovery.js";
 
@@ -474,6 +475,7 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
       billing: completedLastStep
         ? (finalStep?.billing ?? { status: "billing-unknown" })
         : { status: "billing-unknown" },
+      ...admissionFailureFields(error),
       defects:
         gateDiagnostic !== null
           ? [{ path: [], code: "semantic", message: gateDiagnostic }]

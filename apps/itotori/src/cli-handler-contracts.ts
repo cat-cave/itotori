@@ -5,6 +5,7 @@ import type {
 import type { AssetDecisionsCliPort } from "./asset-decisions/cli.js";
 import type {
   LocalizationPerRunInput,
+  LocalizationProviderBudgetCohorts,
   LocalizationPortSource,
   SourceWikiRunReport,
   WikiBuildInvocation,
@@ -48,6 +49,8 @@ export type ItotoriCliServices = {
   };
   /** The kept `localize` command's new-pipeline substrate. */
   localizationSubstrate?: {
+    /** Durable activation/release for the profile's provider-budget members. */
+    readonly providerBudgetCohorts?: LocalizationProviderBudgetCohorts;
     resolvePortSource(
       request: RunPolicyRequest,
       perRun: LocalizationPerRunInput,

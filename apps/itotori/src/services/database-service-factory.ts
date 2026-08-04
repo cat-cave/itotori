@@ -42,6 +42,9 @@ export function createDatabaseItotoriServiceFactory(
             writeJson: defaultWriteJson,
             projectWorkflow: session.projectWorkflow,
             resolvePortSource: (request, perRun) => substrate.resolvePortSource(request, perRun),
+            ...(substrate.providerBudgetCohorts === undefined
+              ? {}
+              : { providerBudgetCohorts: substrate.providerBudgetCohorts }),
           } satisfies DriveLocalizationPassDeps);
         },
       );

@@ -19,6 +19,10 @@ import {
   type LocalizationPerRunInput,
   type LocalizationPortSource,
 } from "../composition/localize-entrypoint.js";
+import {
+  providerBudgetCohort,
+  type LocalizationProviderBudgetCohorts,
+} from "../composition/provider-budget-cohort.js";
 import { projectDecodeStructure } from "../composition/live/scene-projection.js";
 import type { ContextScopeValue, RunModeValue } from "../contracts/index.js";
 import { withPhysicalAttemptCostObserver } from "../llm/physical-attempt-cost-context.js";
@@ -89,11 +93,14 @@ export type DriveLocalizationPassDeps = {
     request: RunPolicyRequest,
     perRun: LocalizationPerRunInput,
   ): LocalizationPortSource | Promise<LocalizationPortSource>;
+  /** The live provider-budget cohort lifecycle; offline proofs may omit it. */
+  readonly providerBudgetCohorts?: LocalizationProviderBudgetCohorts;
   /** Test-only lease timing override used by interrupted-run integration proofs. */
   readonly localizeRunTrackerTiming?: LocalizeRunTrackerTiming;
   /** Override only in tests — production uses a fresh random id per launch. */
   readonly createRunId?: () => string;
   readonly now?: () => Date;
+  log?(message: string): void;
 };
 
 /**
@@ -144,15 +151,18 @@ export async function driveLocalizationPass(
     localeBranchId: input.localeBranchId,
     leaseOwnerId: `launch-pass:${journalRunId}`,
   };
+  const providerBudgetMember = { projectId: projectRun.projectId, runId: projectRun.runId };
+  const admissionCohort = providerBudgetCohort([providerBudgetMember]);
   const options: WorkflowOptions =
     launch.wholeSceneMaxUnits === undefined
       ? {}
       : { wholeSceneMaxUnits: launch.wholeSceneMaxUnits };
 
-  const source = await deps.resolvePortSource(request, {
+  const perRun = {
     structureJson,
     bridge,
     projectRun,
+    admissionCohort,
     ...(input.abortSignal === undefined ? {} : { abortSignal: input.abortSignal }),
     renderEvidence: {
       // The pass record owns both roots: `dataRoot` is the read-only extracted
@@ -166,20 +176,24 @@ export async function driveLocalizationPass(
         ? {}
         : { backgroundAsset: launch.runtimeBackgroundAsset }),
     },
-  });
-  if (source.runPlane === undefined) {
-    throw new Error("launch-pass run plane is not configured by the localization substrate");
-  }
-  assertRunPlaneIdentity(source, projectRun);
-
-  const tracker = new LocalizeRunTracker(
-    deps.projectWorkflow,
-    source.runPlane,
-    deps.localizeRunTrackerTiming,
-    input.abortSignal,
-  );
+  };
   const writeJson = deps.writeJson ?? defaultWriteJson;
+  const providerBudgetCohorts = deps.providerBudgetCohorts;
+  let tracker: LocalizeRunTracker | undefined;
+  let providerBudgetCohortActive = false;
+  let workFailed = false;
   try {
+    const source = await deps.resolvePortSource(request, perRun);
+    if (source.runPlane === undefined) {
+      throw new Error("launch-pass run plane is not configured by the localization substrate");
+    }
+    assertRunPlaneIdentity(source, projectRun);
+    tracker = new LocalizeRunTracker(
+      deps.projectWorkflow,
+      source.runPlane,
+      deps.localizeRunTrackerTiming,
+      input.abortSignal,
+    );
     try {
       await tracker.start(scenes.flatMap((scene) => scene.units.map((unit) => unit.unitId)));
     } catch (error: unknown) {
@@ -187,6 +201,10 @@ export async function driveLocalizationPass(
         throw new LocalizationPassAlreadyActiveError(input.projectId, input.localeBranchId);
       }
       throw error;
+    }
+    if (providerBudgetCohorts !== undefined) {
+      await providerBudgetCohorts.activate(admissionCohort);
+      providerBudgetCohortActive = true;
     }
     hooks.onAdmitted?.({
       journalRunId,
@@ -220,7 +238,8 @@ export async function driveLocalizationPass(
     };
     writeJson(join(input.config.runDir, `${journalRunId}.summary.json`), summary);
   } catch (error: unknown) {
-    if (isLocalizationPassPause(input.abortSignal)) {
+    workFailed = true;
+    if (tracker !== undefined && isLocalizationPassPause(input.abortSignal)) {
       const live = await tracker.pause();
       if (live?.run.status !== "paused") {
         throw new LocalizationPassControlError(
@@ -245,10 +264,12 @@ export async function driveLocalizationPass(
       return;
     }
     let failedTransitionError: unknown;
-    try {
-      await tracker.fail();
-    } catch (failure: unknown) {
-      failedTransitionError = failure;
+    if (tracker !== undefined) {
+      try {
+        await tracker.fail();
+      } catch (failure: unknown) {
+        failedTransitionError = failure;
+      }
     }
     // The project-run transition is the dashboard's durable terminal signal.
     // This artifact retains the exception itself for operators after the HTTP
@@ -263,6 +284,15 @@ export async function driveLocalizationPass(
         : { failedTransitionError: errorSummary(failedTransitionError) }),
     });
     throw error;
+  } finally {
+    if (providerBudgetCohortActive && providerBudgetCohorts !== undefined) {
+      try {
+        await providerBudgetCohorts.release(admissionCohort, providerBudgetMember);
+      } catch (releaseError: unknown) {
+        if (!workFailed) throw releaseError;
+        reportProviderBudgetReleaseFailure(deps.log, releaseError);
+      }
+    }
   }
 }
 
@@ -402,6 +432,19 @@ function portsWithRunCostObserver(source: LocalizationPortSource, tracker: Local
 function errorSummary(error: unknown): { name: string; message: string } {
   if (error instanceof Error) return { name: error.name, message: error.message };
   return { name: "NonErrorThrown", message: String(error) };
+}
+
+function reportProviderBudgetReleaseFailure(
+  log: ((message: string) => void) | undefined,
+  error: unknown,
+): void {
+  try {
+    (log ?? ((message: string) => process.stderr.write(`${message}\n`)))(
+      `launch localization pass provider budget cohort release failed: ${errorSummary(error).message}`,
+    );
+  } catch {
+    // A diagnostic cannot replace the original pass failure.
+  }
 }
 
 function throwIfLocalizationPassPaused(
