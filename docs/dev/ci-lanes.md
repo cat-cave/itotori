@@ -20,12 +20,13 @@ Tier-1 public work is partitioned rather than hidden behind aliases:
 
 - `tier1-ts-public-1of2` and `tier1-ts-public-2of2` build TypeScript and run
   complementary portable package/app test partitions. DB-owned app proofs are
-  excluded from both shards by the checked ownership registry.
+  excluded from both shards by their discovered adjacent ownership declarations.
 - `tier1-rust-1of3`, `tier1-rust-2of3`, and `tier1-rust-3of3` use Cargo
   nextest partitions.
-- `tier1-db` exercises migration/reset and every registry-owned database-backed
-  app/package proof against its Postgres service and native CLI artifact; those
-  tests fail loudly if `DATABASE_URL` is absent.
+- `tier1-db` exercises migration/reset and every database-backed app/package
+  proof discovered from its adjacent ownership declaration against its Postgres
+  service and native CLI artifact; those tests fail loudly if `DATABASE_URL` is
+  absent.
 - `tier1-mutation` runs the mutation-differential selector.
 - `tier1-behavior` runs the behavior ledger, local evidence verifier,
   fixed-success mutation proof, and private-input failure contracts.
@@ -43,8 +44,8 @@ is installed. A local receipt cannot be relabeled as external acceptance.
 The distinct `Tier 1 / behavior full matrix` context downloads and validates
 the same artifact, then requires all 687 applicable cells to pass. It is
 excluded from the required-job aggregation and has no `continue-on-error`; at
-the root implementation's honest 2/687 state it intentionally remains red as
-`full-matrix-incomplete:2/687`.
+the root implementation's honest 6/687 state it intentionally remains red as
+`full-matrix-incomplete:6/687`.
 
 ## Evidence lanes
 

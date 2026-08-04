@@ -6,54 +6,20 @@ import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { discoverRealBytesProofs } from "./real-bytes-proof-manifest.mjs";
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const proofByEngine = new Map([
-  [
-    "reallive",
-    [{ name: "kaifuu-reallive", args: ["test", "-p", "kaifuu-reallive", "--", "--ignored"] }],
-  ],
-  [
-    "siglus",
-    [
-      { name: "kaifuu-siglus", args: ["test", "-p", "kaifuu-siglus", "--", "--ignored"] },
-      {
-        name: "utsushi-siglus-observe",
-        args: ["test", "-p", "utsushi-siglus", "--test", "observe_real_bytes"],
-      },
-      {
-        name: "utsushi-siglus-scene-vm",
-        args: ["test", "-p", "utsushi-siglus", "--test", "scene_vm_real_bytes"],
-      },
-      {
-        name: "utsushi-siglus-g00",
-        args: ["test", "-p", "utsushi-siglus", "--test", "siglus_g00_real_bytes"],
-      },
-      {
-        name: "utsushi-siglus-structure",
-        args: ["test", "-p", "utsushi-siglus", "--test", "structure_export_real_bytes"],
-      },
-      {
-        name: "utsushi-siglus-launch",
-        args: ["test", "-p", "utsushi-siglus", "--test", "launch_hydration"],
-      },
-    ],
-  ],
-  [
-    "softpal",
-    [{ name: "kaifuu-softpal", args: ["test", "-p", "kaifuu-softpal", "--", "--ignored"] }],
-  ],
-]);
 
 function fail(message) {
   console.error(`real-bytes-lane: ${message}`);
   process.exitCode = 1;
 }
 
-export function selectProofs(entries) {
+export function selectProofs(entries, allProofs = discoverRealBytesProofs()) {
   const engines = [...new Set(entries.map((entry) => entry.engine ?? entry))];
   return engines.map((engine) => {
-    const proofs = proofByEngine.get(engine);
-    return proofs
+    const proofs = allProofs.filter((proof) => proof.engine === engine);
+    return proofs.length > 0
       ? { name: engine, proofs, outcome: "skipped", reason: "not started" }
       : { name: engine, outcome: "failed", reason: `declared but unproven engine ${engine}` };
   });
@@ -89,7 +55,8 @@ function main() {
     fail("private inventory did not resolve every required staged corpus");
     return;
   }
-  const statuses = selectProofs([...proofByEngine.keys()]);
+  const proofs = discoverRealBytesProofs(repoRoot);
+  const statuses = selectProofs([...new Set(proofs.map(({ engine }) => engine))], proofs);
   for (const status of statuses) {
     if (status.outcome === "failed") continue;
     let executed = 0;

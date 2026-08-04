@@ -1,0 +1,8 @@
+{
+  "schema": "itotori.coverage-parity-real-only-surface.v1",
+  "id": "reallive_real_scene_plaintext_variety_for_xor2_recovery",
+  "family": "reallive",
+  "surface": "xor_2 known-plaintext key recovery over the natural plaintext-byte DISTRIBUTION of many real scenes.",
+  "why_real_only": "The synthetic xor2 corpus stages a planted key over uniform MetaLine(0) padding so recovery is exact and deterministic; real scenes have a richer plaintext distribution.",
+  "logic_still_covered_by": "The recovery + validate + decrypt ALGORITHM (recover_and_decrypt_archive) runs on the synthetic xor2 corpus and is mutation-killed by 'xor2_skip_cipher'; only the real plaintext-distribution robustness is real-only."
+}

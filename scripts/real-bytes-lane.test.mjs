@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { executedTestCount, selectProofs } from "./real-bytes-lane.mjs";
+import { REAL_BYTES_PROOF_SCHEMA, discoverRealBytesProofs } from "./real-bytes-proof-manifest.mjs";
 
 test("manifest engines select their own proof suites", () => {
   const proofs = selectProofs([
@@ -27,16 +28,59 @@ test("the declared Siglus engine selects Kaifuu and every Utsushi real-byte proo
     { engine: "siglus", ordinal: 1, variant: "encrypted", path: "primary" },
   ]);
   assert.deepEqual(
-    siglus.proofs.map((proof) => proof.name),
-    [
-      "kaifuu-siglus",
-      "utsushi-siglus-observe",
-      "utsushi-siglus-scene-vm",
-      "utsushi-siglus-g00",
-      "utsushi-siglus-structure",
-      "utsushi-siglus-launch",
-    ],
+    new Set(siglus.proofs.map((proof) => proof.package)),
+    new Set(["kaifuu-siglus", "utsushi-siglus"]),
   );
+  assert.ok(
+    siglus.proofs.some(
+      (proof) => proof.target === "scene_vm_real_bytes" && !proof.args.includes("--ignored"),
+    ),
+    "the non-ignored execution-frontier proof must still run directly",
+  );
+  assert.ok(
+    siglus.proofs.some(
+      (proof) => proof.package === "utsushi-siglus" && proof.mode === "all-ignored",
+    ),
+    "the package-wide ignored proof convention must cover each ignored Utsushi proof",
+  );
+});
+
+test("real-byte declarations derive cargo commands and reject a missing adjacent declaration", () => {
+  const root = mkdtempSync(join(tmpdir(), "itotori-real-bytes-declaration-"));
+  const crate = join(root, "crates/demo");
+  const testFile = join(crate, "tests/live_real_bytes.rs");
+  try {
+    mkdirSync(join(crate, "tests"), { recursive: true });
+    writeFileSync(
+      join(crate, "Cargo.toml"),
+      '[package]\n# @itotori-real-bytes-package\nname = "demo"\nversion = "0.0.0"\n',
+    );
+    writeFileSync(
+      join(crate, "Cargo.toml.real-bytes-proof.json"),
+      `${JSON.stringify({ schema: REAL_BYTES_PROOF_SCHEMA, engine: "demo", mode: "all-ignored" })}\n`,
+    );
+    writeFileSync(testFile, "// @itotori-real-bytes-proof\n");
+
+    assert.throws(
+      () => discoverRealBytesProofs(root),
+      /real-bytes proof has no adjacent declaration/u,
+    );
+
+    writeFileSync(
+      `${testFile}.real-bytes-proof.json`,
+      `${JSON.stringify({ schema: REAL_BYTES_PROOF_SCHEMA, engine: "demo", mode: "default" })}\n`,
+    );
+    const proofs = discoverRealBytesProofs(root);
+    assert.deepEqual(
+      proofs.map(({ args }) => args),
+      [
+        ["test", "-p", "demo", "--", "--ignored"],
+        ["test", "-p", "demo", "--test", "live_real_bytes"],
+      ],
+    );
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
 });
 
 test("a cargo receipt with zero passed tests is distinguishable from execution", () => {

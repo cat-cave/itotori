@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // AST-based CI guard for the permission-based authorization invariant. The
 // scanners are separated by language; this entrypoint remains the public API
 // and CLI contract used by the regression suite and developer commands.

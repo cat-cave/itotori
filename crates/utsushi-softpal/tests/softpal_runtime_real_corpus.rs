@@ -1,3 +1,4 @@
+// @itotori-real-bytes-proof
 //! Read-only VM proof on the two local corpora. No retail bytes are committed.
 
 use std::fs;

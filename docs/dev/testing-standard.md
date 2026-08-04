@@ -96,10 +96,9 @@ The repository’s structural guards are intentionally narrow claims:
   extension counts and limits. It cannot inspect untracked or ignored files,
   untracked generated output, or source files with other extensions.
 - The test-collection guard compares conventional `*.test.*` files on disk
-  under `packages/` and `apps/` with every configured Vitest project, the DB
-  Node-runner manifest, and checked named ownership for DB-backed and private
-  evidence suites. It currently reports `329 on disk, 290 public collection
-receipts, 41 explicit non-public owners, 0 uncollected`. It verifies
+  under `packages/` and `apps/` with every configured Vitest project and the
+  adjacent declarations discovered for DB-backed, Node-runner, and private
+  evidence suites. Its counts are derived from the tree at runtime. It verifies
   configured discovery only: a collected suite can still fail when its test
   bodies run.
 - The game-name guard scans tracked UTF-8 text using structural identity shapes,

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // CI guard: LLM-layer LOC budget.
 //
 // Production LLM TypeScript is capped at the budget defined in the deletion

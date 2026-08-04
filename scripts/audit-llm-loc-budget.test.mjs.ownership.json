@@ -1,0 +1,10 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier0-meta"],
+  "coverage": {
+    "id": "loc",
+    "title": "LOC",
+    "marker": "budget"
+  },
+  "recipeToken": "audit-llm-loc-budget"
+}

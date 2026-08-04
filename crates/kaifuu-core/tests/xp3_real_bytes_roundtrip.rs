@@ -1,3 +1,4 @@
+// @itotori-real-bytes-proof
 //! Plain-XP3 real-bytes round-trip smoke.
 //!
 //! Proves `repack(read(fixture)) == fixture` BYTE-FOR-BYTE for the

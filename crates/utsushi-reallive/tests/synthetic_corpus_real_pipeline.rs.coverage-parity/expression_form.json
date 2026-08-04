@@ -1,0 +1,6 @@
+{
+  "schema": "itotori.coverage-parity-instantiation.v1",
+  "family": "reallive",
+  "group": "expression_form",
+  "test": "synthetic_expressions_instantiate_every_expression_form"
+}

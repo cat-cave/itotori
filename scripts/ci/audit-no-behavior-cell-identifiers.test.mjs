@@ -1,3 +1,4 @@
+// @itotori-meta-check
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -12,6 +13,7 @@ import {
   registeredCellIdentifiers,
   SHARED_BEHAVIOR_HARNESS_FILES,
 } from "./audit-no-behavior-cell-identifiers.mjs";
+import { discoverMetaChecks } from "../meta-check-manifest.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const scriptPath = join(here, "audit-no-behavior-cell-identifiers.mjs");
@@ -60,11 +62,19 @@ test("CLI passes when all shared discovery and harness files are identifier-free
 });
 
 test("runs as a Tier-0 metadata guard", () => {
-  const dispatcher = readFileSync(join(here, "..", "developer-command.mjs"), "utf8");
-  assert.match(
-    dispatcher,
-    /node --test scripts\/ci\/audit-no-behavior-cell-identifiers\.test\.mjs\nnode scripts\/ci\/audit-no-behavior-cell-identifiers\.mjs/u,
+  const checks = discoverMetaChecks(join(here, "..", ".."));
+  const testEntry = checks.find(
+    ({ owner }) => owner === "scripts/ci/audit-no-behavior-cell-identifiers.test.mjs",
   );
+  const guardEntry = checks.find(
+    ({ owner }) => owner === "scripts/ci/audit-no-behavior-cell-identifiers.mjs",
+  );
+  assert.deepEqual(testEntry?.args, [
+    "--test",
+    "scripts/ci/audit-no-behavior-cell-identifiers.test.mjs",
+  ]);
+  assert.deepEqual(guardEntry?.args, ["scripts/ci/audit-no-behavior-cell-identifiers.mjs"]);
+  assert.ok(checks.indexOf(testEntry) < checks.indexOf(guardEntry));
 });
 
 function escapeRegex(value) {

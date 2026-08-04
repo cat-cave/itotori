@@ -54,9 +54,9 @@ export function checkCollection(onDisk, collected) {
 }
 
 // DB-backed app suites are absent from the portable Vitest project only
-// because ci-tier1-db invokes every exact manifest path with a live database.
-// Keep this ownership beside private-evidence ownership so an exclusion cannot
-// become an uncollected green result.
+// because ci-tier1-db invokes every discovered declaration path with a live
+// database. Keep this ownership beside private-evidence ownership so an
+// exclusion cannot become an uncollected green result.
 export function applyExplicitDbOwnership({
   publicCollected,
   proofs = DB_OWNED_APP_PROOFS,
@@ -85,8 +85,8 @@ export function applyExplicitDbOwnership({
   return new Set([...publicCollected, ...namedFiles]);
 }
 
-// A public Vitest omission is valid only when the manifest owns the exact file
-// in a named private-evidence runner. This prevents an excluded test from
+// A public Vitest omission is valid only when an adjacent declaration owns the
+// exact file in a named private-evidence runner. This prevents an excluded test from
 // becoming a false-green no-lane test while still allowing public collection
 // to remain secretless.
 export function applyExplicitLiveEvidenceOwnership({

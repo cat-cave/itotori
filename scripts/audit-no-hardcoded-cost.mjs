@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // Cost-audit CI guard: fail on any hardcoded model cost, deprecated
 // cost-tier abstraction, or revived `unknown` / `local_estimate` enum
 // literal in the itotori codebase.

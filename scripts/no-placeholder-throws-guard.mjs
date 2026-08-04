@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // Reject direct production-path throws that admit a missing implementation.
 // Caller/input validation remains valid and is deliberately outside this rule.
 

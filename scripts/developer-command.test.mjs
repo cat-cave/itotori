@@ -1,3 +1,4 @@
+// @itotori-meta-check
 import assert from "node:assert/strict";
 import {
   chmodSync,
@@ -13,6 +14,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+function copyDeveloperCommand(fixture) {
+  const scripts = path.join(fixture, "scripts");
+  const ci = path.join(scripts, "ci");
+  mkdirSync(ci, { recursive: true });
+  copyFileSync("scripts/developer-command.mjs", path.join(scripts, "developer-command.mjs"));
+  copyFileSync("scripts/ci/lane-routing.mjs", path.join(ci, "lane-routing.mjs"));
+  copyFileSync("scripts/ci/test-ownership.mjs", path.join(ci, "test-ownership.mjs"));
+}
+
 test("tier-one Rust selectors inventory and reconcile their distinct nextest partitions", () => {
   const fixture = mkdtempSync(path.join(tmpdir(), "itotori-rust-partitions-"));
   try {
@@ -21,7 +31,7 @@ test("tier-one Rust selectors inventory and reconcile their distinct nextest par
     const bashScript = path.join(fixture, "bash-script");
     mkdirSync(bin);
     mkdirSync(scripts);
-    copyFileSync("scripts/developer-command.mjs", path.join(scripts, "developer-command.mjs"));
+    copyDeveloperCommand(fixture);
     const bash = path.join(bin, "bash");
     writeFileSync(bash, `#!/bin/sh\nprintf "%s" "$5" > "${bashScript}"\n`);
     chmodSync(bash, 0o755);
@@ -80,7 +90,7 @@ test("doctor profiles reach native-deps through its profile flag", () => {
     const invocationLog = path.join(fixture, "native-deps-invocation");
     mkdirSync(bin);
     mkdirSync(scripts);
-    copyFileSync("scripts/developer-command.mjs", path.join(scripts, "developer-command.mjs"));
+    copyDeveloperCommand(fixture);
     const node = path.join(bin, "node");
     writeFileSync(node, '#!/bin/sh\nprintf "%s\\n" "$@" > "$NATIVE_DEPS_LOG"\n');
     chmodSync(node, 0o755);
@@ -116,7 +126,7 @@ test("tier-zero manifest lane fails when its local gate script is absent", () =>
   try {
     const scripts = path.join(fixture, "scripts");
     mkdirSync(scripts);
-    copyFileSync("scripts/developer-command.mjs", path.join(scripts, "developer-command.mjs"));
+    copyDeveloperCommand(fixture);
     writeFileSync(path.join(scripts, "test-collection-guard.mjs"), "");
 
     const result = spawnSync(
@@ -140,7 +150,7 @@ test("tier-zero manifest lane runs live collection before the manifest gate", ()
     const invocationLog = path.join(fixture, "node-invocations");
     mkdirSync(bin);
     mkdirSync(scripts);
-    copyFileSync("scripts/developer-command.mjs", path.join(scripts, "developer-command.mjs"));
+    copyDeveloperCommand(fixture);
     const node = path.join(bin, "node");
     writeFileSync(node, `#!/bin/sh\nprintf "%s\\n" "$*" >> "${invocationLog}"\n`);
     chmodSync(node, 0o755);
@@ -174,7 +184,7 @@ test("tier-one behavior lane fails when its local proof runner is absent", () =>
     const scripts = path.join(fixture, "scripts");
     const ci = path.join(scripts, "ci");
     mkdirSync(ci, { recursive: true });
-    copyFileSync("scripts/developer-command.mjs", path.join(scripts, "developer-command.mjs"));
+    copyDeveloperCommand(fixture);
     writeFileSync(path.join(ci, "run-behavior-proof.test.mjs"), "");
     writeFileSync(path.join(ci, "verify-behavior-gate.test.mjs"), "");
 
@@ -199,7 +209,7 @@ test("tier-one behavior lane runs proof, local verification, and private-input c
     const invocationLog = path.join(fixture, "bash-script");
     mkdirSync(bin);
     mkdirSync(scripts);
-    copyFileSync("scripts/developer-command.mjs", path.join(scripts, "developer-command.mjs"));
+    copyDeveloperCommand(fixture);
     const bash = path.join(bin, "bash");
     writeFileSync(bash, `#!/bin/sh\nprintf "%s" "$5" > "${invocationLog}"\n`);
     chmodSync(bash, 0o755);
@@ -239,7 +249,7 @@ test("alpha readiness uses the supported public-fixture selector", () => {
     const invocationLog = path.join(fixture, "corepack-invocation");
     mkdirSync(bin);
     mkdirSync(scripts);
-    copyFileSync("scripts/developer-command.mjs", path.join(scripts, "developer-command.mjs"));
+    copyDeveloperCommand(fixture);
     const corepack = path.join(bin, "corepack");
     writeFileSync(corepack, `#!/bin/sh\nprintf "%s\\n" "$@" > "${invocationLog}"\n`);
     chmodSync(corepack, 0o755);
@@ -285,4 +295,15 @@ test("private-evidence selectors invoke their exact named runners", () => {
     /selector === "browser-real-bytes"[\s\S]*?run-live-evidence-suite\.mjs", "browser-real-bytes"/u,
   );
   assert.doesNotMatch(command, /test\/rpgmaker-production-real-bytes\.test\.ts/u);
+});
+
+test("the real-bytes selector delegates Cargo proof discovery to its manifest runner", () => {
+  const command = readFileSync("scripts/developer-command.mjs", "utf8");
+  const body = /selector === "real-bytes"\)\s*return shell\(\s*`(?<body>[\s\S]*?)`,\s*\);/u.exec(
+    command,
+  )?.groups?.body;
+  assert.ok(body, "real-bytes selector must retain its evidence body");
+  assert.match(body, /^node scripts\/real-bytes-lane\.mjs$/mu);
+  assert.match(body, /^node scripts\/run-live-evidence-suite\.mjs real-bytes$/mu);
+  assert.doesNotMatch(body, /^cargo test /mu);
 });

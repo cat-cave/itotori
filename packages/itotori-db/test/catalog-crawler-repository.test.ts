@@ -1,3 +1,4 @@
+// @itotori-catalog-replay-db
 // Database-backed scenarios remain registered through this façade.
 import "./catalog-crawler-repository.test.write-fences.js";
 import "./catalog-crawler-repository.test.crash-replay.js";

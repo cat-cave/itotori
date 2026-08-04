@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // SHARED-027: DB-backed local gate for the full repository permission-denial
-// matrix in packages/itotori-db/test/authorization-matrix.test.ts. The suite is
+// matrices declared beside their packages/itotori-db/test suites. These suites are
 // DB-classified: without a reachable Postgres the @itotori/db runner skips it,
 // and skipped denial fixtures are NOT authorization coverage. This gate makes
 // "the full permission matrix denied unauthorized actors against the real DB"
@@ -8,8 +8,8 @@
 //
 //   * No DATABASE_URL  -> write a machine-readable skipped artifact and FAIL
 //     (non-zero). A skip can never masquerade as permission-denial coverage.
-//   * DATABASE_URL set -> run ONLY authorization-matrix.test.ts against the
-//     (disposable) database, then ASSERT every matrix entry produced one
+//   * DATABASE_URL set -> run every declared permission-denial suite against the
+//     (disposable) database, then ASSERT every declared matrix entry produced one
 //     DB-backed denial test (all passed, zero skipped, zero failed). A partial,
 //     zero-test, or skipped outcome is a hard failure, and a deterministic proof
 //     artifact records the matrix and test counts.
@@ -21,6 +21,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { checkAssertionsAllPassed, checkDbResultsCompleteness } from "./db-results-verify.mjs";
+import { discoverPermissionDenialSuites } from "./permission-denial-db-manifest.mjs";
 import { forEachChild, parseTypeScript, unwrapTsTypeAssertions } from "./stable-ts-ast.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -28,13 +29,16 @@ const requiredEnv = "DATABASE_URL";
 const packageName = "@itotori/db";
 const gateId = "permission-denial-db-strict";
 const node = "SHARED-027";
-const permissionDenialSuites = ["authorization-matrix.test.ts"];
-// Resolve the matrix through the suite's stable façade. The implementation can
-// move or split again as long as the façade continues to re-export its public
-// matrix contract.
-const authorizationMatrixEntrypointPath = path.join(
-  repoRoot,
-  "packages/itotori-db/test/authorization-matrix.test.ts",
+const permissionDenialSuites = await Promise.all(
+  discoverPermissionDenialSuites(repoRoot).map(async (suite) =>
+    Object.freeze({
+      ...suite,
+      expectedMatrixEntries: await countNamedArrayExport(
+        path.join(repoRoot, "packages/itotori-db/test", suite.file),
+        suite.matrixExport,
+      ),
+    }),
+  ),
 );
 
 // The gate's artifact root is repository-local by default. Test harnesses pass
@@ -64,7 +68,10 @@ await rm(skipArtifactPath, { force: true });
 await rm(proofArtifactPath, { force: true });
 await rm(resultsPath, { force: true });
 
-const expectedMatrixEntries = await countRepositoryPermissionGateMatrixEntries();
+const expectedMatrixEntries = permissionDenialSuites.reduce(
+  (total, suite) => total + suite.expectedMatrixEntries,
+  0,
+);
 
 if (!process.env[requiredEnv]) {
   const skipArtifact = {
@@ -77,7 +84,7 @@ if (!process.env[requiredEnv]) {
     coverage: "none",
     permissionDenialCovered: false,
     expectedMatrixEntries,
-    skippedSuites: permissionDenialSuites,
+    skippedSuites: permissionDenialSuites.map(({ file }) => file),
     skippedSuiteCount: permissionDenialSuites.length,
     remediationCommand,
     timestamp: new Date().toISOString(),
@@ -86,7 +93,7 @@ if (!process.env[requiredEnv]) {
   printBanner([
     `${gateId}: PERMISSION-DENIAL DB TESTS SKIPPED - NOT AUTHORIZATION COVERAGE`,
     `required env:     ${requiredEnv} (unset)`,
-    `skipped suites:   ${permissionDenialSuites.length} (${permissionDenialSuites.join(", ")})`,
+    `skipped suites:   ${permissionDenialSuites.length} (${permissionDenialSuites.map(({ file }) => file).join(", ")})`,
     `matrix entries:   ${expectedMatrixEntries}`,
     "this run proved ZERO DB-backed permission-denial coverage",
     `skip artifact:    ${path.relative(repoRoot, skipArtifactPath)}`,
@@ -133,8 +140,8 @@ if (verifyOnlyResultsPath) {
     process.exit(1);
   }
 } else {
-  // Full mode: run ONLY the authorization-matrix suite against the DB.
-  const suiteFilters = permissionDenialSuites.map((name) => name.replace(/\.test\.ts$/u, ""));
+  // Full mode: run every declared permission-denial suite against the DB.
+  const suiteFilters = permissionDenialSuites.map(({ filter }) => filter);
   const runnerArgs = [
     "--filter",
     packageName,
@@ -189,10 +196,11 @@ const problems = [];
 for (const suite of permissionDenialSuites) {
   const suiteResults = report.testResults.filter(
     (entry) =>
-      typeof entry?.name === "string" && entry.name.replace(/\\/gu, "/").endsWith(`/test/${suite}`),
+      typeof entry?.name === "string" &&
+      entry.name.replace(/\\/gu, "/").endsWith(`/test/${suite.file}`),
   );
   if (suiteResults.length === 0) {
-    problems.push(`suite ${suite} did not run (0 files matched) - skipped != covered`);
+    problems.push(`suite ${suite.file} did not run (0 files matched) - skipped != covered`);
     continue;
   }
   const assertions = suiteResults.flatMap((entry) =>
@@ -200,7 +208,7 @@ for (const suite of permissionDenialSuites) {
   );
   // Only status "passed" counts as coverage — todo/skipped/pending/failed are
   // hard failures (green-on-skip closed).
-  const statusCheck = checkAssertionsAllPassed(assertions, suite);
+  const statusCheck = checkAssertionsAllPassed(assertions, suite.file);
   problems.push(...statusCheck.problems);
   const passed = statusCheck.passed;
   const failed = assertions.filter((a) => a.status === "failed").length;
@@ -213,13 +221,14 @@ for (const suite of permissionDenialSuites) {
     (a) => a.status === "passed" && isRepositoryPermissionDenialAssertion(a),
   );
 
-  if (denialAssertions.length !== expectedMatrixEntries) {
+  if (denialAssertions.length !== suite.expectedMatrixEntries) {
     problems.push(
-      `suite ${suite} ran ${denialAssertions.length} permission-denial matrix test(s), expected ${expectedMatrixEntries}`,
+      `suite ${suite.file} ran ${denialAssertions.length} permission-denial matrix test(s), expected ${suite.expectedMatrixEntries}`,
     );
   }
   perSuite.push({
-    suite,
+    suite: suite.file,
+    expectedMatrixEntries: suite.expectedMatrixEntries,
     tests: assertions.length,
     passed,
     failed,
@@ -266,10 +275,6 @@ printBanner([
 ]);
 process.exit(0);
 
-async function countRepositoryPermissionGateMatrixEntries() {
-  return countNamedArrayExport(authorizationMatrixEntrypointPath, "repositoryPermissionGateMatrix");
-}
-
 async function countNamedArrayExport(modulePath, exportedName, visited = new Set()) {
   const resolutionKey = `${modulePath}:${exportedName}`;
   if (visited.has(resolutionKey)) {
@@ -295,7 +300,7 @@ async function countNamedArrayExport(modulePath, exportedName, visited = new Set
     return countNamedArrayExport(targetPath, exportedName, visited);
   }
   throw new Error(
-    `${exportedName} declaration not found from ${path.relative(repoRoot, authorizationMatrixEntrypointPath)}`,
+    `${exportedName} declaration not found from ${path.relative(repoRoot, modulePath)}`,
   );
 }
 

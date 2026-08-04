@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-ts-public"],
+  "coverage": {
+    "id": "tool",
+    "title": "tool",
+    "marker": "read tools"
+  }
+}

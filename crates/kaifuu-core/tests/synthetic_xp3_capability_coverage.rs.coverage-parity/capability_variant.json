@@ -1,0 +1,6 @@
+{
+  "schema": "itotori.coverage-parity-instantiation.v1",
+  "family": "kirikiri_xp3",
+  "group": "capability_variant",
+  "test": "synthetic_corpus_instantiates_every_xp3_capability_variant"
+}

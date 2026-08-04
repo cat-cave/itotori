@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // CI guard: the APP CSS contract — no dangling design tokens, no unstyled classes.
 //
 // Why this exists. `packages/itotori-ds/test/tokens.test.ts` proves every

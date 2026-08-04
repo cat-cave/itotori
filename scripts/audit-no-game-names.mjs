@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // CI guard: corpus identities in tracked artifacts must be opaque.
 //
 // A corpus is addressed by engine/ordinal/variant or a content hash. A title

@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "launch-localization-pass",
+    "title": "launch localization pass",
+    "marker": "launch localization pass live database"
+  }
+}

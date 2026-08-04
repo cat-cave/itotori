@@ -1,3 +1,4 @@
+// @itotori-meta-check
 // Regression suite for the LLM-layer LOC-budget guard.
 //
 // Proves the budget catches an over-limit tree, passes a clean one, and

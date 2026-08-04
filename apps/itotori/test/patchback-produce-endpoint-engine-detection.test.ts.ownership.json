@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "patchback-produce-engine-detection",
+    "title": "source-detected multi-engine patchback",
+    "marker": "source-detected multi-engine dashboard patchback"
+  }
+}

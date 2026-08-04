@@ -1,3 +1,4 @@
+// @itotori-meta-check
 // auth-006-no-hardcoded-roles-guard — regression suite facade for the
 // AST-based no-hardcoded-roles CI guard (auth-noroles-guard-ast).
 //

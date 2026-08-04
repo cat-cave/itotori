@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "workflow-memo-model-variant",
+    "title": "model-variant durable memo",
+    "marker": "keeps a model-only variant in a distinct durable checkpoint"
+  }
+}

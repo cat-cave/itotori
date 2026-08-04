@@ -7,6 +7,8 @@
  */
 import { spawnSync } from "node:child_process";
 
+import { derivedCiRouting } from "./ci/lane-routing.mjs";
+
 const [delegate, selector = "", ...args] = process.argv.slice(2);
 
 function fail(message) {
@@ -54,105 +56,14 @@ function check(scope, forwarded) {
     return shell(
       "node scripts/zero-skipped-test-guard.mjs\ncargo fmt --check\ncargo check --workspace\ncargo clippy --workspace --all-targets --all-features -- -D warnings\ncargo deny check",
     );
-  if (scope === "meta")
-    return shell(`
-node --test scripts/itotori-db-compose-config.test.mjs
-node --test scripts/developer-command.test.mjs
-node --test scripts/env-registry-guard.test.mjs
-node scripts/env-registry-guard.mjs
-node --test scripts/developer-command-db.test.mjs
-node --test scripts/justfile-surface.test.mjs
-node --test scripts/itotori-db-wait.test.mjs
-node --test scripts/permission-denial-db-gate.test.mjs
-node --test scripts/catalog-replay-db-gate.test.mjs
-node --test scripts/affected.test.mjs
-node --test scripts/native-deps.test.mjs
-node --test scripts/itotori-installable-package.test.mjs
-node --test scripts/validate-tracked-artifact-hygiene.test.mjs
-node scripts/validate-tracked-artifact-hygiene.mjs --mode check
-node --test scripts/stale-residue-guard.test.mjs
-node scripts/stale-residue-guard.mjs --mode check
-node --test scripts/audit-behavior-roadmap.test.mjs
-node scripts/audit-behavior-roadmap.mjs
-node --test scripts/audit-behavior-catalog.test.mjs
-node scripts/audit-behavior-catalog.mjs
-node --test scripts/audit-no-hardcoded-cost.test.mjs
-node scripts/audit-no-hardcoded-cost.mjs
-node --test scripts/audit-strictness.test.mjs
-node scripts/audit-strictness.mjs
-node --test scripts/classify-test-seams.test.mjs
-node --test scripts/test-collection-guard.test.mjs
-node --test scripts/live-evidence-suite-manifest.test.mjs
-node --test scripts/zero-skipped-test-guard.test.mjs
-node scripts/zero-skipped-test-guard.mjs
-node --test scripts/no-placeholder-throws-guard.test.mjs
-node scripts/no-placeholder-throws-guard.mjs
-node --test scripts/audit-no-hardcoded-roles.test.mjs
-node scripts/audit-no-hardcoded-roles.mjs
-node --test scripts/audit-no-direct-provider-invoke.test.mjs
-node scripts/audit-no-direct-provider-invoke.mjs
-node --test scripts/audit-privacy-retention-egress.test.mjs
-node scripts/audit-privacy-retention-egress.mjs
-node --test scripts/audit-no-node-ids.test.mjs
-node scripts/audit-no-node-ids.mjs
-node --test scripts/audit-no-game-names.test.mjs
-node scripts/audit-no-game-names.mjs
-node --test scripts/key-material-guard.test.mjs
-node scripts/key-material-guard.mjs
-node --test scripts/audit-ci-input-pins.test.mjs
-node scripts/audit-ci-input-pins.mjs
-node --test scripts/validate-no-specific-game-references.test.mjs
-node scripts/validate-no-specific-game-references.mjs
-node --test scripts/file-line-cap-guard.test.mjs
-node scripts/file-line-cap-guard.mjs
-node --test scripts/audit-app-css-contract.test.mjs
-node scripts/audit-app-css-contract.mjs
-node --test scripts/audit-deletion-ledger.test.mjs
-node scripts/audit-deletion-ledger.mjs
-node --test scripts/audit-no-legacy-llm-residue.test.mjs
-node scripts/audit-no-legacy-llm-residue.mjs
-node --test scripts/audit-llm-layer-imports.test.mjs
-node scripts/audit-llm-layer-imports.mjs
-node --test scripts/assert-tanstack-openrouter-pin.test.mjs
-node scripts/assert-tanstack-openrouter-pin.mjs
-node --test scripts/audit-llm-loc-budget.test.mjs
-node scripts/audit-llm-loc-budget.mjs
-node --test scripts/ci/assert-renderer-contract.test.mjs
-node --test scripts/ci/run-db-owned-app-proofs.test.mjs
-node --test scripts/ci/nextest-partition-receipt.test.mjs
-node --test scripts/ci/public-lane-coverage.test.mjs
-node scripts/ci/public-lane-coverage.mjs --check
-node --test scripts/ci/behavior-gate-mode.test.mjs
-node --test scripts/ci/behavior-workflow-contract.test.mjs
-node --test scripts/ci/build-cell-report.test.mjs
-node --test scripts/ci/behavior-cell-registry.test.mjs
-node --test scripts/ci/audit-no-behavior-cell-identifiers.test.mjs
-node scripts/ci/audit-no-behavior-cell-identifiers.mjs
-node --test scripts/ci/run-behavior-proof-output.test.mjs
-node --test scripts/ci/private-real-byte-proof.test.mjs
-pnpm --filter @itotori/db exec vitest run test/migrations-parity.test.ts --exclude '**/.direnv/**'
-node --test scripts/generate-engine-capability-matrix.test.mjs
-node scripts/generate-engine-capability-matrix.mjs --check
-node --test scripts/synthetic-coverage-manifest.test.mjs
-node scripts/synthetic-coverage-manifest.mjs --check
-node --test scripts/mutation-differential.test.mjs
-node --test scripts/coverage-parity.test.mjs
-node scripts/coverage-parity.mjs
-pnpm exec node fixtures/validate-public-manifests.mjs
-node --test fixtures/generate-kaifuu-encrypted-public-fixtures.test.mjs
-node scripts/verify-toolchain-policy.mjs
-node scripts/verify-deny-strict.mjs
-`);
+  if (scope === "meta") {
+    run("node", ["scripts/meta-check-manifest.mjs"]);
+    // Behavior-gate mode is constrained policy, not a mutable meta roster.
+    return run("node", ["--test", "scripts/ci/behavior-gate-mode.test.mjs"]);
+  }
   return shell(
     `node scripts/developer-command.mjs check meta\nnode scripts/developer-command.mjs check ts\nnode scripts/developer-command.mjs check rust`,
   );
-}
-
-function softpalRealBytesCommand() {
-  return `
-cargo test -p kaifuu-softpal -- --ignored
-cargo test -p utsushi-softpal --test softpal_runtime_real_corpus --test softpal_dialogue_execution_analysis_real_corpus -- --ignored
-`;
 }
 
 function runRustPartitionWithReceipt(partition, forwarded) {
@@ -220,12 +131,7 @@ pnpm --filter @itotori/runtime-web-review e2e
     return shell(
       `node scripts/real-bytes-lane.mjs
 pnpm exec vp run ts:build
-node scripts/run-live-evidence-suite.mjs real-bytes
-cargo test -p kaifuu-core --test xp3_real_bytes_roundtrip
-cargo test -p kaifuu-reallive -p utsushi-reallive -p utsushi-siglus -p kaifuu-siglus -p kaifuu-cli -p utsushi-cli -p kaifuu-rpgmaker -p kaifuu-engine-fixture -p kaifuu-nexas -- --ignored
-cargo test -p utsushi-core --test composite_asset_package_real_bytes
-cargo test -p kaifuu-vault-source --test live_vault_open_test --test live_vault_by_id_test --test live_vault_siglus_test -- --ignored
-${softpalRealBytesCommand()}`,
+node scripts/run-live-evidence-suite.mjs real-bytes`,
     );
   if (selector === "real-bytes-oracle")
     return run("node", ["scripts/real-bytes-oracle.mjs", ...forwarded]);
@@ -290,24 +196,7 @@ ${softpalRealBytesCommand()}`,
 }
 
 function ci(lane, forwarded) {
-  const lanes = [
-    "public",
-    "tier0",
-    "tier0-meta",
-    "tier0-ts",
-    "tier0-rust",
-    "tier0-manifest",
-    "tier1-ts-public-1of2",
-    "tier1-ts-public-2of2",
-    "tier1-rust-1of3",
-    "tier1-rust-2of3",
-    "tier1-rust-3of3",
-    "tier1-db",
-    "tier1-browser",
-    "tier1-mutation",
-    "tier1-behavior",
-    "private-real-bytes",
-  ];
+  const { lanes, kindForLane } = derivedCiRouting(process.cwd());
   oneOf("CI lane", lane, lanes);
   if (lane === "public")
     return shell(
@@ -334,7 +223,7 @@ function ci(lane, forwarded) {
     );
   const rustPartition = /^tier1-rust-([1-3])of3$/u.exec(lane)?.[1];
   if (rustPartition !== undefined) return runRustPartitionWithReceipt(rustPartition, forwarded);
-  if (lane === "tier1-db")
+  if (kindForLane(lane) === "db-owned-app")
     return shell(
       "pnpm exec vp run ts:build\nnode apps/itotori/dist/cli.js db-migrate\nnode apps/itotori/dist/cli.js db-reset\nnode --test scripts/itotori-db-compose-cli.test.mjs\npnpm --filter @itotori/db test:db\nnode scripts/assert-db-tests-not-skipped.mjs\nnode scripts/ci/run-db-owned-app-proofs.mjs",
     );

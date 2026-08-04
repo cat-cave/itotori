@@ -1,0 +1,5 @@
+{
+  "schema": "itotori.meta-check.v1",
+  "kind": "node-script",
+  "args": ["--mode", "check"]
+}

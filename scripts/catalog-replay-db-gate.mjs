@@ -21,6 +21,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { checkAssertionsAllPassed, checkDbResultsCompleteness } from "./db-results-verify.mjs";
+import { discoverCatalogReplaySuites } from "./catalog-replay-db-manifest.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const requiredEnv = "DATABASE_URL";
@@ -29,18 +30,11 @@ const contractId = "CATALOG-065";
 const gateId = "catalog-replay-db-strict";
 const node = "CATALOG-072";
 
-// The catalog source-adapter replay + idempotency repository suites. Each
-// exercises the CATALOG-065 crash-replay window (facts written, crash before
-// commitStepImport, same fixture replays) and/or importer-rerun idempotency
-// against the migrated Postgres schema via `db-test-context`.
-const catalogReplaySuites = [
-  "catalog-crawler-repository.test.ts",
-  "catalog-recorded-importers.test.ts",
-  "catalog-dlsite-demand.test.ts",
-  // CATALOG-076: emits the durable, deterministic, redacted replay-validation
-  // artifact (.tmp/itotori-db/catalog-replay-validation.json) from a real run.
-  "catalog-replay-validation-artifact.test.ts",
-];
+// The catalog source-adapter replay + idempotency repository suites are
+// discovered from their adjacent declarations. Each exercises the CATALOG-065
+// crash-replay window and/or importer-rerun idempotency against the migrated
+// Postgres schema via `db-test-context`.
+const catalogReplaySuites = discoverCatalogReplaySuites(repoRoot);
 
 const tmpDir = path.join(repoRoot, ".tmp/itotori-db");
 const skipArtifactPath = path.join(tmpDir, "catalog-replay-skipped.json");
@@ -68,7 +62,7 @@ if (!process.env[requiredEnv]) {
     requiredEnv,
     coverage: "none",
     replayCovered: false,
-    skippedSuites: catalogReplaySuites,
+    skippedSuites: catalogReplaySuites.map(({ file }) => file),
     skippedSuiteCount: catalogReplaySuites.length,
     remediationCommand,
     timestamp: new Date().toISOString(),
@@ -77,7 +71,7 @@ if (!process.env[requiredEnv]) {
   printBanner([
     `${gateId}: CATALOG REPLAY DB TESTS SKIPPED — NOT REPLAY COVERAGE`,
     `required env:     ${requiredEnv} (unset)`,
-    `skipped suites:   ${catalogReplaySuites.length} (${catalogReplaySuites.join(", ")})`,
+    `skipped suites:   ${catalogReplaySuites.length} (${catalogReplaySuites.map(({ file }) => file).join(", ")})`,
     `contract:         ${contractId} idempotent fact-import replay`,
     "this run proved ZERO persisted replay coverage",
     `skip artifact:    ${path.relative(repoRoot, skipArtifactPath)}`,
@@ -130,7 +124,7 @@ if (verifyOnlyResultsPath) {
   // Reuse the @itotori/db runner in --require-database mode so its own honesty
   // guard (and the permission verifier) still apply, but scope vitest to the
   // catalog replay/idempotency files and emit a JSON report we can assert on.
-  const suiteFilters = catalogReplaySuites.map((name) => name.replace(/\.test\.ts$/u, ""));
+  const suiteFilters = catalogReplaySuites.map(({ filter }) => filter);
   const runnerArgs = [
     "--filter",
     packageName,
@@ -188,10 +182,11 @@ const problems = [];
 for (const suite of catalogReplaySuites) {
   const suiteResults = report.testResults.filter(
     (entry) =>
-      typeof entry?.name === "string" && entry.name.replace(/\\/gu, "/").endsWith(`/test/${suite}`),
+      typeof entry?.name === "string" &&
+      entry.name.replace(/\\/gu, "/").endsWith(`/test/${suite.file}`),
   );
   if (suiteResults.length === 0) {
-    problems.push(`suite ${suite} did not run (0 files matched) — skipped != covered`);
+    problems.push(`suite ${suite.file} did not run (0 files matched) — skipped != covered`);
     continue;
   }
   const assertions = suiteResults.flatMap((entry) =>
@@ -199,14 +194,14 @@ for (const suite of catalogReplaySuites) {
   );
   // Only status "passed" counts as coverage — todo/skipped/pending/failed are
   // hard failures (green-on-skip closed).
-  const statusCheck = checkAssertionsAllPassed(assertions, suite);
+  const statusCheck = checkAssertionsAllPassed(assertions, suite.file);
   problems.push(...statusCheck.problems);
   const passed = statusCheck.passed;
   const failed = assertions.filter((a) => a.status === "failed").length;
   const skipped = assertions.filter(
     (a) => a.status === "skipped" || a.status === "pending" || a.status === "todo",
   ).length;
-  perSuite.push({ suite, tests: assertions.length, passed, failed, skipped });
+  perSuite.push({ suite: suite.file, tests: assertions.length, passed, failed, skipped });
 }
 
 if (problems.length > 0) {

@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "retention-scheduler",
+    "title": "retention scheduler",
+    "marker": "server retention scheduler"
+  }
+}

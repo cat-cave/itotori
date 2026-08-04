@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // CI guard: LLM-layer import boundary.
 //
 // The new LLM layer (apps/itotori/src/llm/) is the sole production home for

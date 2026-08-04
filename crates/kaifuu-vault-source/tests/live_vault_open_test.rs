@@ -1,3 +1,4 @@
+// @itotori-real-bytes-proof
 //! Live v3 vault open proof.
 //! This test opens the *real* read-only `/archive/vault/catalog.db`, which is
 //! `schema_version = 3`. It is `#[ignore]`d by default and only meaningful

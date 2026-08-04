@@ -1,3 +1,4 @@
+// @itotori-meta-check
 // Regression suite for immutable CI inputs and centralized toolchain setup.
 
 import assert from "node:assert/strict";

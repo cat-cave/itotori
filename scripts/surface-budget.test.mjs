@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -7,11 +7,11 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
-  evaluateBudget,
+  evaluateSurface,
   findEnvVarNames,
   findRecipeNames,
+  measureMergeBaseSurface,
   measureSurface,
-  regeneratedBudget,
 } from "./surface-budget.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -52,41 +52,58 @@ test("scans tracked symlink text rather than an untracked target", () => {
   }
 });
 
-test("rejects growth and demands a lower budget after a shrink", () => {
-  const budget = { envVarNames: 4, justRecipes: 2, increaseJustification: "" };
-  assert.match(
-    evaluateBudget({ envVarNames: 5, justRecipes: 2 }, budget, budget).join("\n"),
-    /env-var names exceeded/u,
-  );
-  assert.match(
-    evaluateBudget({ envVarNames: 4, justRecipes: 1 }, budget, budget).join("\n"),
-    /just recipes is stale/u,
-  );
+test("rejects growth and reports a shrink against the derived merge-base surface", () => {
+  const base = { envVarNames: 4, justRecipes: 2 };
+  const grown = evaluateSurface({ envVarNames: 5, justRecipes: 3 }, base).join("\n");
+  assert.match(grown, /env-var names grew/u);
+  assert.match(grown, /just recipes grew/u);
+  const shrunk = evaluateSurface({ envVarNames: 3, justRecipes: 1 }, base).join("\n");
+  assert.match(shrunk, /env-var names shrank/u);
+  assert.match(shrunk, /just recipes shrank/u);
+  assert.deepEqual(evaluateSurface({ envVarNames: 4, justRecipes: 2 }, base), []);
 });
 
-test("rejects a budget increase without a changed justification", () => {
-  const previous = { envVarNames: 4, justRecipes: 2, increaseJustification: "" };
-  const budget = { envVarNames: 5, justRecipes: 2, increaseJustification: "" };
-  assert.match(
-    evaluateBudget({ envVarNames: 5, justRecipes: 2 }, budget, previous).join("\n"),
-    /changed non-empty increaseJustification/u,
-  );
-  const unchanged = { envVarNames: 5, justRecipes: 2, increaseJustification: "reviewed" };
-  const reviewedPrevious = { envVarNames: 4, justRecipes: 2, increaseJustification: "reviewed" };
-  assert.match(
-    evaluateBudget({ envVarNames: 5, justRecipes: 2 }, unchanged, reviewedPrevious).join("\n"),
-    /changed non-empty increaseJustification/u,
-  );
+test("derives the comparison surface from the merge base rather than stored totals", () => {
+  const temporaryRoot = mkdtempSync(join(tmpdir(), "surface-budget-base-"));
+  try {
+    writeFileSync(join(temporaryRoot, "justfile"), "check:\n  true\n");
+    writeFileSync(join(temporaryRoot, "tracked"), `${["ITOTORI", "BASE_NAME"].join("_")}\n`);
+    execFileSync("git", ["init", "--initial-branch=main", "--quiet"], { cwd: temporaryRoot });
+    execFileSync("git", ["config", "user.email", "surface-budget@example.test"], {
+      cwd: temporaryRoot,
+    });
+    execFileSync("git", ["config", "user.name", "Surface Budget Test"], { cwd: temporaryRoot });
+    execFileSync("git", ["add", "justfile", "tracked"], { cwd: temporaryRoot });
+    execFileSync("git", ["commit", "--quiet", "-m", "base surface"], { cwd: temporaryRoot });
+    const base = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: temporaryRoot,
+      encoding: "utf8",
+    }).trim();
+    execFileSync("git", ["update-ref", "refs/remotes/origin/main", base], { cwd: temporaryRoot });
+
+    writeFileSync(join(temporaryRoot, "justfile"), "check:\n  true\nnew-recipe:\n  true\n");
+    writeFileSync(
+      join(temporaryRoot, "tracked"),
+      [["ITOTORI", "BASE_NAME"].join("_"), ["ITOTORI", "GROWN_NAME"].join("_")].join(" "),
+    );
+    execFileSync("git", ["add", "justfile", "tracked"], { cwd: temporaryRoot });
+    execFileSync("git", ["commit", "--quiet", "-m", "grow surface"], { cwd: temporaryRoot });
+
+    assert.deepEqual(measureMergeBaseSurface(temporaryRoot), {
+      revision: base,
+      surface: { envVarNames: 1, justRecipes: 1 },
+    });
+    assert.match(
+      evaluateSurface(measureSurface(temporaryRoot), { envVarNames: 1, justRecipes: 1 }).join("\n"),
+      /grew/u,
+    );
+  } finally {
+    rmSync(temporaryRoot, { force: true, recursive: true });
+  }
 });
 
-test("regenerates every measured field while preserving the justification", () => {
-  assert.deepEqual(
-    regeneratedBudget(
-      { envVarNames: 3, justRecipes: 1 },
-      { envVarNames: 4, justRecipes: 2, increaseJustification: "reviewed module boundary" },
-    ),
-    { envVarNames: 3, justRecipes: 1, increaseJustification: "reviewed module boundary" },
-  );
+test("stores no shared numeric surface baseline", () => {
+  assert.equal(existsSync(join(root, "scripts", "lint", "surface-budget.json")), false);
 });
 
 test("Tier 0 runs the budget gate and aggregates that required workflow", () => {

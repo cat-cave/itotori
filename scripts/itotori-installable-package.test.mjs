@@ -1,3 +1,4 @@
+// @itotori-meta-check
 // itotori-installable-package-artifact — verification that the itotori CLI is a
 // real installable package with a working bin entry.
 //

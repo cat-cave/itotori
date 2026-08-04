@@ -1,3 +1,4 @@
+// @itotori-real-bytes-proof
 //! Live by-id resolution proof against the real read-only `/archive/vault`.
 //! `#[ignore]`d by default; run explicitly with the live vault:
 //! ```text

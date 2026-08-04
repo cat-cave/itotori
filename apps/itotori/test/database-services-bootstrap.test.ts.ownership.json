@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "database-services-bootstrap",
+    "title": "database services bootstrap",
+    "marker": "database service bootstrap"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "schema": "itotori.coverage-parity-instantiation.v1",
+  "family": "siglus",
+  "group": "opcode",
+  "test": "synthetic_corpus_instantiates_every_siglus_opcode"
+}

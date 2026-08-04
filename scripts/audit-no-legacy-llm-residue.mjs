@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // CI guard: retired LLM repair and old-loop residue must not return.
 
 import { existsSync, readFileSync } from "node:fs";

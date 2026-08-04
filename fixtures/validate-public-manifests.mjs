@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, relative, resolve } from "node:path";

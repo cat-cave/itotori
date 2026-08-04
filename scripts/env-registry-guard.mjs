@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // Static ratchet for literal project-environment reads. It intentionally does
 // not claim to find dynamically constructed names or untracked files.
 import { execFileSync } from "node:child_process";

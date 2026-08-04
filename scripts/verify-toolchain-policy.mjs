@@ -1,3 +1,4 @@
+// @itotori-meta-check
 import { readFileSync } from "node:fs";
 
 const failures = [];

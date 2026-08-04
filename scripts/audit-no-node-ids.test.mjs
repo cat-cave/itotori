@@ -1,3 +1,4 @@
+// @itotori-meta-check
 // Regression suite for the absolute no-node-id CI guard.
 
 import assert from "node:assert/strict";

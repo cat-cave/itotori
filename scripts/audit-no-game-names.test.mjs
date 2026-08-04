@@ -1,3 +1,4 @@
+// @itotori-meta-check
 // Regression suite for the absolute corpus-identity guard.
 
 import assert from "node:assert/strict";

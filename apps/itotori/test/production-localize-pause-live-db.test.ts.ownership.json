@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "durable-pause-resume",
+    "title": "user pause/resume",
+    "marker": "pauses live provider work, resumes the same run, and reuses its 0120 checkpoint"
+  }
+}

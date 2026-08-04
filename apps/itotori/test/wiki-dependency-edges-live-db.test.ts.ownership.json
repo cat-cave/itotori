@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "wiki-dependency-edges",
+    "title": "Wiki dependency edges",
+    "marker": "fine-grained dependency edges resolve exact consumers"
+  }
+}

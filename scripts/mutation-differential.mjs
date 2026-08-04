@@ -77,8 +77,9 @@ const repoRoot = join(here, "..");
 //
 // Each entry patches ONE line of REAL decoder/patchback code with a bug of the
 // named class, and names the engine family whose SYNTHETIC suite must catch it.
-// `find` must occur EXACTLY once in `file` (asserted); `replace` must compile
-// cleanly (a compile error is an INVALID mutation, not a kill).
+// It is reviewed adversarial policy, not test ownership: new tests never change it.
+// Only an intentional new regression class changes it. Its `find` token must occur
+// exactly once in `file`; `replace` must compile (otherwise it is INVALID).
 // ---------------------------------------------------------------------------
 export const MUTATIONS = [
   {
@@ -200,19 +201,26 @@ export const MUTATIONS = [
   },
 ];
 
-// Real-bytes guard invocations (only used with --with-real). Each family runs
-// its `#[ignore]`-gated real-bytes suite against the staged corpora named in the
-// justfile `ci-real-bytes` recipe.
-export const REAL_GUARDS = {
-  reallive: {
-    crates: ["kaifuu-reallive", "utsushi-reallive"],
-    ignored: true,
-  },
-  rpg_maker_mv_mz: {
-    crates: ["kaifuu-rpgmaker"],
-    ignored: true,
-  },
-};
+// Real-byte corroboration is the union of each family's synthetic guard crates.
+// Keep it derived so a new family mutation cannot require a second, shared registry edit.
+export function deriveRealGuards(mutations) {
+  const cratesByFamily = new Map();
+  for (const mutation of mutations) {
+    const crates = cratesByFamily.get(mutation.realFamily) ?? new Set();
+    for (const crate of mutation.guardCrates) crates.add(crate);
+    cratesByFamily.set(mutation.realFamily, crates);
+  }
+  return Object.freeze(
+    Object.fromEntries(
+      [...cratesByFamily].map(([family, crates]) => [
+        family,
+        Object.freeze({ crates: Object.freeze([...crates].toSorted()), ignored: true }),
+      ]),
+    ),
+  );
+}
+
+export const REAL_GUARDS = deriveRealGuards(MUTATIONS);
 
 // ---------------------------------------------------------------------------
 // Disposable per-run sandbox.

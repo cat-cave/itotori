@@ -1,0 +1,6 @@
+{
+  "schema": "itotori.coverage-parity-instantiation.v1",
+  "family": "reallive",
+  "group": "cipher_case",
+  "test": "synthetic_corpus_instantiates_every_cipher_case"
+}

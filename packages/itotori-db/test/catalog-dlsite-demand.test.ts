@@ -1,3 +1,4 @@
+// @itotori-catalog-replay-db
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // synthetic-fixture-differential-validation — COVERAGE-PARITY check.
 //
 // The second safeguard (paired with scripts/mutation-differential.mjs). It
@@ -42,7 +43,7 @@
 // Run: node scripts/coverage-parity.mjs         (enforce)
 //      node scripts/coverage-parity.mjs --json   (machine-readable ledger)
 
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync, globSync, lstatSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
@@ -55,129 +56,199 @@ const CAPABILITY_MATRIX_PATH =
   "apps/itotori/src/engine-capability/engine-capability-matrix.v0.1.json";
 
 // ---------------------------------------------------------------------------
-// INSTANTIATION_MAP — manifest (family -> group) => the synthetic test that
-// drives that group's components through the REAL decoder. Every group the
-// manifest enumerates MUST appear here (enforced below).
+// Per-item declarations — no central registry to edit when a new synthetic
+// proof is added. A descriptor lives beside its Rust integration-test file:
+//
+//   <test>.rs.coverage-parity/<manifest-group>.json
+//
+// Each file declares exactly one manifest group and one `fn`; discovery below
+// derives the historical family -> group -> test map. Residual real-only
+// integration surfaces follow the same model: one reviewed JSON record per
+// surface under fixtures/synthetic/coverage-parity/real-only-surfaces/.
 // ---------------------------------------------------------------------------
-export const INSTANTIATION_MAP = {
-  reallive: {
-    opcode_tuple: {
-      file: "crates/utsushi-reallive/tests/synthetic_corpus_real_pipeline.rs",
-      test: "synthetic_scene_instantiates_every_opcode_tuple",
-    },
-    element_form: {
-      file: "crates/utsushi-reallive/tests/synthetic_corpus_real_pipeline.rs",
-      test: "synthetic_corpus_instantiates_every_element_form",
-    },
-    expression_form: {
-      file: "crates/utsushi-reallive/tests/synthetic_corpus_real_pipeline.rs",
-      test: "synthetic_expressions_instantiate_every_expression_form",
-    },
-    opener_marker: {
-      file: "crates/utsushi-reallive/tests/synthetic_corpus_real_pipeline.rs",
-      test: "synthetic_scene_contains_every_opener_marker",
-    },
-    named_opcode: {
-      file: "crates/utsushi-reallive/tests/synthetic_corpus_real_pipeline.rs",
-      test: "synthetic_scene_instantiates_every_named_opcode",
-    },
-    cipher_case: {
-      file: "crates/utsushi-reallive/tests/synthetic_corpus_real_pipeline.rs",
-      test: "synthetic_corpus_instantiates_every_cipher_case",
-    },
-    g00_type: {
-      file: "crates/utsushi-reallive/tests/synthetic_corpus_real_pipeline.rs",
-      test: "synthetic_g00_images_instantiate_every_g00_type",
-    },
-    decoder_parity_corpus: {
-      file: "crates/utsushi-reallive/tests/synthetic_corpus_real_pipeline.rs",
-      test: "synthetic_archives_decode_clean_and_frame_round_trip_through_real_pipeline",
-    },
-  },
-  rpg_maker_mv_mz: {
-    event_command_code: {
-      file: "crates/kaifuu-rpgmaker/tests/synthetic_event_code_coverage.rs",
-      test: "synthetic_www_instantiates_every_event_command_code_clean",
-    },
-  },
-  kirikiri_xp3: {
-    capability_variant: {
-      file: "crates/kaifuu-core/tests/synthetic_xp3_capability_coverage.rs",
-      test: "synthetic_corpus_instantiates_every_xp3_capability_variant",
-    },
-  },
-  siglus: {
-    opcode: {
-      file: "crates/kaifuu-siglus/tests/synthetic_siglus_opcode_coverage.rs",
-      test: "synthetic_corpus_instantiates_every_siglus_opcode",
-    },
-  },
-};
+export const INSTANTIATION_SCHEMA = "itotori.coverage-parity-instantiation.v1";
+export const REAL_ONLY_SURFACE_SCHEMA = "itotori.coverage-parity-real-only-surface.v1";
+export const REAL_ONLY_SURFACE_DIRECTORY = "fixtures/synthetic/coverage-parity/real-only-surfaces";
 
-// ---------------------------------------------------------------------------
-// REAL_ONLY_SURFACES — the honest, reviewed residual gap list. Each entry is a
-// surface ONLY real bytes exercise as an *integration*, with the reason it
-// cannot be closed by a synthetic fixture AND where its underlying decode LOGIC
-// is still covered so no correctness regression escapes the synthetic suite.
-// ---------------------------------------------------------------------------
-export const REAL_ONLY_SURFACES = [
-  {
-    id: "avg32_scn2k_tail_clip_under_backreference",
-    family: "reallive",
-    surface:
-      "AVG32 / SCN2k LZSS 'clip the final back-reference against the declared " +
-      "uncompressed size' branch, reached only when a compressed stream ends " +
-      "with a back-reference that overshoots the target buffer.",
-    why_real_only:
-      "The synthetic G00 (type-1/type-2) and Seen.txt corpora are compressed " +
-      "LITERAL-ONLY (compress_avg32_literal / encode_all_literals), so decode " +
-      "is input-bounded and never reaches the out_size clip. Authoring a " +
-      "tail-overshoot back-reference stream is possible but adds no decode-" +
-      "LOGIC coverage beyond what is already covered below.",
-    logic_still_covered_by:
-      "The back-reference COPY logic (distance/run-length/window) is exercised " +
-      "by the utsushi-reallive decompressor synthetic unit tests " +
-      "(synthetic_pure_back_references_round_trip and siblings) and the type-0 " +
-      "G00 fixture's trailing back-reference token; only the exact out_size " +
-      "CLIP arithmetic is real-only.",
-  },
-  {
-    id: "reallive_real_scene_plaintext_variety_for_xor2_recovery",
-    family: "reallive",
-    surface:
-      "xor_2 known-plaintext key recovery over the natural plaintext-byte " +
-      "DISTRIBUTION of many real scenes.",
-    why_real_only:
-      "The synthetic xor2 corpus stages a planted key over uniform MetaLine(0) " +
-      "padding so recovery is exact and deterministic; real scenes have a " +
-      "richer plaintext distribution.",
-    logic_still_covered_by:
-      "The recovery + validate + decrypt ALGORITHM (recover_and_decrypt_archive) " +
-      "runs on the synthetic xor2 corpus and is mutation-killed by " +
-      "'xor2_skip_cipher'; only the real plaintext-distribution robustness is " +
-      "real-only.",
-  },
-  {
-    id: "siglus_real_opcode_operand_semantics",
-    family: "siglus",
-    surface:
-      "Real Siglus scene-bytecode operand SEMANTICS (expression trees, argument " +
-      "values, string references, control flow) and the runtime CD_COMMAND " +
-      "read-flag decision resolved by the stack VM.",
-    why_real_only:
-      "The STRUCTURAL opcode catalogue (command-code classification + exact " +
-      "operand-byte spans) is synthetically covered — the synthetic corpus " +
-      "instantiates every catalogued opcode through partition_scene. What only " +
-      "real scenes exercise is the downstream SEMANTIC decode of those operand " +
-      "bytes, which the skeleton partitioner does not yet perform.",
-    logic_still_covered_by:
-      "The partitioner's structural logic (operand-width model, arg-list " +
-      "recursion, label-anchored CD_COMMAND tail disambiguation, Unknown " +
-      "reporting) is covered by the synthetic opcode-catalogue test and the " +
-      "kaifuu-siglus unit tests; only operand SEMANTICS are real-only until the " +
-      "downstream decoder lands.",
-  },
-];
+const INSTANTIATION_DESCRIPTOR_GLOB = "**/*.rs.coverage-parity/*.json";
+const INSTANTIATION_DIRECTORY_SUFFIX = ".rs.coverage-parity";
+const IDENTIFIER = /^[a-z0-9]+(?:_[a-z0-9]+)*$/u;
+const RUST_FUNCTION = /^[A-Za-z_][A-Za-z0-9_]*$/u;
+const lexical = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
+
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function exactKeys(value, expected, label) {
+  const actual = Object.keys(value).toSorted(lexical);
+  const sortedExpected = expected.toSorted(lexical);
+  if (
+    actual.length !== sortedExpected.length ||
+    actual.some((key, index) => key !== sortedExpected[index])
+  ) {
+    throw new Error(`coverage-parity-${label}-keys-invalid`);
+  }
+}
+
+function requiredText(value, label) {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`coverage-parity-${label}-invalid`);
+  }
+  return value;
+}
+
+function requiredIdentifier(value, label) {
+  const identifier = requiredText(value, label);
+  if (!IDENTIFIER.test(identifier)) throw new Error(`coverage-parity-${label}-invalid`);
+  return identifier;
+}
+
+function requiredRegularFile(path, label) {
+  let stat;
+  try {
+    stat = lstatSync(path);
+  } catch {
+    throw new Error(`coverage-parity-${label}-missing:${path}`);
+  }
+  if (stat.isSymbolicLink() || !stat.isFile()) {
+    throw new Error(`coverage-parity-${label}-type-invalid:${path}`);
+  }
+}
+
+function requiredDirectory(path, label) {
+  let stat;
+  try {
+    stat = lstatSync(path);
+  } catch {
+    throw new Error(`coverage-parity-${label}-missing:${path}`);
+  }
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error(`coverage-parity-${label}-type-invalid:${path}`);
+  }
+}
+
+function parseJson(path, label) {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    throw new Error(`coverage-parity-${label}-json-invalid:${path}`);
+  }
+}
+
+function instantiationSourceFile(sidecar) {
+  const marker = `${INSTANTIATION_DIRECTORY_SUFFIX}/`;
+  const markerIndex = sidecar.lastIndexOf(marker);
+  if (markerIndex === -1 || !sidecar.endsWith(".json")) {
+    throw new Error(`coverage-parity-instantiation-sidecar-name-invalid:${sidecar}`);
+  }
+  const source = sidecar.slice(0, markerIndex + ".rs".length);
+  if (!source.startsWith("crates/") || !source.includes("/tests/") || !source.endsWith(".rs")) {
+    throw new Error(`coverage-parity-instantiation-test-path-invalid:${sidecar}`);
+  }
+  return source;
+}
+
+function readInstantiationDescriptor(root, sidecar) {
+  const path = join(root, sidecar);
+  requiredRegularFile(path, "instantiation-descriptor");
+  const value = parseJson(path, "instantiation-descriptor");
+  if (!isRecord(value)) throw new Error(`coverage-parity-instantiation-entry-invalid:${sidecar}`);
+  exactKeys(value, ["family", "group", "schema", "test"], `instantiation-entry:${sidecar}`);
+  if (value.schema !== INSTANTIATION_SCHEMA) {
+    throw new Error(`coverage-parity-instantiation-schema-invalid:${sidecar}`);
+  }
+  const family = requiredIdentifier(value.family, `instantiation-family:${sidecar}`);
+  const group = requiredIdentifier(value.group, `instantiation-group:${sidecar}`);
+  const test = requiredText(value.test, `instantiation-test:${sidecar}`);
+  if (!RUST_FUNCTION.test(test)) {
+    throw new Error(`coverage-parity-instantiation-test-invalid:${sidecar}`);
+  }
+  const expectedName = `${group}.json`;
+  if (sidecar.slice(sidecar.lastIndexOf("/") + 1) !== expectedName) {
+    throw new Error(`coverage-parity-instantiation-file-name-invalid:${sidecar}`);
+  }
+  return { family, group, test, file: instantiationSourceFile(sidecar) };
+}
+
+export function discoverInstantiationMap(root = repoRoot) {
+  const repositoryRoot = resolve(root);
+  const sidecars = globSync(INSTANTIATION_DESCRIPTOR_GLOB, {
+    cwd: repositoryRoot,
+    exclude: ["**/.git/**", "**/.direnv/**", "**/node_modules/**", "**/target/**"],
+  }).toSorted(lexical);
+  const map = {};
+  for (const sidecar of sidecars) {
+    const entry = readInstantiationDescriptor(repositoryRoot, sidecar);
+    const source = join(repositoryRoot, entry.file);
+    requiredRegularFile(source, `instantiation-test:${entry.file}`);
+    const contents = readFileSync(source, "utf8");
+    if (!new RegExp(`fn\\s+${entry.test}\\b`, "u").test(contents)) {
+      throw new Error(`coverage-parity-instantiation-function-missing:${entry.file}:${entry.test}`);
+    }
+    const family = (map[entry.family] ??= {});
+    if (family[entry.group] !== undefined) {
+      throw new Error(`coverage-parity-instantiation-duplicate:${entry.family}/${entry.group}`);
+    }
+    family[entry.group] = Object.freeze({ file: entry.file, test: entry.test });
+  }
+  return Object.freeze(
+    Object.fromEntries(
+      Object.entries(map).map(([family, groups]) => [family, Object.freeze(groups)]),
+    ),
+  );
+}
+
+function readRealOnlySurface(root, filename) {
+  const path = join(root, REAL_ONLY_SURFACE_DIRECTORY, filename);
+  requiredRegularFile(path, "real-only-surface");
+  const value = parseJson(path, "real-only-surface");
+  if (!isRecord(value)) throw new Error(`coverage-parity-real-only-surface-invalid:${filename}`);
+  exactKeys(
+    value,
+    ["family", "id", "logic_still_covered_by", "schema", "surface", "why_real_only"],
+    `real-only-surface:${filename}`,
+  );
+  if (value.schema !== REAL_ONLY_SURFACE_SCHEMA) {
+    throw new Error(`coverage-parity-real-only-surface-schema-invalid:${filename}`);
+  }
+  const id = requiredIdentifier(value.id, `real-only-surface-id:${filename}`);
+  if (filename !== `${id}.json`) {
+    throw new Error(`coverage-parity-real-only-surface-file-name-invalid:${filename}`);
+  }
+  return Object.freeze({
+    id,
+    family: requiredIdentifier(value.family, `real-only-surface-family:${filename}`),
+    surface: requiredText(value.surface, `real-only-surface-surface:${filename}`),
+    why_real_only: requiredText(value.why_real_only, `real-only-surface-why:${filename}`),
+    logic_still_covered_by: requiredText(
+      value.logic_still_covered_by,
+      `real-only-surface-logic:${filename}`,
+    ),
+  });
+}
+
+export function discoverRealOnlySurfaces(root = repoRoot) {
+  const repositoryRoot = resolve(root);
+  const directory = join(repositoryRoot, REAL_ONLY_SURFACE_DIRECTORY);
+  requiredDirectory(directory, "real-only-surface-directory");
+  const ids = new Set();
+  return Object.freeze(
+    globSync("*.json", { cwd: directory })
+      .toSorted(lexical)
+      .map((filename) => {
+        const surface = readRealOnlySurface(repositoryRoot, filename);
+        if (ids.has(surface.id)) {
+          throw new Error(`coverage-parity-real-only-surface-duplicate:${surface.id}`);
+        }
+        ids.add(surface.id);
+        return surface;
+      }),
+  );
+}
+
+export const INSTANTIATION_MAP = discoverInstantiationMap();
+export const REAL_ONLY_SURFACES = discoverRealOnlySurfaces();
 
 // ---------------------------------------------------------------------------
 export function loadManifest(root = repoRoot) {

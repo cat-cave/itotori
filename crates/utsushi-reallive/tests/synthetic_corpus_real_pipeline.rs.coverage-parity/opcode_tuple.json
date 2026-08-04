@@ -1,0 +1,6 @@
+{
+  "schema": "itotori.coverage-parity-instantiation.v1",
+  "family": "reallive",
+  "group": "opcode_tuple",
+  "test": "synthetic_scene_instantiates_every_opcode_tuple"
+}

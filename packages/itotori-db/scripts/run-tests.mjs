@@ -20,17 +20,13 @@ if (portable === requireDatabase) {
   throw new Error("choose exactly one runner mode: --portable or --require-database");
 }
 
-runRequiredCommand(
-  process.execPath,
-  ["--test", path.join(packageRoot, databaseRunnerNodeTestFiles[0])],
-  "permission verifier regression tests",
-);
-
-runRequiredCommand(
-  process.execPath,
-  ["--test", path.join(packageRoot, databaseRunnerNodeTestFiles[1])],
-  "event queue index alignment regression tests",
-);
+for (const testFile of databaseRunnerNodeTestFiles) {
+  runRequiredCommand(
+    process.execPath,
+    ["--test", path.join(packageRoot, testFile)],
+    `database Node-runner regression test ${testFile}`,
+  );
+}
 
 runRequiredCommand(
   process.execPath,

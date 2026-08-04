@@ -1,15 +1,22 @@
+// @itotori-meta-check
 // Regression suite for scripts/coverage-parity.mjs — asserts the synthetic
 // corpus is a proven superset of the real-bytes component surface, and that the
 // parity evaluator fails loud on a stale map or an uncovered manifest group.
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import {
   INSTANTIATION_MAP,
+  INSTANTIATION_SCHEMA,
+  REAL_ONLY_SURFACE_DIRECTORY,
   REAL_ONLY_SURFACES,
+  REAL_ONLY_SURFACE_SCHEMA,
+  discoverInstantiationMap,
+  discoverRealOnlySurfaces,
   evaluateParity,
   loadManifest,
 } from "./coverage-parity.mjs";
@@ -32,9 +39,75 @@ const capabilityMatrix = JSON.parse(
   ),
 );
 
+function temporaryRoot() {
+  return mkdtempSync(join(tmpdir(), "itotori-coverage-parity-"));
+}
+
+function writeInstantiation(
+  root,
+  { source = "sample.rs", group = "sample_group", test = "sample_test", sourceTest = test } = {},
+) {
+  const tests = join(root, "crates", "example", "tests");
+  mkdirSync(join(tests, `${source}.coverage-parity`), { recursive: true });
+  writeFileSync(join(tests, source), `#[test]\nfn ${sourceTest}() {}\n`);
+  writeFileSync(
+    join(tests, `${source}.coverage-parity`, `${group}.json`),
+    `${JSON.stringify({ schema: INSTANTIATION_SCHEMA, family: "example", group, test })}\n`,
+  );
+}
+
+function writeRealOnlySurface(
+  root,
+  { filename = "sample_surface.json", id = "sample_surface" } = {},
+) {
+  const directory = join(root, REAL_ONLY_SURFACE_DIRECTORY);
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(
+    join(directory, filename),
+    `${JSON.stringify({
+      schema: REAL_ONLY_SURFACE_SCHEMA,
+      id,
+      family: "example",
+      surface: "an integration surface",
+      why_real_only: "a fixture cannot reproduce it",
+      logic_still_covered_by: "a synthetic proof covers its logic",
+    })}\n`,
+  );
+}
+
 test("every manifest component group has a synthetic instantiation test (synthetic ⊇ real)", () => {
   const violations = evaluateParity(manifest.engineFamilies, INSTANTIATION_MAP);
   assert.deepEqual(violations, [], `parity violations: ${JSON.stringify(violations, null, 2)}`);
+});
+
+test("instantiation declarations are discovered from one record beside each Rust test", () => {
+  const root = temporaryRoot();
+  try {
+    writeInstantiation(root);
+    assert.deepEqual(discoverInstantiationMap(root), {
+      example: {
+        sample_group: {
+          file: "crates/example/tests/sample.rs",
+          test: "sample_test",
+        },
+      },
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("an injected instantiation declaration without its named test fails before it can mask coverage", () => {
+  const root = temporaryRoot();
+  try {
+    writeInstantiation(root, { test: "missing_test", sourceTest: "actual_test" });
+    assert.throws(
+      () => discoverInstantiationMap(root),
+      /coverage-parity-instantiation-function-missing/u,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("evaluateParity flags a manifest group with no mapped synthetic test", () => {
@@ -85,6 +158,19 @@ test("each documented real-only surface names its family, reason, and residual-l
     assert.ok(s.why_real_only, `${s.id}: missing why_real_only`);
     assert.ok(s.logic_still_covered_by, `${s.id}: missing logic_still_covered_by`);
     assert.ok(manifest.engineFamilies[s.family], `${s.id}: family not in manifest`);
+  }
+});
+
+test("real-only surfaces are one-file records, and a misnamed injected record fails", () => {
+  const root = temporaryRoot();
+  try {
+    writeRealOnlySurface(root, { filename: "wrong_name.json" });
+    assert.throws(
+      () => discoverRealOnlySurfaces(root),
+      /coverage-parity-real-only-surface-file-name-invalid/u,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

@@ -1,3 +1,4 @@
+// @itotori-meta-check
 // Regression suite for the TanStack AI / OpenRouter temporary-pin guard.
 // Proves exact-version enforcement, override drift detection, lockfile
 // integrity mismatch, and multi-SDK materialisation rejection; CLI exits 0

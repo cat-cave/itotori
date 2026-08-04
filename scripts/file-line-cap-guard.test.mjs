@@ -1,3 +1,4 @@
+// @itotori-meta-check
 // Regression suite for the 500-line file-cap CI guard.
 //
 // Proves the grandfather + shrink-only ratchet: a NEW oversized file fails, a

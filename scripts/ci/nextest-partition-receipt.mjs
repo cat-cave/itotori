@@ -4,8 +4,6 @@
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-export const EXPECTED_IGNORED_PRIVATE_CORPUS = 169;
-
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -89,12 +87,6 @@ export function summarizeNextestListReport(report) {
     );
   }
   if (counts.selected === 0) throw new Error("nextest partition selected no runnable tests");
-  if (counts.ignoredPrivateCorpus !== EXPECTED_IGNORED_PRIVATE_CORPUS) {
-    throw new Error(
-      "nextest ignored private-corpus inventory mismatch: " +
-        `expected ${EXPECTED_IGNORED_PRIVATE_CORPUS}, found ${counts.ignoredPrivateCorpus}`,
-    );
-  }
   return { listed: declaredCount, ...counts };
 }
 

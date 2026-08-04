@@ -1,3 +1,4 @@
+// @itotori-meta-check
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -13,6 +14,7 @@ import {
   scanFiles,
   stripComments,
 } from "./validate-no-specific-game-references.mjs";
+import { discoverMetaChecks } from "./meta-check-manifest.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const scannerPath = resolve(here, "validate-no-specific-game-references.mjs");
@@ -214,13 +216,20 @@ test("check mode exits 1 on an active-surface leak and 0 on a classified histori
 
 test("Tier 0 content audit runs the enforceable generalization-purge gate", () => {
   const dispatcher = readFileSync(resolve(here, "developer-command.mjs"), "utf8");
-  const tier0Meta = /if \(scope === "meta"\)\s*return shell\(`(?<body>[\s\S]*?)`\);/u.exec(
-    dispatcher,
-  )?.groups?.body;
-
-  assert.ok(tier0Meta, "ci tier0-meta selector must exist");
-  assert.match(tier0Meta, /node --test scripts\/validate-no-specific-game-references\.test\.mjs/u);
-  assert.match(tier0Meta, /node scripts\/validate-no-specific-game-references\.mjs/u);
+  assert.match(dispatcher, /run\("node", \["scripts\/meta-check-manifest\.mjs"\]\)/u);
+  const entries = discoverMetaChecks(resolve(here, ".."));
+  const testEntry = entries.find(
+    ({ owner }) => owner === "scripts/validate-no-specific-game-references.test.mjs",
+  );
+  const guardEntry = entries.find(
+    ({ owner }) => owner === "scripts/validate-no-specific-game-references.mjs",
+  );
+  assert.deepEqual(testEntry?.args, [
+    "--test",
+    "scripts/validate-no-specific-game-references.test.mjs",
+  ]);
+  assert.deepEqual(guardEntry?.args, ["scripts/validate-no-specific-game-references.mjs"]);
+  assert.ok(entries.indexOf(testEntry) < entries.indexOf(guardEntry));
 });
 
 test("report mode prints active leaks but exits zero (advisory audit)", () => {

@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "wiki-object-api",
+    "title": "Wiki object API",
+    "marker": "wiki object read/write API over the WikiObject substrate"
+  }
+}

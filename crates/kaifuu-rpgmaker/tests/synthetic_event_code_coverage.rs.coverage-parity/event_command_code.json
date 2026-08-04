@@ -1,0 +1,6 @@
+{
+  "schema": "itotori.coverage-parity-instantiation.v1",
+  "family": "rpg_maker_mv_mz",
+  "group": "event_command_code",
+  "test": "synthetic_www_instantiates_every_event_command_code_clean"
+}

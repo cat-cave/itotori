@@ -1,3 +1,4 @@
+// @itotori-meta-check
 // the relevant capability — regression suite for the no-hardcoded-cost CI guard.
 //
 // Proves the three canonical cost shapes the guard previously MISSED are

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // CI guard: shared behavior harnesses must not name registered cells.
 //
 // Cell identity belongs in a proof capsule. Keeping the shared discovery and

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @itotori-meta-check
 // CI guard: 500-line file cap with a grandfather + shrink-only ratchet.
 //
 // Large files accrete; a hard cap would force-split the kept moat

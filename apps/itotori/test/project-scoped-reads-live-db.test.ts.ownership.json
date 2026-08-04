@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.test-ownership.v1",
+  "lanes": ["ci-tier1-db"],
+  "dbProof": {
+    "id": "project-scoped-reads",
+    "title": "project-scoped reads",
+    "marker": "project-scoped read APIs"
+  }
+}

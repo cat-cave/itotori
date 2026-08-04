@@ -169,13 +169,11 @@ just test catalog-replay-db   # run + PROVE the catalog replay/idempotency suite
 just dev db-down        # tear the disposable database down
 ```
 
-`just test catalog-replay-db` (`scripts/catalog-replay-db-gate.mjs`) runs only the catalog
-source-adapter replay + idempotency repository suites against the database:
-
-- `catalog-crawler-repository.test.ts` — crash-before-`commitStepImport` replay windows.
-- `catalog-recorded-importers.test.ts` — VNDB / EGS / DLsite / Steam / IGDB / Wikidata rerun
-  idempotency.
-- `catalog-dlsite-demand.test.ts` — DLsite demand-import replay idempotency.
+`just test catalog-replay-db` (`scripts/catalog-replay-db-gate.mjs`) discovers only catalog
+source-adapter replay + idempotency repository suites against the database. A qualifying suite
+carries `@itotori-catalog-replay-db` and its adjacent
+`<suite>.catalog-replay-db.json` declaration; adding a proof changes those per-suite files, not a
+shared registry.
 
 The gate is **fail-loud, never green-on-skip**:
 
