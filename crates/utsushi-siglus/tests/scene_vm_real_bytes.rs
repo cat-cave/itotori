@@ -72,8 +72,11 @@ fn two_real_corpora_report_the_execution_frontier_and_preserve_static_overlap() 
             one.instructions > 0,
             "{label}: no real instructions executed"
         );
+        // `af12452d2` made string-member and call-string handling reach the
+        // next real narrative frontier (+245 instructions); stage dispatch is
+        // opt-in and uses the separate state populated below.
         let (expected_instructions, expected_messages, expected_static_text) = match label {
-            "corpus 1" => (66_191, 82, 56_020),
+            "corpus 1" => (66_436, 82, 56_020),
             "corpus 2" => (75_719, 49, 31_404),
             _ => unreachable!("fixed real-corpus labels"),
         };
