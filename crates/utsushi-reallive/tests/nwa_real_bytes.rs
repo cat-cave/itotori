@@ -2,8 +2,8 @@
 //!
 //! Pins the decoder against Sweetie HD's `REALLIVEDATA/bgm/ASA.nwa`
 //! (18,317,046 bytes) and `REALLIVEDATA/wav/CHIME.nwa`. Mirrors the
-//! `g00_real_bytes.rs` env-gating pattern (`private inventory row`
-//! must be set for the `#[ignore]`-gated cases to execute).
+//! `g00_real_bytes.rs` feature-gating pattern (`private inventory row`
+//! must be set for the cases to execute).
 //!
 //! # Acceptance criteria pinned here
 //!
@@ -90,7 +90,6 @@ fn real_wav_dir() -> Option<PathBuf> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 // The test name is the spec verification handle quoted
 // verbatim (`cargo test -p utsushi-reallive nwa_asa_decodes_33M_frames`).
 // The `M` is upper-case because the spec quotes "33M" as the
@@ -181,7 +180,6 @@ fn nwa_asa_decodes_33M_frames() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn nwa_chime_decodes_raw_pcm_header() {
     let Some(wav_dir) = real_wav_dir() else {
         real_corpus::require_real_bytes("utsushi-reallive nwa_chime_decodes_raw_pcm_header");
@@ -211,22 +209,6 @@ fn nwa_chime_decodes_raw_pcm_header() {
     eprintln!(
         "CHIME.nwa header: channels={}, bps={}, sample_rate={}, compression_mode={:?}",
         header.channels, header.bits_per_sample, header.sample_rate, header.compression_mode,
-    );
-}
-
-#[test]
-fn nwa_real_bytes_skips_when_env_unset() {
-    // Mirrors the `gameexe_real_bytes.rs::verify_real_bytes_known_values_skips_when_env_unset`
-    // pattern: when the env var is unset, the real-bytes tests above
-    // print a diagnostic and return. This test makes the skip
-    // explicit so the CI run records the "skipped, not silently
-    // passed" semantics.
-    if real_corpus::game_root().is_some() {
-        return;
-    }
-    eprintln!(
-        "reallive/1/encrypted not set — NWA real-bytes tests are #[ignore]-gated and \
-         only run with reallive/1/encrypted set.",
     );
 }
 

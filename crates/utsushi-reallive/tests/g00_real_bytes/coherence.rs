@@ -72,7 +72,6 @@ pub(super) fn assert_type0_corpus_coherent(title: &str, g00_dir: &PathBuf) {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory rows reallive/1/encrypted or reallive/2/plain"]
 fn g00_type0_corpus_coherence_both_titles() {
     let mut ran = false;
     for need in [real_corpus::PRIMARY, real_corpus::SECONDARY] {

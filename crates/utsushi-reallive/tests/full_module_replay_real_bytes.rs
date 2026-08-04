@@ -13,12 +13,12 @@
 //!  4. Holds on the real bytes of both staged corpora.
 //!
 //! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE
-//! (no opt-out; these `#[ignore]`-d suites run only in the periodic
+//! (no opt-out; these feature-gated suites run only in the periodic
 //! ground-truth oracle, `just test real-bytes-oracle`, where corpora are staged).
 //! Run with
 //! `private inventory row=<sweetie> private inventory row=<kanon>
-//! cargo test -p utsushi-reallive --test full_module_replay_real_bytes --
-//! --ignored`.
+//! cargo test -p utsushi-reallive --features real-bytes
+//! --test full_module_replay_real_bytes`.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -83,7 +83,6 @@ fn staged_engine(seen_bytes: &[u8]) -> ReplayEngine {
 /// explicitly. The output is the whole-store diagnostic inventory, not a
 /// runtime compatibility allowlist.
 #[test]
-#[ignore = "real-bytes; requires private inventory row + _2"]
 fn full_module_replay_all_scenes_reports_unknown_opcodes() {
     let corpora = corpora_or_skip("full_module_replay_all_scenes_reports_unknown_opcodes");
     if corpora.is_empty() {
@@ -151,7 +150,6 @@ fn module_families(log: &utsushi_reallive::ReplayLog) -> BTreeSet<(u8, u8)> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row + _2"]
 fn all_nine_registrars_mounted_into_multi_scene_store() {
     let corpora = corpora_or_skip("all_nine_registrars_mounted_into_multi_scene_store");
     if corpora.is_empty() {
@@ -183,7 +181,6 @@ fn all_nine_registrars_mounted_into_multi_scene_store() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row + _2"]
 fn full_module_replay_is_byte_deterministic() {
     let corpora = corpora_or_skip("full_module_replay_is_byte_deterministic");
     if corpora.is_empty() {
@@ -221,7 +218,6 @@ fn full_module_replay_is_byte_deterministic() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row + _2"]
 fn full_module_replay_snapshot_restore_identity_each_tick() {
     let corpora = corpora_or_skip("full_module_replay_snapshot_restore_identity_each_tick");
     if corpora.is_empty() {
@@ -268,7 +264,6 @@ fn full_module_replay_snapshot_restore_identity_each_tick() {
 /// commands as implemented. The diagnostic output names every unknown family
 /// and tuple so the gap can be triaged.
 #[test]
-#[ignore = "real-bytes; requires private inventory row + _2"]
 fn full_module_replay_full_scene_reports_unknowns_and_reaches_terminus() {
     let corpora =
         corpora_or_skip("full_module_replay_full_scene_reports_unknowns_and_reaches_terminus");

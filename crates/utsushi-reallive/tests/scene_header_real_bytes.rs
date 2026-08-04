@@ -21,8 +21,7 @@
 //! `scene_header_second_reallive_real_bytes.rs` test. The orchestrator
 //! must not approve completion until that happens.
 //!
-//! Until the second corpus is staged this test is `#[ignore]`-gated and
-//! only runs when `private inventory row` is set (the same env
+//! This feature-gated test runs when `private inventory row` is set (the same env
 //! var use, so a single export drives every
 //! real-bytes integration test in the workspace).
 
@@ -61,7 +60,6 @@ const PRIMARY_CORPUS_SCENE_ONE_BYTECODE_COMPRESSED_SIZE: u32 = 1062;
 const PRIMARY_CORPUS_SCENE_ONE_Z_MINUS_TWO: u32 = 3;
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn scene1_header_matches_reallive_real_bytes() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(

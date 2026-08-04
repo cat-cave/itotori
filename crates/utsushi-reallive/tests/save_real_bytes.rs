@@ -1,14 +1,14 @@
 //! Real-bytes integration test for the AVG-derived save
 //! format against Sweetie HD's `SAVEDATA/` directory.
 //!
-//! This file is **opt-in and env-gated**: the private-corpus assertions
-//! are `#[ignore]`-gated and only run with `--include-ignored` when the
+//! This file is **feature-gated and env-gated**: the private-corpus assertions
+//! run with `--features real-bytes` when the
 //! environment variable `private inventory row` is set, pointing at
 //! the audit-grade Sweetie HD extraction root (the parent of the
 //! game-title directory). The presence of that env var is the same gate
 //! used elsewhere in the workspace for "real Shift-JIS save bytes are
 //! available locally". Public CI therefore records these assertions as
-//! ignored instead of passing them with zero real-byte coverage.
+//! feature-gated instead of passing them with zero real-byte coverage.
 //!
 //! # Audit focus
 //!
@@ -83,7 +83,7 @@ fn resolve_savedata_path(file_name: &str) -> Option<PathBuf> {
 /// gate. When the corpus is absent this defers to
 /// [`real_corpus::require_real_bytes`], an unconditional HARD FAILURE (no
 /// opt-out): it panics, so the `return None` below is never reached. These
-/// `#[ignore]`-d suites run only in the periodic real-bytes oracle.
+/// feature-gated suites run only in the periodic real-bytes oracle.
 fn load_required(file_name: &str) -> Option<Vec<u8>> {
     let Some(path) = resolve_savedata_path(file_name) else {
         real_corpus::require_real_bytes(&format!("save_real_bytes:{file_name}"));
@@ -96,17 +96,6 @@ fn load_required(file_name: &str) -> Option<Vec<u8>> {
         )
     });
     Some(bytes)
-}
-
-#[test]
-fn save_real_bytes_are_ignored_without_private_corpus() {
-    if real_corpus::game_root().is_some() {
-        return;
-    }
-    eprintln!(
-        "reallive/1/encrypted not set — Sweetie HD save real-bytes tests are \
-         #[ignore]-gated and only run with private inventory row set.",
-    );
 }
 
 // `REALLIVE.sav` — system save (`AVG_SYSTEM_SAVE`).
@@ -165,13 +154,11 @@ fn verify_system_save() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn save_reads_avg_system_save_real_bytes() {
     verify_system_save();
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn save_real_bytes_system_save_round_trips() {
     verify_system_save();
 }
@@ -206,13 +193,11 @@ fn verify_global_save() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn save_reads_avg_global_save_real_bytes() {
     verify_global_save();
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn save_real_bytes_global_save_round_trips() {
     verify_global_save();
 }
@@ -249,13 +234,11 @@ fn verify_read_flags() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn save_read_flags_decodes_title_real_bytes() {
     verify_read_flags();
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn save_real_bytes_read_flags_round_trips() {
     verify_read_flags();
 }

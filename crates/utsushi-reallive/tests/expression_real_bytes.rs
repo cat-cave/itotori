@@ -7,7 +7,7 @@
 //! [`utsushi_reallive::parse_expression`] over each.
 //!
 //! The single real RealLive corpus currently staged is primary_corpus HD; the
-//! test is `#[ignore]`-gated and reads its asset root from
+//! test is feature-gated and reads its asset root from
 //! `private inventory row`. The acceptance bound is STRICT: every one
 //! of the 20 Expression elements must parse without any
 //! [`utsushi_reallive::ExpressionWarning`] (0 `UnknownOperator`) and
@@ -52,7 +52,6 @@ const SCENE_ONE_EXPECTED_EXPRESSION_COUNT: usize = 20;
 const REQUIRED_CLEAN_PARSE_COUNT: usize = SCENE_ONE_EXPECTED_EXPRESSION_COUNT;
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn scene1_expression_elements_parse_and_evaluate() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(

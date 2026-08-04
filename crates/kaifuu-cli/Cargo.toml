@@ -30,6 +30,7 @@ serde_json.workspace = true
 # seam for ordinary `cargo test`/debug builds, so this feature only needs
 # to be enabled to keep the seam in an explicit release build.
 failure-injection = []
+real-bytes = []
 
 [dev-dependencies]
 rusqlite = { workspace = true }
@@ -37,6 +38,21 @@ sevenz-rust2 = { workspace = true }
 sha2.workspace = true
 tempfile = { workspace = true }
 corpus-registry = { path = "../corpus-registry" }
+
+[[test]]
+name = "extract_primary_corpus"
+path = "tests/extract_primary_corpus.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "patch_real_private_corpus"
+path = "tests/patch_real_private_corpus.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "softpal_cli_test"
+path = "tests/softpal_cli_test.rs"
+required-features = ["real-bytes"]
 
 [lints]
 workspace = true

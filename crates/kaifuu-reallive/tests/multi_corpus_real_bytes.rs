@@ -312,7 +312,6 @@ fn print_report(report: &CoverageReport) {
 mod cases;
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row (+ private inventory row for multi-game)"]
 fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
     cases::multi_game_validation_runs_against_two_distinct_reallive_corpora();
 }
@@ -356,7 +355,6 @@ const PRIMARY_CORPUS_HARD_MENU_BOOT_SYSTEM_SCENES: &[u16] =
 /// (b) decoded to zero unknown opcodes. No raw copyrighted bytes/text — scene
 /// ids and the clean/unclean verdict only.
 #[test]
-#[ignore = "real-bytes; requires private inventory row (Sweetie HD)"]
 fn every_menu_boot_system_scene_decodes_to_zero_unknown() {
     cases::every_menu_boot_system_scene_decodes_to_zero_unknown();
 }
@@ -388,7 +386,6 @@ const PRIMARY_CORPUS_SEEN_SHA256: &str =
 /// pass it). No raw copyrighted bytes/text are emitted — counts, opcode
 /// signatures and sha256 only.
 #[test]
-#[ignore = "real-bytes; requires private inventory row (2nd RealLive title, e.g. Kanon)"]
 fn secondary_corpus_decompiles_zero_unknown() {
     cases::secondary_corpus_decompiles_zero_unknown();
 }

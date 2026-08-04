@@ -469,6 +469,9 @@ mod implementation;
 pub use decode::decode_g00;
 
 #[cfg(test)]
+#[path = "g00/bounded_blit_tests.rs"]
+mod bounded_blit_tests;
+#[cfg(test)]
 #[path = "g00/test_support.rs"]
 mod g00_test_support;
 #[cfg(test)]

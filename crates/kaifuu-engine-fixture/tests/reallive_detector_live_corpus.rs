@@ -8,8 +8,6 @@ use std::path::PathBuf;
 use kaifuu_core::{DetectRequest, DetectionResult, EngineAdapter, EvidenceStatus};
 use kaifuu_engine_fixture::RealLiveProfileDetectorAdapter;
 
-const CORPORA_ENV: &str = "ITOTORI_REALLIVE_DETECTOR_CORPORA";
-
 #[derive(Debug)]
 struct CorpusRoot {
     label: String,
@@ -67,31 +65,28 @@ impl SignalSummary {
     }
 }
 
-fn configured_corpora() -> Option<Vec<CorpusRoot>> {
-    let configured = std::env::var(CORPORA_ENV).ok()?;
-    let mut corpora = Vec::new();
-    for item in configured.split(';').filter(|item| !item.is_empty()) {
-        let (label, path) = item.split_once('=')?;
-        if label.is_empty() || path.is_empty() {
-            return None;
-        }
-        corpora.push(CorpusRoot {
-            label: label.to_string(),
-            path: PathBuf::from(path),
-        });
-    }
-    (!corpora.is_empty()).then_some(corpora)
+fn configured_corpora() -> Vec<CorpusRoot> {
+    ["reallive/1/encrypted", "reallive/2/plain"]
+        .into_iter()
+        .map(|identity| {
+            let path = corpus_registry::resolve_identity(identity).unwrap_or_else(|reason| {
+                panic!("real-bytes proof not established: {identity}: {reason}")
+            });
+            assert!(
+                path.is_dir(),
+                "real-bytes proof not established: {identity} directory is unavailable"
+            );
+            CorpusRoot {
+                label: identity.to_string(),
+                path,
+            }
+        })
+        .collect()
 }
 
 #[test]
-#[ignore = "real-bytes; requires configured private corpora"]
 fn detects_configured_real_corpora_with_redacted_signal_evidence() {
-    let Some(corpora) = configured_corpora() else {
-        panic!("real-bytes proof not established: configured corpus input is unavailable");
-    };
-    if corpora.iter().any(|corpus| !corpus.path.is_dir()) {
-        panic!("real-bytes proof not established: configured corpus directory is unavailable");
-    }
+    let corpora = configured_corpora();
 
     let adapter = RealLiveProfileDetectorAdapter;
     for corpus in corpora {

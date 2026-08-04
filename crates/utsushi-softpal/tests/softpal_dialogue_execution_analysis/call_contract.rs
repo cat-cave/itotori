@@ -1,17 +1,9 @@
 #[test]
-#[ignore = "real-bytes; requires both staged Softpal corpora"]
 fn classifies_script_only_message_feasibility_and_the_pre_halt_call_contract() {
     let mut all_calls = Vec::new();
-    for (index, root) in CORPORA.iter().enumerate() {
-        let root = PathBuf::from(root);
-        let Some(inputs) = inputs(&root) else {
-            eprintln!(
-                "SKIP corpus {}: missing VM inputs at {}",
-                index + 1,
-                root.display()
-            );
-            continue;
-        };
+    for (index, (identity, ordinal, expected_pac_count)) in CORPORA.iter().enumerate() {
+        let root = runtime_root(identity, *ordinal, *expected_pac_count);
+        let inputs = inputs(&root);
         let static_oracle = ScriptScan::parse(&inputs.script)
             .expect("script scan")
             .resolve(&TextDat::parse(&inputs.textdat).expect("text pool"));

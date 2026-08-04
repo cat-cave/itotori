@@ -91,7 +91,6 @@ fn staged_scene_bytecodes(corpus: &RealCorpus) -> Vec<Vec<u8>> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row (+ private inventory row)"]
 fn framing_is_byte_exact_and_round_trips_on_real_bytes() {
     let corpora = real_corpus::corpora();
     if corpora.is_empty() {

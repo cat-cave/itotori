@@ -35,12 +35,12 @@
 //!     transfer state; branch-following → executed transfers > 0).
 //!
 //! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE
-//! (no opt-out; these `#[ignore]`-d suites run only in the periodic
+//! (no opt-out; these feature-gated suites run only in the periodic
 //! ground-truth oracle, `just test real-bytes-oracle`, where corpora are staged).
 //! Run with
 //! configure the `reallive/1/encrypted` and `reallive/2/plain` private inventory rows, then
-//! cargo test -p utsushi-reallive --test headless_branch_execution_real_bytes
-//! -- --ignored`.
+//! cargo test -p utsushi-reallive --features real-bytes
+//! --test headless_branch_execution_real_bytes`.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -178,7 +178,6 @@ mod branch_following;
 ///  - real control flow executed (transfers > 0) across >1 scene;
 ///  - the drive is byte-deterministic (two runs → identical report).
 #[test]
-#[ignore = "real-bytes; requires reallive/1/encrypted + reallive/2/plain inventory rows"]
 fn headless_entry_scene_drives_to_natural_terminus() {
     let corpora = corpora_or_skip("headless_entry_scene_drives_to_natural_terminus");
     if corpora.is_empty() {
@@ -278,7 +277,6 @@ fn headless_entry_scene_drives_to_natural_terminus() {
 /// scene that does NOT reach its terminus does so for a control-flow reason
 /// — SceneNotFound / spin — not a suspended longop).
 #[test]
-#[ignore = "real-bytes; requires reallive/1/encrypted + reallive/2/plain inventory rows"]
 fn headless_input_provider_is_deterministic_and_never_deadlocks_on_input() {
     let corpora =
         corpora_or_skip("headless_input_provider_is_deterministic_and_never_deadlocks_on_input");
@@ -340,7 +338,6 @@ fn headless_input_provider_is_deterministic_and_never_deadlocks_on_input() {
 ///    the second scene was reached by REAL dispatch, not by scanning ids;
 ///  - the chain is bounded (`max_scenes`) and deterministic (two runs agree).
 #[test]
-#[ignore = "real-bytes; requires reallive/1/encrypted + reallive/2/plain inventory rows"]
 fn play_loop_advances_across_scene_boundaries_via_real_dispatch() {
     const MAX_SCENES: usize = 4;
     let corpora = corpora_or_skip("play_loop_advances_across_scene_boundaries_via_real_dispatch");

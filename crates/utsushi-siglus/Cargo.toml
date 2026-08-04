@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 description = "capability_utsushi_147 cross-engine substrate-alignment scaffold: pure-Rust Siglus engine port that registers conformance against the utsushi-core substrate facade. Clean-room; xmoezzz/siglus_rs (MPL-2.0) is a research anchor only and is not linked, vendored, or mechanically translated."
 
+[features]
+real-bytes = []
+
 [dependencies]
 # Intentionally NO `utsushi-reallive` dependency. The Siglus port is a
 # sibling of the RealLive port — they share the substrate facade only.
@@ -70,3 +73,28 @@ tempfile = { workspace = true }
 
 [lints]
 workspace = true
+
+[[test]]
+name = "observe_real_bytes"
+path = "tests/observe_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "structure_export_real_bytes"
+path = "tests/structure_export_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "launch_hydration_real_bytes"
+path = "tests/launch_hydration_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "scene_vm_real_bytes"
+path = "tests/scene_vm_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "siglus_g00_real_bytes"
+path = "tests/siglus_g00_real_bytes.rs"
+required-features = ["real-bytes"]

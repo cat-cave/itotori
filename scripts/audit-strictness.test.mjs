@@ -12,7 +12,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 
 import {
-  checkBareIgnore,
+  checkRustIgnore,
   checkUnreasonedAllow,
   checkDenyBans,
   checkRelaxedFloors,
@@ -31,19 +31,57 @@ function rules(found) {
   return found.map((v) => v.rule);
 }
 
-// ---- Rule 1: bare #[ignore] ---------------------------------------------
-test("rule 1 flags a bare #[ignore] with no reason", () => {
-  assert.deepEqual(rules(checkBareIgnore(RS, "    #[ignore]")), [
-    "bare #[ignore] without a reason",
+// ---- Rule 1: Rust #[ignore] ----------------------------------------------
+test("rule 1 flags direct and cfg_attr-produced Rust ignore attributes", () => {
+  assert.deepEqual(rules(checkRustIgnore(RS, "    #[ignore]")), [
+    "Rust #[ignore] attribute is forbidden",
+  ]);
+  assert.deepEqual(rules(checkRustIgnore(RS, '#[ignore = "requires real bytes"]')), [
+    "Rust #[ignore] attribute is forbidden",
+  ]);
+  assert.deepEqual(rules(checkRustIgnore(RS, '#[ignore =\n  "multiline reason"\n]')), [
+    "Rust #[ignore] attribute is forbidden",
+  ]);
+  assert.deepEqual(
+    rules(
+      checkRustIgnore(
+        RS,
+        '#[cfg_attr(all(feature = "private", target_os = "linux"), ignore = "requires bytes")]',
+      ),
+    ),
+    ["Rust #[ignore] attribute is forbidden"],
+  );
+  assert.deepEqual(rules(checkRustIgnore(RS, "#[ignore /* permitted comment */]")), [
+    "Rust #[ignore] attribute is forbidden",
+  ]);
+  assert.deepEqual(rules(checkRustIgnore(RS, "#[ignore // permitted comment\n]")), [
+    "Rust #[ignore] attribute is forbidden",
+  ]);
+  assert.deepEqual(
+    rules(checkRustIgnore(RS, "#[cfg_attr(any(), ignore // permitted comment\n)]")),
+    ["Rust #[ignore] attribute is forbidden"],
+  );
+  assert.deepEqual(rules(checkRustIgnore(RS, "#[r#ignore]")), [
+    "Rust #[ignore] attribute is forbidden",
+  ]);
+  assert.deepEqual(rules(checkRustIgnore(RS, "#[r#cfg_attr(all(), ignore)]")), [
+    "Rust #[ignore] attribute is forbidden",
+  ]);
+  assert.deepEqual(rules(checkRustIgnore(RS, "#[test] #[ignore] fn inline() {}")), [
+    "Rust #[ignore] attribute is forbidden",
   ]);
 });
 
-test('rule 1 accepts #[ignore = "…"] and ignores prose/strings', () => {
-  assert.deepEqual(checkBareIgnore(RS, '#[ignore = "requires real bytes"]'), []);
+test("rule 1 ignores marker-like prose and strings", () => {
   // `#[ignore]` inside a doc comment or a string-literal continuation must not
-  // be mistaken for a bare attribute.
-  assert.deepEqual(checkBareIgnore(RS, "//! this test is `#[ignore]`-gated"), []);
-  assert.deepEqual(checkBareIgnore(RS, '        #[ignore]-gated and only run with X",'), []);
+  // be mistaken for a direct attribute.
+  assert.deepEqual(checkRustIgnore(RS, "//! this test is `#[ignore]`-gated"), []);
+  assert.deepEqual(checkRustIgnore(RS, '        #[ignore]-gated and only run with X",'), []);
+  assert.deepEqual(checkRustIgnore(RS, '#[cfg_attr(feature = "x", allow(dead_code))]'), []);
+  assert.deepEqual(
+    rules(checkRustIgnore(RS, 'const DECOY: &str = "/* not a comment */";\n#[ignore]')),
+    ["Rust #[ignore] attribute is forbidden"],
+  );
 });
 
 // ---- Rule 2: unreasoned #[allow(...)] ------------------------------------
@@ -121,7 +159,7 @@ test("rule 5 parses the ci-real-bytes lane and detects real-bytes crates", () =>
   const jf = [
     "ci-real-bytes:",
     "    export X=y",
-    "    cargo test -p kaifuu-reallive -p utsushi-reallive -p kaifuu-cli -p utsushi-cli -p kaifuu-softpal -- --ignored",
+    "    cargo test -p kaifuu-reallive -p utsushi-reallive -p kaifuu-cli -p utsushi-cli -p kaifuu-softpal --features real-bytes",
   ].join("\n");
   const lane = parseLaneCrates(jf);
   assert.deepEqual([...lane].sort(), [
@@ -132,26 +170,10 @@ test("rule 5 parses the ci-real-bytes lane and detects real-bytes crates", () =>
     "utsushi-reallive",
   ]);
 
-  // A real-bytes file, or an #[ignore] naming a live corpus, marks the crate.
+  // A real-bytes file marks the crate.
   assert.equal(crateOwnsRealBytes("crates/foo/tests/x_real_bytes.rs", "fn t() {}"), true);
-  assert.equal(
-    crateOwnsRealBytes("crates/foo/tests/x.rs", '#[ignore = "requires private inventory row"]'),
-    true,
-  );
-  assert.equal(
-    crateOwnsRealBytes("crates/foo/tests/x.rs", '#[ignore = "requires ITOTORI_VAULT_ROOT"]'),
-    true,
-  );
-  // Softpal real-corpus tests are wired into the periodic ci-real-bytes lane
-  // (skip-when-absent at the lane level); the env var is a live corpus signal.
-  assert.equal(
-    crateOwnsRealBytes(
-      "crates/foo/tests/x.rs",
-      '#[ignore = "real-bytes; requires private inventory row"]',
-    ),
-    true,
-  );
-  // A plain #[ignore] (bug-tracking, no live corpus) does NOT mark the crate.
+  // Direct ignores are separately forbidden by rule 1, not lane ownership.
+  assert.equal(crateOwnsRealBytes("crates/foo/tests/x.rs", '#[ignore = "private corpus"]'), false);
   assert.equal(crateOwnsRealBytes("crates/foo/tests/x.rs", '#[ignore = "flaky issue"]'), false);
 });
 
@@ -159,7 +181,7 @@ test("rule 5 parses Cargo package flag variants and continuations", () => {
   const lane = [
     "ci-real-bytes:",
     "    cargo test --package first -p=second \\",
-    "      --package=third -p fourth -- --ignored",
+    "      --package=third -p fourth --features real-bytes",
     "next-recipe:",
   ].join("\n");
   assert.deepEqual([...parseLaneCrates(lane)].sort(), ["first", "fourth", "second", "third"]);
@@ -171,6 +193,19 @@ test("rule 5 recognizes packages discovered from adjacent proof declarations", (
     ["kaifuu-siglus", "utsushi-siglus"],
   );
   assert.throws(() => proofPackages([{}]), /real-bytes proof declaration has no package/u);
+});
+
+test("rule 5 only credits the real-bytes selector and explicitly enabled commands", () => {
+  const dispatcher = [
+    'if (selector === "real-bytes")',
+    "  return shell(`",
+    "cargo test -p covered --features real-bytes",
+    "cargo test -p unfeatured",
+    "`);",
+    'if (selector === "other")',
+    "  return shell(`cargo test -p unrelated --features real-bytes`);",
+  ].join("\n");
+  assert.deepEqual([...parseLaneCrates(dispatcher)], ["covered"]);
 });
 
 test("rule 5 flags every uncovered real-bytes crate (allowlist is now empty)", () => {

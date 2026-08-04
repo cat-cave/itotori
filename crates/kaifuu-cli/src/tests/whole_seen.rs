@@ -1,66 +1,3 @@
-/// Resolve this crate's manifest directory for locating tracked test
-/// fixtures.
-/// `env!("CARGO_MANIFEST_DIR")` is baked into the binary at COMPILE time, so
-/// a test binary reused from a different (since-removed) worktree points
-/// fixture reads at a dead path and fails with an opaque
-/// `Os { code: 2, NotFound }`. `cargo test` sets `CARGO_MANIFEST_DIR` in the
-/// test binary's RUNTIME environment to the LIVE crate directory of the
-/// current invocation; prefer that, falling back to the compile-time
-/// constant only when run outside cargo. Lookup only — never writes, so
-/// tracked fixtures stay strictly read-only.
-fn test_manifest_dir() -> PathBuf {
-    std::env::var_os("CARGO_MANIFEST_DIR")
-        .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")), PathBuf::from)
-}
-
-/// ALPHA-006a — the alpha extract entrypoint sources primary_corpus primary_corpus HD
-/// BY-ID through the read-only vault adapter and yields a `Seen.txt` whose
-/// per-file sha256 equals the known direct-path bytes. Env-gated + ignored;
-/// run against the real vault with:
-/// ```text
-/// ITOTORI_VAULT_ROOT=/archive/vault \
-/// cargo test -p kaifuu-cli vault_sourced_extract -- --ignored --nocapture
-#[test]
-#[ignore = "requires ITOTORI_VAULT_ROOT=/archive/vault (live read-only vault)"]
-fn vault_sourced_extract_resolves_primary_corpus_by_id_to_known_seen_bytes() {
-    use sha2::{Digest, Sha256};
-    use std::fmt::Write as _;
-
-    const PRIMARY_CORPUS_CANONICAL_ID: &str =
-        "primary_corpus-primary_corpus-koi-suru-onee-san-wa-urahara-desu.vj013077.v1-0.ja";
-    const PRIMARY_CORPUS_SEEN_SHA256: &str =
-        "903f538b821a9b1e6cb3d399582915c0bcf73b0a058ecc907caf6017a4fa209f";
-
-    // Real-bytes coverage is STRICT (see the real_corpus support helper):
-    // this ignored proof runs only in the periodic ground-truth oracle,
-    // where the live vault is staged. An absent vault is an unconditional
-    // hard failure — there is NO opt-out.
-    assert_eq!(
-        std::env::var("ITOTORI_VAULT_ROOT").ok().as_deref(),
-        Some("/archive/vault"),
-        "real-bytes coverage is STRICT: set ITOTORI_VAULT_ROOT=/archive/vault to run this \
-             vault-sourced proof (it runs in the periodic ground-truth oracle where the vault \
-             is staged)"
-    );
-
-    let tree_root = resolve_reallive_game_root_via_vault(PRIMARY_CORPUS_CANONICAL_ID)
-        .expect("by-id vault sourcing must resolve primary_corpus HD");
-    let seen_path = resolve_reallive_seen_path(&tree_root)
-        .expect("REALLIVEDATA/Seen.txt under the vault-sourced tree");
-    let bytes = std::fs::read(&seen_path).expect("read vault-sourced Seen.txt");
-    let mut hasher = Sha256::new();
-    hasher.update(&bytes);
-    let sha = hasher.finalize().iter().fold(String::new(), |mut acc, b| {
-        let _ = write!(acc, "{b:02x}");
-        acc
-    });
-    eprintln!("[alpha-006a] vault-sourced primary_corpus HD Seen.txt sha256 = {sha}");
-    assert_eq!(
-        sha, PRIMARY_CORPUS_SEEN_SHA256,
-        "vault by-id sourced Seen.txt must equal the known direct-path bytes"
-    );
-}
-
 use kaifuu_core::{
     ASSET_INVENTORY_SCHEMA_VERSION, AdapterCapabilities, AdapterCapabilityMatrix, AdapterFailure,
     AdapterWarning, ArchiveDetectionSignal, ArchiveDetectionStatus, AssetInventoryAsset,
@@ -86,9 +23,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::reallive_commands::{
     UnknownOpcodeGate, evaluate_unknown_opcode_gate, read_gameexe_inventory_bytes,
     reallive_patch_read_source_error, reallive_patch_source_mutated_error,
-    reallive_patch_write_target_error, resolve_reallive_game_root_via_vault,
-    resolve_reallive_seen_path,
+    reallive_patch_write_target_error,
 };
+
+/// Resolve this crate's manifest directory for tracked test fixtures.
+/// Cargo provides a run-time manifest directory for the current worktree;
+/// fall back to the compile-time value outside Cargo.
+fn test_manifest_dir() -> PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")), PathBuf::from)
+}
 
 const TEST_ADAPTER_ID: &str = "kaifuu.test.registry";
 

@@ -34,9 +34,9 @@
 //!    the store's scene ids) instead of skipping it.
 //!
 //! No copyrighted text is asserted — only offsets, element/opcode counts, and
-//! goto targets. `#[ignore]`-gated for the periodic oracle; run with:
+//! goto targets. Feature-gated for the periodic oracle; run with:
 //! `private inventory row=<sweetie> \`
-//! `cargo test -p utsushi-reallive --test scene2_desync_regression_real_bytes -- --ignored`
+//! `cargo test -p utsushi-reallive --features real-bytes --test scene2_desync_regression_real_bytes`
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -97,7 +97,6 @@ fn kaifuu_boundaries(bytes: &[u8]) -> Vec<usize> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn scene2_decodes_without_desync_and_matches_kaifuu() {
     let Some(corpus) = real_corpus::corpus_1() else {
         real_corpus::require_real_bytes(

@@ -13,6 +13,10 @@ repository.workspace = true
 # decode clean-room away from third-party RE anchors (rlvm, siglus_rs) — the
 # Softpal decode is first-party and proven, so this runtime consumes it
 # directly rather than duplicating a 0-unknown stack walk.
+
+[features]
+real-bytes = []
+
 [dependencies]
 utsushi-core = { path = "../utsushi-core" }
 kaifuu-softpal = { path = "../kaifuu-softpal" }
@@ -20,7 +24,18 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+corpus-registry = { path = "../corpus-registry" }
 tempfile = { workspace = true }
 
 [lints]
 workspace = true
+
+[[test]]
+name = "softpal_runtime_real_corpus"
+path = "tests/softpal_runtime_real_corpus.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "softpal_dialogue_execution_analysis_real_bytes"
+path = "tests/softpal_dialogue_execution_analysis_real_bytes.rs"
+required-features = ["real-bytes"]

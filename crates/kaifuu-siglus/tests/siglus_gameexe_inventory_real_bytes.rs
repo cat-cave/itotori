@@ -4,7 +4,7 @@
 //! are supplied via environment variables (the same ones the sibling
 //! `Gameexe.dat` / exe-angou proofs use). Each root holds both
 //! `SiglusEngine.exe` and `Gameexe.dat`. When either root is absent the test
-//! panics with a named `REAL-BYTES SKIP`; when present it drives the full reader
+//! panics with a named `REAL-BYTES REQUIRED INPUT`; when present it drives the full reader
 //! ([`read_gameexe_inventory`]): recover the per-game exe-angou key in-process
 //! from the executable, decode the real `Gameexe.dat`, and lift it into a
 //! category-indexed inventory.
@@ -34,12 +34,12 @@ const SECOND_TITLE_ENV: &str = "siglus/2/encrypted";
 const EXPECTED_ENTRY_COUNT: [usize; 2] = [690, 689];
 
 /// Resolve a game-root env var to `(SiglusEngine.exe, Gameexe.dat)` paths, or a
-/// clean skip when the var is unset / the files are absent.
+/// required-input failure when the var is unset / the files are absent.
 fn title_paths(variable: &str) -> Option<(PathBuf, PathBuf)> {
     let value = corpus_registry::resolve_identity(variable)
         .ok()
         .or_else(|| {
-            eprintln!("SKIP siglus Gameexe.dat inventory real bytes: {variable} is unset");
+            eprintln!("REAL-BYTES REQUIRED INPUT: siglus Gameexe.dat inventory real bytes: {variable} is unset");
             None
         })?;
     let root = value;
@@ -54,7 +54,7 @@ fn title_paths(variable: &str) -> Option<(PathBuf, PathBuf)> {
         Some((exe, gameexe))
     } else {
         eprintln!(
-            "SKIP siglus Gameexe.dat inventory real bytes: {variable} has no SiglusEngine.exe + \
+            "REAL-BYTES REQUIRED INPUT: siglus Gameexe.dat inventory real bytes: {variable} has no SiglusEngine.exe + \
              Gameexe.dat under {}",
             dir.display()
         );
@@ -126,7 +126,6 @@ fn exercise_title(exe_path: &Path, gameexe_path: &Path, label: &str, expected_en
 mod real_bytes;
 
 #[test]
-#[ignore = "real-bytes; requires two declared Siglus corpus roots"]
 fn two_real_siglus_gameexe_inventories_read_and_summarize() {
     let (first_exe, first_gameexe) = real_bytes::require_real_bytes(
         title_paths(FIRST_TITLE_ENV),

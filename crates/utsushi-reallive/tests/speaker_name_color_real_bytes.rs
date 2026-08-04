@@ -25,7 +25,7 @@
 //!
 //! Env-gated + STRICT-BY-DEFAULT. Run with
 //! `private inventory row=<sweetie-hd>
-//! cargo test -p utsushi-reallive --test speaker_name_color_real_bytes -- --ignored`.
+//! cargo test -p utsushi-reallive --features real-bytes --test speaker_name_color_real_bytes`.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -74,7 +74,6 @@ fn staged_store(seen_bytes: &[u8]) -> (ReplayEngine, ReplayEngine) {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var (Sweetie HD)"]
 fn primary_corpus_named_lines_resolve_speaker_and_color_narration_none_zero_unknown_preserved() {
     let Some(corpus) = real_corpus::corpus_1() else {
         real_corpus::require_real_bytes(

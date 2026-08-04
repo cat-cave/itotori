@@ -225,34 +225,3 @@ fn classify_covers_plain_and_marker_variants() {
     );
     assert_eq!(classify_xp3_variant(b"not an xp3"), "unrecognized");
 }
-
-/// Real-bytes proof over a private-local KiriKiri game's `.xp3` archives.
-/// An unavailable corpus leaves the proof unestablished.
-#[test]
-#[ignore = "real-bytes; requires a private corpus"]
-fn real_private_local_game_readiness_when_present() {
-    let Ok(dir) = corpus_registry::resolve_identity("kirikiri-xp3/1/plain")
-        .map(|path| path.to_string_lossy().into_owned())
-    else {
-        panic!("real-bytes proof not established: required corpus is unavailable");
-    };
-    let report = scan_xp3_readiness_report(Path::new(&dir)).expect("real scan");
-    let json = report.stable_json().expect("json");
-    let value: serde_json::Value = serde_json::from_str(&json).expect("valid json");
-    assert_eq!(
-        value.as_object().expect("object").len(),
-        6,
-        "real report is still aggregate-only (exactly six keys)"
-    );
-    assert!(report.archive_count >= 1, "at least one archive scanned");
-    assert!(
-        report.kag_scenario_count >= 1,
-        "at least one KAG scenario found"
-    );
-    assert!(
-        !report.kag_tag_histogram.is_empty(),
-        "real KAG tag histogram populated"
-    );
-    // The report never carries a filesystem path.
-    assert!(!json.contains('/'), "no path separator anywhere in report");
-}

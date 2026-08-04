@@ -15,8 +15,7 @@
 //! until a second RealLive corpus is sourced and exercised by an
 //! additional `decompressor_second_reallive_real_bytes.rs` test.
 //!
-//! Until the second corpus is staged this test is `#[ignore]`-gated and
-//! only runs when `private inventory row` is set.
+//! This feature-gated test runs when `private inventory row` is set.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -47,7 +46,6 @@ const PRIMARY_CORPUS_SCENE_ONE_DECOMPRESSED_FIRST_EIGHT_BYTES: [u8; 8] =
     [0x0a, 0x02, 0x00, 0x0a, 0x03, 0x00, 0x21, 0x00];
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn scene1_decompressor_matches_reallive_real_bytes_outcome_a() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(

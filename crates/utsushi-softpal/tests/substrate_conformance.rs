@@ -3,7 +3,7 @@
 //! synthetic (non-copyrighted) `Sv20` scene drives the real `Runner` lifecycle
 //! end to end — emitting dialogue + choice text lines and an edge-redacted
 //! capture PNG. This exercises the PRESENT path without any real corpus, so the
-//! env-gated real-bytes suite's SKIP branch is not the only coverage.
+//! feature-gated real-bytes suite's missing-input failure is not the only coverage.
 
 use kaifuu_softpal::{
     SCRIPT_MAGIC_PREFIX, SELECT_WORD_HI, SELECT_WORD_LO, TEXT_SHOW_WORD_HI, TEXTDAT_FLAG_PLAINTEXT,

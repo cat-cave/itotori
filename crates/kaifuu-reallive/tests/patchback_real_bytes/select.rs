@@ -39,7 +39,6 @@ const SELECT_OPT_1: &str = "[EN] Wait - not yet, hold on...";
 ///   targets the SAME logical element; the 3 targets after the block are
 ///   re-based by exactly the delta, the rest are unchanged.
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn select_block_patchback_round_trips_byte_correct_on_real_scene_1018() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(

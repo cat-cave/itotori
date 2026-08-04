@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 description = "Pure-Rust Siglus (SiglusEngine) Scene.pck / Gameexe.dat / scene-bytecode decompiler skeleton (siglus-05). Clean-room, native: xmoezzz/siglus_rs (MPL-2.0), bluecookies/siglus-decompile (unlicensed), and SiglusExtract (GPLv3) are research anchors only — none vendored, linked, or mechanically translated. No Siglus reference project is a dependency."
 
+[features]
+real-bytes = []
+
 # Clean-room boundary: this crate takes NO dependency on any Siglus
 # reference project. There is intentionally no `siglus_rs`, no
 # `siglus-decompile`, and no `SiglusExtract` dependency — neither as a
@@ -29,3 +32,53 @@ tempfile.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "siglus_bridge_real_bytes"
+path = "tests/siglus_bridge_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "siglus_exe_angou_key_real_bytes"
+path = "tests/siglus_exe_angou_key_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "siglus_expression_stack_real_bytes"
+path = "tests/siglus_expression_stack_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "siglus_flow_statements_real_bytes"
+path = "tests/siglus_flow_statements_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "siglus_gameexe_dat_real_bytes"
+path = "tests/siglus_gameexe_dat_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "siglus_gameexe_inventory_real_bytes"
+path = "tests/siglus_gameexe_inventory_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "siglus_patchback_real_bytes"
+path = "tests/siglus_patchback_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "siglus_scene_bytecode_real_bytes"
+path = "tests/siglus_scene_bytecode_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "siglus_scene_pck_real_bytes"
+path = "tests/siglus_scene_pck_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "siglus_syscall_real_bytes"
+path = "tests/siglus_syscall_real_bytes.rs"
+required-features = ["real-bytes"]

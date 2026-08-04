@@ -172,11 +172,10 @@ pub fn gameexe_ini_path() -> Option<PathBuf> {
 }
 
 /// Reject an unavailable corpus in this strict proof suite. Callers retain
-/// their `return` for the successful case; an unavailable input never passes
-/// after logging a skip.
+/// their `return` for the successful case; required input never passes absent.
 pub fn require_real_bytes(test_name: &str) {
     panic!(
-        "REAL-BYTES SKIP {test_name}: reallive/1/encrypted is unavailable; refusing a passing real-bytes proof without its required input"
+        "real-bytes coverage is STRICT: required input reallive/1/encrypted is unavailable; {test_name} did not exercise real bytes"
     );
 }
 

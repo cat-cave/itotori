@@ -24,7 +24,7 @@
 //! opt-out; runs only in the periodic ground-truth oracle
 //! `just test real-bytes-oracle`). Run with
 //! `private inventory row=<sweetie> private inventory row=<kanon>
-//! cargo test -p utsushi-reallive --test jump_resume_real_bytes -- --ignored`.
+//! cargo test -p utsushi-reallive --features real-bytes --test jump_resume_real_bytes`.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -92,7 +92,6 @@ fn discover_renderable_scene(engine: &ReplayEngine, entry_scene: Option<u16>) ->
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row + _2"]
 fn jump_resume_lands_on_expected_frame_deterministically() {
     let corpora = real_corpus::corpora();
     if corpora.len() < 2 {
@@ -225,7 +224,6 @@ fn jump_resume_lands_on_expected_frame_deterministically() {
 /// the typed `FrameNotReached` (naming how far the stream reached), never a
 /// silent land-at-zero. Runs on whichever corpus has a renderable scene.
 #[test]
-#[ignore = "real-bytes; requires private inventory row + _2"]
 fn jump_past_stream_end_surfaces_typed_miss() {
     let corpora = real_corpus::corpora();
     if corpora.len() < 2 {

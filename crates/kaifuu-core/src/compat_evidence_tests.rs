@@ -8,19 +8,6 @@ const GOLDEN: &str =
     include_str!("../../../fixtures/kaifuu/compat-evidence/compat-evidence-report.json");
 
 #[test]
-#[ignore = "developer helper: regenerates the committed compat-evidence golden fixture"]
-fn emit_committed_golden() {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/kaifuu/compat-evidence");
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(
-        dir.join("compat-evidence-report.json"),
-        clean_report().stable_json().unwrap(),
-    )
-    .unwrap();
-}
-
-#[test]
 fn clean_report_integrates_all_three_sources_per_claim() {
     let bundle = bundle_fixtures::clean_bundle();
     let report = clean_report();
@@ -96,7 +83,7 @@ fn golden_fixture_matches_integrated_report() {
     let produced = clean_report().stable_json().expect("serialize");
     assert_eq!(
         produced, GOLDEN,
-        "committed golden is stale — re-run the ignored `emit_committed_golden` helper"
+        "committed golden is stale — update it deliberately"
     );
 }
 

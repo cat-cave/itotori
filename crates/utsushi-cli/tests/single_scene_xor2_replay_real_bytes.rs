@@ -31,8 +31,8 @@
 //! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE
 //! (no opt-out; runs only in the periodic ground-truth oracle
 //! `just test real-bytes-oracle`, where corpora are staged). Run with
-//! `private inventory row=<sweetie-hd> cargo test -p utsushi-cli
-//! --test single_scene_xor2_replay_real_bytes -- --ignored`.
+//! `ITOTORI_VAULT_ROOT=/scratch/corpus cargo test -p utsushi-cli
+//! --features real-bytes --test single_scene_xor2_replay_real_bytes`.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -233,7 +233,6 @@ fn cli_bin() -> &'static str {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row (Sweetie HD, xor_2 / 110002)"]
 fn single_scene_replay_validate_decodes_real_text_on_xor2_title() {
     let Some(seen_path) = real_corpus::seen_txt_path() else {
         real_corpus::require_real_bytes(

@@ -1,13 +1,13 @@
-// @itotori-real-bytes-proof
 //! Launch hydration through the request VFS.
 //!
 //! The synthetic case deliberately gives the port an input root that does not
 //! contain the assets. Launch can therefore succeed only by consuming the
-//! mounted substrate VFS. The real-byte case is optional and exercises two
-//! externally supplied installations without serializing their content.
+//! mounted substrate VFS. The real-byte case has a separate feature-gated
+//! target and exercises two externally supplied installations without
+//! serializing their content.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use kaifuu_siglus::{
@@ -25,9 +25,6 @@ use utsushi_siglus::UtsushiSiglusPort;
 mod choice_support;
 
 use choice_support::synthetic_choice_scene_payload;
-
-const FIRST_TITLE_ENV: &str = "siglus/1/encrypted";
-const SECOND_TITLE_ENV: &str = "siglus/2/encrypted";
 
 #[test]
 fn launch_hydrates_the_asset_package_from_request_vfs_and_indexes_scenes() {
@@ -236,61 +233,6 @@ fn observe_surfaces_linked_selbtn_options_with_their_branch_targets() {
             .iter()
             .all(|option| option.branch_target_offset.is_some())
     );
-}
-
-#[test]
-#[ignore = "real-bytes; requires private corpora"]
-fn two_real_siglus_titles_launch_through_vfs_when_available() {
-    let Some(first) = corpus_root(FIRST_TITLE_ENV) else {
-        return;
-    };
-    let Some(second) = corpus_root(SECOND_TITLE_ENV) else {
-        return;
-    };
-
-    let mut scene_counts = [
-        exercise_real_title(&first, "siglus-title-one"),
-        exercise_real_title(&second, "siglus-title-two"),
-    ];
-    scene_counts.sort_unstable();
-    assert_eq!(scene_counts, [278, 298]);
-}
-
-fn corpus_root(variable: &str) -> Option<PathBuf> {
-    let Some(value) = corpus_registry::resolve_identity(variable).ok() else {
-        panic!("real-bytes proof not established: required corpus is unavailable");
-    };
-    let candidate = value;
-    let root = if candidate.is_dir() {
-        candidate
-    } else {
-        candidate.parent().map(Path::to_path_buf)?
-    };
-    for logical in ["Scene.pck", "Gameexe.dat", "SiglusEngine.exe"] {
-        if !root.join(logical).is_file() {
-            panic!("real-bytes proof not established: required corpus asset is unavailable");
-        }
-    }
-    Some(root)
-}
-
-fn exercise_real_title(root: &Path, package_id: &str) -> usize {
-    let vfs = mounted_vfs(root, package_id);
-    // The port must not consult this host path; all three required assets are
-    // resolved from the package above.
-    let request = PortRequest::new(
-        Path::new("siglus-launch-input-is-vfs-only"),
-        package_id,
-        RuntimeOperation::Trace,
-    )
-    .with_vfs(vfs);
-    let mut port = UtsushiSiglusPort::new();
-    port.launch(&request)
-        .expect("real Siglus launch hydration succeeds through VFS");
-    assert_eq!(port.scene_count(), port.moment_count());
-    assert!(port.gameexe_entry_count() > 0);
-    assert!(port.context().asset_package().is_some());
-    port.scene_count()
 }
 
 fn mounted_vfs(root: &Path, package_id: &str) -> Arc<dyn RuntimeVfs> {

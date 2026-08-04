@@ -1,37 +1,3 @@
-const CORPORA: [&str; 2] = ["/scratch/corpus/softpal-1", "/scratch/corpus/softpal-2"];
-
-struct Inputs {
-    archive: Vec<u8>,
-    csv_pac: Vec<u8>,
-    script: Vec<u8>,
-    textdat: Vec<u8>,
-    points: Vec<u8>,
-    mem_dat: Vec<u8>,
-}
-
-fn inputs(root: &Path) -> Option<Inputs> {
-    let archive_bytes = fs::read(root.join("data.pac")).ok()?;
-    let archive = PacArchive::parse(&archive_bytes).ok()?;
-    let extract = |name| {
-        archive
-            .find(name)
-            .and_then(|entry| archive.extract(&archive_bytes, entry).ok())
-            .map(ToOwned::to_owned)
-    };
-    let script = extract("SCRIPT.SRC")?;
-    let textdat = extract("TEXT.DAT")?;
-    let points = extract("POINT.DAT")?;
-    let mem_dat = extract("MEM.DAT")?;
-    Some(Inputs {
-        archive: archive_bytes,
-        csv_pac: fs::read(root.join("csv.pac")).ok()?,
-        script,
-        textdat,
-        points,
-        mem_dat,
-    })
-}
-
 /// POINT.DAT offsets are relative to the 12-byte program header and ordered
 /// backwards on disk. This is intentionally a local, read-only decoder: the
 /// experiment needs only the CFG edge set, not a new runtime entry surface.
@@ -324,14 +290,4 @@ fn rank_legal_entries(script: &[u8], points: &[u8]) -> Vec<EntryReachability> {
             })
         })
         .collect()
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct CallContract {
-    category: u16,
-    function: u16,
-    stack_depth: usize,
-    destination_tag: Option<u8>,
-    return_value: Option<i32>,
-    bank_writes: Vec<(u8, u32)>,
 }

@@ -1,18 +1,14 @@
-//! Env-gated real-bytes proof for `utsushi structure` (M1 bridge layering).
+//! Compile-time real-bytes proof for the Utsushi structure command (M1 bridge layering).
 //!
-//! The narrative-structure producer lives on the UTSUSHI side (it needs the
-//! replay runtime; deps flow utsushi → kaifuu, never back). This drives the
-//! `utsushi-cli` binary's `structure` subcommand over the REAL primary_corpus HD
-//! archive and asserts the bridge-bound v2 structure contains complete,
-//! replay-derived narrative evidence.
-//!
-//! Env-gated on `private inventory row`; runs only in the periodic
-//! ground-truth oracle where the corpus is staged.
+//! The test builds its exact whole-archive bridge directly from the staged
+//! Seen.txt and Gameexe.ini, then drives the Utsushi structure command. It
+//! therefore has no pre-generated bridge-artifact dependency.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
 
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde_json::Value;
@@ -35,19 +31,91 @@ fn utsushi_cli_binary() -> PathBuf {
         .expect("workspace root")
 }
 
-#[test]
-#[ignore = "real-bytes; requires the private inventory and its generated bridge artifact"]
-fn utsushi_structure_primary_corpus_rejects_truncation_without_an_artifact() {
-    let (Some(gameexe), Some(seen), Some(bridge_path)) = (
-        real_corpus::gameexe_ini_path(),
-        real_corpus::seen_txt_path(),
-        real_corpus::game_root()
-            .map(|root| root.join("bridge.json"))
-            .filter(|path| path.is_file()),
-    ) else {
-        panic!("real-bytes proof not established: required corpus artifact is unavailable");
+fn real_paths() -> (PathBuf, PathBuf) {
+    let gameexe = real_corpus::gameexe_ini_path()
+        .unwrap_or_else(|| panic!("real-bytes proof requires staged Gameexe.ini"));
+    let seen = real_corpus::seen_txt_path()
+        .unwrap_or_else(|| panic!("real-bytes proof requires staged Seen.txt"));
+    (gameexe, seen)
+}
+
+fn write_whole_seen_bridge(gameexe_path: &Path, seen_path: &Path, output: &Path) -> Value {
+    let seen_bytes = fs::read(seen_path).expect("read staged Seen.txt");
+    let gameexe_bytes = fs::read(gameexe_path).expect("read staged Gameexe.ini");
+    let index = kaifuu_reallive::parse_archive(&seen_bytes).expect("parse Seen.txt archive");
+    let mut corpus = kaifuu_reallive::decompress_archive_scenes(&seen_bytes, &index);
+    assert_eq!(
+        corpus.scenes.len(),
+        index.entries.len(),
+        "every populated archive scene must decompress for the whole bridge"
+    );
+    let recovery = kaifuu_reallive::recover_and_decrypt_archive(&mut corpus.scenes);
+    assert!(
+        recovery.validated,
+        "staged archive must validate its cross-scene xor_2 recovery: {recovery:?}"
+    );
+
+    let scene_inputs: Vec<_> = index
+        .entries
+        .iter()
+        .map(|entry| {
+            let position = corpus.position_of(entry.scene_id).unwrap_or_else(|| {
+                panic!(
+                    "scene {} vanished from the decompressed corpus",
+                    entry.scene_id
+                )
+            });
+            let start = entry.byte_offset as usize;
+            let end = start + entry.byte_len as usize;
+            let scene_bytes = &seen_bytes[start..end];
+            let header = kaifuu_reallive::SceneHeader::parse(scene_bytes)
+                .expect("indexed scene header remains valid");
+            kaifuu_reallive::BridgeSceneInput {
+                scene_id: entry.scene_id,
+                scene_bytes,
+                decompressed_bytecode: &corpus.scenes[position].bytecode,
+                scene_kidoku_count: header.kidoku_count,
+            }
+        })
+        .collect();
+    let gameexe = kaifuu_reallive::parse_gameexe_inventory(&gameexe_bytes);
+    let opts = kaifuu_reallive::BridgeOpts {
+        game_id: "sweetie-hd",
+        game_version: "1.0.0",
+        source_profile_id: "kaifuu-reallive-sweetie-hd",
+        source_locale: "ja-JP",
+        extractor_name: "kaifuu-reallive-bridge",
+        extractor_version: "0.1.0",
+        scene_kidoku_count: 0,
     };
+    let bridge =
+        kaifuu_reallive::produce_whole_seen_bundle(&seen_bytes, &scene_inputs, &gameexe, &opts)
+            .expect("whole staged archive produces a valid bridge");
+    fs::write(
+        output,
+        serde_json::to_vec(&bridge.json).expect("serialize bridge"),
+    )
+    .expect("write temporary bridge");
+    bridge.json
+}
+
+/// The common structure schema keeps engine-specific byte provenance under the
+/// provider extension. These assertions deliberately retain the prior proof's
+/// required fields; only their canonical schema location differs.
+fn reallive_evidence<'a>(value: &'a Value, field: &str) -> &'a Value {
+    value
+        .get("engineEvidence")
+        .and_then(|evidence| evidence.get("reallive"))
+        .and_then(|evidence| evidence.get(field))
+        .unwrap_or_else(|| panic!("narrative element is missing engineEvidence.reallive.{field}"))
+}
+
+#[test]
+fn utsushi_structure_primary_corpus_rejects_truncation_without_an_artifact() {
+    let (gameexe, seen) = real_paths();
     let tmp_dir = tempfile::tempdir().expect("tmp dir");
+    let bridge_path = tmp_dir.path().join("whole.bridge.json");
+    let _bridge = write_whole_seen_bridge(&gameexe, &seen, &bridge_path);
     let structure_out = tmp_dir.path().join("must-not-exist.json");
     let output = Command::new(utsushi_cli_binary())
         .args(["structure", "--engine", "reallive", "--gameexe"])
@@ -72,26 +140,16 @@ fn utsushi_structure_primary_corpus_rejects_truncation_without_an_artifact() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires the private inventory and its generated bridge artifact"]
 fn utsushi_structure_primary_corpus_v2_matches_bridge_and_graph() {
-    let (Some(gameexe), Some(seen), Some(bridge_path)) = (
-        real_corpus::gameexe_ini_path(),
-        real_corpus::seen_txt_path(),
-        real_corpus::game_root()
-            .map(|root| root.join("bridge.json"))
-            .filter(|path| path.is_file()),
-    ) else {
-        panic!("real-bytes proof not established: required corpus artifact is unavailable");
-    };
-    let bridge: Value = serde_json::from_slice(&std::fs::read(&bridge_path).expect("read bridge"))
-        .expect("bridge JSON");
+    let (gameexe, seen) = real_paths();
+    let tmp_dir = tempfile::tempdir().expect("tmp dir");
+    let bridge_path = tmp_dir.path().join("whole.bridge.json");
+    let bridge = write_whole_seen_bridge(&gameexe, &seen, &bridge_path);
     let bridge_units = bridge["units"].as_array().expect("bridge units");
     let by_id = bridge_units
         .iter()
         .map(|unit| (unit["bridgeUnitId"].as_str().expect("bridgeUnitId"), unit))
         .collect::<std::collections::HashMap<_, _>>();
-
-    let tmp_dir = tempfile::tempdir().expect("tmp dir");
     let structure_out = tmp_dir.path().join("expanded.json");
     let output = Command::new(utsushi_cli_binary())
         .args(["structure", "--engine", "reallive", "--gameexe"])
@@ -137,15 +195,19 @@ fn utsushi_structure_primary_corpus_v2_matches_bridge_and_graph() {
             assert_eq!(unit["sourceAsset"], source["sourceAssetRef"]);
             if source["surfaceKind"] == "dialogue" {
                 assert_eq!(
-                    unit["byteOffsetInScene"],
+                    *reallive_evidence(unit, "byteOffsetInScene"),
                     source["sourceLocation"]["range"]["startByte"]
                 );
             }
-            let start = unit["byteOffsetInScene"].as_u64().expect("start");
-            let length = unit["byteLength"].as_u64().expect("length");
+            let start = reallive_evidence(unit, "byteOffsetInScene")
+                .as_u64()
+                .expect("start");
+            let length = reallive_evidence(unit, "byteLength")
+                .as_u64()
+                .expect("length");
             let asset = unit["sourceAsset"]["assetId"].as_str().expect("asset id");
             assert_eq!(
-                unit["rawByteHandle"],
+                *reallive_evidence(unit, "rawByteHandle"),
                 format!("raw:{asset}:{start}:{}", start + length)
             );
         }
@@ -155,14 +217,14 @@ fn utsushi_structure_primary_corpus_v2_matches_bridge_and_graph() {
                 "evidenceTier",
                 "color",
                 "sourceAsset",
-                "byteOffsetInScene",
-                "rawByteHandle",
                 "playOrder",
                 "revealOrder",
                 "routeMembership",
             ] {
                 assert!(message.get(field).is_some(), "message is missing {field}");
             }
+            reallive_evidence(message, "byteOffsetInScene");
+            reallive_evidence(message, "rawByteHandle");
             if message["linkageStatus"] == "runtime_only" {
                 assert!(message["bridgeRef"].is_null());
                 continue;
@@ -174,7 +236,7 @@ fn utsushi_structure_primary_corpus_v2_matches_bridge_and_graph() {
             assert_eq!(message["sourceAsset"], source["sourceAssetRef"]);
             if source["surfaceKind"] == "dialogue" {
                 assert_eq!(
-                    message["byteOffsetInScene"],
+                    *reallive_evidence(message, "byteOffsetInScene"),
                     source["sourceLocation"]["range"]["startByte"]
                 );
             }

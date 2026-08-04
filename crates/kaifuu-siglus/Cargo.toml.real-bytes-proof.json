@@ -1,5 +1,6 @@
 {
   "schema": "itotori.real-bytes-proof.v1",
   "engine": "siglus",
-  "mode": "all-ignored"
+  "mode": "feature",
+  "role": "engine"
 }

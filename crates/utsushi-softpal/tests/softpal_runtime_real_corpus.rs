@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use kaifuu_softpal::{OpcodeScan, PacArchive, ScriptScan, TextDat};
 use utsushi_softpal::{SceneStep, SoftpalScene};
 
-const CORPORA: [&str; 2] = ["/scratch/corpus/softpal-1", "/scratch/corpus/softpal-2"];
+const CORPORA: [(&str, u16, usize); 2] = [("softpal/1/plain", 1, 417), ("softpal/2/plain", 2, 160)];
 
 struct Inputs {
     archive: Vec<u8>,
@@ -18,28 +18,60 @@ struct Inputs {
     mem_dat: Vec<u8>,
 }
 
-fn inputs(root: &Path) -> Option<Inputs> {
-    let archive_bytes = fs::read(root.join("data.pac")).ok()?;
-    let archive = PacArchive::parse(&archive_bytes).ok()?;
+fn runtime_root(identity: &str, ordinal: u16, expected_pac_count: usize) -> PathBuf {
+    let registry_root = corpus_registry::resolve_identity(identity)
+        .unwrap_or_else(|reason| panic!("real-bytes proof not established: {identity}: {reason}"));
+    assert!(
+        registry_root.is_dir(),
+        "real-bytes proof not established: {identity} registry root is unavailable"
+    );
+    let mount = corpus_registry::media_root()
+        .unwrap_or_else(|reason| panic!("real-bytes proof not established: {reason}"));
+    let root = mount.join(format!("softpal-{ordinal}"));
+    assert!(
+        root.is_dir(),
+        "real-bytes proof not established: staged runtime root for {identity} is unavailable"
+    );
+    let archive_bytes = fs::read(root.join("data.pac"))
+        .unwrap_or_else(|error| panic!("read staged {identity} data.pac: {error}"));
+    let archive = PacArchive::parse(&archive_bytes)
+        .unwrap_or_else(|error| panic!("parse staged {identity} data.pac: {error}"));
+    assert_eq!(
+        archive.len(),
+        expected_pac_count,
+        "staged runtime root must match the registry-selected corpus"
+    );
+    root
+}
+
+fn inputs(root: &Path) -> Inputs {
+    let archive_bytes = fs::read(root.join("data.pac"))
+        .unwrap_or_else(|error| panic!("read data.pac under {}: {error}", root.display()));
+    let archive = PacArchive::parse(&archive_bytes)
+        .unwrap_or_else(|error| panic!("parse data.pac under {}: {error}", root.display()));
     let extract = |name| {
-        archive
+        let entry = archive
             .find(name)
-            .and_then(|entry| archive.extract(&archive_bytes, entry).ok())
-            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| panic!("{name} missing from data.pac under {}", root.display()));
+        archive
+            .extract(&archive_bytes, entry)
+            .unwrap_or_else(|error| panic!("extract {name} under {}: {error}", root.display()))
+            .to_vec()
     };
-    let script = extract("SCRIPT.SRC")?;
-    let textdat = extract("TEXT.DAT")?;
-    let points = extract("POINT.DAT")?;
-    let mem_dat = extract("MEM.DAT")?;
-    let csv_pac = fs::read(root.join("csv.pac")).ok()?;
-    Some(Inputs {
+    let script = extract("SCRIPT.SRC");
+    let textdat = extract("TEXT.DAT");
+    let points = extract("POINT.DAT");
+    let mem_dat = extract("MEM.DAT");
+    let csv_pac = fs::read(root.join("csv.pac"))
+        .unwrap_or_else(|error| panic!("read csv.pac under {}: {error}", root.display()));
+    Inputs {
         archive: archive_bytes,
         csv_pac,
         script,
         textdat,
         points,
         mem_dat,
-    })
+    }
 }
 
 fn dialogue_offsets(scene: &SoftpalScene) -> Vec<usize> {
@@ -54,18 +86,10 @@ fn dialogue_offsets(scene: &SoftpalScene) -> Vec<usize> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires both staged Softpal corpora"]
 fn reaches_the_named_work_process_boundary_without_fabricating_static_text() {
-    for (index, root) in CORPORA.iter().enumerate() {
-        let root = PathBuf::from(root);
-        let Some(inputs) = inputs(&root) else {
-            eprintln!(
-                "SKIP corpus {}: missing data.pac or VM inputs at {}",
-                index + 1,
-                root.display()
-            );
-            continue;
-        };
+    for (index, (identity, ordinal, expected_pac_count)) in CORPORA.iter().enumerate() {
+        let root = runtime_root(identity, *ordinal, *expected_pac_count);
+        let inputs = inputs(&root);
         let first = SoftpalScene::execute_with_points_mem_dat_and_pacs(
             &inputs.script,
             &inputs.textdat,

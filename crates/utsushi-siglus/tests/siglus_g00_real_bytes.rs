@@ -1,11 +1,8 @@
 // @itotori-real-bytes-proof
-//! Env-gated, multi-title proof for the production Siglus G00 capture path.
+//! Multi-title proof for the production Siglus G00 capture path.
 //!
-//! The two roots are intentionally explicit rather than checked into a test
-//! fixture: copyrighted title bytes stay outside this repository. When either
-//! root is absent the proof is not established; when both are present
-//! it drives the real `EnginePort` + `Runner` lifecycle for one compressed
-//! type-0 and one layered type-2 asset from each title.
+//! The staged owned roots drive the real `EnginePort` + `Runner` lifecycle for
+//! compressed type-0/type-2 assets and a type-3 encrypted-JPEG asset.
 
 use std::fs;
 use std::io::Read;
@@ -24,7 +21,6 @@ const FIRST_TITLE_ENV: &str = "siglus/1/encrypted";
 const SECOND_TITLE_ENV: &str = "siglus/2/encrypted";
 
 #[test]
-#[ignore = "real-bytes; requires private corpora"]
 fn two_real_siglus_titles_decode_layered_g00_and_capture_redacted_pngs() {
     let first = corpus_root(FIRST_TITLE_ENV);
     let second = corpus_root(SECOND_TITLE_ENV);
@@ -33,7 +29,6 @@ fn two_real_siglus_titles_decode_layered_g00_and_capture_redacted_pngs() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires a private corpus"]
 fn second_real_siglus_title_decodes_type3_encrypted_jpeg_into_visible_background() {
     let root = corpus_root(SECOND_TITLE_ENV);
     let logical_path = find_type3_asset(&root)
@@ -58,12 +53,12 @@ fn second_real_siglus_title_decodes_type3_encrypted_jpeg_into_visible_background
 }
 
 fn corpus_root(variable: &str) -> PathBuf {
-    let path = corpus_registry::resolve_identity(variable).unwrap_or_else(|_| {
-        panic!("real-bytes proof not established: required corpus is unavailable");
-    });
-    if !path.is_dir() {
-        panic!("real-bytes proof not established: required corpus directory is unavailable");
-    }
+    let path = corpus_registry::resolve_identity(variable)
+        .unwrap_or_else(|reason| panic!("REAL-BYTES REQUIRED INPUT: {variable}: {reason}"));
+    assert!(
+        path.is_dir(),
+        "REAL-BYTES REQUIRED INPUT: {variable} corpus directory is unavailable"
+    );
     path
 }
 

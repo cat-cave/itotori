@@ -1,7 +1,6 @@
 use super::*;
 
 #[test]
-#[ignore = "real-bytes; requires reallive/1/encrypted + reallive/2/plain inventory rows"]
 fn headless_branch_following_drives_both_titles_to_natural_terminus() {
     let corpora =
         corpora_or_skip("headless_branch_following_drives_both_titles_to_natural_terminus");

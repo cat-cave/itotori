@@ -31,17 +31,25 @@ test("the declared Siglus engine selects Kaifuu and every Utsushi real-byte proo
     new Set(siglus.proofs.map((proof) => proof.package)),
     new Set(["kaifuu-siglus", "utsushi-siglus"]),
   );
-  assert.ok(
-    siglus.proofs.some(
-      (proof) => proof.target === "scene_vm_real_bytes" && !proof.args.includes("--ignored"),
-    ),
-    "the non-ignored execution-frontier proof must still run directly",
+  assert.deepEqual(
+    new Set(siglus.proofs.map((proof) => proof.target).filter(Boolean)),
+    new Set([
+      "observe_real_bytes",
+      "scene_vm_real_bytes",
+      "siglus_g00_real_bytes",
+      "structure_export_real_bytes",
+      "launch_hydration_real_bytes",
+    ]),
   );
   assert.ok(
     siglus.proofs.some(
-      (proof) => proof.package === "utsushi-siglus" && proof.mode === "all-ignored",
+      (proof) =>
+        proof.target === "scene_vm_real_bytes" &&
+        proof.role === "engine" &&
+        proof.args.includes("--features") &&
+        proof.args.includes("real-bytes"),
     ),
-    "the package-wide ignored proof convention must cover each ignored Utsushi proof",
+    "the feature-gated execution-frontier proof must still run directly",
   );
 });
 
@@ -57,7 +65,7 @@ test("real-byte declarations derive cargo commands and reject a missing adjacent
     );
     writeFileSync(
       join(crate, "Cargo.toml.real-bytes-proof.json"),
-      `${JSON.stringify({ schema: REAL_BYTES_PROOF_SCHEMA, engine: "demo", mode: "all-ignored" })}\n`,
+      `${JSON.stringify({ schema: REAL_BYTES_PROOF_SCHEMA, engine: "demo", mode: "feature", role: "support" })}\n`,
     );
     writeFileSync(testFile, "// @itotori-real-bytes-proof\n");
 
@@ -68,14 +76,14 @@ test("real-byte declarations derive cargo commands and reject a missing adjacent
 
     writeFileSync(
       `${testFile}.real-bytes-proof.json`,
-      `${JSON.stringify({ schema: REAL_BYTES_PROOF_SCHEMA, engine: "demo", mode: "default" })}\n`,
+      `${JSON.stringify({ schema: REAL_BYTES_PROOF_SCHEMA, engine: "demo", mode: "feature", role: "engine" })}\n`,
     );
     const proofs = discoverRealBytesProofs(root);
     assert.deepEqual(
       proofs.map(({ args }) => args),
       [
-        ["test", "-p", "demo", "--", "--ignored"],
-        ["test", "-p", "demo", "--test", "live_real_bytes"],
+        ["test", "-p", "demo", "--features", "real-bytes"],
+        ["test", "-p", "demo", "--features", "real-bytes", "--test", "live_real_bytes"],
       ],
     );
   } finally {
@@ -93,7 +101,15 @@ test("the Kaifuu Siglus proof refuses missing declared titles", () => {
   try {
     const result = spawnSync(
       "cargo",
-      ["test", "-p", "kaifuu-siglus", "--test", "siglus_gameexe_dat_real_bytes", "--", "--ignored"],
+      [
+        "test",
+        "-p",
+        "kaifuu-siglus",
+        "--features",
+        "real-bytes",
+        "--test",
+        "siglus_gameexe_dat_real_bytes",
+      ],
       {
         cwd: new URL("..", import.meta.url),
         encoding: "utf8",
@@ -101,7 +117,10 @@ test("the Kaifuu Siglus proof refuses missing declared titles", () => {
       },
     );
     assert.notEqual(result.status, 0, "missing input must not receive a green Cargo receipt");
-    assert.match(result.stdout + result.stderr, /REAL-BYTES SKIP .*siglus\/1\/encrypted/u);
+    assert.match(
+      result.stdout + result.stderr,
+      /REAL-BYTES REQUIRED INPUT .*siglus\/1\/encrypted/u,
+    );
   } finally {
     rmSync(configHome, { force: true, recursive: true });
   }
@@ -114,6 +133,8 @@ test("the Softpal Pal.dll proof has a missing-binary regression assertion", () =
       "test",
       "-p",
       "kaifuu-softpal",
+      "--features",
+      "real-bytes",
       "--test",
       "pal_dll_loose_override_real",
       "missing_pal_dll_is_a_non_passing_required_input",

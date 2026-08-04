@@ -22,11 +22,15 @@ use utsushi_siglus::scene_vm::{
     execute_title_scene_with_stage_snapshots_observed,
 };
 
+#[cfg(all(test, feature = "real-bytes"))]
+use self::render::load_g00;
 use self::render::{MessageWindowProjection, render_boundary};
 #[cfg(test)]
-use self::render::{composite_message_window, load_g00, non_background_pixel_count};
+use self::render::{composite_message_window, non_background_pixel_count};
 #[cfg(test)]
-use utsushi_siglus::{SiglusCgFrame, decode_siglus_g00, render_siglus_stage};
+use utsushi_siglus::SiglusCgFrame;
+#[cfg(all(test, feature = "real-bytes"))]
+use utsushi_siglus::{decode_siglus_g00, render_siglus_stage};
 
 const USAGE: &str = "usage: utsushi siglus-live-player --game-root <DIR> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--redaction on] [--reveal]";
 

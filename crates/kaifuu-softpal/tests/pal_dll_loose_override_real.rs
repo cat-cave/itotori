@@ -12,7 +12,7 @@
 //! by this test; here we prove the engine binary actually contains the file /
 //! archive path machinery that behaviour depends on.
 //!
-//! `#[ignore]`d real-bytes proof over both staged corpora. An absent named
+//! Feature-gated real-bytes proof over both staged corpora. An absent named
 //! binary is a **failing** required-input outcome, never a successful skip.
 //! **No copyrighted text lives in this file** — only ASCII engine-format
 //! markers.
@@ -57,7 +57,7 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
 fn required_binary(label: &str, path: &Path) -> Vec<u8> {
     fs::read(path).unwrap_or_else(|error| {
         panic!(
-            "REAL-BYTES SKIP pal_dll_carries_loose_and_archive_path_machinery: \
+            "REAL-BYTES REQUIRED INPUT pal_dll_carries_loose_and_archive_path_machinery: \
              {label} required Pal.dll missing at {} ({error}); refusing a passing real-bytes proof \
              without its required input",
             path.display(),
@@ -66,13 +66,12 @@ fn required_binary(label: &str, path: &Path) -> Vec<u8> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires both staged Softpal Pal.dll binaries"]
 fn pal_dll_carries_loose_and_archive_path_machinery() {
     let mut checked = 0usize;
     for (label, need, raw_path) in CORPORA {
         let root = resolve(need).unwrap_or_else(|reason| {
             panic!(
-                "REAL-BYTES SKIP pal_dll_carries_loose_and_archive_path_machinery: \
+                "REAL-BYTES REQUIRED INPUT pal_dll_carries_loose_and_archive_path_machinery: \
                  {need} is unavailable ({reason}); refusing a passing real-bytes proof without its required input"
             )
         });

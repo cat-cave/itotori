@@ -6,7 +6,7 @@
 //! These tests decode REAL g00 art from a staged RealLive corpus and
 //! composite it through [`RenderPass`], then assert PIXEL-CATEGORY
 //! INVARIANTS only — never an embedded/committed real-art pixel value.
-//! They are `#[ignore]`-gated and inventory-driven, following the crate's
+//! They are feature-gated and inventory-driven, following the crate's
 //! real-bytes convention:
 //!
 //! - `reallive/1/encrypted` — title 1 (primary_corpus HD).

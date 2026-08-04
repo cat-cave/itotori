@@ -7,13 +7,9 @@
 //!    [`GraphicsRuntime::state_snapshot`]. The per-op assertions live
 //!    in the in-crate unit tests; this file pins the end-to-end
 //!    "registry mounts the full alpha-tier opcode union" surface and
-//!    the layer-ordering audit-focus pin against the real headless
-//!    render pipeline.
-//! 2. Real-bytes gated: `grp_openbg_bg01a1_registers_bg_plane` reads
-//!    primary_corpus HD's `$GAME/REALLIVEDATA/g00/BG01A1.g00` through a
-//!    typed [`AssetPackage`] and pins that the `openBg` opcode
-//!    registers the bg plane background with a typed
-//!    `(width=1280, height=720)` canvas.
+//!    the layer-ordering audit-focus pin against the headless render
+//!    pipeline. The separate feature-gated `graphics_rlop_real_bytes`
+//!    target covers the corpus-backed `openBg` path.
 //!
 //! # Multi-game posture
 //!
@@ -25,17 +21,7 @@
 //! contract explicitly accepts the multi-game gap. The commit message
 //! records the single-corpus posture explicitly.
 
-#[path = "support/real_corpus.rs"]
-mod real_corpus;
-
-use std::fs;
-use std::path::PathBuf;
 use std::sync::Arc;
-
-use utsushi_core::substrate::{
-    AssetBytes, AssetId, AssetKind, AssetMetadata, AssetPackage, AssetSize, CaseRule,
-    PackageDescriptor, PackageKind, PackageSource, VfsError, VfsResult,
-};
 
 use utsushi_reallive::{
     ExprValue, GRP_MODULE_ID, GraphicsObjectKind, GraphicsPlane, GraphicsRuntime, GrpOp,
@@ -43,83 +29,6 @@ use utsushi_reallive::{
     RLOperation, RenderPass, RlopKey, RlopRegistry, SCREEN_DC_SLOT, Vm, WipeColour,
     register_render_rlops,
 };
-
-const BG01A1_FILENAME: &str = "BG01A1.g00";
-const BG01A1_WIDTH: u32 = 1280;
-const BG01A1_HEIGHT: u32 = 720;
-
-fn real_g00_dir() -> Option<PathBuf> {
-    real_corpus::reallivedata_subdir("g00")
-}
-
-/// Synthetic [`AssetPackage`] that resolves `g00/<NAME>.g00` against a
-/// real on-disk directory. Only used by the gated real-bytes test —
-/// the substrate-honest VFS surface gets exercised end-to-end without
-/// dragging in a primary_corpus-specific composite package.
-#[derive(Debug)]
-struct OnDiskG00Package {
-    g00_dir: PathBuf,
-}
-
-impl OnDiskG00Package {
-    fn new(g00_dir: PathBuf) -> Self {
-        Self { g00_dir }
-    }
-}
-
-impl AssetPackage for OnDiskG00Package {
-    fn id(&self) -> &'static str {
-        "-on-disk-g00"
-    }
-
-    fn descriptor(&self) -> PackageDescriptor {
-        PackageDescriptor {
-            id: "-on-disk-g00".to_string(),
-            kind: PackageKind::Plaintext,
-            case_rule: CaseRule::Sensitive,
-            source: PackageSource::PublicName("-on-disk-g00".to_string()),
-            revision: None,
-        }
-    }
-
-    fn case_rule(&self) -> CaseRule {
-        CaseRule::Sensitive
-    }
-
-    fn resolve(&self, logical: &str) -> VfsResult<AssetId> {
-        AssetId::from_parts(self.id(), logical)
-    }
-
-    fn exists(&self, id: &AssetId) -> VfsResult<bool> {
-        let path = self.g00_dir.join(strip_g00_prefix(id.path()));
-        Ok(path.exists())
-    }
-
-    fn stat(&self, id: &AssetId) -> VfsResult<AssetMetadata> {
-        let path = self.g00_dir.join(strip_g00_prefix(id.path()));
-        let meta = fs::metadata(&path).map_err(|_| VfsError::AssetMissing { id: id.clone() })?;
-        Ok(AssetMetadata {
-            id: id.clone(),
-            kind: AssetKind::File,
-            size: AssetSize::Bytes(meta.len()),
-            revision: None,
-        })
-    }
-
-    fn open(&self, id: &AssetId) -> VfsResult<AssetBytes> {
-        let path = self.g00_dir.join(strip_g00_prefix(id.path()));
-        let bytes = fs::read(&path).map_err(|_| VfsError::AssetMissing { id: id.clone() })?;
-        Ok(AssetBytes::from(bytes))
-    }
-
-    fn list(&self, _prefix: &AssetId) -> VfsResult<Vec<AssetId>> {
-        Ok(Vec::new())
-    }
-}
-
-fn strip_g00_prefix(logical: &str) -> &str {
-    logical.strip_prefix("g00/").unwrap_or(logical)
-}
 
 fn runtime_with_registry() -> (Arc<GraphicsRuntime>, RlopRegistry) {
     let runtime = Arc::new(GraphicsRuntime::new());
@@ -269,48 +178,4 @@ fn grp_buffer_then_display_promotes_offscreen_dc_to_screen() {
         GraphicsObjectKind::Image { image_ref } => assert_eq!(image_ref.asset_key, "EV01"),
         other @ GraphicsObjectKind::Wipe { .. } => panic!("expected Image, got {other:?}"),
     }
-}
-
-#[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
-fn grp_openbg_bg01a1_registers_bg_plane() {
-    let Some(g00_dir) = real_g00_dir() else {
-        real_corpus::require_real_bytes("utsushi-reallive grp_openbg_bg01a1_registers_bg_plane");
-        return;
-    };
-    let bg01a1_path = g00_dir.join(BG01A1_FILENAME);
-    if !bg01a1_path.exists() {
-        panic!("real-bytes proof not established: required corpus asset is unavailable");
-    }
-    let runtime = Arc::new(GraphicsRuntime::new());
-    let package: Arc<dyn AssetPackage> = Arc::new(OnDiskG00Package::new(g00_dir));
-    runtime.set_asset_package(Arc::clone(&package));
-
-    // grpOpenBg(filename, effect) — the REAL opcode (73), filename FIRST.
-    let op = GrpRenderOp::new(Arc::clone(&runtime), GrpOp::OpenScreen);
-    let mut vm = Vm::new(1, 0);
-    op.dispatch(&mut vm, &[bytes(b"BG01A1"), int(0)]);
-
-    let snap = runtime.state_snapshot();
-    let bg_object = snap
-        .stack
-        .get(GraphicsPlane::Background, SCREEN_DC_SLOT)
-        .expect("DC0 registered");
-    match &bg_object.kind {
-        GraphicsObjectKind::Image { image_ref } => assert_eq!(image_ref.asset_key, "BG01A1"),
-        other @ GraphicsObjectKind::Wipe { .. } => panic!("expected Image, got {other:?}"),
-    }
-    let bg_canvas = snap.bg_canvas.expect("bg canvas recorded");
-    assert_eq!(bg_canvas.asset_key, "BG01A1");
-    let (width, height) = bg_canvas
-        .dimensions
-        .expect("decoded dimensions must be present once VFS is set");
-    assert_eq!(width, BG01A1_WIDTH);
-    assert_eq!(height, BG01A1_HEIGHT);
-    let warnings = runtime.take_warnings();
-    assert!(
-        warnings.is_empty(),
-        "openBg recorded warnings: {warnings:?}"
-    );
-    let _ = WipeColour::BLACK;
 }

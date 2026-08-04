@@ -1,14 +1,12 @@
 //! Real-bytes validation of the Softpal `TEXT.DAT` codec against two owned
 //! titles, extracting the inner `TEXT.DAT` via the crate's own PAC reader.
-//! `#[ignore]`d and env-gated: set `private inventory row` to the
-//! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
-//! `--ignored`. **No raw copyrighted bytes live in this file** — only record
+//! Feature-gated for the staged real-byte lane. **No raw copyrighted bytes live
+//! in this file** — only record
 //! counts, byte offsets, SJIS-valid-byte ratios, and SHA-256 hashes, which the
 //! codec must reproduce.
-//! Mirrors `pac_real_corpus.rs`: env-gated on `private inventory row`
-//! (the standalone Softpal research tree) and wired into the PERIODIC
-//! `ci-real-bytes` lane; see `pac_real_corpus.rs` for the env-gate /
-//! skip-when-absent contract.
+//! Mirrors `pac_real_corpus.rs`: feature-gated for the staged real-byte lane
+//! and wired into the PERIODIC `ci-real-bytes` run. Required corpus inputs
+//! fail loudly when unavailable.
 //! Coverage across the two titles:
 //! - **softpal_corpus_one** — `TEXT.DAT` byte 0 is `'$'` (**encrypted**): decrypt raises the
 //!   SJIS-valid-byte ratio (~0.76 → ~0.91); re-encrypt round-trips byte-identical.
@@ -149,7 +147,6 @@ fn extract_textdat(game: &GameExpectation, root: &Path) -> Vec<u8> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row (read-only Softpal research tree)"]
 fn textdat_codec_on_two_softpal_titles() {
     for (game, identity) in GAMES.iter().zip(GAME_IDENTITIES) {
         let root = corpus_registry::resolve_identity(identity)

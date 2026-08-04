@@ -56,7 +56,6 @@ fn unique_temp_dir(label: &str) -> PathBuf {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn detects_reallivedata_under_primary_corpus_root_with_resolved_path() {
     let Some(env_path) = real_corpus::game_root() else {
         // Visible skip — "no silent zero-state" requires the

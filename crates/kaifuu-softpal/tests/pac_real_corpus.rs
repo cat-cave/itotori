@@ -1,17 +1,12 @@
 //! Real-bytes validation of the Softpal PAC reader against two owned titles.
-//! `#[ignore]`d and env-gated: set `private inventory row` to the
-//! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
-//! `--ignored`. No raw copyrighted bytes live in this file — only entry
+//! Feature-gated for the staged real-byte lane. No raw copyrighted bytes live
+//! in this file — only entry
 //! counts, offsets, sizes, and SHA-256 hashes, which the reader must
 //! reproduce. The extracted `SCRIPT.SRC` / `TEXT.DAT` hashes were verified
 //! byte-for-byte against the GARbro / SoftPal-Tool `pac_unpack.py` oracle.
-//! Wired into the PERIODIC `ci-real-bytes` real-bytes lane (the
-//! `private inventory row` env-gate is detected by audit-strictness
-//! rule 5 as a live-corpus signal). The Softpal corpus lives under its own
-//! root (separate from the RealLive/RPG-Maker/vault tree), so the lane
-//! recipe skips the Softpal sub-lane CLEANLY when the root is absent — the
-//! env-strictness contract for these `kaifuu-softpal` proofs lives at the
-//! LANE level (skip-when-absent), not at the test level.
+//! Wired into the PERIODIC `ci-real-bytes` lane. The Softpal corpus has its
+//! own staged root (separate from the RealLive/RPG-Maker/vault tree), and a
+//! missing required input is a failing outcome.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -133,7 +128,6 @@ fn assert_inner_file(arc: &PacArchive, pac_bytes: &[u8], exp: &FileExpectation) 
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row (read-only Softpal research tree)"]
 fn enumerates_and_extracts_two_softpal_titles() {
     for (game, identity) in GAMES.iter().zip(GAME_IDENTITIES) {
         let root = corpus_registry::resolve_identity(identity)

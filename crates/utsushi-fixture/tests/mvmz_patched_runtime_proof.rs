@@ -28,12 +28,10 @@ use serde_json::Value;
 use utsushi_core::{RuntimeAdapter, RuntimeRequest};
 use utsushi_fixture::BrowserLaunchAdapter;
 use utsushi_fixture::mvmz_patched_runtime_proof::{
-    PatchedRuntimeProofInputs, build_mvmz_patched_runtime_proof, canonical_patched_output_hash,
+    PatchedRuntimeProofInputs, build_mvmz_patched_runtime_proof,
     mvmz_patched_runtime_proof_from_paths, read_prepatch_source_texts,
 };
-use utsushi_fixture::mvmz_runtime_proof::{
-    RuntimeObservationProofInputs, build_mvmz_runtime_observation_proof, read_static_fixture_source,
-};
+use utsushi_fixture::mvmz_runtime_proof::read_static_fixture_source;
 
 fn fixture_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mvmz_patched_observation")
@@ -299,134 +297,4 @@ fn from_paths_rejects_a_static_read_forged_patched_trace() {
     assert_eq!(proof["provenEvidenceTier"], "none");
 
     let _ = fs::remove_dir_all(work);
-}
-
-/// Regenerate the committed patched-output evidence artifacts from a
-/// genuine launched-browser render. Env-gated so it only writes when explicitly
-/// asked (`REGENERATE_FIXTURES=1`); prefers real Chromium (via
-/// `UTSUSHI_BROWSER_BIN`) and falls back to the deterministic fake-browser
-/// render (identical observation events). Run manually to refresh goldens.
-#[cfg(unix)]
-#[test]
-#[ignore = "regenerates committed patched-output evidence goldens; run manually with REGENERATE_FIXTURES=1"]
-fn regenerate_committed_patched_artifacts() {
-    if std::env::var("REGENERATE_FIXTURES").ok().as_deref() != Some("1") {
-        eprintln!(
-            "SKIP regenerate_committed_patched_artifacts: set REGENERATE_FIXTURES=1 to write"
-        );
-        return;
-    }
-    let out = proof_artifacts_dir();
-    fs::create_dir_all(&out).unwrap();
-
-    // Prefer a genuine Chromium launch for the committed trace; fall back to the
-    // deterministic fake browser (identical observation events) when absent.
-    let work = temp_dir("regen");
-    let trace = if let Some(browser) = resolve_real_browser() {
-        eprintln!("regen: launching REAL Chromium {}", browser.display());
-        BrowserLaunchAdapter::with_browser_program(&browser)
-            .trace(&RuntimeRequest::new(&fixture_dir()))
-            .expect("real Chromium trace launch must succeed")
-    } else {
-        eprintln!("regen: no Chromium; using deterministic fake-browser render");
-        let fake = write_fake_browser(&work);
-        BrowserLaunchAdapter::with_browser_program(fake)
-            .trace(&RuntimeRequest::new(&fixture_dir()))
-            .unwrap()
-    };
-    write_pretty(&out.join("patched-runtime-trace.json"), &trace);
-
-    // The alpha proof over the patched fixture's runtime observation.
-    let static_source = read_static_fixture_source(&fixture_dir()).unwrap();
-    let alpha = build_mvmz_runtime_observation_proof(&RuntimeObservationProofInputs {
-        runtime_trace: &trace,
-        static_fixture_source: &static_source,
-        screenshot_evidence: None,
-    })
-    .unwrap();
-    write_pretty(&out.join("alpha-proof.json"), &alpha);
-
-    // The Kaifuu PatchResult attesting the patched output BY HASH (never
-    // plaintext). Its outputHash is the canonical hash of the observed
-    // translated units — exactly what the proof recomputes and matches.
-    let hash = canonical_patched_output_hash(&observed_units_of(&trace));
-    let patch_result = serde_json::json!({
-        "schemaVersion": "0.2.0",
-        "patchResultId": "019ed060-0000-7000-8000-000000000001",
-        "patchExportId": "019ed060-0000-7000-8000-0000000000a1",
-        "status": "passed",
-        "outputHash": hash,
-        "failures": []
-    });
-    write_pretty(&out.join("patch-result.json"), &patch_result);
-
-    // Finally the deterministic patched-output proof verdict golden.
-    let proof = mvmz_patched_runtime_proof_from_paths(
-        &out.join("patched-runtime-trace.json"),
-        &fixture_dir(),
-        &out.join("patch-result.json"),
-        &out.join("alpha-proof.json"),
-        None,
-    )
-    .unwrap();
-    write_pretty(&out.join("proof.golden.json"), &proof);
-    assert_eq!(proof["patchedRuntimeObservationProven"], true);
-
-    let _ = fs::remove_dir_all(work);
-    eprintln!("regen: wrote {} artifacts", 4);
-}
-
-#[cfg(unix)]
-fn write_pretty(path: &Path, value: &Value) {
-    let mut text = serde_json::to_string_pretty(value).unwrap();
-    text.push('\n');
-    fs::write(path, text).unwrap();
-}
-
-/// Mirror of the crate-internal observed-unit extraction, for the regenerator's
-/// PatchResult hash. Kept here (not exported) so the module's canonical-hash
-/// contract is exercised end-to-end through the public builder in every lane.
-#[cfg(unix)]
-fn observed_units_of(trace: &Value) -> std::collections::BTreeMap<String, String> {
-    let mut units = std::collections::BTreeMap::new();
-    let events = trace
-        .get("observationHookEvents")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let unit_key = |event: &Value| {
-        event["bridgeRefs"][0]["sourceUnitKey"]
-            .as_str()
-            .map(str::to_string)
-    };
-    for event in &events {
-        match event["eventKind"].as_str() {
-            Some("text") => {
-                if let (Some(key), Some(text)) =
-                    (unit_key(event), event["payload"]["text"].as_str())
-                {
-                    units.insert(key, text.to_string());
-                }
-            }
-            Some("choice") => {
-                if let (Some(key), Some(prompt)) =
-                    (unit_key(event), event["payload"]["prompt"].as_str())
-                {
-                    units.insert(key, prompt.to_string());
-                }
-                if let Some(options) = event["payload"]["options"].as_array() {
-                    for option in options {
-                        if let (Some(key), Some(label)) = (
-                            option["bridgeRef"]["sourceUnitKey"].as_str(),
-                            option["label"].as_str(),
-                        ) {
-                            units.insert(key.to_string(), label.to_string());
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    units
 }

@@ -1,5 +1,7 @@
 use super::super::*;
+#[cfg(feature = "real-bytes")]
 use std::collections::BTreeSet;
+#[cfg(feature = "real-bytes")]
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -36,8 +38,8 @@ fn player_response_reports_the_real_nonbackground_pixel_count() {
     );
 }
 
+#[cfg(feature = "real-bytes")]
 #[test]
-#[ignore = "real-bytes; requires a private corpus"]
 fn corpus_two_scene_85_renders_its_authored_bg01a01_text_boundary() {
     let Some(root) = corpus_registry::resolve_identity("siglus/2/encrypted").ok() else {
         panic!("real-bytes proof not established: required corpus is unavailable");
@@ -84,6 +86,7 @@ fn corpus_two_scene_85_renders_its_authored_bg01a01_text_boundary() {
     );
 }
 
+#[cfg(feature = "real-bytes")]
 pub(super) fn scene_background_stats(
     root: &Path,
     snapshots: &[StageSnapshot],

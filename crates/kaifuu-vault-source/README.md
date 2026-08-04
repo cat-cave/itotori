@@ -70,10 +70,10 @@ archives:
 | `path_traversal`       | archive containing `../escape.txt`                  |
 | `missing_metadata`     | archive without `_vault/metadata.json`              |
 
-The live by-id resolution proof against the real read-only `/archive/vault`
-is `tests/live_vault_by_id_test.rs` (`#[ignore]`, run with
-`ITOTORI_VAULT_ROOT=/archive/vault`): it resolves Oshioki Sweetie HD and
-Kanon by-id and checks the extracted `Seen.txt` per-file sha256.
+By-id discovery and materialization are exercised deterministically by
+`tests/discovery_test.rs`, `tests/metadata_test.rs`, and
+`tests/extraction_test.rs` against fresh synthetic vaults. The staged corpus
+lanes exercise their engine-specific real-byte readers directly.
 
 ## Semantic error codes
 
@@ -105,11 +105,7 @@ The adapter reads the vault's `catalog.db` and pins the catalog
 - **v3** — the live read-only `/archive/vault/catalog.db`.
 
 **v2 is intentionally excluded.** No v2 catalog exists to verify the
-adapter's queries against, and the project forbids blind widening. A v3
-open is proven by the env-gated test
-`tests/live_vault_open_test.rs` (`#[ignore]`, run with
-`ITOTORI_VAULT_ROOT=/archive/vault`), and live by-id resolution by
-`tests/live_vault_by_id_test.rs`.
+adapter's queries against, and the project forbids blind widening. A v3 open is proven by `tests/live_vault_open_test.rs`, which promotes a fresh synthetic catalog to schema v3 before opening it.
 
 The synthetic v1 fixture carries the by-id columns the resolver reads
 (`artifacts.release_id`, `artifacts.canonical_id`, `artifacts.vault_path`,
@@ -151,7 +147,7 @@ cargo fmt --check
 ## Dependency versions of note
 
 - `rusqlite` 0.40 (with `bundled` feature for a pure-Rust SQLite build).
-- `sha2` 0.10 (per-game-file hashing in the live by-id proof).
+- `sha2` 0.10 (hashing synthetic vault artifacts and source bytes).
 - `sevenz-rust2` 0.21 (`util` + `compress` features; default-features
   disabled to keep the dependency surface tight). Picked because it is
   pure Rust, lets the adapter reject path-traversal entries before any

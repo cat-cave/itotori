@@ -313,24 +313,28 @@ fn decode_type2(
             let dst_x = bx.saturating_add(region.rect.x1);
             let dst_y = by.saturating_add(region.rect.y1);
             let sub_pixels = sw.saturating_mul(sh);
-            for row in 0..sh {
-                for col in 0..sw {
-                    let s = src + (row * sw + col) * 4;
-                    if s + 4 > decoded.len() {
-                        continue;
-                    }
-                    let px = dst_x.saturating_add(col as i32);
-                    let py = dst_y.saturating_add(row as i32);
-                    if px < 0 || py < 0 || px as usize >= canvas_w || py as usize >= canvas_height {
-                        continue;
-                    }
-                    let d = ((py as usize) * canvas_w + px as usize) * 4;
-                    // Sub-bitmap pixel byte order is B, G, R, A.
-                    pixels_rgba[d] = decoded[s + 2];
-                    pixels_rgba[d + 1] = decoded[s + 1];
-                    pixels_rgba[d + 2] = decoded[s];
-                    pixels_rgba[d + 3] = decoded[s + 3];
+            // A truncated sub-bitmap must not make us scan the rest of its
+            // declared dimensions: every pixel past `available_pixels` had
+            // failed the old `s + 4 > decoded.len()` check and therefore
+            // could not affect the canvas. Keeping the source advance below
+            // preserves framing for the next sub-bitmap while bounding work
+            // on hostile width/height fields.
+            let available_pixels = decoded.len().saturating_sub(src) / 4;
+            for pixel_index in 0..sub_pixels.min(available_pixels) {
+                let row = pixel_index / sw;
+                let col = pixel_index % sw;
+                let s = src + pixel_index * 4;
+                let px = dst_x.saturating_add(col as i32);
+                let py = dst_y.saturating_add(row as i32);
+                if px < 0 || py < 0 || px as usize >= canvas_w || py as usize >= canvas_height {
+                    continue;
                 }
+                let d = ((py as usize) * canvas_w + px as usize) * 4;
+                // Sub-bitmap pixel byte order is B, G, R, A.
+                pixels_rgba[d] = decoded[s + 2];
+                pixels_rgba[d + 1] = decoded[s + 1];
+                pixels_rgba[d + 2] = decoded[s];
+                pixels_rgba[d + 3] = decoded[s + 3];
             }
             src = src.saturating_add(sub_pixels.saturating_mul(4));
         }

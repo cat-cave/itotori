@@ -7,6 +7,9 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+real-bytes = []
+
 [dependencies]
 kaifuu-core = { path = "../kaifuu-core" }
 kaifuu-reallive = { path = "../kaifuu-reallive" }
@@ -20,3 +23,18 @@ engine-contract = { path = "../engine-contract" }
 
 [lints]
 workspace = true
+
+[[test]]
+name = "live_softpal_detector_test"
+path = "tests/live_softpal_detector_test.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "reallive_adapter_length_changing_real_bytes"
+path = "tests/reallive_adapter_length_changing_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "reallive_detector_live_corpus"
+path = "tests/reallive_detector_live_corpus.rs"
+required-features = ["real-bytes"]

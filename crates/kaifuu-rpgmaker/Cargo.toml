@@ -1,5 +1,4 @@
 [package]
-# @itotori-real-bytes-package
 name = "kaifuu-rpgmaker"
 version = "0.0.0"
 publish = false

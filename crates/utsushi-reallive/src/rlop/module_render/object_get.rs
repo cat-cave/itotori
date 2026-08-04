@@ -1,10 +1,11 @@
 use super::*;
 use crate::{BankId, Value, VmWarning};
 
-/// Foreground-object getters that write through integer-bank references.
+/// Object getters that write through integer-bank references.
 #[derive(Debug)]
 pub struct ObjGetOp {
     runtime: Arc<GraphicsRuntime>,
+    plane: GraphicsPlane,
     kind: ObjGetKind,
 }
 
@@ -16,7 +17,19 @@ pub enum ObjGetKind {
 
 impl ObjGetOp {
     pub fn new(runtime: Arc<GraphicsRuntime>, kind: ObjGetKind) -> Self {
-        Self { runtime, kind }
+        Self::for_plane(runtime, GraphicsPlane::Foreground, kind)
+    }
+
+    pub fn for_plane(
+        runtime: Arc<GraphicsRuntime>,
+        plane: GraphicsPlane,
+        kind: ObjGetKind,
+    ) -> Self {
+        Self {
+            runtime,
+            plane,
+            kind,
+        }
     }
 }
 
@@ -25,7 +38,7 @@ impl RLOperation for ObjGetOp {
         let Some(slot) = arg_int(args, 0).and_then(slot_ok) else {
             vm.push_warning(VmWarning::RlopArgsInvalid {
                 op: "obj.get",
-                reason: "missing foreground object slot".to_owned(),
+                reason: "missing object slot".to_owned(),
             });
             return DispatchOutcome::Advance;
         };
@@ -37,7 +50,7 @@ impl RLOperation for ObjGetOp {
             return DispatchOutcome::Advance;
         };
         let values = self.runtime.with_stack(|stack| {
-            let object = stack.get_layer(GraphicsLayer::ForegroundObject, slot)?;
+            let object = stack.get_layer(object_layer(self.plane), slot)?;
             match self.kind {
                 ObjGetKind::Position => Some([object.position.x, object.position.y]),
                 ObjGetKind::Dimensions => object
@@ -49,7 +62,7 @@ impl RLOperation for ObjGetOp {
         let Some(values) = values else {
             vm.push_warning(VmWarning::RlopArgsInvalid {
                 op: "obj.get",
-                reason: "foreground object has no recoverable getter value".to_owned(),
+                reason: "object has no recoverable getter value".to_owned(),
             });
             return DispatchOutcome::Advance;
         };
@@ -109,6 +122,39 @@ mod tests {
         ObjGetOp::new(Arc::clone(&runtime), ObjGetKind::Position).dispatch(&mut vm, &args);
         let args = vec![ExprValue::Int(3), reference(1002), reference(1003)];
         ObjGetOp::new(runtime, ObjGetKind::Dimensions).dispatch(&mut vm, &args);
+
+        assert_eq!(vm.banks().get(BankId::IntA, 1000), Some(Value::Int(12)));
+        assert_eq!(vm.banks().get(BankId::IntA, 1001), Some(Value::Int(34)));
+        assert_eq!(vm.banks().get(BankId::IntA, 1002), Some(Value::Int(56)));
+        assert_eq!(vm.banks().get(BankId::IntA, 1003), Some(Value::Int(78)));
+    }
+
+    #[test]
+    fn background_object_getters_read_background_geometry() {
+        let runtime = Arc::new(GraphicsRuntime::new());
+        runtime.with_stack_mut(|stack| {
+            let mut object = GraphicsObject::image("synthetic");
+            object.position = crate::GraphicsPosition { x: 12, y: 34 };
+            object.geometry.surface = Some(crate::SurfaceGeometry {
+                width: 56,
+                height: 78,
+                origin: crate::GraphicsPosition::ORIGIN,
+            });
+            stack
+                .set_layer(GraphicsLayer::BackgroundObject, 3, object)
+                .expect("in-range background object");
+        });
+        let mut vm = Vm::new(1, 0);
+        let args = vec![ExprValue::Int(3), reference(1000), reference(1001)];
+        ObjGetOp::for_plane(
+            Arc::clone(&runtime),
+            GraphicsPlane::Background,
+            ObjGetKind::Position,
+        )
+        .dispatch(&mut vm, &args);
+        let args = vec![ExprValue::Int(3), reference(1002), reference(1003)];
+        ObjGetOp::for_plane(runtime, GraphicsPlane::Background, ObjGetKind::Dimensions)
+            .dispatch(&mut vm, &args);
 
         assert_eq!(vm.banks().get(BankId::IntA, 1000), Some(Value::Int(12)));
         assert_eq!(vm.banks().get(BankId::IntA, 1001), Some(Value::Int(34)));

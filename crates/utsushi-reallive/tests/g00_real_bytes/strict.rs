@@ -116,7 +116,6 @@ fn assert_strict_validator_accepts_clean_decodes(title: &str, g00_dir: &PathBuf)
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory rows reallive/1/encrypted or reallive/2/plain"]
 fn g00_strict_validator_accepts_real_corpus_both_titles() {
     let mut ran = false;
     for need in [real_corpus::PRIMARY, real_corpus::SECONDARY] {

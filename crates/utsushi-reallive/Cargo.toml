@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 description = "capability_utsushi_200 alpha-gate scaffold: pure-Rust RealLive engine port that registers conformance against the utsushi-core substrate facade. Clean-room; rlvm is a research anchor only and is not linked, vendored, or mechanically translated."
 
+[features]
+real-bytes = []
+
 [dependencies]
 # Real TrueType glyph rasteriser for the headless render pipeline's
 # localized text layer. Pure-Rust, no_std-capable, zero runtime IO: the
@@ -70,6 +73,186 @@ files-referenced = [
 kaifuu-core = { path = "../kaifuu-core" }
 kaifuu-reallive = { path = "../kaifuu-reallive" }
 serde_json.workspace = true
+
+[[test]]
+name = "assignop_blast_radius_real_bytes"
+path = "tests/assignop_blast_radius_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "audio_rlop_real_bytes"
+path = "tests/audio_rlop_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "avg32_lzss_differential_real_bytes"
+path = "tests/avg32_lzss_differential_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "button_choice_geometry_real_bytes"
+path = "tests/button_choice_geometry_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "bytecode_element_real_bytes"
+path = "tests/bytecode_element_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "decoder_parity_real_bytes"
+path = "tests/decoder_parity_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "decompressor_real_bytes"
+path = "tests/decompressor_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "engine_port_real_bytes"
+path = "tests/engine_port_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "entry_playthrough_oracle_real_bytes"
+path = "tests/entry_playthrough_oracle_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "expression_real_bytes"
+path = "tests/expression_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "full_module_replay_real_bytes"
+path = "tests/full_module_replay_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "g00_real_bytes"
+path = "tests/g00_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "graphics_object_stack_real_bytes"
+path = "tests/graphics_object_stack_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "graphics_rlop_real_bytes"
+path = "tests/graphics_rlop_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "gameexe_real_bytes"
+path = "tests/gameexe_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "headless_branch_execution_real_bytes"
+path = "tests/headless_branch_execution_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "input_bridge_real_bytes"
+path = "tests/input_bridge_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "jump_resume_real_bytes"
+path = "tests/jump_resume_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "msg_opcode_table_real_bytes"
+path = "tests/msg_opcode_table_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "nwa_real_bytes"
+path = "tests/nwa_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "overload_dispatch_real_bytes"
+path = "tests/overload_dispatch_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "ovk_real_bytes"
+path = "tests/ovk_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "p2_entry_gate_experiments_real_bytes"
+path = "tests/p2_entry_gate_experiments_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "render_g00_real_bytes"
+path = "tests/render_g00_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "render_opcode_semantics_real_bytes"
+path = "tests/render_opcode_semantics_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "replay_scene_real_bytes"
+path = "tests/replay_scene_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "rlop_str_mem_sys_real_bytes"
+path = "tests/rlop_str_mem_sys_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "rlop_text_real_bytes"
+path = "tests/rlop_text_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "save_real_bytes"
+path = "tests/save_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "scene2_desync_regression_real_bytes"
+path = "tests/scene2_desync_regression_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "scene_header_real_bytes"
+path = "tests/scene_header_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "scene_index_real_bytes"
+path = "tests/scene_index_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "speaker_name_color_real_bytes"
+path = "tests/speaker_name_color_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "sys_grp_opcode_table_real_bytes"
+path = "tests/sys_grp_opcode_table_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "syscall_routes_real_bytes"
+path = "tests/syscall_routes_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "unknown_opcode_inventory_real_bytes"
+path = "tests/unknown_opcode_inventory_real_bytes.rs"
+required-features = ["real-bytes"]
 
 [lints]
 workspace = true

@@ -14,7 +14,6 @@ use utsushi_kirikiri_xp3::{KagReplayInput, emit_kag_replay_e0_e1_trace};
 
 const CORPUS_MANIFEST_PATH: &str = "fixtures/public/kaifuu-kag-synthetic-corpus.manifest.json";
 const SNAPSHOT_PATH: &str = "fixtures/kag-corpus-e0-e1-trace.json";
-const STAGED_CORPUS_ROOT_ENV: &str = "kirikiri-xp3/1/plain";
 
 struct CorpusScript {
     source_file: String,
@@ -122,17 +121,4 @@ fn replay_emits_deterministic_bridge_linked_e0_e1_trace_for_manifest_corpus() {
         .unwrap_or_else(|error| panic!("read {}: {error}", snapshot_path.display()));
     assert_eq!(format!("{first}\n"), snapshot, "trace snapshot drift");
     assert_trace_bridge_links(&corpus, &first);
-}
-
-#[test]
-#[ignore = "real-bytes; requires a private corpus"]
-fn configured_corpus_replay_skips_when_root_is_not_staged() {
-    let Some(root) = corpus_registry::resolve_identity(STAGED_CORPUS_ROOT_ENV).ok() else {
-        panic!("real-bytes proof not established: required corpus is unavailable");
-    };
-    if !root.is_dir() {
-        panic!("real-bytes proof not established: required corpus directory is unavailable");
-    }
-    let corpus = load_corpus(&root);
-    assert_trace_bridge_links(&corpus, &emit(&corpus));
 }

@@ -10,7 +10,7 @@
 //!   Shift-JIS Textout runs + choice options, with a `reallive.kidoku` span
 //!   and NAMAE-resolved speakers whose identity is cross-checked against
 //!   Gameexe. Env-gated + STRICT: an absent corpus is a HARD FAILURE. This
-//!   `#[ignore]`-d suite runs only in the periodic oracle
+//!   feature-gated suite runs only in the periodic oracle
 //!   (`just test real-bytes-oracle`), where the corpus is staged.
 
 #[path = "support/real_corpus.rs"]
@@ -90,7 +90,6 @@ fn bridge_opts(scene_kidoku_count: u32) -> BridgeOpts<'static> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn scene_1_all_textouts_are_binary_and_produce_no_translatable_units_real_bytes() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(
@@ -177,7 +176,6 @@ fn scene_1_all_textouts_are_binary_and_produce_no_translatable_units_real_bytes(
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_bytes() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(

@@ -125,7 +125,7 @@ pub(super) fn launch_capture_harness_captures_stdout_when_requested() {
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Trace,
-        harness_child_command("tests::harness_child_prints_stdout_sentinel"),
+        harness_child_command(HarnessChild::PrintsStdoutSentinel),
     )
     .with_timeout(Duration::from_secs(5))
     .with_shutdown_grace(Duration::from_secs(1))
@@ -149,7 +149,7 @@ pub(super) fn launch_capture_harness_discards_stdout_by_default() {
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Trace,
-        harness_child_command("tests::harness_child_prints_stdout_sentinel"),
+        harness_child_command(HarnessChild::PrintsStdoutSentinel),
     )
     .with_timeout(Duration::from_secs(5))
     .with_shutdown_grace(Duration::from_secs(1));
@@ -171,7 +171,7 @@ pub(super) fn launch_capture_harness_runs_process_and_persists_hook_artifacts() 
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Capture,
-        harness_child_command("tests::harness_child_exits"),
+        harness_child_command(HarnessChild::Exits),
     )
     .with_artifact_root(&artifact_root)
     .with_timeout(Duration::from_secs(5))
@@ -228,7 +228,7 @@ pub(super) fn launch_capture_harness_times_out_and_reaps_child() {
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Capture,
-        harness_child_command("tests::harness_child_sleeps"),
+        harness_child_command(HarnessChild::Sleeps),
     )
     .with_timeout(Duration::from_millis(50))
     .with_shutdown_grace(Duration::from_secs(1))
@@ -293,7 +293,7 @@ pub(super) fn capture_hooks_require_managed_artifact_store_boundary() {
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Capture,
-        harness_child_command("tests::harness_child_sleeps"),
+        harness_child_command(HarnessChild::Sleeps),
     )
     .with_timeout(Duration::from_secs(5))
     .with_shutdown_grace(Duration::from_secs(1))
@@ -323,7 +323,7 @@ pub(super) fn after_launch_hook_timeout_cleans_up_runtime_process() {
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Capture,
-        harness_child_command("tests::harness_child_sleeps"),
+        harness_child_command(HarnessChild::Sleeps),
     )
     .with_timeout(Duration::from_secs(5))
     .with_hook_timeout(Duration::from_millis(50))
@@ -363,7 +363,7 @@ pub(super) fn timed_out_hook_write_is_fenced_after_capture_boundary() {
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Capture,
-        harness_child_command("tests::harness_child_sleeps"),
+        harness_child_command(HarnessChild::Sleeps),
     )
     .with_artifact_root(&artifact_root)
     .with_timeout(Duration::from_secs(5))

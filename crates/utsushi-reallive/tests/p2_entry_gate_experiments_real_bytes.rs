@@ -50,25 +50,23 @@ fn staged_engine_and_bytes(
     (ReplayEngine::from_store(store, shift_jis), decompressed)
 }
 
-fn root_paths(env_name: &str) -> Option<(PathBuf, PathBuf, PathBuf)> {
-    let root = corpus_registry::resolve_identity(env_name).ok()?;
-    [root.clone(), root.join("REALLIVEDATA")]
+fn root_paths(identity: &str) -> Option<(PathBuf, PathBuf, PathBuf)> {
+    let (corpus, need) = match identity {
+        PRIMARY_ROOT_ENV => (real_corpus::corpus_1()?, real_corpus::PRIMARY),
+        SECONDARY_ROOT_ENV => (real_corpus::corpus_2()?, real_corpus::SECONDARY),
+        _ => return None,
+    };
+    let seen = corpus.seen_txt;
+    let data_root = seen.parent()?;
+    let gameexe = ["GAMEEXE.INI", "Gameexe.ini"]
         .into_iter()
-        .find_map(|data_root| {
-            let seen = ["SEEN.TXT", "Seen.txt"]
-                .into_iter()
-                .map(|name| data_root.join(name))
-                .find(|path| path.is_file())?;
-            let gameexe = ["GAMEEXE.INI", "Gameexe.ini"]
-                .into_iter()
-                .map(|name| data_root.join(name))
-                .find(|path| path.is_file())?;
-            let g00 = ["G00", "g00"]
-                .into_iter()
-                .map(|name| data_root.join(name))
-                .find(|path| path.is_dir())?;
-            Some((seen, gameexe, g00))
-        })
+        .map(|name| data_root.join(name))
+        .find(|path| path.is_file())?;
+    // The staged title can put its executable data below a game-name
+    // directory, so use the shared bounded locator rather than assuming the
+    // registry root itself is the data root.
+    let g00 = real_corpus::g00_dir_for(need)?;
+    Some((seen, gameexe, g00))
 }
 
 fn move_to_second_pointer_gate(
@@ -114,7 +112,6 @@ fn normalized_primary(point: (i32, i32), screen: (i32, i32)) -> InputEvent {
 }
 
 #[test]
-#[ignore = "requires the existing private inventory row Kanon asset root"]
 fn p2_script_rectangle_click_advances_without_hydrated_object() {
     let Some((seen, _gameexe, g00)) = root_paths(SECONDARY_ROOT_ENV) else {
         real_corpus::require_real_bytes(
@@ -186,7 +183,6 @@ fn p2_script_rectangle_click_advances_without_hydrated_object() {
 }
 
 #[test]
-#[ignore = "requires the existing private inventory row Kanon asset root"]
 fn p2_declared_screen_size_matches_the_live_conversion_candidate() {
     let Some((_seen, gameexe_path, _g00)) = root_paths(SECONDARY_ROOT_ENV) else {
         real_corpus::require_real_bytes(
@@ -248,7 +244,6 @@ fn target_ref_count(bytes: &[u8]) -> usize {
 }
 
 #[test]
-#[ignore = "requires the existing private inventory row Kanon asset root"]
 fn p2_backward_slice_classifies_the_rectangle_operand_provenance() {
     let Some((seen, _gameexe, _g00)) = root_paths(SECONDARY_ROOT_ENV) else {
         real_corpus::require_real_bytes(
@@ -321,7 +316,6 @@ fn p2_backward_slice_classifies_the_rectangle_operand_provenance() {
 }
 
 #[test]
-#[ignore = "requires the existing private inventory row primary asset root"]
 fn p2_primary_executed_line_oracle_remains_7750() {
     let Some((seen, gameexe, _g00)) = root_paths(PRIMARY_ROOT_ENV) else {
         real_corpus::require_real_bytes(

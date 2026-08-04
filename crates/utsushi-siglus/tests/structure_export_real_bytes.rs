@@ -13,35 +13,32 @@ const FIRST_CORPUS_ENV: &str = "siglus/1/encrypted";
 const SECOND_CORPUS_ENV: &str = "siglus/2/encrypted";
 
 #[test]
-#[ignore = "real-bytes; requires private corpora"]
 fn exports_nontrivial_structure_for_two_real_siglus_corpora() {
-    let Some(first) = corpus_root(FIRST_CORPUS_ENV) else {
-        return;
-    };
-    let Some(second) = corpus_root(SECOND_CORPUS_ENV) else {
-        return;
-    };
+    let first = corpus_root(FIRST_CORPUS_ENV);
+    let second = corpus_root(SECOND_CORPUS_ENV);
 
     assert_nontrivial_structure(&first, "corpus-1");
     assert_nontrivial_structure(&second, "corpus-2");
 }
 
-fn corpus_root(variable: &str) -> Option<PathBuf> {
-    let Some(value) = corpus_registry::resolve_identity(variable).ok() else {
-        panic!("real-bytes proof not established: required corpus is unavailable");
-    };
+fn corpus_root(variable: &str) -> PathBuf {
+    let value = corpus_registry::resolve_identity(variable)
+        .unwrap_or_else(|reason| panic!("real-bytes proof not established: {variable}: {reason}"));
     let candidate = value;
     let root = if candidate.is_dir() {
         candidate
     } else {
-        candidate.parent().map(Path::to_path_buf)?
+        candidate.parent().map_or_else(
+            || panic!("real-bytes proof not established: {variable} has no parent directory"),
+            Path::to_path_buf,
+        )
     };
     for required in ["Scene.pck", "Gameexe.dat", "SiglusEngine.exe"] {
         if !root.join(required).is_file() {
             panic!("real-bytes proof not established: required corpus asset is unavailable");
         }
     }
-    Some(root)
+    root
 }
 
 fn assert_nontrivial_structure(root: &Path, label: &str) {
