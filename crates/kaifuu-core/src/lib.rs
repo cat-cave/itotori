@@ -222,6 +222,9 @@ pub use bridge_v02_context::*;
 
 mod bridge_v02_validation;
 pub use bridge_v02_validation::*;
+
+mod bridge_v02_produce;
+pub use bridge_v02_produce::*;
 #[rustfmt::skip]
 pub(crate) use bridge_v02_validation::{ assert_localization_policy_v02, assert_source_location_v02, assert_surface_context_v02, };
 

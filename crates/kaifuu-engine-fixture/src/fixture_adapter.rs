@@ -170,47 +170,63 @@ impl EngineAdapter for FixtureAdapter {
             .as_array()
             .ok_or("fixture source missing units")?;
         let source_locale = Self::source_locale(&source);
-        let bridge_units = units
-            .iter()
-            .enumerate()
-            .map(|(index, unit)| {
-                let source_unit_key = require_str(unit, "sourceUnitKey")?;
-                let text = require_str(unit, "sourceText")?;
-                let protected_spans = Self::protected_spans_for_unit(unit, text)?;
-                Ok(BridgeUnit {
-                    bridge_unit_id: deterministic_id("bridge-unit", index + 1),
-                    source_unit_key: source_unit_key.to_string(),
-                    occurrence_id: format!("occurrence-{}", index + 1),
-                    source_hash: content_hash(text),
-                    source_locale: source_locale.clone(),
-                    source_text: text.to_string(),
-                    speaker: unit["speaker"].as_str().unwrap_or("").to_string(),
-                    text_surface: unit["textSurface"]
-                        .as_str()
-                        .unwrap_or("dialogue")
-                        .to_string(),
-                    protected_spans,
-                    context: None,
-                    patch_ref: PatchRef {
-                        asset_id: "source.json".to_string(),
-                        write_mode: "replace".to_string(),
-                        source_unit_key: source_unit_key.to_string(),
-                    },
-                })
-            })
-            .collect::<KaifuuResult<Vec<_>>>()?;
+        let source_bundle_hash = sha256_hash_bytes(source_text.as_bytes());
+        let mut bridge_units = Vec::with_capacity(units.len());
+        for (index, unit) in units.iter().enumerate() {
+            let source_unit_key = require_str(unit, "sourceUnitKey")?;
+            let text = require_str(unit, "sourceText")?;
+            let protected_spans = Self::protected_spans_for_unit(unit, text)?;
+            let surface_kind = match unit["textSurface"].as_str().unwrap_or("dialogue") {
+                "choice" | "choice_label" => "choice_label",
+                "speaker_name" => "speaker_name",
+                "ui_label" => "ui_label",
+                "tutorial_text" => "tutorial_text",
+                "database_entry" => "database_entry",
+                "image_text" => "image_text",
+                "metadata_text" => "metadata_text",
+                "song_title" => "song_title",
+                "narration" => "narration",
+                _ => "dialogue",
+            };
+            let speaker = unit["speaker"].as_str().filter(|value| !value.is_empty());
+            bridge_units.push(BridgeV02UnitInput {
+                source_unit_key: source_unit_key.to_string(),
+                occurrence_id: format!("occurrence-{}", index + 1),
+                source_text: text.to_string(),
+                surface_kind,
+                speaker: speaker.map(str::to_string),
+                scene_id: "fixture:source".to_string(),
+                asset_key: "source.json".to_string(),
+                protected_spans,
+                choice_option_index: if surface_kind == "choice_label" {
+                    Some(index as u64)
+                } else {
+                    None
+                },
+            });
+        }
+        let bridge = produce_bridge_v02_json(
+            &BridgeV02ProduceOpts {
+                game_id: "kaifuu-fixture",
+                game_version: "1.0.0",
+                source_profile_id: "019ed000-0000-7000-8000-0000000f1001",
+                source_locale: &source_locale,
+                extractor_name: "kaifuu-fixture",
+                extractor_version: env!("CARGO_PKG_VERSION"),
+            },
+            &source_bundle_hash,
+            &[BridgeV02AssetInput {
+                asset_key: "source.json".to_string(),
+                asset_kind: "script",
+                source_hash: source_bundle_hash.clone(),
+                path: Some("source.json".to_string()),
+            }],
+            &bridge_units,
+        )?;
         Ok(ExtractionResult {
             adapter_id: FIXTURE_ADAPTER_ID.to_string(),
             profile,
-            bridge: BridgeBundle {
-                schema_version: "0.1.0".to_string(),
-                bridge_id: deterministic_id("bridge", 1),
-                source_bundle_hash: content_hash(&source_text),
-                source_locale,
-                extractor_name: "kaifuu-fixture".to_string(),
-                extractor_version: env!("CARGO_PKG_VERSION").to_string(),
-                units: bridge_units,
-            },
+            bridge,
             warnings: vec![],
         })
     }
@@ -264,7 +280,10 @@ impl EngineAdapter for FixtureAdapter {
                 duplicate_source_unit_keys.insert(key.to_string());
                 continue;
             }
-            source_hashes.insert(key.to_string(), content_hash(unit_source_text));
+            source_hashes.insert(
+                key.to_string(),
+                sha256_hash_bytes(unit_source_text.as_bytes()),
+            );
             source_protected_spans.insert(
                 key.to_string(),
                 Self::protected_spans_for_unit(unit, unit_source_text)?,

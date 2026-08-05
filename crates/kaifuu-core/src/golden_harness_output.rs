@@ -161,22 +161,10 @@ pub(crate) fn report_output_equivalence(
                         "unchanged patch output equivalence requires source units to extract identically"
                             .to_string(),
                     ),
-                    expected: original_extraction
-                        .bridge
-                        .units
-                        .iter()
-                        .rev()
-                        .find(|unit| unit.source_unit_key == *key)
-                        .map(unit_signature_summary),
-                    actual: patched_extraction
-                        .bridge
-                        .units
-                        .iter()
-                        .rev()
-                        .find(|unit| unit.source_unit_key == *key)
-                        .map(unit_signature_summary),
-                                    required_capability: None,
-},
+                    expected: unit_signature_summary_for_key(&original_extraction.bridge, key),
+                    actual: unit_signature_summary_for_key(&patched_extraction.bridge, key),
+                    required_capability: None,
+                },
             ),
             None => record_golden_failure(
                 report,
@@ -191,16 +179,10 @@ pub(crate) fn report_output_equivalence(
                         "unchanged patch output equivalence requires all source units to remain present"
                             .to_string(),
                     ),
-                    expected: original_extraction
-                        .bridge
-                        .units
-                        .iter()
-                        .rev()
-                        .find(|unit| unit.source_unit_key == *key)
-                        .map(unit_signature_summary),
+                    expected: unit_signature_summary_for_key(&original_extraction.bridge, key),
                     actual: None,
-                                    required_capability: None,
-},
+                    required_capability: None,
+                },
             ),
         }
     }
@@ -219,38 +201,43 @@ pub(crate) fn report_output_equivalence(
                     "unchanged patch output equivalence requires no extra source units".to_string(),
                 ),
                 expected: None,
-                actual: patched_extraction
-                    .bridge
-                    .units
-                    .iter()
-                    .rev()
-                    .find(|unit| unit.source_unit_key == *key)
-                    .map(unit_signature_summary),
+                actual: unit_signature_summary_for_key(&patched_extraction.bridge, key),
                 required_capability: None,
             },
         );
     }
 }
 
-pub(crate) fn unit_signatures(bridge: &BridgeBundle) -> BTreeMap<String, String> {
+pub(crate) fn unit_signatures(bridge: &Value) -> BTreeMap<String, String> {
     bridge
-        .units
-        .iter()
-        .map(|unit| {
-            (
-                unit.source_unit_key.clone(),
-                format!("{}:{}", unit.source_hash, unit.source_text),
-            )
+        .get("units")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|unit| {
+            let key = unit.get("sourceUnitKey")?.as_str()?.to_string();
+            let source_hash = unit.get("sourceHash")?.as_str()?.to_string();
+            let source_text = unit.get("sourceText")?.as_str()?.to_string();
+            Some((key, format!("{source_hash}:{source_text}")))
         })
         .collect()
 }
 
-pub(crate) fn unit_signature_summary(unit: &BridgeUnit) -> String {
-    format!(
-        "sourceHash={}; sourceText={}",
-        unit.source_hash,
-        RedactedContentSummary::from_text(&unit.source_text)
-    )
+fn unit_signature_summary_for_key(bridge: &Value, key: &str) -> Option<String> {
+    bridge
+        .get("units")
+        .and_then(Value::as_array)?
+        .iter()
+        .rev()
+        .find(|unit| unit.get("sourceUnitKey").and_then(Value::as_str) == Some(key))
+        .map(|unit| {
+            let source_hash = unit.get("sourceHash").and_then(Value::as_str).unwrap_or("");
+            let source_text = unit.get("sourceText").and_then(Value::as_str).unwrap_or("");
+            format!(
+                "sourceHash={source_hash}; sourceText={}",
+                RedactedContentSummary::from_text(source_text)
+            )
+        })
 }
 
 pub(crate) fn report_translated_patch(

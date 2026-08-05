@@ -62,7 +62,10 @@ impl FixtureAdapter {
                     (slot, Self::source_slot_bytes_for_unit(unit)?),
                 );
             }
-            source_hashes.insert(key.to_string(), content_hash(unit_source_text));
+            source_hashes.insert(
+                key.to_string(),
+                sha256_hash_bytes(unit_source_text.as_bytes()),
+            );
             source_protected_spans.insert(key.to_string(), protected_spans);
         }
 

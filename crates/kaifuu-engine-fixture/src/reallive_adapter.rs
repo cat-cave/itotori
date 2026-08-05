@@ -210,33 +210,18 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         // bridgeUnitIds `patch` re-derives — so a PatchExport keyed on
         // extract's ids resolves in patch with no id mismatch. Gameexe.ini
         // feeds the producer's NAMAE speaker resolution (best-effort;
-        // absent -> empty inventory).
+        // absent -> empty inventory). The wire format is BridgeBundleV02.
         let gameexe_path =
             Self::gameexe_ini_path_with_resolved(request.game_dir, resolved.as_deref());
         let gameexe_bytes = fs::read(&gameexe_path).unwrap_or_default();
         let gameexe_inventory = kaifuu_reallive::parse_gameexe_inventory(&gameexe_bytes);
         let produced =
-            Self::produce_scene_bundles(&archive_bytes, &scene_index, &gameexe_inventory)?;
-        let mut units: Vec<BridgeUnit> = Vec::new();
-        for (_scene_id, bundle) in &produced {
-            for unit in &bundle.bundle.units {
-                units.push(Self::bridge_unit_from_v02(unit));
-            }
-        }
+            Self::produce_whole_archive_bridge(&archive_bytes, &scene_index, &gameexe_inventory)?;
         let profile = self.profile_from_state(state.clone())?;
-        let bridge = BridgeBundle {
-            schema_version: "0.1.0".to_string(),
-            bridge_id: deterministic_id("reallive-bridge", 174),
-            source_bundle_hash: kaifuu_core::sha256_hash_bytes(&archive_bytes),
-            source_locale: "ja-JP".to_string(),
-            extractor_name: "kaifuu-reallive".to_string(),
-            extractor_version: env!("CARGO_PKG_VERSION").to_string(),
-            units,
-        };
         Ok(ExtractionResult {
             adapter_id: REALLIVE_DETECTOR_ADAPTER_ID.to_string(),
             profile,
-            bridge,
+            bridge: produced.json,
             warnings: vec![],
         })
     }

@@ -7,7 +7,7 @@
 //!
 //! - `extract --engine softpal <root> --bundle-output <bundle.json>` resolves
 //!   SCRIPT.SRC + TEXT.DAT (from `data.pac` or a loose pair), disassembles the
-//!   dialogue + choice surfaces, and writes the v0.1 BridgeBundle. The game root
+//!   dialogue + choice surfaces, and writes the v0.2 BridgeBundle. The game root
 //!   is a positional (consistent with the other engines' extract), with
 //!   `--game-dir` as an alternate.
 //! - `patch --engine softpal <root> --patch <export.json> --output <dir>`
@@ -69,9 +69,13 @@ fn run_extract_softpal_bundle(args: &[String]) -> Result<(), Box<dyn std::error:
         game_dir: &game_dir,
     })?;
     write_json(&bundle_output, &extraction.bridge)?;
+    let unit_count = extraction
+        .bridge
+        .get("units")
+        .and_then(|value| value.as_array())
+        .map_or(0, Vec::len);
     eprintln!(
-        "kaifuu softpal extract: units={} warnings={}",
-        extraction.bridge.units.len(),
+        "kaifuu softpal extract: units={unit_count} warnings={}",
         extraction.warnings.len(),
     );
     Ok(())

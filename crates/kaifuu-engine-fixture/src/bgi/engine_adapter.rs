@@ -84,18 +84,60 @@ impl EngineAdapter for BgiBytecodeAdapter {
         }
         let source_bundle_hash =
             sha256_hash_bytes(Self::source_fingerprint_payload(&assets).as_bytes());
+        let bridge_assets: Vec<BridgeV02AssetInput> = assets
+            .iter()
+            .map(|asset| BridgeV02AssetInput {
+                asset_key: asset.relative_path.clone(),
+                asset_kind: "script",
+                source_hash: sha256_hash_bytes(&asset.bytes),
+                path: Some(asset.relative_path.clone()),
+            })
+            .collect();
+        let mut bridge_units = Vec::new();
+        for asset in &assets {
+            for reference in &asset.references {
+                let surface_kind = match Self::text_surface_name(reference.text_surface) {
+                    "choice" | "choice_label" => "choice_label",
+                    "speaker_name" => "speaker_name",
+                    _ => "dialogue",
+                };
+                bridge_units.push(BridgeV02UnitInput {
+                    source_unit_key: format!("{}#{}", asset.relative_path, reference.reference_id),
+                    occurrence_id: format!(
+                        "{}@{}",
+                        asset.relative_path, reference.pointer_offset_byte
+                    ),
+                    source_text: reference.decoded_text.clone(),
+                    surface_kind,
+                    speaker: None,
+                    scene_id: asset.relative_path.clone(),
+                    asset_key: asset.relative_path.clone(),
+                    protected_spans: vec![],
+                    choice_option_index: if surface_kind == "choice_label" {
+                        Some(0)
+                    } else {
+                        None
+                    },
+                });
+            }
+        }
+        let bridge = produce_bridge_v02_json(
+            &BridgeV02ProduceOpts {
+                game_id: "kaifuu-bgi",
+                game_version: "1.0.0",
+                source_profile_id: "019ed000-0000-7000-8000-0000000b1001",
+                source_locale: "ja-JP",
+                extractor_name: "kaifuu-bgi-bytecode",
+                extractor_version: env!("CARGO_PKG_VERSION"),
+            },
+            &source_bundle_hash,
+            &bridge_assets,
+            &bridge_units,
+        )?;
         Ok(ExtractionResult {
             adapter_id: BGI_BYTECODE_ADAPTER_ID.to_string(),
             profile: self.profile_from_assets(&assets),
-            bridge: BridgeBundle {
-                schema_version: "0.1.0".to_string(),
-                bridge_id: deterministic_id("bgibridge", 1),
-                source_bundle_hash,
-                source_locale: "ja-JP".to_string(),
-                extractor_name: "kaifuu-bgi-bytecode".to_string(),
-                extractor_version: env!("CARGO_PKG_VERSION").to_string(),
-                units: Self::bridge_units(&assets),
-            },
+            bridge,
             warnings: vec![],
         })
     }
@@ -134,7 +176,8 @@ impl EngineAdapter for BgiBytecodeAdapter {
                     "patch entry does not target a parsed BGI string reference",
                 ));
             };
-            if entry.source_hash != content_hash(&reference.decoded_text) {
+            // BridgeBundleV02 unit sourceHash is sha256 of sourceText UTF-8 bytes.
+            if entry.source_hash != sha256_hash_bytes(reference.decoded_text.as_bytes()) {
                 return Ok(Self::patch_fail(
                     &request.patch_export.patch_export_id,
                     sha256_hash_bytes(&asset.bytes),
@@ -183,7 +226,8 @@ impl EngineAdapter for BgiBytecodeAdapter {
                         "patch entry does not target a parsed BGI string reference",
                     ));
                 };
-                if entry.source_hash != content_hash(&reference.decoded_text) {
+                // BridgeBundleV02 unit sourceHash is sha256 of sourceText UTF-8 bytes.
+                if entry.source_hash != sha256_hash_bytes(reference.decoded_text.as_bytes()) {
                     return Ok(Self::patch_fail(
                         &request.patch_export.patch_export_id,
                         sha256_hash_bytes(&asset.bytes),

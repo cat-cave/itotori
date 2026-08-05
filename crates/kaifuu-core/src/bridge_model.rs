@@ -5,10 +5,15 @@ use super::*;
 pub struct ExtractionResult {
     pub adapter_id: String,
     pub profile: GameProfile,
-    pub bridge: BridgeBundle,
+    /// Validated BridgeBundleV02 JSON (`schemaVersion` exactly `0.2.0`).
+    /// Product extract writes this value; readers refuse any other version.
+    pub bridge: Value,
     pub warnings: Vec<AdapterWarning>,
 }
 
+/// Legacy unit-list shape retained only for golden-harness patch assembly
+/// helpers that still walk protected spans as typed structs. Product extract
+/// no longer serializes this type as a bridge bundle.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BridgeBundle {

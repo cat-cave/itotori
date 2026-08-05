@@ -1,23 +1,36 @@
 //! Softpal `extract`: disassemble the resolved `SCRIPT.SRC` + `TEXT.DAT` into a
-//! localization [`BridgeBundle`] of dialogue + text-bearing-choice units.
+//! localization BridgeBundleV02 of dialogue + text-bearing-choice units.
 
 use std::collections::BTreeSet;
 
-use kaifuu_core::{
-    AdapterWarning, BridgeBundle, BridgeUnit, BridgeUnitContext, BridgeUnitRoute, PatchRef,
-    sha256_hash_bytes,
-};
+use kaifuu_core::{AdapterWarning, BRIDGE_SCHEMA_VERSION_V02, BridgeBundleV02, sha256_hash_bytes};
 use kaifuu_softpal::{ScriptScan, TextDat};
+use serde_json::{Value, json};
 
 use super::*;
 
+/// Validated Softpal bridge production: wire JSON for product extract.
+pub(crate) struct SoftpalProducedBridge {
+    pub json: Value,
+    pub warnings: Vec<AdapterWarning>,
+}
+
+/// One collected Softpal text unit before JSON assembly.
+struct SoftpalProtoUnit {
+    source_unit_key: String,
+    pointer: u32,
+    source_text: String,
+    speaker: String,
+    surface_kind: &'static str,
+    /// SELECT command index for choice units (drives choice group identity).
+    choice_option_index: Option<u64>,
+}
+
 impl SoftpalProfileDetectorAdapter {
-    /// Disassemble the resolved scripts and assemble the localization
-    /// [`BridgeBundle`]: one unit per unique resolved `TEXT.DAT` record for the
+    /// Disassemble the resolved scripts and assemble a localization
+    /// BridgeBundleV02: one unit per unique resolved `TEXT.DAT` record for the
     /// dialogue + text-bearing-choice surfaces, keyed by pointer for patch-back.
-    pub(crate) fn build_bridge(
-        scripts: &SoftpalScripts,
-    ) -> KaifuuResult<(BridgeBundle, Vec<AdapterWarning>)> {
+    pub(crate) fn build_bridge(scripts: &SoftpalScripts) -> KaifuuResult<SoftpalProducedBridge> {
         let scan =
             ScriptScan::parse(&scripts.script).map_err(|err| -> Box<dyn std::error::Error> {
                 format!("kaifuu.softpal.script.parse: {err}").into()
@@ -28,7 +41,7 @@ impl SoftpalProfileDetectorAdapter {
             })?;
         let disassembly = scan.resolve(&textdat);
 
-        let mut units: Vec<BridgeUnit> = Vec::new();
+        let mut units: Vec<SoftpalProtoUnit> = Vec::new();
         let mut seen: BTreeSet<u32> = BTreeSet::new();
         for dialogue in &disassembly.dialogue {
             let Some(text) = dialogue.text.resolved_text() else {
@@ -43,15 +56,17 @@ impl SoftpalProfileDetectorAdapter {
                 .and_then(|s| s.resolved_text())
                 .unwrap_or_default()
                 .to_string();
-            units.push(Self::text_unit(
-                DIALOGUE_KEY_PREFIX,
-                dialogue.text.pointer,
-                text,
+            units.push(SoftpalProtoUnit {
+                source_unit_key: format!("{DIALOGUE_KEY_PREFIX}{}", dialogue.text.pointer),
+                pointer: dialogue.text.pointer,
+                source_text: text.to_string(),
                 speaker,
-                "dialogue",
-            ));
+                surface_kind: "dialogue",
+                choice_option_index: None,
+            });
         }
         let mut choice_seen: BTreeSet<u32> = BTreeSet::new();
+        let mut choice_option_index = 0_u64;
         for choice in &disassembly.choices {
             let Some(text) = choice.text.resolved_text() else {
                 continue;
@@ -59,13 +74,15 @@ impl SoftpalProfileDetectorAdapter {
             if !choice_seen.insert(choice.text.pointer) {
                 continue;
             }
-            units.push(Self::text_unit(
-                CHOICE_KEY_PREFIX,
-                choice.text.pointer,
-                text,
-                String::new(),
-                "choice_label",
-            ));
+            units.push(SoftpalProtoUnit {
+                source_unit_key: format!("{CHOICE_KEY_PREFIX}{}", choice.text.pointer),
+                pointer: choice.text.pointer,
+                source_text: text.to_string(),
+                speaker: String::new(),
+                surface_kind: "choice_label",
+                choice_option_index: Some(choice_option_index),
+            });
+            choice_option_index += 1;
         }
 
         // A dangling pointer (inside the pool, off a record boundary) is a
@@ -83,48 +100,258 @@ impl SoftpalProfileDetectorAdapter {
             });
         }
 
-        let bridge = BridgeBundle {
-            schema_version: "0.1.0".to_string(),
-            bridge_id: deterministic_id("softpal-bridge", units.len()),
-            source_bundle_hash: sha256_hash_bytes(&scripts.script),
-            source_locale: "ja-JP".to_string(),
-            extractor_name: "kaifuu-softpal".to_string(),
-            extractor_version: env!("CARGO_PKG_VERSION").to_string(),
-            units,
-        };
-        Ok((bridge, warnings))
+        let json = assemble_softpal_bridge_json(scripts, &units);
+        // Refuse to emit unvalidated product wire format.
+        BridgeBundleV02::validate_json(&json).map_err(|err| -> Box<dyn std::error::Error> {
+            format!("kaifuu.softpal.bridge.schema_validation: {err}").into()
+        })?;
+        Ok(SoftpalProducedBridge { json, warnings })
     }
+}
 
-    fn text_unit(
-        prefix: &str,
-        pointer: u32,
-        text: &str,
-        speaker: String,
-        text_surface: &str,
-    ) -> BridgeUnit {
-        let source_unit_key = format!("{prefix}{pointer}");
-        BridgeUnit {
-            bridge_unit_id: deterministic_id(&source_unit_key, pointer as usize),
-            occurrence_id: source_unit_key.clone(),
-            source_hash: content_hash(text),
-            source_locale: "ja-JP".to_string(),
-            source_text: text.to_string(),
-            speaker,
-            text_surface: text_surface.to_string(),
-            protected_spans: vec![],
-            context: Some(BridgeUnitContext {
-                route: BridgeUnitRoute {
-                    scene_id: SCRIPT_SCENE_ID.to_string(),
-                },
-            }),
-            patch_ref: PatchRef {
-                asset_id: SCRIPT_ASSET_ID.to_string(),
-                write_mode: "replace".to_string(),
-                source_unit_key: source_unit_key.clone(),
+fn assemble_softpal_bridge_json(scripts: &SoftpalScripts, units: &[SoftpalProtoUnit]) -> Value {
+    let namespace =
+        format!("softpal-bridge:game-id={SOFTPAL_GAME_ID}:source-profile-id={SOFTPAL_PROFILE_ID}");
+    // Bundle hash covers both script surfaces the disassembly walks.
+    let mut bundle_bytes = scripts.script.clone();
+    bundle_bytes.extend_from_slice(&scripts.textdat);
+    let source_bundle_hash = sha256_hash_bytes(&bundle_bytes);
+    let bridge_id = softpal_uuid7(&namespace, "bundle");
+    let bundle_revision_id = softpal_uuid7(&namespace, "bundle-revision");
+    let source_profile_hash = sha256_hash_bytes(SOFTPAL_PROFILE_ID.as_bytes());
+    let source_profile_revision_id = softpal_uuid7(&namespace, "source-profile-revision");
+
+    let script_hash = sha256_hash_bytes(&scripts.script);
+    let script_asset_id = softpal_uuid7(&namespace, "asset-script-src");
+    let script_revision_id = softpal_uuid7(&namespace, "asset-revision-script-src");
+    let textdat_hash = sha256_hash_bytes(&scripts.textdat);
+    let textdat_asset_id = softpal_uuid7(&namespace, "asset-text-dat");
+    let textdat_revision_id = softpal_uuid7(&namespace, "asset-revision-text-dat");
+
+    let assets = json!([
+        {
+            "assetId": script_asset_id,
+            "assetKey": SCRIPT_ASSET_ID,
+            "assetKind": "script",
+            "sourceHash": script_hash,
+            "sourceRevision": {
+                "revisionId": script_revision_id,
+                "revisionKind": "content_hash",
+                "value": script_hash,
             },
-            source_unit_key,
-        }
+            "path": format!("{}#SCRIPT.SRC", scripts.source_ref),
+        },
+        {
+            "assetId": textdat_asset_id,
+            "assetKey": "softpal:TEXT.DAT",
+            "assetKind": "text",
+            "sourceHash": textdat_hash,
+            "sourceRevision": {
+                "revisionId": textdat_revision_id,
+                "revisionKind": "content_hash",
+                "value": textdat_hash,
+            },
+            "path": format!("{}#TEXT.DAT", scripts.source_ref),
+        },
+    ]);
+
+    let units_json: Vec<Value> = units
+        .iter()
+        .map(|unit| {
+            build_softpal_unit_json(
+                &namespace,
+                &textdat_asset_id,
+                "softpal:TEXT.DAT",
+                &textdat_revision_id,
+                &textdat_hash,
+                unit,
+            )
+        })
+        .collect();
+
+    json!({
+        "schemaVersion": BRIDGE_SCHEMA_VERSION_V02,
+        "bridgeId": bridge_id,
+        "sourceGame": {
+            "gameId": SOFTPAL_GAME_ID,
+            "gameVersion": "1.0.0",
+            "sourceProfileId": SOFTPAL_PROFILE_ID,
+            "sourceProfileRevision": {
+                "revisionId": source_profile_revision_id,
+                "revisionKind": "content_hash",
+                "value": source_profile_hash,
+            },
+        },
+        "sourceBundleHash": source_bundle_hash,
+        "sourceBundleRevision": {
+            "revisionId": bundle_revision_id,
+            "revisionKind": "content_hash",
+            "value": source_bundle_hash,
+        },
+        "sourceLocale": "ja-JP",
+        "hashStrategy": hash_strategy_json(),
+        "extractor": {
+            "name": "kaifuu-softpal",
+            "version": env!("CARGO_PKG_VERSION"),
+        },
+        "assets": assets,
+        "units": units_json,
+        "policyRecords": [],
+    })
+}
+
+fn build_softpal_unit_json(
+    namespace: &str,
+    asset_id: &str,
+    asset_key: &str,
+    revision_id: &str,
+    asset_hash: &str,
+    unit: &SoftpalProtoUnit,
+) -> Value {
+    let source_hash = sha256_hash_bytes(unit.source_text.as_bytes());
+    let bridge_unit_id = softpal_uuid7(namespace, &format!("unit-{}", unit.source_unit_key));
+    let surface_id = softpal_uuid7(namespace, &format!("surface-{}", unit.source_unit_key));
+    let source_location = json!({
+        "containerKey": asset_key,
+        "entryPath": ["textdat", "record", unit.pointer.to_string()],
+        "range": {
+            "startByte": u64::from(unit.pointer),
+            "endByte": u64::from(unit.pointer).saturating_add(1),
+        },
+    });
+    let route = json!({
+        "sceneId": SCRIPT_SCENE_ID,
+        "sceneKey": SCRIPT_ASSET_ID,
+        "position": format!("pointer-{}", unit.pointer),
+    });
+    let context = if unit.surface_kind == "choice_label" {
+        let option_index = unit.choice_option_index.unwrap_or(0);
+        json!({
+            "choice": {
+                "choiceGroupId": softpal_uuid7(namespace, "choice-group-script-src"),
+                "choiceId": softpal_uuid7(namespace, &format!("choice-{}", unit.source_unit_key)),
+                "optionIndex": option_index,
+                "routeTargetRef": unit.source_unit_key,
+            },
+            "route": route,
+        })
+    } else {
+        json!({ "route": route })
+    };
+    let speaker = if unit.speaker.is_empty() {
+        json!({ "knowledgeState": "not_applicable" })
+    } else {
+        json!({
+            "knowledgeState": "parser_unknown",
+            "rawSpeakerText": unit.speaker,
+            "evidence": "softpal.text_show_speaker",
+        })
+    };
+    json!({
+        "bridgeUnitId": bridge_unit_id,
+        "surfaceId": surface_id,
+        "surfaceKind": unit.surface_kind,
+        "sourceUnitKey": unit.source_unit_key,
+        "occurrenceId": unit.source_unit_key,
+        "sourceLocale": "ja-JP",
+        "sourceText": unit.source_text,
+        "sourceHash": source_hash,
+        "sourceRevision": {
+            "revisionId": revision_id,
+            "revisionKind": "content_hash",
+            "value": asset_hash,
+        },
+        "sourceAssetRef": { "assetId": asset_id, "assetKey": asset_key },
+        "sourceLocation": source_location,
+        "speaker": speaker,
+        "context": context,
+        "spans": [],
+        "patchRef": {
+            "assetId": asset_id,
+            "writeMode": "replace",
+            "sourceUnitKey": unit.source_unit_key,
+            "sourceRevision": {
+                "revisionId": revision_id,
+                "revisionKind": "content_hash",
+                "value": asset_hash,
+            },
+        },
+        "runtimeExpectation": {
+            "expectationKind": "trace_text",
+            "traceKey": format!("softpal:{}", unit.source_unit_key),
+        },
+    })
+}
+
+fn hash_strategy_json() -> Value {
+    json!({
+        "sourceProfile": {
+            "scope": "source_profile",
+            "algorithm": "sha256",
+            "normalization": "utf8-lf-json-stable-v1",
+        },
+        "sourceBundle": {
+            "scope": "source_bundle",
+            "algorithm": "sha256",
+            "normalization": "utf8-lf-json-stable-v1",
+        },
+        "sourceAsset": {
+            "scope": "source_asset",
+            "algorithm": "sha256",
+            "normalization": "bytes",
+        },
+        "sourceUnit": {
+            "scope": "source_unit",
+            "algorithm": "sha256",
+            "normalization": "utf8-lf-json-stable-v1",
+            "fields": ["sourceLocale", "sourceUnitKey", "sourceText", "spans.raw"],
+        },
+        "patchExport": {
+            "scope": "patch_export",
+            "algorithm": "sha256",
+            "normalization": "utf8-lf-json-stable-v1",
+        },
+        "deltaPackage": {
+            "scope": "delta_package",
+            "algorithm": "sha256",
+            "normalization": "utf8-lf-json-stable-v1",
+        },
+    })
+}
+
+/// Deterministic UUID7-shaped id from SHA-256 of `namespace:role`.
+fn softpal_uuid7(namespace: &str, role: &str) -> String {
+    let digest = sha256_hash_bytes(format!("{namespace}:{role}").as_bytes());
+    let hex = digest
+        .strip_prefix("sha256:")
+        .expect("sha256_hash_bytes always yields sha256: prefix");
+    let mut bytes = [0_u8; 16];
+    for (index, slot) in bytes.iter_mut().enumerate() {
+        let start = index * 2;
+        *slot = u8::from_str_radix(&hex[start..start + 2], 16)
+            .expect("sha256 hex is valid lowercase hex");
     }
+    bytes[6] = (bytes[6] & 0x0f) | 0x70;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    format!(
+        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        bytes[0],
+        bytes[1],
+        bytes[2],
+        bytes[3],
+        bytes[4],
+        bytes[5],
+        bytes[6],
+        bytes[7],
+        bytes[8],
+        bytes[9],
+        bytes[10],
+        bytes[11],
+        bytes[12],
+        bytes[13],
+        bytes[14],
+        bytes[15],
+    )
 }
 
 #[cfg(test)]
@@ -191,19 +418,18 @@ mod tests {
 
     #[test]
     fn decoded_script_units_declare_the_structure_script_scene() {
-        let (bridge, warnings) =
-            SoftpalProfileDetectorAdapter::build_bridge(&decoded_source_pair())
-                .expect("decoded Softpal fixture extracts");
+        let produced = SoftpalProfileDetectorAdapter::build_bridge(&decoded_source_pair())
+            .expect("decoded Softpal fixture extracts");
 
-        assert!(warnings.is_empty());
-        assert_eq!(bridge.units.len(), 1);
-        let unit = &bridge.units[0];
-        assert_eq!(unit.source_text, "decoded line");
-        assert_eq!(unit.source_unit_key, format!("{DIALOGUE_KEY_PREFIX}16"));
+        assert!(produced.warnings.is_empty());
+        assert_eq!(produced.json["schemaVersion"], BRIDGE_SCHEMA_VERSION_V02);
+        let units = produced.json["units"].as_array().expect("units array");
+        assert_eq!(units.len(), 1);
+        let unit = &units[0];
+        assert_eq!(unit["sourceText"], "decoded line");
+        assert_eq!(unit["sourceUnitKey"], format!("{DIALOGUE_KEY_PREFIX}16"));
         assert_eq!(
-            unit.context
-                .as_ref()
-                .map(|context| context.route.scene_id.as_str()),
+            unit["context"]["route"]["sceneId"].as_str(),
             Some(SCRIPT_SCENE_ID),
         );
     }

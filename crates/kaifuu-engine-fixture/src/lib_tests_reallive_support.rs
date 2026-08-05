@@ -129,18 +129,42 @@ pub(super) fn reallive_all_units_export(
 ) -> PatchExport {
     let entries = extract
         .bridge
-        .units
-        .iter()
-        .map(|unit| kaifuu_core::PatchExportEntry {
-            bridge_unit_id: unit.bridge_unit_id.clone(),
-            source_unit_key: unit.source_unit_key.clone(),
-            source_hash: unit.source_hash.clone(),
-            target_text: if unit.text_surface == "dialogue" {
-                override_dialogue.to_string()
-            } else {
-                unit.source_text.clone()
-            },
-            protected_span_mappings: vec![],
+        .get("units")
+        .and_then(|value| value.as_array())
+        .into_iter()
+        .flatten()
+        .map(|unit| {
+            let surface = unit
+                .get("surfaceKind")
+                .and_then(|value| value.as_str())
+                .unwrap_or("");
+            let source_text = unit
+                .get("sourceText")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default();
+            kaifuu_core::PatchExportEntry {
+                bridge_unit_id: unit
+                    .get("bridgeUnitId")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                source_unit_key: unit
+                    .get("sourceUnitKey")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                source_hash: unit
+                    .get("sourceHash")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                target_text: if surface == "dialogue" {
+                    override_dialogue.to_string()
+                } else {
+                    source_text.to_string()
+                },
+                protected_span_mappings: vec![],
+            }
         })
         .collect();
     PatchExport {

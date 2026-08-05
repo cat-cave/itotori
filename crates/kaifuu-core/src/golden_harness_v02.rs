@@ -3,7 +3,7 @@ use super::*;
 pub(crate) fn report_v02_source_compatibility(
     report: &mut GoldenRoundTripReport,
     adapter_id: &str,
-    native_bridge: &BridgeBundle,
+    native_bridge: &Value,
     patch_export: &Value,
     source_bridge: Option<&Value>,
 ) {
@@ -242,32 +242,51 @@ pub(crate) fn canonical_v02_native_source_hash(source_text: &str) -> String {
     sha256_hash_bytes(source_text.as_bytes())
 }
 
-pub(crate) fn v02_native_units_by_key(
-    bridge: &BridgeBundle,
-) -> BTreeMap<String, V02BridgeUnitSummary> {
+pub(crate) fn v02_native_units_by_key(bridge: &Value) -> BTreeMap<String, V02BridgeUnitSummary> {
     let mut units_by_key = BTreeMap::new();
-    for unit in &bridge.units {
-        let key = unit.source_unit_key.clone();
+    let Some(units) = bridge.get("units").and_then(Value::as_array) else {
+        return units_by_key;
+    };
+    for unit in units {
+        let Some(key) = unit.get("sourceUnitKey").and_then(Value::as_str) else {
+            continue;
+        };
+        let source_text = unit
+            .get("sourceText")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let asset_key = unit
+            .pointer("/sourceAssetRef/assetKey")
+            .or_else(|| unit.pointer("/patchRef/assetId"))
+            .and_then(Value::as_str)
+            .unwrap_or("source.json");
+        let spans = unit
+            .get("spans")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|span| V02SourceSpanSummary {
+                // Fixture patch exports bind by raw + byte range; ignore UUID7 span ids.
+                span_id: None,
+                raw: span
+                    .get("raw")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                start_byte: span.get("startByte").and_then(Value::as_u64).unwrap_or(0),
+                end_byte: span.get("endByte").and_then(Value::as_u64).unwrap_or(0),
+            })
+            .collect();
         units_by_key.insert(
-            key.clone(),
+            key.to_string(),
             V02BridgeUnitSummary {
-                // A native v0.1 adapter may use a local bridge-unit id scheme.
-                // The sourceUnitKey + canonical source hash are the stable v0.2
-                // compatibility identity; patch conversion later remaps to the
-                // fresh native bridge-unit id used by that adapter.
+                // Native extract ids are not the golden fixture bridgeUnitIds.
+                // Compatibility is keyed by sourceUnitKey + source hash; the
+                // adapter patch conversion remaps to the live native id.
                 bridge_unit_id: None,
-                source_hash: canonical_v02_native_source_hash(&unit.source_text),
-                asset_ref: format!("{}#{key}", unit.patch_ref.asset_id),
-                spans: unit
-                    .protected_spans
-                    .iter()
-                    .map(|span| V02SourceSpanSummary {
-                        span_id: span.span_id.clone(),
-                        raw: span.raw.clone(),
-                        start_byte: span.start,
-                        end_byte: span.end,
-                    })
-                    .collect(),
+                source_hash: canonical_v02_native_source_hash(source_text),
+                asset_ref: format!("{asset_key}#{key}"),
+                spans,
             },
         );
     }
@@ -354,18 +373,20 @@ pub(crate) fn v02_patch_entry_span_mappings_compatible(
     true
 }
 
-pub(crate) fn patch_export_for_adapter(
-    value: &Value,
-    bridge: &BridgeBundle,
-) -> KaifuuResult<PatchExport> {
+pub(crate) fn patch_export_for_adapter(value: &Value, bridge: &Value) -> KaifuuResult<PatchExport> {
     if value["schemaVersion"].as_str() != Some(BRIDGE_SCHEMA_VERSION_V02) {
         return PatchExport::from_value(value);
     }
 
     let units_by_key = bridge
-        .units
-        .iter()
-        .map(|unit| (unit.source_unit_key.as_str(), unit))
+        .get("units")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|unit| {
+            let key = unit.get("sourceUnitKey")?.as_str()?;
+            Some((key, unit))
+        })
         .collect::<BTreeMap<_, _>>();
     let entries = value["entries"]
         .as_array()
@@ -379,9 +400,17 @@ pub(crate) fn patch_export_for_adapter(
                 )
             })?;
             Ok(PatchExportEntry {
-                bridge_unit_id: source_unit.bridge_unit_id.clone(),
+                bridge_unit_id: source_unit
+                    .get("bridgeUnitId")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
                 source_unit_key: source_unit_key.to_string(),
-                source_hash: source_unit.source_hash.clone(),
+                source_hash: source_unit
+                    .get("sourceHash")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
                 target_text: require_str(entry, "targetText")?.to_string(),
                 protected_span_mappings: serde_json::from_value(
                     entry["protectedSpanMappings"].clone(),

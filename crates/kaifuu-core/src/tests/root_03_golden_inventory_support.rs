@@ -35,36 +35,65 @@ fn golden_boundary_profile(adapter_id: &str) -> GameProfile {
     }
 }
 
-fn golden_boundary_extraction(adapter_id: &str) -> ExtractionResult {
-    let source_unit_key = "scene.001.line.001".to_string();
+fn test_bridge_v02(
+    game_id: &str,
+    profile_suffix: &str,
+    extractor_name: &str,
+    asset_key: &str,
+    units: &[BridgeV02UnitInput],
+) -> Value {
+    let hash = sha256_hash_bytes(game_id.as_bytes());
+    let profile = format!("019ed000-0000-7000-8000-{profile_suffix}");
+    produce_bridge_v02_json(
+        &BridgeV02ProduceOpts {
+            game_id,
+            game_version: "0.0.0",
+            source_profile_id: &profile,
+            source_locale: "ja-JP",
+            extractor_name,
+            extractor_version: "0.0.0",
+        },
+        &hash,
+        &[BridgeV02AssetInput {
+            asset_key: asset_key.to_string(),
+            asset_kind: "script",
+            source_hash: hash.clone(),
+            path: Some(asset_key.to_string()),
+        }],
+        units,
+    )
+    .expect("test bridge v0.2")
+}
+fn empty_extract(adapter_id: &str, game_id: &str, suffix: &str, extractor: &str, asset: &str) -> ExtractionResult {
     ExtractionResult {
         adapter_id: adapter_id.to_string(),
         profile: golden_boundary_profile(adapter_id),
-        bridge: BridgeBundle {
-            schema_version: PROFILE_SCHEMA_VERSION.to_string(),
-            bridge_id: deterministic_id("bridge", 91),
-            source_bundle_hash: content_hash("こんにちは"),
-            source_locale: "ja-JP".to_string(),
-            extractor_name: "golden-boundary-test".to_string(),
-            extractor_version: "0.0.0".to_string(),
-            units: vec![BridgeUnit {
-                bridge_unit_id: deterministic_id("bridge-unit", 91),
-                source_unit_key: source_unit_key.clone(),
+        bridge: test_bridge_v02(game_id, suffix, extractor, asset, &[]),
+        warnings: vec![],
+    }
+}
+
+fn golden_boundary_extraction(adapter_id: &str) -> ExtractionResult {
+    ExtractionResult {
+        adapter_id: adapter_id.to_string(),
+        profile: golden_boundary_profile(adapter_id),
+        bridge: test_bridge_v02(
+            "golden-boundary",
+            "000000009101",
+            "golden-boundary-test",
+            "source.json",
+            &[BridgeV02UnitInput {
+                source_unit_key: "scene.001.line.001".to_string(),
                 occurrence_id: "scene.001.line.001#1".to_string(),
-                source_hash: content_hash("こんにちは"),
-                source_locale: "ja-JP".to_string(),
                 source_text: "こんにちは".to_string(),
-                speaker: "Narrator".to_string(),
-                text_surface: "dialogue".to_string(),
+                surface_kind: "dialogue",
+                speaker: Some("Narrator".to_string()),
+                scene_id: "golden:scene".to_string(),
+                asset_key: "source.json".to_string(),
                 protected_spans: vec![],
-                context: None,
-                patch_ref: PatchRef {
-                    asset_id: deterministic_id("asset", 91),
-                    write_mode: "replace_text".to_string(),
-                    source_unit_key,
-                },
+                choice_option_index: None,
             }],
-        },
+        ),
         warnings: vec![],
     }
 }
@@ -84,10 +113,6 @@ fn golden_boundary_patch_export(patch_export_id: impl Into<String>) -> PatchExpo
     }
 }
 
-// test adapters + fixtures proving the golden harness drives asset
-// assertions off adapter INVENTORY + CAPABILITY data rather than a fixture
-// `source.json` layout.
-
 const INVENTORY_GOLDEN_ID: &str = "kaifuu.inventory-golden";
 const INVENTORY_SCENE_ASSET: &str = "scene.dat";
 const INVENTORY_LOGO_ASSET: &str = "art/logo.dat";
@@ -102,8 +127,6 @@ fn write_file_all(base: &Path, relative: &str, bytes: &[u8]) {
     fs::write(path, bytes).unwrap();
 }
 
-/// A NON-`source.json` game layout: a `scene.dat` script asset the adapter can
-/// edit plus an `art/logo.dat` binary asset it reports as capability-unsupported.
 fn inventory_golden_game(name: &str) -> PathBuf {
     let dir = temp_dir(name);
     write_file_all(&dir, INVENTORY_SCENE_ASSET, b"scene bytes v1");
@@ -112,8 +135,6 @@ fn inventory_golden_game(name: &str) -> PathBuf {
 }
 
 struct InventoryGoldenAdapter {
-    /// When true, the unchanged patch corrupts the capability-unsupported
-    /// `art/logo.dat` asset so the adapter-neutral preservation check flags it.
     mutate_unsupported_asset: bool,
 }
 
@@ -230,20 +251,13 @@ impl EngineAdapter for InventoryGoldenAdapter {
     }
 
     fn extract(&self, _request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
-        Ok(ExtractionResult {
-            adapter_id: self.id().to_string(),
-            profile: golden_boundary_profile(self.id()),
-            bridge: BridgeBundle {
-                schema_version: PROFILE_SCHEMA_VERSION.to_string(),
-                bridge_id: deterministic_id("inventory-golden-bridge", 1),
-                source_bundle_hash: content_hash("inventory-golden"),
-                source_locale: "ja-JP".to_string(),
-                extractor_name: "inventory-golden-test".to_string(),
-                extractor_version: "0.0.0".to_string(),
-                units: vec![],
-            },
-            warnings: vec![],
-        })
+        Ok(empty_extract(
+            self.id(),
+            "inventory-golden",
+            "000000000101",
+            "inventory-golden-test",
+            "inventory",
+        ))
     }
 
     fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
@@ -341,20 +355,13 @@ impl EngineAdapter for SourceJsonGoldenAdapter {
     }
 
     fn extract(&self, _request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
-        Ok(ExtractionResult {
-            adapter_id: self.id().to_string(),
-            profile: golden_boundary_profile(self.id()),
-            bridge: BridgeBundle {
-                schema_version: PROFILE_SCHEMA_VERSION.to_string(),
-                bridge_id: deterministic_id("source-json-golden-bridge", 1),
-                source_bundle_hash: content_hash("source-json-golden"),
-                source_locale: "ja-JP".to_string(),
-                extractor_name: "source-json-golden-test".to_string(),
-                extractor_version: "0.0.0".to_string(),
-                units: vec![],
-            },
-            warnings: vec![],
-        })
+        Ok(empty_extract(
+            self.id(),
+            "source-json-golden",
+            "000000000201",
+            "source-json-golden-test",
+            "source.json",
+        ))
     }
 
     fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {

@@ -251,13 +251,13 @@ impl EngineAdapter for SoftpalProfileDetectorAdapter {
             )));
         }
         let scripts = Self::resolve_scripts(request.game_dir)?;
-        let (bridge, warnings) = Self::build_bridge(&scripts)?;
+        let produced = Self::build_bridge(&scripts)?;
         let profile = self.profile_from_state(state)?;
         Ok(ExtractionResult {
             adapter_id: SOFTPAL_DETECTOR_ADAPTER_ID.to_string(),
             profile,
-            bridge,
-            warnings,
+            bridge: produced.json,
+            warnings: produced.warnings,
         })
     }
 
