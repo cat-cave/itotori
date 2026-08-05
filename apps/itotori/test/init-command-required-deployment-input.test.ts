@@ -39,6 +39,7 @@ describe("runInitCommand managed host readiness", () => {
     if (!(failure instanceof RequiredDeploymentInputError)) throw failure;
     expect(failure.code).toBe("missing-required-deployment-input");
     expect(failure.inputName).toBe("DATABASE_URL");
+    expect(failure.remediation).toMatch(/DATABASE_URL/);
     expect(failure.message).toContain("DATABASE_URL");
     expect(writtenPaths).toEqual([]);
   });

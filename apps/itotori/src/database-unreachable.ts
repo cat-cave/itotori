@@ -7,6 +7,8 @@ const connectionFailureCodes = new Set([
   "ETIMEDOUT",
 ]);
 
+const PRODUCT_DATABASE_REMEDIATION = "just dev db-up";
+
 type DatabaseEndpoint = {
   host: string;
   port: number;
@@ -21,6 +23,28 @@ type ConnectionFailure = Error & {
 };
 
 /**
+ * Typed failure when DATABASE_URL is declared but the endpoint refuses connections.
+ * The underlying driver error is preserved as `cause` / printable detail — never swallowed.
+ */
+export class ProductDatabaseNotRunningError extends Error {
+  readonly code = "product-database-not-running" as const;
+  readonly remediation: string = PRODUCT_DATABASE_REMEDIATION;
+
+  constructor(options: { readonly databaseUrl?: string; readonly cause: unknown }) {
+    const endpoint = databaseEndpoint(options.databaseUrl);
+    const location =
+      endpoint === null
+        ? ""
+        : ` at ${formatHost(endpoint.host)}:${endpoint.port}/${endpoint.database}`;
+    super(
+      `product database${location} is not running. Start it with \`${PRODUCT_DATABASE_REMEDIATION}\`, then re-run.`,
+      { cause: options.cause },
+    );
+    this.name = "ProductDatabaseNotRunningError";
+  }
+}
+
+/**
  * Returns a safe user-facing explanation only when a database connection
  * actually failed to reach the configured endpoint. It deliberately ignores
  * SQL, authentication, and arbitrary application failures.
@@ -32,6 +56,22 @@ export function databaseUnreachableMessage(
   const endpoint = databaseEndpoint(databaseUrl);
   if (endpoint === null || !hasMatchingConnectionFailure(error, endpoint)) return null;
   return `Database at ${formatHost(endpoint.host)}:${endpoint.port}/${endpoint.database} is unreachable. Start it with just dev db-up, then refresh.`;
+}
+
+/**
+ * When `error` is a connection failure to the configured product database endpoint,
+ * return a typed actionable error that keeps the driver failure as `cause`.
+ * Otherwise return the original value unchanged (including non-Error throws).
+ */
+export function mapProductDatabaseError(
+  error: unknown,
+  databaseUrl: string | undefined = process.env.DATABASE_URL,
+): unknown {
+  if (error instanceof ProductDatabaseNotRunningError) return error;
+  if (databaseUnreachableMessage(error, databaseUrl) === null) return error;
+  return databaseUrl === undefined
+    ? new ProductDatabaseNotRunningError({ cause: error })
+    : new ProductDatabaseNotRunningError({ databaseUrl, cause: error });
 }
 
 function databaseEndpoint(databaseUrl: string | undefined): DatabaseEndpoint | null {

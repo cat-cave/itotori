@@ -10,6 +10,8 @@ import {
   encodeEnvFileValue,
   renderComposeEnvFile,
   resolveDatabaseUrl,
+  resolveWorktreeDatabaseUrl,
+  worktreeComposeEnvValues,
 } from "./itotori-db-compose-env.mjs";
 
 const compose = readFileSync("docker-compose.yml", "utf8");
@@ -78,7 +80,7 @@ test("port base/span are overridable and keep the derivation in range", () => {
   assert.throws(() => deriveHostPort(rootA, { ITOTORI_DB_HOST_PORT_BASE: "70000" }));
 });
 
-test("explicit DATABASE_URL wins; otherwise the per-worktree port is used", () => {
+test("explicit DATABASE_URL wins for resolveDatabaseUrl; worktree URL ignores ambient", () => {
   const explicit = "postgres://itotori:itotori@127.0.0.1:55433/itotori";
   assert.equal(resolveDatabaseUrl({ DATABASE_URL: explicit }), explicit);
 
@@ -86,9 +88,17 @@ test("explicit DATABASE_URL wins; otherwise the per-worktree port is used", () =
   const derivedPort = String(deriveHostPort(rootA));
   assert.equal(new URL(derived).port, derivedPort);
 
-  // The compose env file publishes that same derived host port.
-  const values = composeEnvValues({ ITOTORI_DB_WORKTREE_ROOT: rootA });
+  // Ambient DATABASE_URL must not redirect the worktree-declared URL.
+  const worktree = resolveWorktreeDatabaseUrl({
+    ITOTORI_DB_WORKTREE_ROOT: rootA,
+    DATABASE_URL: explicit,
+  });
+  assert.equal(new URL(worktree).port, derivedPort);
+
+  // The worktree compose env file publishes that same derived host port.
+  const values = worktreeComposeEnvValues({ ITOTORI_DB_WORKTREE_ROOT: rootA });
   assert.equal(values.ITOTORI_DB_HOST_PORT, derivedPort);
+  assert.equal(values.ITOTORI_DB_WORKTREE_ROOT, rootA);
 });
 
 test("distinct worktree roots derive distinct default DATABASE_URLs (no shared DB)", () => {
@@ -113,18 +123,22 @@ test("the DB development selectors have no shared host port and derive their URL
     "command implementation must not hardcode a shared fixed DATABASE_URL default",
   );
 
-  // db-migrate / db-reset (the selectors that CONNECT) must derive the
-  // per-worktree URL from the compose-env script when DATABASE_URL is unset,
-  // so they target the same per-worktree Postgres that `db-up` brought up.
+  // db-migrate / db-reset (the selectors that CONNECT) must require the
+  // declared worktree lifecycle URL so they target the same Postgres that
+  // `db-up` brought up — never ambient shell DATABASE_URL.
   assert.match(
     commandScript,
-    /DATABASE_URL=\\?"\$\(node scripts\/itotori-db-compose-env\.mjs --print-database-url\)\\?" node apps\/itotori\/dist\/cli\.js db-migrate/u,
+    /DATABASE_URL=\\?"\$\(node scripts\/itotori-db-lifecycle\.mjs require-database-url\)\\?" node apps\/itotori\/dist\/cli\.js db-migrate/u,
   );
 
   assert.match(
     commandScript,
-    /DATABASE_URL=\\?"\$\(node scripts\/itotori-db-compose-env\.mjs --print-database-url\)\\?" node apps\/itotori\/dist\/cli\.js db-reset/u,
+    /DATABASE_URL=\\?"\$\(node scripts\/itotori-db-lifecycle\.mjs require-database-url\)\\?" node apps\/itotori\/dist\/cli\.js db-reset/u,
   );
+
+  assert.match(commandScript, /itotori-db-lifecycle\.mjs", "up"/u);
+  assert.match(commandScript, /itotori-db-lifecycle\.mjs", "down"/u);
+  assert.match(commandScript, /itotori-db-lifecycle\.mjs", "sweep"/u);
 });
 
 test("db-strict remediation hints derive per-worktree (no shared fixed host port)", () => {
@@ -139,15 +153,21 @@ test("db-strict remediation hints derive per-worktree (no shared fixed host port
     );
     assert.match(
       gate,
-      /DATABASE_URL="\$\(node scripts\/itotori-db-compose-env\.mjs --print-database-url\)"/u,
-      `${name} remediation must derive the per-worktree DATABASE_URL`,
+      /DATABASE_URL="\$\(node scripts\/itotori-db-lifecycle\.mjs require-database-url\)"/u,
+      `${name} remediation must derive the per-worktree DATABASE_URL from the lifecycle`,
     );
   }
 });
 
-test("devshell derives DATABASE_URL per worktree without a hardcoded shared port", () => {
-  assert.match(flake, /scripts\/itotori-db-compose-env\.mjs" --print-database-url/u);
-  assert.match(flake, /ITOTORI_DB_WORKTREE_ROOT="\$worktree_root"/u);
+test("devshell declares the worktree root without ambiently exporting DATABASE_URL", () => {
+  // Ambient DATABASE_URL whose container is down is the ECONNREFUSED bug.
+  // The shell exports only the worktree root; lifecycle up/require own the URL.
+  assert.match(flake, /export ITOTORI_DB_WORKTREE_ROOT="\$worktree_root"/u);
+  assert.doesNotMatch(
+    flake,
+    /export DATABASE_URL=/u,
+    "devshell must not ambiently export DATABASE_URL",
+  );
   // The per-worktree path must not pin the legacy fixed host port.
   assert.doesNotMatch(flake, /55433|55444/u);
 });
@@ -234,7 +254,11 @@ test("the alpha-proof integration workflow is public-fixture-only (no Postgres)"
 });
 
 test("DB development selectors use explicit compose env files without project-global .env leakage", () => {
-  assert.match(commandScript, /docker compose --env-file/u);
+  // Lifecycle owns compose --env-file invocation; developer-command only
+  // delegates. The wait path still materializes the worktree compose env file.
+  const lifecycle = readFileSync("scripts/itotori-db-lifecycle.mjs", "utf8");
+  assert.match(lifecycle, /compose", "--env-file"/u);
+  assert.match(commandScript, /itotori-db-lifecycle\.mjs/u);
   assert.doesNotMatch(commandScript, /ITOTORI_DB_COMPOSE_ENV_PATH/u);
 });
 

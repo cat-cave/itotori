@@ -16,6 +16,12 @@ services:
       POSTGRES_DB: ${ITOTORI_DB_NAME:-itotori}
     ports:
       - "${ITOTORI_DB_HOST_PORT:-55433}:5432"
+    labels:
+      # Declared product-database marker for lifecycle sweep. Sweep uses
+      # worktree-root / compose working_dir as the liveness test: if the
+      # directory is gone, the container is an orphan and is removed.
+      com.itotori.product-db: "1"
+      com.itotori.worktree-root: ${ITOTORI_DB_WORKTREE_ROOT:-}
     healthcheck:
       test: ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 2s
