@@ -132,6 +132,71 @@ impl RealLiveProfileDetectorAdapter {
         gameexe_inventory: &kaifuu_reallive::GameexeInventoryReport,
     ) -> KaifuuResult<Vec<(u16, kaifuu_reallive::ProducedBundle)>> {
         let mut bundles = Vec::new();
+        let decoded = Self::decode_archive_scenes(archive_bytes, scene_index)?;
+        for scene in &decoded {
+            let opts = Self::bridge_opts(scene.kidoku_count);
+            let Ok(produced) = kaifuu_reallive::produce_bundle(
+                scene.scene_id,
+                scene.blob,
+                &scene.decompressed,
+                gameexe_inventory,
+                &opts,
+            ) else {
+                continue;
+            };
+            bundles.push((scene.scene_id, produced));
+        }
+        Ok(bundles)
+    }
+
+    /// Whole-archive BridgeBundleV02 for product extract (schemaVersion 0.2.0).
+    pub(super) fn produce_whole_archive_bridge(
+        archive_bytes: &[u8],
+        scene_index: &kaifuu_reallive::RealLiveSceneIndex,
+        gameexe_inventory: &kaifuu_reallive::GameexeInventoryReport,
+    ) -> KaifuuResult<kaifuu_reallive::ProducedBundle> {
+        let decoded = Self::decode_archive_scenes(archive_bytes, scene_index)?;
+        if decoded.is_empty() {
+            return Err("kaifuu.reallive.extract: no decodable scenes with text units".into());
+        }
+        let opts = Self::bridge_opts(0);
+        let scene_inputs: Vec<kaifuu_reallive::BridgeSceneInput<'_>> = decoded
+            .iter()
+            .map(|scene| kaifuu_reallive::BridgeSceneInput {
+                scene_id: scene.scene_id,
+                scene_bytes: scene.blob,
+                decompressed_bytecode: &scene.decompressed,
+                scene_kidoku_count: scene.kidoku_count,
+            })
+            .collect();
+        kaifuu_reallive::produce_whole_seen_bundle(
+            archive_bytes,
+            &scene_inputs,
+            gameexe_inventory,
+            &opts,
+        )
+        .map_err(|err| -> Box<dyn std::error::Error> {
+            format!("kaifuu.reallive.whole_seen.bridge: {err}").into()
+        })
+    }
+
+    fn bridge_opts(scene_kidoku_count: u32) -> kaifuu_reallive::BridgeOpts<'static> {
+        kaifuu_reallive::BridgeOpts {
+            game_id: REALLIVE_GAME_ID,
+            game_version: "1.0.0",
+            source_profile_id: REALLIVE_PROFILE_ID,
+            source_locale: "ja-JP",
+            extractor_name: "kaifuu-reallive-bridge",
+            extractor_version: "0.1.0",
+            scene_kidoku_count,
+        }
+    }
+
+    fn decode_archive_scenes<'a>(
+        archive_bytes: &'a [u8],
+        scene_index: &kaifuu_reallive::RealLiveSceneIndex,
+    ) -> KaifuuResult<Vec<DecodedRealliveScene<'a>>> {
+        let mut decoded = Vec::new();
         let mut decompressed_archive =
             kaifuu_reallive::decompress_archive_scenes(archive_bytes, scene_index);
         let xor2_report =
@@ -149,82 +214,39 @@ impl RealLiveProfileDetectorAdapter {
                 && !xor2_report.validated
             {
                 continue;
-            };
+            }
             let Some(decompressed_index) = decompressed_archive.position_of(entry.scene_id) else {
                 continue;
             };
-            let decompressed = &decompressed_archive.scenes[decompressed_index].bytecode;
-            let opts = kaifuu_reallive::BridgeOpts {
-                game_id: REALLIVE_GAME_ID,
-                game_version: "1.0.0",
-                source_profile_id: REALLIVE_PROFILE_ID,
-                source_locale: "ja-JP",
-                extractor_name: "kaifuu-reallive-bridge",
-                extractor_version: "0.1.0",
-                scene_kidoku_count: header.kidoku_count,
-            };
-            let Ok(produced) = kaifuu_reallive::produce_bundle(
-                entry.scene_id,
-                blob,
-                decompressed,
-                gameexe_inventory,
-                &opts,
-            ) else {
+            let decompressed = decompressed_archive.scenes[decompressed_index]
+                .bytecode
+                .clone();
+            if decompressed.is_empty() {
+                continue;
+            }
+            // Whole-archive production fails the entire bundle when any
+            // included scene has empty opcode spans; skip those scenes the
+            // same way per-scene produce_bundle does.
+            let Ok(spans) = kaifuu_reallive::parse_real_bytecode_spans(&decompressed) else {
                 continue;
             };
-            bundles.push((entry.scene_id, produced));
+            if spans.is_empty() {
+                continue;
+            }
+            decoded.push(DecodedRealliveScene {
+                scene_id: entry.scene_id,
+                blob,
+                decompressed,
+                kidoku_count: header.kidoku_count,
+            });
         }
-        Ok(bundles)
+        Ok(decoded)
     }
+}
 
-    // Project a validated v0.2 localization unit onto the v0.1
-    // `kaifuu_core::BridgeUnit` the `ExtractionResult.bridge` contract
-    // carries. The `bridgeUnitId` / `sourceUnitKey` / `sourceHash` are the
-    // deterministic values `produce_bundle` minted, so a PatchExport keyed
-    // on them resolves against the same producer during `patch`.
-    pub(super) fn bridge_unit_from_v02(unit: &kaifuu_core::LocalizationUnitV02) -> BridgeUnit {
-        let speaker = unit
-            .speaker
-            .as_ref()
-            .and_then(|speaker| speaker.raw_speaker_text.clone())
-            .unwrap_or_default();
-        let protected_spans = unit
-            .spans
-            .iter()
-            .map(Self::protected_span_from_v02)
-            .collect();
-        BridgeUnit {
-            bridge_unit_id: unit.bridge_unit_id.clone(),
-            source_unit_key: unit.source_unit_key.clone(),
-            occurrence_id: unit.occurrence_id.clone(),
-            source_hash: unit.source_hash.clone(),
-            source_locale: unit.source_locale.clone(),
-            source_text: unit.source_text.clone(),
-            speaker,
-            text_surface: unit.surface_kind.clone(),
-            protected_spans,
-            context: None,
-            patch_ref: PatchRef {
-                asset_id: "reallive-seen-txt".to_string(),
-                write_mode: "replace".to_string(),
-                source_unit_key: unit.source_unit_key.clone(),
-            },
-        }
-    }
-
-    pub(super) fn protected_span_from_v02(span: &kaifuu_core::BridgeSpanV02) -> ProtectedSpan {
-        let mut mapped = ProtectedSpan::new(
-            span.span_kind.clone(),
-            span.raw.clone(),
-            span.start_byte,
-            span.end_byte,
-            span.preserve_mode.clone(),
-        );
-        mapped.parsed_name = span
-            .parsed_name
-            .as_ref()
-            .and_then(|value| value.as_str())
-            .map(str::to_string);
-        mapped
-    }
+struct DecodedRealliveScene<'a> {
+    scene_id: u16,
+    blob: &'a [u8],
+    decompressed: Vec<u8>,
+    kidoku_count: u32,
 }

@@ -71,7 +71,10 @@ pub fn run_round_trip_golden(
             report_passed_phase(
                 &mut report,
                 "extract",
-                format!("extracted {} bridge unit(s)", extraction.bridge.units.len()),
+                format!(
+                    "extracted {} bridge unit(s)",
+                    bridge_v02_unit_count(&extraction.bridge)
+                ),
                 None,
             );
             extraction
@@ -290,20 +293,63 @@ pub(crate) fn prepare_golden_work_dir(root: &Path, child: &str) -> KaifuuResult<
     Ok(path)
 }
 
-pub(crate) fn unchanged_patch_export(
-    bridge: &BridgeBundle,
-) -> Result<PatchExport, Box<GoldenFailure>> {
-    let mut entries = Vec::with_capacity(bridge.units.len());
-    for unit in &bridge.units {
+pub(crate) fn unchanged_patch_export(bridge: &Value) -> Result<PatchExport, Box<GoldenFailure>> {
+    let units = bridge
+        .get("units")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let source_locale = bridge
+        .get("sourceLocale")
+        .and_then(Value::as_str)
+        .unwrap_or("und")
+        .to_string();
+    let mut entries = Vec::with_capacity(units.len());
+    for unit in &units {
+        let source_unit_key = unit
+            .get("sourceUnitKey")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let source_text = unit
+            .get("sourceText")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let source_hash = unit
+            .get("sourceHash")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let bridge_unit_id = unit
+            .get("bridgeUnitId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let asset_id = unit
+            .pointer("/patchRef/assetId")
+            .and_then(Value::as_str)
+            .unwrap_or("source.json")
+            .to_string();
         let mut protected_span_mappings = Vec::new();
         let mut search_start = 0;
-        for span in &unit.protected_spans {
-            if span.raw.is_empty() {
+        let spans = unit
+            .get("spans")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        for span in &spans {
+            let raw = span
+                .get("raw")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            if raw.is_empty() {
                 continue;
             }
-            let Some(relative_start) = unit.source_text[search_start..].find(&span.raw) else {
-                let span_summary = RedactedContentSummary::from_text(&span.raw);
-                let source_summary = RedactedContentSummary::from_text(&unit.source_text);
+            let Some(relative_start) = source_text[search_start..].find(&raw) else {
+                let span_summary = RedactedContentSummary::from_text(&raw);
+                let source_summary = RedactedContentSummary::from_text(&source_text);
                 return Err(Box::new(GoldenFailure {
                     code: "unchanged_patch_protected_span_missing".to_string(),
                     phase: "unchanged_patch_build".to_string(),
@@ -311,38 +357,41 @@ pub(crate) fn unchanged_patch_export(
                     message: format!(
                         "protected span raw text {span_summary} was not present while building unchanged patch"
                     ),
-                    asset_ref: Some(unit.patch_ref.asset_id.clone()),
-                    source_unit_key: Some(unit.source_unit_key.clone()),
+                    asset_ref: Some(asset_id),
+                    source_unit_key: Some(source_unit_key),
                     support_boundary: Some(
                         "unchanged patch generation requires protected span raw text to exist in sourceText"
                             .to_string(),
                     ),
                     expected: Some(span_summary.to_string()),
                     actual: Some(source_summary.to_string()),
-                                    required_capability: None,
-}));
+                    required_capability: None,
+                }));
             };
             let target_start = search_start + relative_start;
-            let target_end = target_start + span.raw.len();
+            let target_end = target_start + raw.len();
             search_start = target_end;
+            let start_byte = span.get("startByte").and_then(Value::as_u64).unwrap_or(0);
+            let end_byte = span.get("endByte").and_then(Value::as_u64).unwrap_or(0);
+            // Bind by source byte range only — fixture sources lack UUID7 span ids.
             protected_span_mappings.push(
-                ProtectedSpanMapping::new(&span.raw, target_start as u64, target_end as u64)
-                    .with_source_identity(span.span_id.clone(), span.start, span.end),
+                ProtectedSpanMapping::new(&raw, target_start as u64, target_end as u64)
+                    .with_source_identity(None::<String>, start_byte, end_byte),
             );
         }
         entries.push(PatchExportEntry {
-            bridge_unit_id: unit.bridge_unit_id.clone(),
-            source_unit_key: unit.source_unit_key.clone(),
-            source_hash: unit.source_hash.clone(),
-            target_text: unit.source_text.clone(),
+            bridge_unit_id,
+            source_unit_key,
+            source_hash,
+            target_text: source_text,
             protected_span_mappings,
         });
     }
 
     Ok(PatchExport {
         patch_export_id: deterministic_id("round-trip-patch", 1),
-        source_locale: bridge.source_locale.clone(),
-        target_locale: bridge.source_locale.clone(),
+        source_locale: source_locale.clone(),
+        target_locale: source_locale,
         entries,
     })
 }

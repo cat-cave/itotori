@@ -196,31 +196,35 @@ impl EngineAdapter for RecordingAdapter {
         Ok(ExtractionResult {
             adapter_id: TEST_ADAPTER_ID.to_string(),
             profile: self.profile_result(),
-            bridge: BridgeBundle {
-                schema_version: "0.1.0".to_string(),
-                bridge_id: deterministic_id("bridge", 98),
-                source_bundle_hash: "registry-bundle-hash".to_string(),
-                source_locale: "en-US".to_string(),
-                extractor_name: "registry-test-extractor".to_string(),
-                extractor_version: "9.9.9".to_string(),
-                units: vec![BridgeUnit {
-                    bridge_unit_id: deterministic_id("bridge-unit", 98),
+            bridge: produce_bridge_v02_json(
+                &BridgeV02ProduceOpts {
+                    game_id: "registry-test",
+                    game_version: "9.9.9",
+                    source_profile_id: "019ed000-0000-7000-8000-000000009801",
+                    source_locale: "en-US",
+                    extractor_name: "registry-test-extractor",
+                    extractor_version: "9.9.9",
+                },
+                &sha256_hash_bytes(b"registry-bundle"),
+                &[BridgeV02AssetInput {
+                    asset_key: "registry.txt".to_string(),
+                    asset_kind: "script",
+                    source_hash: sha256_hash_bytes(b"registry-asset"),
+                    path: Some("registry.txt".to_string()),
+                }],
+                &[BridgeV02UnitInput {
                     source_unit_key: "registry.unit.001".to_string(),
                     occurrence_id: "registry-occurrence-001".to_string(),
-                    source_hash: "registry-source-hash".to_string(),
-                    source_locale: "en-US".to_string(),
                     source_text: "Registry source".to_string(),
-                    speaker: "Registry".to_string(),
-                    text_surface: "dialogue".to_string(),
+                    surface_kind: "dialogue",
+                    speaker: Some("Registry".to_string()),
+                    scene_id: "registry:scene".to_string(),
+                    asset_key: "registry.txt".to_string(),
                     protected_spans: vec![],
-                    context: None,
-                    patch_ref: PatchRef {
-                        asset_id: "registry.txt".to_string(),
-                        write_mode: "replace".to_string(),
-                        source_unit_key: "registry.unit.001".to_string(),
-                    },
+                    choice_option_index: None,
                 }],
-            },
+            )
+            .expect("test bridge v0.2"),
             warnings: Vec::<AdapterWarning>::new(),
         })
     }

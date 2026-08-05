@@ -16,7 +16,7 @@ fn fixture_uses_engine_adapter_trait_for_round_trip() {
             game_dir: &game_dir,
         })
         .unwrap();
-    assert_eq!(extraction.bridge.units.len(), 1);
+    assert_eq!(extraction.bridge["units"].as_array().map_or(0, Vec::len), 1);
     assert_eq!(extraction.profile.engine.adapter_id, FIXTURE_ADAPTER_ID);
 
     let output_dir = game_dir.join("patched");
@@ -204,15 +204,19 @@ fn round_trip_golden_harness_recomputes_native_v02_source_hashes_without_source_
             game_dir: &fixture_dir,
         })
         .unwrap();
-    assert_eq!(source_hashes.len(), extraction.bridge.units.len());
-    for unit in &extraction.bridge.units {
+    assert_eq!(
+        source_hashes.len(),
+        extraction.bridge["units"].as_array().map_or(0, Vec::len)
+    );
+    for unit in extraction.bridge["units"].as_array().expect("units") {
+        let key = unit["sourceUnitKey"].as_str().expect("sourceUnitKey");
+        let source_text = unit["sourceText"].as_str().expect("sourceText");
         assert_eq!(
             source_hashes
-                .get(&unit.source_unit_key)
+                .get(key)
                 .expect("native source hash for extracted unit"),
-            &sha256_hash_bytes(unit.source_text.as_bytes()),
-            "fixture hash must be canonical native source text hash for {}",
-            unit.source_unit_key
+            &sha256_hash_bytes(source_text.as_bytes()),
+            "fixture hash must be canonical native source text hash for {key}",
         );
     }
 

@@ -129,26 +129,30 @@ fn explicit_fixture_spans_are_normalized_to_byte_offsets() {
 }
 
 #[test]
-fn extracts_multi_surface_public_fixture_to_golden_bridge_snapshot() {
+fn extracts_multi_surface_public_fixture_to_v02_bridge() {
     let fixture_dir = public_fixture_dir();
     let extraction = FixtureAdapter
         .extract(ExtractRequest {
             game_dir: &fixture_dir,
         })
         .unwrap();
-    let actual = stable_json(&extraction.bridge).unwrap();
-    let expected =
-        fs::read_to_string(repo_root().join("fixtures/hello-game/expected/bridge-v0.1.json"))
-            .unwrap();
+    assert_eq!(
+        extraction.bridge["schemaVersion"].as_str(),
+        Some("0.2.0"),
+        "fixture extract must emit BridgeBundleV02"
+    );
+    kaifuu_core::BridgeBundleV02::validate_json(&extraction.bridge)
+        .expect("fixture extract must satisfy the v0.2 contract");
+    assert_eq!(
+        extraction.bridge["units"].as_array().map_or(0, Vec::len),
+        11
+    );
 
-    assert_eq!(actual, expected);
-    assert_eq!(extraction.bridge.units.len(), 11);
-
-    let surfaces = extraction
-        .bridge
-        .units
+    let surfaces = extraction.bridge["units"]
+        .as_array()
+        .expect("units")
         .iter()
-        .map(|unit| unit.text_surface.as_str())
+        .filter_map(|unit| unit["surfaceKind"].as_str())
         .collect::<BTreeSet<_>>();
     assert!(surfaces.len() >= 5);
     for required in [
@@ -163,12 +167,12 @@ fn extracts_multi_surface_public_fixture_to_golden_bridge_snapshot() {
         assert!(surfaces.contains(required), "missing surface {required}");
     }
 
-    let span_kinds = extraction
-        .bridge
-        .units
+    let span_kinds = extraction.bridge["units"]
+        .as_array()
+        .expect("units")
         .iter()
-        .flat_map(|unit| unit.protected_spans.iter())
-        .map(|span| span.kind.as_str())
+        .flat_map(|unit| unit["spans"].as_array().into_iter().flatten())
+        .filter_map(|span| span["spanKind"].as_str())
         .collect::<BTreeSet<_>>();
     assert!(span_kinds.contains("variable_placeholder"));
     assert!(span_kinds.contains("control_markup"));

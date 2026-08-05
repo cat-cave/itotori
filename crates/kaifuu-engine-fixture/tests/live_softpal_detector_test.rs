@@ -128,13 +128,26 @@ fn confirm_softpal(label: &str, title_root: &Path) {
             game_dir: &game_dir,
         })
         .unwrap_or_else(|error| panic!("[{label}] real Softpal extract must succeed: {error}"));
+    let unit_count = extraction
+        .bridge
+        .get("units")
+        .and_then(|value| value.as_array())
+        .map_or(0, Vec::len);
     eprintln!(
-        "[{label}] extract: units={} warnings={}",
-        extraction.bridge.units.len(),
-        extraction.warnings.len()
+        "[{label}] extract: units={unit_count} warnings={} schemaVersion={:?}",
+        extraction.warnings.len(),
+        extraction.bridge.get("schemaVersion"),
+    );
+    assert_eq!(
+        extraction
+            .bridge
+            .get("schemaVersion")
+            .and_then(|v| v.as_str()),
+        Some("0.2.0"),
+        "[{label}] Softpal extract must emit BridgeBundleV02"
     );
     assert!(
-        !extraction.bridge.units.is_empty(),
+        unit_count > 0,
         "[{label}] real Softpal extract must recover dialogue/choice units"
     );
     assert!(

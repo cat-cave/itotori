@@ -128,15 +128,15 @@ fn patch_command_reports_encoded_string_slot_preflight_without_output_mutation()
         "--output",
         bridge_path.to_str().unwrap(),
     ]);
-    let bridge: BridgeBundle = read_json(&bridge_path).unwrap();
+    let bridge: serde_json::Value = read_json(&bridge_path).unwrap();
     let patch_export = PatchExport {
         patch_export_id: deterministic_id("patch", 82),
         source_locale: "ja-JP".to_string(),
         target_locale: "en-US".to_string(),
         entries: vec![PatchExportEntry {
-            bridge_unit_id: bridge.units[0].bridge_unit_id.clone(),
-            source_unit_key: bridge.units[0].source_unit_key.clone(),
-            source_hash: bridge.units[0].source_hash.clone(),
+            bridge_unit_id: bridge["units"][0]["bridgeUnitId"].as_str().unwrap().to_string(),
+            source_unit_key: bridge["units"][0]["sourceUnitKey"].as_str().unwrap().to_string(),
+            source_hash: bridge["units"][0]["sourceHash"].as_str().unwrap().to_string(),
             target_text: "Overflow".to_string(),
             protected_span_mappings: vec![],
         }],

@@ -23,7 +23,10 @@ use kaifuu_core::{
     validate_profile_value, validate_rpg_maker_mv_mz_fixture_key, write_json, xp3_profile_proof,
 };
 #[cfg(test)]
-use kaifuu_core::{PatchExport, PatchPreflightRequest, PatchRequest};
+use kaifuu_core::{
+    BridgeV02AssetInput, BridgeV02ProduceOpts, BridgeV02UnitInput, PatchExport,
+    PatchPreflightRequest, PatchRequest, produce_bridge_v02_json,
+};
 #[cfg(test)]
 use kaifuu_delta::apply_delta;
 use kaifuu_delta::{

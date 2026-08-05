@@ -139,17 +139,50 @@ pub(super) fn native_source_hash_mismatch_patch_fixture() -> Value {
 
 pub(super) fn patch_export_for(extraction: &ExtractionResult) -> PatchExport {
     let target_text = "Hello, {player}.".to_string();
+    let unit = &extraction.bridge["units"][0];
+    let spans = unit
+        .get("spans")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let protected_spans: Vec<ProtectedSpan> = spans
+        .iter()
+        .map(|span| {
+            let mut mapped = ProtectedSpan::new(
+                span.get("spanKind")
+                    .and_then(Value::as_str)
+                    .unwrap_or("control_markup"),
+                span.get("raw").and_then(Value::as_str).unwrap_or(""),
+                span.get("startByte").and_then(Value::as_u64).unwrap_or(0),
+                span.get("endByte").and_then(Value::as_u64).unwrap_or(0),
+                span.get("preserveMode")
+                    .and_then(Value::as_str)
+                    .unwrap_or("exact"),
+            );
+            mapped.span_id = span
+                .get("spanId")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            mapped
+        })
+        .collect();
     PatchExport {
         patch_export_id: deterministic_id("patch", 1),
         source_locale: "ja-JP".to_string(),
         target_locale: "en-US".to_string(),
         entries: vec![kaifuu_core::PatchExportEntry {
-            bridge_unit_id: extraction.bridge.units[0].bridge_unit_id.clone(),
-            source_unit_key: extraction.bridge.units[0].source_unit_key.clone(),
-            source_hash: extraction.bridge.units[0].source_hash.clone(),
+            bridge_unit_id: unit["bridgeUnitId"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            source_unit_key: unit["sourceUnitKey"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            source_hash: unit["sourceHash"].as_str().unwrap_or_default().to_string(),
             protected_span_mappings: protected_span_mappings_for_target(
                 &target_text,
-                &extraction.bridge.units[0].protected_spans,
+                &protected_spans,
             ),
             target_text,
         }],
@@ -172,7 +205,7 @@ pub(super) fn protected_span_mappings_for_target(
             let target_end = target_start + span.raw.len();
             search_start = target_end;
             ProtectedSpanMapping::new(&span.raw, target_start as u64, target_end as u64)
-                .with_source_identity(span.span_id.clone(), span.start, span.end)
+                .with_source_identity(None::<String>, span.start, span.end)
         })
         .collect()
 }

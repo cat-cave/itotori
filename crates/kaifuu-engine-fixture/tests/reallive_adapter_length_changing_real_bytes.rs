@@ -138,21 +138,29 @@ fn reallive_adapter_length_changing_patch_round_trips_on_primary_corpus() {
         .extract(ExtractRequest { game_dir: &root })
         .expect("adapter extracts real Sweetie HD");
     assert!(
-        !extract.bridge.units.is_empty(),
+        extract.bridge["units"]
+            .as_array()
+            .is_some_and(|units| !units.is_empty()),
         "real extract must yield bridge units"
     );
 
     // Group units by scene id; only scenes that carry a dialogue unit are
     // candidates for a length-changing dialogue edit.
-    let mut by_scene: BTreeMap<u16, Vec<&kaifuu_core::BridgeUnit>> = BTreeMap::new();
-    for unit in &extract.bridge.units {
-        if let Some(scene) = scene_of(&unit.source_unit_key) {
+    let units = extract.bridge["units"].as_array().expect("units");
+    let mut by_scene: BTreeMap<u16, Vec<&serde_json::Value>> = BTreeMap::new();
+    for unit in units {
+        let key = unit["sourceUnitKey"].as_str().unwrap_or_default();
+        if let Some(scene) = scene_of(key) {
             by_scene.entry(scene).or_default().push(unit);
         }
     }
     let candidates: Vec<u16> = by_scene
         .iter()
-        .filter(|(_, units)| units.iter().any(|u| u.text_surface == "dialogue"))
+        .filter(|(_, scene_units)| {
+            scene_units
+                .iter()
+                .any(|u| u["surfaceKind"].as_str() == Some("dialogue"))
+        })
         .map(|(scene, _)| *scene)
         .collect();
     assert!(
@@ -183,22 +191,30 @@ fn reallive_adapter_length_changing_patch_round_trips_on_primary_corpus() {
         // fresh extract decodes the sentinel back as that unit's dialogue text.
         let grow_unit = units
             .iter()
-            .find(|u| u.text_surface == "dialogue")
+            .find(|u| u["surfaceKind"].as_str() == Some("dialogue"))
             .expect("candidate scene has a dialogue unit");
-        let grow_key = grow_unit.source_unit_key.clone();
-        let sentinel = format!("{MARKER}{}", "X".repeat(grow_unit.source_text.len() + 64));
+        let grow_key = grow_unit["sourceUnitKey"]
+            .as_str()
+            .expect("sourceUnitKey")
+            .to_string();
+        let grow_text = grow_unit["sourceText"].as_str().unwrap_or_default();
+        let sentinel = format!("{MARKER}{}", "X".repeat(grow_text.len() + 64));
         let entries: Vec<PatchExportEntry> = units
             .iter()
-            .map(|u| PatchExportEntry {
-                bridge_unit_id: u.bridge_unit_id.clone(),
-                source_unit_key: u.source_unit_key.clone(),
-                source_hash: u.source_hash.clone(),
-                target_text: if u.source_unit_key == grow_key {
-                    sentinel.clone()
-                } else {
-                    u.source_text.clone()
-                },
-                protected_span_mappings: vec![],
+            .map(|u| {
+                let key = u["sourceUnitKey"].as_str().unwrap_or_default().to_string();
+                let source_text = u["sourceText"].as_str().unwrap_or_default().to_string();
+                PatchExportEntry {
+                    bridge_unit_id: u["bridgeUnitId"].as_str().unwrap_or_default().to_string(),
+                    source_unit_key: key.clone(),
+                    source_hash: u["sourceHash"].as_str().unwrap_or_default().to_string(),
+                    target_text: if key == grow_key {
+                        sentinel.clone()
+                    } else {
+                        source_text
+                    },
+                    protected_span_mappings: vec![],
+                }
             })
             .collect();
         let export = PatchExport {
@@ -298,14 +314,15 @@ fn reallive_adapter_length_changing_patch_round_trips_on_primary_corpus() {
         let reextract = adapter
             .extract(ExtractRequest { game_dir: &out_dir })
             .expect("adapter re-extracts patched Sweetie HD output");
-        let reread_unit = reextract
-            .bridge
-            .units
+        let reread_unit = reextract.bridge["units"]
+            .as_array()
+            .expect("units")
             .iter()
-            .find(|unit| unit.source_unit_key == grow_key)
+            .find(|unit| unit["sourceUnitKey"].as_str() == Some(grow_key.as_str()))
             .expect("translated unit re-read through adapter");
         assert_eq!(
-            reread_unit.source_text, sentinel,
+            reread_unit["sourceText"].as_str(),
+            Some(sentinel.as_str()),
             "scene {scene_id:04}: adapter re-extract must read the translated xor2 text"
         );
 
@@ -387,7 +404,9 @@ fn reallive_adapter_extract_still_reads_plaintext_kanon_title() {
         .extract(ExtractRequest { game_dir: &root })
         .expect("adapter extracts plaintext RealLive title");
     assert!(
-        !extract.bridge.units.is_empty(),
+        extract.bridge["units"]
+            .as_array()
+            .is_some_and(|units| !units.is_empty()),
         "plaintext RealLive extract must yield bridge units"
     );
 

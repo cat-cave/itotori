@@ -108,9 +108,9 @@ fn engine_commands_use_supplied_registry() {
         ],
         &registry,
     );
-    let bridge: BridgeBundle = read_json(&bridge_path).unwrap();
-    assert_eq!(bridge.extractor_name, "registry-test-extractor");
-    assert_eq!(bridge.units[0].source_unit_key, "registry.unit.001");
+    let bridge: serde_json::Value = read_json(&bridge_path).unwrap();
+    assert_eq!(bridge["extractor"]["name"], "registry-test-extractor");
+    assert_eq!(bridge["units"][0]["sourceUnitKey"], "registry.unit.001");
     assert_calls(&calls, &["detect", "extract"]);
 
     let patch_export = PatchExport {
@@ -435,17 +435,17 @@ fn fixture_commands_dispatch_through_registered_adapter() {
         "--output",
         bridge_path.to_str().unwrap(),
     ]);
-    let bridge: BridgeBundle = read_json(&bridge_path).unwrap();
-    assert_eq!(bridge.units.len(), 1);
+    let bridge: serde_json::Value = read_json(&bridge_path).unwrap();
+    assert_eq!(bridge["units"].as_array().map_or(0, Vec::len), 1);
 
     let patch_export = PatchExport {
         patch_export_id: deterministic_id("patch", 1),
         source_locale: "ja-JP".to_string(),
         target_locale: "en-US".to_string(),
         entries: vec![PatchExportEntry {
-            bridge_unit_id: bridge.units[0].bridge_unit_id.clone(),
-            source_unit_key: bridge.units[0].source_unit_key.clone(),
-            source_hash: bridge.units[0].source_hash.clone(),
+            bridge_unit_id: bridge["units"][0]["bridgeUnitId"].as_str().unwrap().to_string(),
+            source_unit_key: bridge["units"][0]["sourceUnitKey"].as_str().unwrap().to_string(),
+            source_hash: bridge["units"][0]["sourceHash"].as_str().unwrap().to_string(),
             target_text: "Hello, {player}.".to_string(),
             protected_span_mappings: vec![ProtectedSpanMapping::new("{player}", 7, 15)],
         }],

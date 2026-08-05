@@ -9,17 +9,18 @@ use kaifuu_core::{
     AssetInventoryPatchMode, AssetInventoryRequest, AssetInventorySurface,
     AssetInventorySurfaceKind, AssetInventoryTextSourceKind, AssetKind, AssetList,
     AssetListRequest, AssetProfile, BGI_BYTECODE_SUPPORT_BOUNDARY, BGI_ENGINE_FAMILY,
-    BgiBytecodePatchCase, BgiBytecodeStringReference, BgiBytecodeTextSurface, BridgeBundle,
-    BridgeUnit, Capability, CapabilityLevelStatus, CapabilityReport, CapabilityStatus,
-    CodecTransform, ContainerTransform, CryptoTransform, DetectRequest, DetectionEvidence,
-    DetectionResult, EngineAdapter, EngineProfile, EvidenceStatus, ExtractRequest,
-    ExtractionResult, GameProfile, KaifuuResult, LayeredAccessCapabilityContract,
+    BgiBytecodePatchCase, BgiBytecodeStringReference, BgiBytecodeTextSurface, BridgeV02AssetInput,
+    BridgeV02ProduceOpts, BridgeV02UnitInput, Capability, CapabilityLevelStatus, CapabilityReport,
+    CapabilityStatus, CodecTransform, ContainerTransform, CryptoTransform, DetectRequest,
+    DetectionEvidence, DetectionResult, EngineAdapter, EngineProfile, EvidenceStatus,
+    ExtractRequest, ExtractionResult, GameProfile, KaifuuResult, LayeredAccessCapabilityContract,
     LayeredAccessHelperStatus, LayeredAccessKeyMaterialStatus, LayeredAccessOperationContract,
     LayeredAccessProfile, LayeredTextSurfaceAccess, OperationStatus, PatchBackTransform,
-    PatchPreflightRequest, PatchRef, PatchRequest, PatchResult, ProfileRequest, ProfileRequirement,
+    PatchPreflightRequest, PatchRequest, PatchResult, ProfileRequest, ProfileRequirement,
     RequirementCategory, RequirementStatus, SourceFingerprint, SurfaceTransform, TextSurface,
     VerificationResult, VerifyRequest, atomic_write_bytes, content_hash, deterministic_id,
-    parse_bgi_bytecode_bytes, patch_bgi_bytecode_bytes, safe_join_relative, sha256_hash_bytes,
+    parse_bgi_bytecode_bytes, patch_bgi_bytecode_bytes, produce_bridge_v02_json,
+    safe_join_relative, sha256_hash_bytes,
 };
 use serde_json::json;
 
@@ -305,37 +306,6 @@ impl BgiBytecodeAdapter {
         } else {
             "bgi-bytecode-no-header"
         }
-    }
-
-    fn bridge_units(assets: &[BgiScriptAsset]) -> Vec<BridgeUnit> {
-        let mut units = Vec::new();
-        let mut index = 1usize;
-        for asset in assets {
-            for reference in &asset.references {
-                units.push(BridgeUnit {
-                    bridge_unit_id: deterministic_id("bgiunit", index),
-                    source_unit_key: format!("{}#{}", asset.relative_path, reference.reference_id),
-                    occurrence_id: format!(
-                        "{}@{}",
-                        asset.relative_path, reference.pointer_offset_byte
-                    ),
-                    source_hash: content_hash(&reference.decoded_text),
-                    source_locale: "ja-JP".to_string(),
-                    source_text: reference.decoded_text.clone(),
-                    speaker: String::new(),
-                    text_surface: Self::text_surface_name(reference.text_surface).to_string(),
-                    protected_spans: vec![],
-                    context: None,
-                    patch_ref: PatchRef {
-                        asset_id: asset.relative_path.clone(),
-                        write_mode: "recompile_bytecode".to_string(),
-                        source_unit_key: reference.reference_id.clone(),
-                    },
-                });
-                index += 1;
-            }
-        }
-        units
     }
 
     fn asset_inventory_from_assets(&self, assets: &[BgiScriptAsset]) -> AssetInventoryManifest {

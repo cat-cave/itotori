@@ -9,8 +9,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use kaifuu_core::{
-    BridgeBundle, EngineAdapter, OperationStatus, PatchExport, PatchExportEntry,
-    PatchPreflightRequest, read_json,
+    EngineAdapter, OperationStatus, PatchExport, PatchExportEntry, PatchPreflightRequest, read_json,
 };
 use serde_json::Value;
 
@@ -80,19 +79,26 @@ fn assert_success(output: &std::process::Output, command: &str) {
     );
 }
 
-fn translated_patch_export(bridge: &BridgeBundle, patch_export_id: &str) -> PatchExport {
+fn translated_patch_export(bridge: &serde_json::Value, patch_export_id: &str) -> PatchExport {
     PatchExport {
         patch_export_id: patch_export_id.to_string(),
         source_locale: "ja-JP".to_string(),
         target_locale: "en-US".to_string(),
-        entries: bridge
-            .units
-            .iter()
+        entries: bridge["units"]
+            .as_array()
+            .into_iter()
+            .flatten()
             .map(|unit| PatchExportEntry {
-                bridge_unit_id: unit.bridge_unit_id.clone(),
-                source_unit_key: unit.source_unit_key.clone(),
-                source_hash: unit.source_hash.clone(),
-                target_text: format!("{} 長い", unit.source_text),
+                bridge_unit_id: unit["bridgeUnitId"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                source_unit_key: unit["sourceUnitKey"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                source_hash: unit["sourceHash"].as_str().unwrap_or_default().to_string(),
+                target_text: format!("{} 長い", unit["sourceText"].as_str().unwrap_or_default()),
                 protected_span_mappings: vec![],
             })
             .collect(),
@@ -140,9 +146,11 @@ fn bgi_cli_round_trips_header_and_no_header_with_offset_rewrites() {
             bridge_path.to_str().unwrap(),
         ]);
         assert_success(&extract, "extract");
-        let bridge: BridgeBundle = read_json(&bridge_path).expect("bridge bundle");
+        let bridge: serde_json::Value = read_json(&bridge_path).expect("bridge bundle");
         assert!(
-            !bridge.units.is_empty(),
+            bridge["units"]
+                .as_array()
+                .is_some_and(|units| !units.is_empty()),
             "{fixture_id} extracts bridge units"
         );
 
@@ -168,9 +176,9 @@ fn bgi_cli_round_trips_header_and_no_header_with_offset_rewrites() {
             fs::read(patched_dir.join("scenario").join(scenario_name)).expect("patched scenario");
         let (_variant, reparsed) =
             kaifuu_core::parse_bgi_bytecode_bytes(&patched_bytes).expect("patched reparses");
-        for unit in &bridge.units {
-            let reference_id = unit
-                .source_unit_key
+        for unit in bridge["units"].as_array().expect("units") {
+            let source_unit_key = unit["sourceUnitKey"].as_str().unwrap_or_default();
+            let reference_id = source_unit_key
                 .rsplit_once('#')
                 .expect("source key has reference")
                 .1;
@@ -180,7 +188,7 @@ fn bgi_cli_round_trips_header_and_no_header_with_offset_rewrites() {
                 .expect("patched reference survives");
             assert_eq!(
                 reference.decoded_text,
-                format!("{} 長い", unit.source_text),
+                format!("{} 長い", unit["sourceText"].as_str().unwrap_or_default()),
                 "{fixture_id}"
             );
         }
@@ -224,19 +232,25 @@ fn bgi_cli_patch_preflight_accepts_units_from_multiple_script_assets() {
         bridge_path.to_str().unwrap(),
     ]);
     assert_success(&extract, "extract");
-    let bridge: BridgeBundle = read_json(&bridge_path).expect("bridge bundle");
+    let bridge: serde_json::Value = read_json(&bridge_path).expect("bridge bundle");
     assert!(
-        bridge
-            .units
-            .iter()
-            .any(|unit| unit.source_unit_key.starts_with("scenario/0100.bgi#")),
+        bridge["units"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|unit| unit["sourceUnitKey"]
+                .as_str()
+                .is_some_and(|key| key.starts_with("scenario/0100.bgi#"))),
         "header asset units are present"
     );
     assert!(
-        bridge
-            .units
-            .iter()
-            .any(|unit| unit.source_unit_key.starts_with("scenario/0101#")),
+        bridge["units"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|unit| unit["sourceUnitKey"]
+                .as_str()
+                .is_some_and(|key| key.starts_with("scenario/0101#"))),
         "second asset units are present"
     );
 
@@ -273,13 +287,18 @@ fn bgi_cli_patch_preflight_accepts_units_from_multiple_script_assets() {
         let (_variant, reparsed) =
             kaifuu_core::parse_bgi_bytecode_bytes(&patched_bytes).expect("patched reparses");
         let source_prefix = format!("scenario/{scenario_name}#");
-        for unit in bridge
-            .units
-            .iter()
-            .filter(|unit| unit.source_unit_key.starts_with(&source_prefix))
+        for unit in bridge["units"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|unit| {
+                unit["sourceUnitKey"]
+                    .as_str()
+                    .is_some_and(|key| key.starts_with(&source_prefix))
+            })
         {
-            let reference_id = unit
-                .source_unit_key
+            let source_unit_key = unit["sourceUnitKey"].as_str().unwrap_or_default();
+            let reference_id = source_unit_key
                 .rsplit_once('#')
                 .expect("source key has reference")
                 .1;
@@ -287,7 +306,10 @@ fn bgi_cli_patch_preflight_accepts_units_from_multiple_script_assets() {
                 .iter()
                 .find(|reference| reference.reference_id == reference_id)
                 .expect("patched reference survives");
-            assert_eq!(reference.decoded_text, format!("{} 長い", unit.source_text));
+            assert_eq!(
+                reference.decoded_text,
+                format!("{} 長い", unit["sourceText"].as_str().unwrap_or_default())
+            );
         }
     }
 }

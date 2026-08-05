@@ -76,15 +76,15 @@ fn duplicate_raw_protected_spans_require_distinct_target_mappings() {
             game_dir: &game_dir,
         })
         .unwrap();
-    let unit = &extraction.bridge.units[0];
+    let unit = &extraction.bridge["units"][0];
     let patch_export = PatchExport {
         patch_export_id: deterministic_id("patch", 13),
         source_locale: "ja-JP".to_string(),
         target_locale: "en-US".to_string(),
         entries: vec![kaifuu_core::PatchExportEntry {
-            bridge_unit_id: unit.bridge_unit_id.clone(),
-            source_unit_key: unit.source_unit_key.clone(),
-            source_hash: unit.source_hash.clone(),
+            bridge_unit_id: unit["bridgeUnitId"].as_str().unwrap().to_string(),
+            source_unit_key: unit["sourceUnitKey"].as_str().unwrap().to_string(),
+            source_hash: unit["sourceHash"].as_str().unwrap().to_string(),
             target_text: "{name} and {name}.".to_string(),
             protected_span_mappings: vec![
                 ProtectedSpanMapping::new("{name}", 0, 6),
@@ -152,13 +152,13 @@ fn duplicate_raw_protected_spans_require_valid_source_identity() {
             game_dir: &game_dir,
         })
         .unwrap();
-    let unit = &extraction.bridge.units[0];
-    let first_span = &unit.protected_spans[0];
-    let second_span = &unit.protected_spans[1];
+    let unit = &extraction.bridge["units"][0];
+    let first_span = &unit["spans"][0];
+    let second_span = &unit["spans"][1];
     let patch_entry = |protected_span_mappings| kaifuu_core::PatchExportEntry {
-        bridge_unit_id: unit.bridge_unit_id.clone(),
-        source_unit_key: unit.source_unit_key.clone(),
-        source_hash: unit.source_hash.clone(),
+        bridge_unit_id: unit["bridgeUnitId"].as_str().unwrap().to_string(),
+        source_unit_key: unit["sourceUnitKey"].as_str().unwrap().to_string(),
+        source_hash: unit["sourceHash"].as_str().unwrap().to_string(),
         target_text: "{name} and {name}.".to_string(),
         protected_span_mappings,
     };
@@ -176,16 +176,22 @@ fn duplicate_raw_protected_spans_require_valid_source_identity() {
             ProtectedSpanMapping::new("{name}", 11, 17),
         ],
     );
+    // Fixture patch validation binds source span identity by byte range in
+    // source.json (no spanId field there). Use coordinates only.
+    let first_start = first_span["startByte"].as_u64().unwrap();
+    let first_end = first_span["endByte"].as_u64().unwrap();
+    let second_start = second_span["startByte"].as_u64().unwrap();
+    let second_end = second_span["endByte"].as_u64().unwrap();
     let wrong_identity = patch_export(
         deterministic_id("patch", 15),
         vec![
             ProtectedSpanMapping::new("{name}", 0, 6).with_source_identity(
-                first_span.span_id.clone(),
-                first_span.start,
-                first_span.end,
+                None::<String>,
+                first_start,
+                first_end,
             ),
             ProtectedSpanMapping::new("{name}", 11, 17).with_source_identity(
-                second_span.span_id.clone(),
+                None::<String>,
                 20,
                 26,
             ),
@@ -195,14 +201,14 @@ fn duplicate_raw_protected_spans_require_valid_source_identity() {
         deterministic_id("patch", 16),
         vec![
             ProtectedSpanMapping::new("{name}", 0, 6).with_source_identity(
-                first_span.span_id.clone(),
-                first_span.start,
-                first_span.end,
+                None::<String>,
+                first_start,
+                first_end,
             ),
             ProtectedSpanMapping::new("{name}", 11, 17).with_source_identity(
-                first_span.span_id.clone(),
-                first_span.start,
-                first_span.end,
+                None::<String>,
+                first_start,
+                first_end,
             ),
         ],
     );
@@ -210,14 +216,14 @@ fn duplicate_raw_protected_spans_require_valid_source_identity() {
         deterministic_id("patch", 17),
         vec![
             ProtectedSpanMapping::new("{name}", 0, 6).with_source_identity(
-                second_span.span_id.clone(),
-                second_span.start,
-                second_span.end,
+                None::<String>,
+                second_start,
+                second_end,
             ),
             ProtectedSpanMapping::new("{name}", 11, 17).with_source_identity(
-                first_span.span_id.clone(),
-                first_span.start,
-                first_span.end,
+                None::<String>,
+                first_start,
+                first_end,
             ),
         ],
     );
@@ -285,15 +291,15 @@ fn empty_protected_span_mappings_fail_for_source_control_markup() {
             game_dir: &game_dir,
         })
         .unwrap();
-    let unit = &extraction.bridge.units[0];
+    let unit = &extraction.bridge["units"][0];
     let patch_export = PatchExport {
         patch_export_id: deterministic_id("patch", 12),
         source_locale: "ja-JP".to_string(),
         target_locale: "en-US".to_string(),
         entries: vec![kaifuu_core::PatchExportEntry {
-            bridge_unit_id: unit.bridge_unit_id.clone(),
-            source_unit_key: unit.source_unit_key.clone(),
-            source_hash: unit.source_hash.clone(),
+            bridge_unit_id: unit["bridgeUnitId"].as_str().unwrap().to_string(),
+            source_unit_key: unit["sourceUnitKey"].as_str().unwrap().to_string(),
+            source_hash: unit["sourceHash"].as_str().unwrap().to_string(),
             target_text: "Wait, then continue.".to_string(),
             protected_span_mappings: vec![],
         }],
@@ -330,19 +336,19 @@ fn shared_contract_mappings_missing_from_target_fail_without_writing_output() {
             game_dir: &game_dir,
         })
         .unwrap();
-    let unit = &extraction.bridge.units[0];
+    let unit = &extraction.bridge["units"][0];
     let patch_export_value = json!({
         "schemaVersion": "0.1.0",
         "patchExportId": deterministic_id("patch", 11),
-        "sourceBridgeId": extraction.bridge.bridge_id.clone(),
-        "sourceLocale": extraction.bridge.source_locale.clone(),
+        "sourceBridgeId": extraction.bridge["bridgeId"].as_str().unwrap().to_string(),
+        "sourceLocale": extraction.bridge["sourceLocale"].as_str().unwrap().to_string(),
         "targetLocale": "en-US",
         "entries": [
             {
                 "entryId": deterministic_id("patchentry", 11),
-                "bridgeUnitId": unit.bridge_unit_id.clone(),
-                "sourceUnitKey": unit.source_unit_key.clone(),
-                "sourceHash": unit.source_hash.clone(),
+                "bridgeUnitId": unit["bridgeUnitId"].as_str().unwrap().to_string(),
+                "sourceUnitKey": unit["sourceUnitKey"].as_str().unwrap().to_string(),
+                "sourceHash": unit["sourceHash"].as_str().unwrap().to_string(),
                 "targetText": "Hello.",
                 "protectedSpanMappings": [
                     {
