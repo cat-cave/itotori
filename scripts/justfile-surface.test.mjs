@@ -42,6 +42,7 @@ const removed = [
   "db-down",
   "db-migrate",
   "db-reset",
+  "db-sweep",
   "db-up",
   "db-wait",
   "dlsite-demand-app-test",

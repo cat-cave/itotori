@@ -12,20 +12,31 @@ const defaultPortSpan = 2000;
 
 if (import.meta.url === pathToMainUrl(process.argv[1])) {
   if (process.argv.includes("--print-database-url")) {
+    // Explicit ambient DATABASE_URL wins for CI/operator consumers; otherwise
+    // the worktree-declared URL. Lifecycle `require-database-url` never uses
+    // ambient state and checks the stack is up.
     process.stdout.write(`${resolveDatabaseUrl(process.env)}\n`);
+  } else if (process.argv.includes("--print-worktree-database-url")) {
+    process.stdout.write(`${resolveWorktreeDatabaseUrl(process.env)}\n`);
   } else if (process.argv.includes("--print-compose-env-path")) {
     process.stdout.write(`${resolveComposeEnvPath(process.env)}\n`);
+  } else if (process.argv.includes("--write-worktree")) {
+    await writeWorktreeComposeEnv(process.env);
   } else {
-    await writeComposeEnv(process.env);
+    // Default write path is the worktree declaration — ambient DATABASE_URL
+    // must not redirect this worktree onto another (or dead) host port.
+    await writeWorktreeComposeEnv(process.env);
   }
 }
 
-async function writeComposeEnv(env) {
+/** Write the compose env file for this worktree's declared product database. */
+export async function writeWorktreeComposeEnv(env = process.env) {
   const outputPath = resolveComposeEnvPath(env);
-  const values = composeEnvValues(env);
+  const values = worktreeComposeEnvValues(env);
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, renderComposeEnvFile(values));
   console.log(`wrote ${outputPath} for ${values.COMPOSE_PROJECT_NAME}`);
+  return outputPath;
 }
 
 // Render the full `KEY=value\n` env file. Each value is encoded so Compose's
@@ -37,32 +48,85 @@ export function renderComposeEnvFile(values) {
     .join("\n")}\n`;
 }
 
-export function composeEnvValues(env = process.env) {
-  const databaseUrl = resolveDatabaseUrl(env);
+/**
+ * Compose env for the local worktree product-database stack.
+ *
+ * Deliberately ignores ambient DATABASE_URL: that value is how worktrees used
+ * to collide on a shared/stale host port and then fail with ECONNREFUSED.
+ * Credentials may still be overridden via ITOTORI_DB_USER/PASSWORD/NAME.
+ */
+export function worktreeComposeEnvValues(env = process.env) {
+  const root = resolveWorktreeRoot(env);
+  const databaseUrl = resolveWorktreeDatabaseUrl(env);
   const parsed = new URL(databaseUrl);
-  const projectName =
-    env.COMPOSE_PROJECT_NAME || `itotori-${path.basename(process.cwd()).toLowerCase()}`;
+  const projectName = env.COMPOSE_PROJECT_NAME || `itotori-${path.basename(root).toLowerCase()}`;
   const safeProjectName = projectName
-    .replace(/[^a-z0-9_-]/g, "-")
+    .replace(/[^a-z0-9_-]/gi, "-")
+    .toLowerCase()
     .replace(/^[^a-z0-9]+/, "itotori-");
   const databaseName = parsed.pathname.replace(/^\//, "") || "itotori";
 
   return {
     COMPOSE_PROJECT_NAME: safeProjectName,
     ITOTORI_DB_HOST_PORT: env.ITOTORI_DB_HOST_PORT || parsed.port || "5432",
-    ITOTORI_DB_USER: decodeURIComponent(parsed.username || "itotori"),
-    ITOTORI_DB_PASSWORD: decodeURIComponent(parsed.password || "itotori"),
-    ITOTORI_DB_NAME: decodeURIComponent(databaseName),
+    ITOTORI_DB_USER: env.ITOTORI_DB_USER || decodeURIComponent(parsed.username || "itotori"),
+    ITOTORI_DB_PASSWORD:
+      env.ITOTORI_DB_PASSWORD || decodeURIComponent(parsed.password || "itotori"),
+    ITOTORI_DB_NAME: env.ITOTORI_DB_NAME || decodeURIComponent(databaseName),
+    ITOTORI_DB_WORKTREE_ROOT: root,
   };
 }
 
-// Resolve the connection string. An explicit DATABASE_URL (CI, an operator, or
-// the devshell hook) wins; otherwise derive a per-worktree URL whose host port
-// is stable for this checkout but distinct from other worktrees.
+/**
+ * Compose env values. When DATABASE_URL is set (tests, explicit credential
+ * round-trips), parse credentials from it. Host-port for the *declared*
+ * worktree stack still comes from worktreeComposeEnvValues — callers that
+ * need ambient DATABASE_URL for the full map pass it without a worktree root
+ * only in tests.
+ */
+export function composeEnvValues(env = process.env) {
+  if (!env.DATABASE_URL) return worktreeComposeEnvValues(env);
+
+  const databaseUrl = env.DATABASE_URL;
+  const parsed = new URL(databaseUrl);
+  const root = resolveWorktreeRoot(env);
+  const projectName = env.COMPOSE_PROJECT_NAME || `itotori-${path.basename(root).toLowerCase()}`;
+  const safeProjectName = projectName
+    .replace(/[^a-z0-9_-]/gi, "-")
+    .toLowerCase()
+    .replace(/^[^a-z0-9]+/, "itotori-");
+  const databaseName = parsed.pathname.replace(/^\//, "") || "itotori";
+
+  return {
+    COMPOSE_PROJECT_NAME: safeProjectName,
+    // Port from the explicit URL only when the caller is not writing a
+    // worktree stack (lifecycle uses worktreeComposeEnvValues instead).
+    ITOTORI_DB_HOST_PORT: env.ITOTORI_DB_HOST_PORT || parsed.port || "5432",
+    ITOTORI_DB_USER: decodeURIComponent(parsed.username || "itotori"),
+    ITOTORI_DB_PASSWORD: decodeURIComponent(parsed.password || "itotori"),
+    ITOTORI_DB_NAME: decodeURIComponent(databaseName),
+    ITOTORI_DB_WORKTREE_ROOT: root,
+  };
+}
+
+// Resolve the connection string. An explicit DATABASE_URL (CI, an operator)
+// wins; otherwise derive a per-worktree URL whose host port is stable for this
+// checkout but distinct from other worktrees.
 export function resolveDatabaseUrl(env = process.env) {
   if (env.DATABASE_URL) return env.DATABASE_URL;
-  const port = deriveHostPort(resolveWorktreeRoot(env), env);
-  return `postgres://itotori:itotori@127.0.0.1:${port}/itotori`;
+  return resolveWorktreeDatabaseUrl(env);
+}
+
+/**
+ * Worktree-declared DATABASE_URL. Never reads ambient DATABASE_URL — that is
+ * the ambient-state bug (a port whose container is gone).
+ */
+export function resolveWorktreeDatabaseUrl(env = process.env) {
+  const port = env.ITOTORI_DB_HOST_PORT || String(deriveHostPort(resolveWorktreeRoot(env), env));
+  const user = env.ITOTORI_DB_USER || "itotori";
+  const password = env.ITOTORI_DB_PASSWORD || "itotori";
+  const name = env.ITOTORI_DB_NAME || "itotori";
+  return `postgres://${encodeURIComponent(user)}:${encodeURIComponent(password)}@127.0.0.1:${port}/${encodeURIComponent(name)}`;
 }
 
 export function resolveComposeEnvPath(env = process.env) {

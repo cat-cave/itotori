@@ -51,7 +51,7 @@ const resultsPath = path.join(tmpDir, "permission-denial-results.json");
 const generalSkipMarkerPath = path.join(tmpDir, "no-database-skipped.json");
 
 const remediationCommand =
-  'just dev db-up && just dev db-migrate && DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" just test permission-denial-db';
+  'just dev db-up && just dev db-migrate && DATABASE_URL="$(node scripts/itotori-db-lifecycle.mjs require-database-url)" just test permission-denial-db';
 
 function parseArtifactDir(args) {
   const index = args.indexOf("--artifact-dir");

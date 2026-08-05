@@ -242,12 +242,8 @@ function ci(lane, forwarded) {
 }
 
 function runScaleHarness(profile, forwarded) {
-  const databaseUrl = capture("node", [
-    "scripts/itotori-db-compose-env.mjs",
-    "--print-database-url",
-  ]);
   run("node", ["scripts/developer-command.mjs", "dev", "db-up"]);
-  run("node", ["scripts/developer-command.mjs", "dev", "db-wait"]);
+  const databaseUrl = capture("node", ["scripts/itotori-db-lifecycle.mjs", "require-database-url"]);
   run("pnpm", ["exec", "vp", "run", "ts:build"]);
   run("node", ["scripts/itotori-scale-harness.mjs", "--profile", profile, ...forwarded], {
     env: { ...process.env, DATABASE_URL: databaseUrl },
@@ -274,6 +270,7 @@ switch (delegate) {
       "db-up",
       "db-down",
       "db-wait",
+      "db-sweep",
       "db-migrate",
       "db-reset",
     ]);
@@ -288,25 +285,20 @@ switch (delegate) {
       runScaleHarness(selector.slice(6), args);
     else if (selector === "audit-findings-seed")
       shell("pnpm --filter @itotori/app build\nnode apps/itotori/dist/audit-findings/seed-cli.js");
-    else if (selector === "db-up")
-      shell(
-        'compose_env_path="$(node scripts/itotori-db-compose-env.mjs --print-compose-env-path)"\nnode scripts/itotori-db-compose-env.mjs\ndocker compose --env-file "$compose_env_path" up -d postgres',
-      );
-    else if (selector === "db-down")
-      shell(
-        'compose_env_path="$(node scripts/itotori-db-compose-env.mjs --print-compose-env-path)"\nnode scripts/itotori-db-compose-env.mjs\ndocker compose --env-file "$compose_env_path" down',
-      );
+    else if (selector === "db-up") run("node", ["scripts/itotori-db-lifecycle.mjs", "up"]);
+    else if (selector === "db-down") run("node", ["scripts/itotori-db-lifecycle.mjs", "down"]);
+    else if (selector === "db-sweep") run("node", ["scripts/itotori-db-lifecycle.mjs", "sweep"]);
     else if (selector === "db-wait")
       shell(
-        'compose_env_path="$(node scripts/itotori-db-compose-env.mjs --print-compose-env-path)"\nnode scripts/itotori-db-compose-env.mjs\nnode scripts/itotori-db-wait.mjs --compose-env-path "$compose_env_path"',
+        'compose_env_path="$(node scripts/itotori-db-compose-env.mjs --print-compose-env-path)"\nnode scripts/itotori-db-compose-env.mjs --write-worktree\nnode scripts/itotori-db-wait.mjs --compose-env-path "$compose_env_path"',
       );
     else if (selector === "db-migrate")
       shell(
-        'pnpm exec vp run ts:build\nDATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" node apps/itotori/dist/cli.js db-migrate',
+        'pnpm exec vp run ts:build\nDATABASE_URL="$(node scripts/itotori-db-lifecycle.mjs require-database-url)" node apps/itotori/dist/cli.js db-migrate',
       );
     else if (selector === "db-reset")
       shell(
-        'pnpm exec vp run ts:build\nDATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" node apps/itotori/dist/cli.js db-reset',
+        'pnpm exec vp run ts:build\nDATABASE_URL="$(node scripts/itotori-db-lifecycle.mjs require-database-url)" node apps/itotori/dist/cli.js db-reset',
       );
     else
       shell(

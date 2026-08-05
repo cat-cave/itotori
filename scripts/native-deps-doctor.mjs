@@ -168,7 +168,7 @@ function checkPostgres(env, probe) {
       "fail",
       `no DATABASE_URL; a ${plan.detail.runtime} container runtime is available`,
       "Provision it: `just dev db-up && just dev db-wait` (uses docker-compose.yml, postgres:18), " +
-        "then export the derived DATABASE_URL (`node scripts/itotori-db-compose-env.mjs --print-database-url`).",
+        "then use the derived DATABASE_URL (`node scripts/itotori-db-lifecycle.mjs require-database-url`).",
     );
   }
   return result(
