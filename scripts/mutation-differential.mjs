@@ -12,26 +12,12 @@
 //   featureless, no-real-bytes) test suite. The synthetic suite MUST turn
 //   red (the mutation is "killed"). A mutation that the synthetic suite lets
 //   pass ("escaped") is a coverage hole and FAILS this lane loud.
-//   The mutations are NEVER applied to the LIVE in-tree source. The runner first
-//   copies the workspace into a throwaway per-run SANDBOX (its own source tree +
-//   its own isolated CARGO_TARGET_DIR) and mutates/recompiles ONLY inside that
-//   sandbox, which is deleted when the run ends. The live `crates/**/src` is
-//   therefore byte-identical before and after — never opened for write — so a
-//   CONCURRENTLY-running per-gate lane (e.g. `just check`'s source-reading
-//   self-test, or `cargo fmt/clippy`) can never observe a half-mutated source
-//   file. This removes the earlier in-place-mutation concurrency race
-//   (mutation-differential-source-mutation-concurrency-race) at the root: two
-//   full-CI runs sharing a checkout no longer collide, because each run mutates
-//   only its own disposable copy, never the shared tree.
-// WHY 100% SYNTHETIC KILL ⇒ synthetic >= real: the mutation set is drawn from
-//   the representative real-regression classes, each landing in a code path the
-//   real-bytes lanes also exercise (see scripts/coverage-parity.mjs). If the
-//   synthetic suite kills EVERY mutation, then trivially
-//   `synthetic_kills (=N) >= real_kills (<=N)` — there is no mutation real could
-//   catch that synthetic misses, because synthetic catches all of them. The
-//   optional `--with-real` mode runs the real-bytes lane per mutation as
-//   corroborating evidence (needs the staged corpora + env), but the proof does
-//   not depend on it.
+//   The runner mutates only a throwaway workspace copy with its own
+//   CARGO_TARGET_DIR; the live tree is never opened for write, so concurrent
+//   lanes cannot observe a half-mutated source or race with the harness.
+// WHY 100% SYNTHETIC KILL ⇒ synthetic >= real: mutations target representative
+//   real-regression classes (see scripts/coverage-parity.mjs), and `--with-real`
+//   is corroborating evidence rather than a prerequisite for the proof.
 // Exit codes:
 //   0 — every mutation killed by the synthetic suite (guardrail live)
 //   1 — a mutation ESCAPED the synthetic suite (coverage hole), an invalid
@@ -223,12 +209,8 @@ export const REAL_GUARDS = deriveRealGuards(MUTATIONS, UNAVAILABLE_REAL_GUARD_FA
 // ---------------------------------------------------------------------------
 // Disposable per-run sandbox.
 //
-// The mutation runner NEVER writes to the live in-tree source. It copies the
-// workspace into a throwaway directory (excluding heavy/irrelevant build caches)
-// with its OWN isolated CARGO_TARGET_DIR, mutates + recompiles only there, then
-// deletes the whole sandbox. Because the copy is unique per run (mkdtemp), two
-// concurrent full-CI runs sharing a checkout never collide, and no concurrent
-// lane can ever read a source file this runner has mid-mutated.
+// A unique throwaway copy holds mutations and an isolated CARGO_TARGET_DIR;
+// the live tree stays untouched and concurrent runs cannot collide.
 // ---------------------------------------------------------------------------
 const SANDBOX_SKIP_DIRS = new Set([
   ".git",

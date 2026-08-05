@@ -305,5 +305,11 @@ test("the real-bytes selector delegates Cargo proof discovery to its manifest ru
   assert.ok(body, "real-bytes selector must retain its evidence body");
   assert.match(body, /^node scripts\/real-bytes-lane\.mjs$/mu);
   assert.match(body, /^node scripts\/run-live-evidence-suite\.mjs real-bytes$/mu);
+  assert.match(body, /^node scripts\/real-bytes-lane\.mjs --support$/mu);
+  assert.ok(
+    body.indexOf("node scripts/run-live-evidence-suite.mjs real-bytes") <
+      body.indexOf("node scripts/real-bytes-lane.mjs --support"),
+    "the manifest-derived support sweep must remain downstream of strict app evidence",
+  );
   assert.doesNotMatch(body, /^cargo test /mu);
 });

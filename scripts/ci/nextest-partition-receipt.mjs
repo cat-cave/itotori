@@ -94,7 +94,7 @@ export function summarizeNextestListReport(report) {
   if (counts.ignoredPrivateCorpus !== EXPECTED_IGNORED_PRIVATE_CORPUS) {
     throw new Error(
       "nextest ignored-test inventory mismatch: " +
-      `expected ${EXPECTED_IGNORED_PRIVATE_CORPUS}, found ${counts.ignoredPrivateCorpus}`,
+        `expected ${EXPECTED_IGNORED_PRIVATE_CORPUS}, found ${counts.ignoredPrivateCorpus}`,
     );
   }
   return { listed: declaredCount, ...counts };

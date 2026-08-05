@@ -17,6 +17,13 @@ function fail(message) {
   process.exitCode = 1;
 }
 
+function requestedRole(argv) {
+  if (argv.length === 0) return ENGINE_PROOF_ROLE;
+  if (argv.length === 1 && argv[0] === "--support") return SUPPORT_PROOF_ROLE;
+  fail("expected no arguments or --support");
+  return undefined;
+}
+
 export function selectProofs(entries, allProofs = discoverRealBytesProofs()) {
   const engines = [...new Set(entries.map((entry) => entry.engine ?? entry))];
   return engines.map((engine) => {
@@ -63,7 +70,10 @@ function executeProof(proof, group) {
     return { executed, reason: `proof ${proof.name} did not start: ${result.error.message}` };
   }
   if (result.status !== 0) {
-    return { executed, reason: `proof ${proof.name} exited ${result.status} after ${executed} executed tests` };
+    return {
+      executed,
+      reason: `proof ${proof.name} exited ${result.status} after ${executed} executed tests`,
+    };
   }
   if (executed === 0) {
     return {
@@ -75,17 +85,20 @@ function executeProof(proof, group) {
 }
 
 function runSupportProofs(proofs) {
+  let passed = true;
   for (const proof of proofs) {
     const result = executeProof(proof, SUPPORT_PROOF_ROLE);
     if (result.reason !== undefined) {
       fail(`support ${result.reason}`);
-      return false;
+      passed = false;
     }
   }
-  return true;
+  return passed;
 }
 
-function main() {
+function main(argv = process.argv.slice(2)) {
+  const role = requestedRole(argv);
+  if (role === undefined) return;
   const inventoryCheck = spawnSync(
     "cargo",
     [
@@ -106,7 +119,13 @@ function main() {
   const proofs = discoverRealBytesProofs(repoRoot);
   const engineProofs = proofs.filter((proof) => proof.role === ENGINE_PROOF_ROLE);
   const supportProofs = proofs.filter((proof) => proof.role === SUPPORT_PROOF_ROLE);
-  if (!runSupportProofs(supportProofs)) return;
+  // The engine receipt is the periodic oracle's compact, named proof. Keep it
+  // ahead of application evidence; the full support sweep is manifest-derived
+  // too, but runs after that evidence via the explicit --support invocation.
+  if (role === SUPPORT_PROOF_ROLE) {
+    runSupportProofs(supportProofs);
+    return;
+  }
   const statuses = selectProofs([...new Set(engineProofs.map(({ engine }) => engine))], proofs);
   for (const status of statuses) {
     if (status.outcome === "failed") continue;

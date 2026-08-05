@@ -132,6 +132,7 @@ pnpm --filter @itotori/runtime-web-review e2e
       `node scripts/real-bytes-lane.mjs
 pnpm exec vp run ts:build
 node scripts/run-live-evidence-suite.mjs real-bytes
+node scripts/real-bytes-lane.mjs --support
 `,
     );
   if (selector === "real-bytes-oracle")
