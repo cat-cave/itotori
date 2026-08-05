@@ -10,6 +10,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 
 import { runNativeCli, type NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
+import { nativeFailureDiagnostic } from "../native-bin/native-diagnostics.js";
 import {
   assertRenderInputsRemainBound,
   hashEvidenceFile,
@@ -88,7 +89,13 @@ export async function launchRealLiveRenderEvidence(input: {
       ],
       input.nativeCli,
     );
-    if (replay.status !== 0 || !existsSync(descriptor.replayLogPath)) {
+    if (replay.status !== 0) {
+      throw new PatchRuntimeLaunchError(
+        "runtime_failed",
+        `patched runtime replay exited with status ${String(replay.status)}: ${nativeFailureDiagnostic(replay, input.nativeCli?.env)}`,
+      );
+    }
+    if (!existsSync(descriptor.replayLogPath)) {
       throw new PatchRuntimeLaunchError(
         "runtime_failed",
         "patched runtime replay did not produce its observed receipt before render capture",
@@ -151,7 +158,7 @@ export async function launchRealLiveRenderEvidence(input: {
       if (result.status !== 0) {
         throw new PatchRuntimeLaunchError(
           "runtime_failed",
-          `patched runtime render exited with status ${String(result.status)}`,
+          `patched runtime render exited with status ${String(result.status)}: ${nativeFailureDiagnostic(result, input.nativeCli?.env)}`,
         );
       }
       assertRenderInputsRemainBound({

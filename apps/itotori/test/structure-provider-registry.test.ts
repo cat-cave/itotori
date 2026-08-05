@@ -7,6 +7,8 @@ import {
   structureProviderCapabilities,
 } from "../src/structure-export/structure-provider-registry.js";
 
+const MISSING_BRIDGE_DIAGNOSTIC = "missing --bridge";
+
 describe("StructureProvider registry", () => {
   it("requires an engine-discriminated provider and forwards the RealLive native identity", () => {
     const provider = resolveStructureProvider("reallive");
@@ -145,6 +147,37 @@ describe("StructureProvider registry", () => {
       "--output",
       "out/structure.json",
     ]);
+  });
+
+  it("relays the native missing-bridge diagnostic through the provider seam", () => {
+    const source = resolveStructureProvider("reallive").parseCli([
+      "--engine",
+      "reallive",
+      "--gameexe",
+      "/synthetic/game/Gameexe.ini",
+      "--seen",
+      "/synthetic/game/Seen.txt",
+      "--output",
+      "/synthetic/structure.json",
+    ]);
+
+    let caught: Error | undefined;
+    try {
+      runStructureProvider({
+        ...source,
+        env: {},
+        runProcess: () => ({ status: 1, stdout: "", stderr: MISSING_BRIDGE_DIAGNOSTIC }),
+      });
+    } catch (error) {
+      if (error instanceof Error) caught = error;
+      else throw error;
+    }
+
+    expect(Buffer.byteLength(MISSING_BRIDGE_DIAGNOSTIC, "utf8")).toBe(16);
+    expect(caught?.message).toContain(
+      `utsushi structure failed with status 1: ${MISSING_BRIDGE_DIAGNOSTIC}`,
+    );
+    expect(caught?.message).not.toContain("REDACTED_CONTENT kind=nativestderr");
   });
 
   it("rejects an unregistered provider", () => {

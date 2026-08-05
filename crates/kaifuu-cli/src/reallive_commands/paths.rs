@@ -2,10 +2,10 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use kaifuu_core::redact_for_log_or_report;
+use kaifuu_core::redact_diagnostic_for_operator;
 
 pub(crate) fn local_path_for_diagnostic(path: &Path) -> String {
-    redact_for_log_or_report(&path.display().to_string())
+    redact_diagnostic_for_operator(&path.display().to_string())
 }
 
 pub(crate) fn reallive_patch_read_source_error(path: &Path, error: &io::Error) -> String {

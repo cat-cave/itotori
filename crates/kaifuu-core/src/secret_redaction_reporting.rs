@@ -346,7 +346,20 @@ pub(crate) fn trim_token_punctuation(token: &str) -> &str {
     token.trim_matches(|character: char| {
         matches!(
             character,
-            '"' | '\'' | '`' | ',' | ';' | ':' | '(' | ')' | '[' | ']' | '{' | '}'
+            '"' | '\''
+                | '`'
+                | ','
+                | ';'
+                | ':'
+                | '.'
+                | '!'
+                | '?'
+                | '('
+                | ')'
+                | '['
+                | ']'
+                | '{'
+                | '}'
         )
     })
 }

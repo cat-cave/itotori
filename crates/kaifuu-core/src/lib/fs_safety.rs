@@ -125,7 +125,7 @@ pub fn promote_staged_directory_no_clobber(
     if !staging_metadata.is_dir() || staging_metadata.file_type().is_symlink() {
         return Err(format!(
             "{output_label} staging path must be a real directory: {}",
-            redact_for_log_or_report(&staging_dir.display().to_string())
+            redact_diagnostic_for_operator(&staging_dir.display().to_string())
         )
         .into());
     }
@@ -163,7 +163,7 @@ fn output_already_exists_error(output_label: &str, output_dir: &Path) -> io::Err
         ErrorKind::AlreadyExists,
         format!(
             "{output_label} already exists; refusing to replace it during no-clobber promotion: {}",
-            redact_for_log_or_report(&output_dir.display().to_string())
+            redact_diagnostic_for_operator(&output_dir.display().to_string())
         ),
     )
 }

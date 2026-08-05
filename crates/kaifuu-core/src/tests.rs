@@ -27,3 +27,4 @@ include!("tests/root_15_asset_and_bridge_contracts.rs");
 include!("tests/root_16_contract_fixtures_and_serialization.rs");
 include!("tests/root_17_inventory_and_xp3_profile.rs");
 include!("tests/root_18_xp3_profile_diagnostics.rs");
+include!("tests/root_19_operator_diagnostics.rs");

@@ -71,6 +71,82 @@ describe("browser player session lifecycle", () => {
       await manager.closeAll();
     }
   });
+
+  it("returns a span-redacted native launch diagnostic to the browser client", async () => {
+    const binPath = await failingChildFixture();
+    const manager = new BrowserPlayerSessionManager({
+      reapIntervalMs: 60_000,
+      nativeCli: {
+        env: {
+          PATH: process.env.PATH,
+          ITOTORI_UTSUSHI_BIN: binPath,
+          OPENROUTER_API_KEY: "browser-session-secret",
+        },
+      },
+    });
+    const server = createItotoriServer({
+      browserPlayerSessions: manager,
+      browserPlayerLaunches: { "review-session": startBody },
+      readOnlyServiceFactory: allowReveal,
+    });
+    try {
+      await listen(server);
+      const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      const response = await call(
+        origin,
+        "POST",
+        "/api/player/sessions",
+        JSON.stringify({ session: "review-session" }),
+      );
+      const body = JSON.parse(response.body.toString("utf8")) as { code: string; error: string };
+
+      expect(response.statusCode).toBe(422);
+      expect(body.code).toBe("bad_request");
+      expect(body.error).toContain("player engine exited with status 17");
+      expect(body.error).toContain("missing required flag --build-id");
+      expect(body.error).toContain("path=/descriptor/entry.bin");
+      expect(body.error).toContain("offset=41");
+      expect(body.error).toContain("bytes=88");
+      expect(body.error).toContain("[REDACTED_CONTENT kind=source");
+      expect(body.error).toContain("[REDACTED_SECRET]");
+      expect(body.error).not.toContain("private child text");
+      expect(body.error).not.toContain("browser-session-secret");
+    } finally {
+      if (server.listening) await closeServer(server);
+      await manager.closeAll();
+    }
+  });
+
+  it("does not relay a raw player protocol line through a JSON parse error", async () => {
+    const binPath = await invalidResponseChildFixture();
+    const manager = new BrowserPlayerSessionManager({
+      reapIntervalMs: 60_000,
+      nativeCli: { env: { PATH: process.env.PATH, ITOTORI_UTSUSHI_BIN: binPath } },
+    });
+    const server = createItotoriServer({
+      browserPlayerSessions: manager,
+      browserPlayerLaunches: { "review-session": startBody },
+      readOnlyServiceFactory: allowReveal,
+    });
+    try {
+      await listen(server);
+      const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      const response = await call(
+        origin,
+        "POST",
+        "/api/player/sessions",
+        JSON.stringify({ session: "review-session" }),
+      );
+      const body = JSON.parse(response.body.toString("utf8")) as { error: string };
+
+      expect(response.statusCode).toBe(422);
+      expect(body.error).toBe("player engine emitted an invalid session response");
+      expect(body.error).not.toContain("private player protocol content");
+    } finally {
+      if (server.listening) await closeServer(server);
+      await manager.closeAll();
+    }
+  });
 });
 
 const startBody = {
@@ -100,6 +176,33 @@ process.stdin.on("data", (chunk) => { input += chunk; if (input.includes("\\"clo
   );
   await chmod(binPath, 0o755);
   return { binPath, pidPath, secretPath };
+}
+
+async function failingChildFixture(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "itotori-browser-player-failure-"));
+  temporaryRoots.push(root);
+  const binPath = join(root, "failing-player-child.mjs");
+  await writeFile(
+    binPath,
+    `#!/usr/bin/env node
+process.stderr.write('utsushi.player.failed: missing required flag --build-id; path=/descriptor/entry.bin offset=41 bytes=88 source="private child text" api_key=browser-session-secret\\n');
+process.exit(17);
+`,
+  );
+  await chmod(binPath, 0o755);
+  return binPath;
+}
+
+async function invalidResponseChildFixture(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "itotori-browser-player-invalid-response-"));
+  temporaryRoots.push(root);
+  const binPath = join(root, "invalid-player-child.mjs");
+  await writeFile(
+    binPath,
+    "#!/usr/bin/env node\nprocess.stdout.write('private player protocol content is not JSON\\n');\n",
+  );
+  await chmod(binPath, 0o755);
+  return binPath;
 }
 
 function sessionManager(

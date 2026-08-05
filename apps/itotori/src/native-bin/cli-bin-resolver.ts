@@ -27,6 +27,7 @@ import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scrubLiveProviderSecretsFromEnv } from "../env/live-provider-secret-vars.js";
+import { nativeFailureDiagnostic, redactNativeDiagnostic } from "./native-diagnostics.js";
 
 /**
  * Return a shallow copy of `env` with the live-provider secrets removed. Used
@@ -323,7 +324,12 @@ function defaultRunProcess(
 ): NativeCliProcessResult {
   const res = spawnNativeCliProcess(command, args, env);
   if (res.error !== undefined) {
-    throw new Error(`native CLI could not be spawned (${command}): ${res.error.message}`);
+    throw new Error(
+      `native CLI could not be spawned (${redactNativeDiagnostic(command, env)}): ${nativeFailureDiagnostic(
+        { error: res.error, stderr: "", stdout: "" },
+        env,
+      )}`,
+    );
   }
   return {
     status: res.status,

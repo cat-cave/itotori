@@ -8,6 +8,10 @@ import {
   runKaifuuExtract,
   type KaifuuProcessResult,
 } from "../src/extract/kaifuu-extract-seam.js";
+import {
+  NATIVE_CONTENT_REDACTED,
+  NATIVE_SECRET_REDACTED,
+} from "../src/native-bin/native-diagnostics.js";
 
 import { IDENTITY, RPG_IDENTITY } from "./kaifuu-extract-seam.support.js";
 
@@ -147,7 +151,7 @@ describe("runKaifuuExtract (invocation shape mirrors run.mjs Phase 1)", () => {
     ).toThrow(/sourcing requires/u);
   });
 
-  it("redacts protected-span decode drift dialogue on a non-zero exit", () => {
+  it("redacts a protected content span while retaining its diagnostic context", () => {
     const sourceDialogue = "PRIVATE-SOURCE-DIALOGUE-SENTINEL-4e0d4cb3";
     let caught: KaifuuExtractError | undefined;
     try {
@@ -159,8 +163,10 @@ describe("runKaifuuExtract (invocation shape mirrors run.mjs Phase 1)", () => {
         env: {},
         runProcess: (): KaifuuProcessResult => ({
           status: 4,
-          stdout: `kaifuu.reallive.protected_span_drift: ${sourceDialogue}`,
-          stderr: `kaifuu.reallive.protected_span_drift: source=${sourceDialogue}`,
+          stdout: "",
+          stderr:
+            `kaifuu.reallive.protected_span_drift: scene=7 path=/synthetic/source offset=42 ` +
+            `kind=control_span source=${sourceDialogue}`,
         }),
       });
     } catch (error) {
@@ -168,11 +174,49 @@ describe("runKaifuuExtract (invocation shape mirrors run.mjs Phase 1)", () => {
     }
     expect(caught).toBeInstanceOf(KaifuuExtractError);
     expect(caught?.status).toBe(4);
-    expect(caught?.message).toContain(KAIFUU_NATIVE_OUTPUT_REDACTED);
-    expect(caught?.stderr).toBe(KAIFUU_NATIVE_OUTPUT_REDACTED);
+    expect(caught?.message).toContain("kaifuu.reallive.protected_span_drift");
+    expect(caught?.message).toContain("scene=7");
+    expect(caught?.message).toContain("path=/synthetic/source");
+    expect(caught?.message).toContain("offset=42");
+    expect(caught?.message).toContain("kind=control_span");
+    expect(caught?.message).toContain(NATIVE_CONTENT_REDACTED);
+    expect(caught?.message).toMatch(/bytes \(sha256 [a-f0-9]{64}\)/u);
+    expect(caught?.stderr).toContain(NATIVE_CONTENT_REDACTED);
     expect(caught?.message).not.toContain(sourceDialogue);
     expect(caught?.stderr).not.toContain(sourceDialogue);
     expect(caught?.stack).not.toContain(sourceDialogue);
+  });
+
+  it("redacts secret-bearing values without hiding safe native failure details", () => {
+    const secret = "operator-api-key-sentinel-4e0d4cb3";
+    let caught: KaifuuExtractError | undefined;
+    try {
+      runKaifuuExtract({
+        ...IDENTITY,
+        gameRoot: "/games/sample-game",
+        scene: 1,
+        bundleOutputPath: "/run/bridge.json",
+        env: { OPENROUTER_API_KEY: secret },
+        runProcess: (): KaifuuProcessResult => ({
+          status: 4,
+          stdout: "",
+          stderr:
+            "kaifuu.reallive.metadata_invalid: offset=42 " +
+            `OPENROUTER_API_KEY=${secret}; pass --game-version`,
+        }),
+      });
+    } catch (error) {
+      caught = error as KaifuuExtractError;
+    }
+    expect(caught).toBeInstanceOf(KaifuuExtractError);
+    expect(caught?.message).toContain("kaifuu.reallive.metadata_invalid");
+    expect(caught?.message).toContain("offset=42");
+    expect(caught?.message).toContain("--game-version");
+    expect(caught?.message).toContain(NATIVE_SECRET_REDACTED);
+    expect(caught?.stderr).toContain(NATIVE_SECRET_REDACTED);
+    expect(caught?.message).not.toContain(secret);
+    expect(caught?.stderr).not.toContain(secret);
+    expect(caught?.stack).not.toContain(secret);
   });
 
   it("refuses --whole-seen together with --scene (mutually exclusive)", () => {
@@ -314,7 +358,8 @@ describe("runKaifuuExtract (softpal dispatch)", () => {
     ).toThrow(/softpal.*sourcing requires/u);
   });
 
-  it("redacts softpal native output on a non-zero exit", () => {
+  it("redacts labelled softpal content on a non-zero exit", () => {
+    const sourceDialogue = "PRIVATE-SOFTPAL-DIALOGUE";
     let caught: KaifuuExtractError | undefined;
     try {
       runKaifuuExtract({
@@ -324,8 +369,8 @@ describe("runKaifuuExtract (softpal dispatch)", () => {
         env: {},
         runProcess: (): KaifuuProcessResult => ({
           status: 3,
-          stdout: "PRIVATE-SOFTPAL-DIALOGUE",
-          stderr: "PRIVATE-SOFTPAL-DIALOGUE",
+          stdout: "",
+          stderr: `kaifuu.softpal.decode_failed: unit=12 text=${sourceDialogue}`,
         }),
       });
     } catch (error) {
@@ -333,8 +378,10 @@ describe("runKaifuuExtract (softpal dispatch)", () => {
     }
     expect(caught).toBeInstanceOf(KaifuuExtractError);
     expect(caught?.message).toContain("softpal");
-    expect(caught?.message).not.toContain("PRIVATE-SOFTPAL-DIALOGUE");
-    expect(caught?.stderr).toBe(KAIFUU_NATIVE_OUTPUT_REDACTED);
+    expect(caught?.message).toContain("unit=12");
+    expect(caught?.message).toContain(NATIVE_CONTENT_REDACTED);
+    expect(caught?.message).not.toContain(sourceDialogue);
+    expect(caught?.stderr).toContain(NATIVE_CONTENT_REDACTED);
   });
 });
 

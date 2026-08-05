@@ -23,6 +23,10 @@ import {
   resolveNativeCliBin,
   spawnNativeCliProcess,
 } from "../native-bin/cli-bin-resolver.js";
+import {
+  nativeFailureDiagnostic,
+  redactNativeDiagnostic,
+} from "../native-bin/native-diagnostics.js";
 
 /**
  * The exit-code / stdout / stderr shape a `runProcess` injection returns.
@@ -91,10 +95,8 @@ export type RunUtsushiStructureResult = {
 
 /**
  * Clear, typed error when the underlying `utsushi structure` invocation exits
- * non-zero. The message surfaces the producer's own stderr verbatim (the
- * utsushi-side errors are already prefixed `utsushi.structure.<step>:` so the
- * operator can trace the failure to the replay / decode step that raised it)
- * — never the spawned stdout/stderr that might carry retail script text.
+ * non-zero. The message preserves the producer's safe diagnostic context,
+ * while content and secret spans are removed before it reaches the operator.
  */
 export class UtsushiStructureExportError extends Error {
   constructor(
@@ -134,10 +136,11 @@ export function runUtsushiStructureExport(
   const runProcess = args.runProcess ?? defaultRunUtsushiProcess;
   const res = runProcess(command, [...prefixArgs, ...structureArgs], env);
   if (res.status !== 0) {
+    const diagnostic = nativeFailureDiagnostic(res, env);
     throw new UtsushiStructureExportError(
       res.status,
-      res.stderr,
-      `utsushi structure failed with status ${String(res.status)}: ${res.stderr.trim() || res.stdout.trim() || "<no output>"}`,
+      diagnostic,
+      `utsushi structure failed with status ${String(res.status)}: ${diagnostic}`,
     );
   }
   return {
@@ -215,10 +218,11 @@ function defaultRunUtsushiProcess(
   // a decode tool — it never needs OpenRouter creds).
   const res = spawnNativeCliProcess(command, args, env);
   if (res.error !== undefined) {
+    const diagnostic = nativeFailureDiagnostic(res, env);
     throw new UtsushiStructureExportError(
       null,
-      res.error.message,
-      `utsushi structure could not be spawned (${command}): ${res.error.message}`,
+      diagnostic,
+      `utsushi structure could not be spawned (${redactNativeDiagnostic(command, env)}): ${diagnostic}`,
     );
   }
   return {

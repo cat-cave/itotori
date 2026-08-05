@@ -12,6 +12,7 @@ import {
   scrubLiveProviderSecrets,
   type NativeCliRunner,
 } from "../native-bin/cli-bin-resolver.js";
+import { nativeFailureDiagnostic } from "../native-bin/native-diagnostics.js";
 
 /** A viewer that has been quiet for this long cannot retain an engine VM. */
 export const BROWSER_PLAYER_SESSION_IDLE_TIMEOUT_MS = 5 * 60_000;
@@ -218,19 +219,34 @@ class LivePlayerChild {
   private closed = false;
   private closePromise: Promise<void> | undefined;
 
-  private constructor(private readonly child: ChildProcessWithoutNullStreams) {
+  private constructor(
+    private readonly child: ChildProcessWithoutNullStreams,
+    private readonly diagnosticEnv: NodeJS.ProcessEnv,
+  ) {
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => this.onStdout(chunk));
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
       this.stderr += chunk;
     });
-    child.on("error", (error) => this.fail(error));
+    child.on("error", (error) =>
+      this.fail(
+        new BrowserPlayerSessionError(
+          `player engine could not start: ${nativeFailureDiagnostic(
+            { stdout: "", stderr: "", error },
+            this.diagnosticEnv,
+          )}`,
+        ),
+      ),
+    );
     child.on("close", (code) => {
       if (!this.closed)
         this.fail(
           new BrowserPlayerSessionError(
-            `player engine exited with status ${String(code)}: ${this.stderr.trim()}`,
+            `player engine exited with status ${String(code)}: ${nativeFailureDiagnostic(
+              { stdout: "", stderr: this.stderr },
+              this.diagnosticEnv,
+            )}`,
           ),
         );
     });
@@ -296,6 +312,7 @@ class LivePlayerChild {
     if (reveal) args.push("--reveal");
     return new LivePlayerChild(
       spawn(resolved.command, args, { env: scrubLiveProviderSecrets(env), stdio: "pipe" }),
+      env,
     );
   }
 
@@ -338,9 +355,12 @@ class LivePlayerChild {
       if (pending === undefined) continue;
       try {
         pending.resolve(parseCliState(JSON.parse(line) as unknown));
-      } catch (error) {
+      } catch {
+        // JSON.parse includes a slice of the invalid protocol line in modern
+        // Node releases. That line came from the native player and may contain
+        // source content, so retain only the stable protocol failure class.
         pending.reject(
-          error instanceof Error ? error : new BrowserPlayerSessionError(String(error)),
+          new BrowserPlayerSessionError("player engine emitted an invalid session response"),
         );
       }
     }

@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { verifyLocalizationArtifactManifest } from "@itotori/db";
 import { runNativeCli } from "../native-bin/cli-bin-resolver.js";
+import { nativeFailureDiagnostic } from "../native-bin/native-diagnostics.js";
 import { launchRealLiveRenderEvidence } from "./reallive-runtime-render-evidence.js";
 import {
   PatchRuntimeLaunchError,
@@ -78,7 +79,7 @@ export const realliveRuntimeLauncherAdapterFactory: RuntimeLauncherAdapterFactor
       if (result.status !== 0) {
         throw new PatchRuntimeLaunchError(
           "runtime_failed",
-          `patched runtime exited with status ${String(result.status)}`,
+          `patched runtime exited with status ${String(result.status)}: ${nativeFailureDiagnostic(result, deps.nativeCli?.env)}`,
         );
       }
       const observedTextLineCount = observedTextLineCountFromRuntimeOutput(
@@ -337,7 +338,7 @@ function runNativeCommandOrThrow(
 ): void {
   const result = runNativeCli("utsushi-cli", args, nativeCli);
   if (result.status !== 0) {
-    const detail = result.stderr.trim() || result.stdout.trim() || "<no output>";
+    const detail = nativeFailureDiagnostic(result, nativeCli?.env);
     throw new Error(
       `itotori ${commandName}: utsushi-cli failed with status ${String(result.status)}: ${detail}`,
     );

@@ -6,6 +6,7 @@ import {
   assertNativeBinary,
   buildSourceCliEnvironment,
 } from "../src/corpus-manifest/trusted-cli.js";
+import { NATIVE_SECRET_REDACTED } from "../src/native-bin/native-diagnostics.js";
 
 const temporaryRoots: string[] = [];
 
@@ -117,6 +118,35 @@ describe("private corpus source-built CLI boundary", () => {
         },
       ),
     ).toThrow(/not a native binary/iu);
+  });
+
+  it("retains a safe source-build failure diagnostic while masking its secret", () => {
+    const root = temporaryRoot();
+    const targetRoot = join(root, "run-target");
+    const secret = "operator-api-key-sentinel-4e0d4cb3";
+    let caught: Error | undefined;
+    try {
+      buildSourceCliEnvironment(
+        { env: { OPENROUTER_API_KEY: secret }, targetRoot },
+        {
+          repoRoot: join(root, "checkout"),
+          runProcess() {
+            return {
+              error: undefined,
+              status: 1,
+              stdout: "",
+              stderr: `cargo: package resolution failed; OPENROUTER_API_KEY=${secret}`,
+            };
+          },
+        },
+      );
+    } catch (error) {
+      if (error instanceof Error) caught = error;
+      else throw error;
+    }
+    expect(caught?.message).toContain("package resolution failed");
+    expect(caught?.message).toContain(NATIVE_SECRET_REDACTED);
+    expect(caught?.message).not.toContain(secret);
   });
 
   it("rejects an ELF magic-only lookalike after a nominal source build", () => {

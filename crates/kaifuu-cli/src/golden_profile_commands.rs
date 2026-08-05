@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use crate::{
     AdapterRegistry, DetectOutcome, GoldenByteEquivalenceMode, GoldenHarnessRequest,
     PartialAdapterCommand, ProfileRequest, build_partial_adapter_report, detect_or_partial, flag,
-    flag_optional, flag_present, positional, read_json, redact_for_log_or_report,
+    flag_optional, flag_present, positional, read_json, redact_diagnostic_for_operator,
     run_round_trip_golden, validate_profile_value, write_json, write_partial_adapter_report,
     write_validated_stable_profile,
 };
@@ -52,7 +52,7 @@ pub(crate) fn run_golden_command(
     if failed {
         return Err(format!(
             "golden round-trip failed; report written to {}",
-            redact_for_log_or_report(&output.display().to_string())
+            redact_diagnostic_for_operator(&output.display().to_string())
         )
         .into());
     }
