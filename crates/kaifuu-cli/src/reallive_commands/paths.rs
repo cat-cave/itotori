@@ -76,12 +76,20 @@ pub(crate) fn reject_reallive_target_tree_symlinks(
     Ok(())
 }
 
+/// Resolve SEEN archive + Gameexe paths for either known RealLive layout.
+/// Layout discovery is a format property (`kaifuu_reallive::resolve_layout`);
+/// the CLI does not take a layout flag.
+pub(crate) fn resolve_reallive_layout(
+    game_root: &Path,
+) -> Result<kaifuu_reallive::RealLiveResolvedLayout, Box<dyn std::error::Error>> {
+    kaifuu_reallive::resolve_layout(game_root)
+        .map_err(|err| -> Box<dyn std::error::Error> { err.to_string().into() })
+}
+
 pub(crate) fn resolve_reallive_seen_path(
     game_root: &Path,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    Ok(resolve_reallive_game_root(game_root)?
-        .join("REALLIVEDATA")
-        .join("Seen.txt"))
+    Ok(resolve_reallive_layout(game_root)?.seen_txt)
 }
 
 /// Alpha by-id sourcing: resolve a RealLive corpus through the read-only vault
@@ -121,57 +129,6 @@ pub(crate) fn resolve_reallive_game_root_via_vault(
     Ok(materialized.tree_root)
 }
 
-pub(crate) fn resolve_reallive_game_root(
-    game_root: &Path,
-) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let mut current = game_root.to_path_buf();
-    let mut visited = 0usize;
-    loop {
-        let direct = current.join("REALLIVEDATA");
-        if direct.is_dir() {
-            return Ok(current);
-        }
-        if visited >= 4 {
-            break;
-        }
-
-        let child_roots = fs::read_dir(&current)
-            .map(|entries| {
-                entries
-                    .flatten()
-                    .map(|entry| entry.path())
-                    .filter(|path| path.is_dir())
-                    .filter(|path| path.join("REALLIVEDATA").is_dir())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        if child_roots.len() == 1 {
-            return Ok(child_roots[0].clone());
-        }
-
-        let children = fs::read_dir(&current)
-            .map(|entries| {
-                entries
-                    .flatten()
-                    .map(|entry| entry.path())
-                    .filter(|path| path.is_dir())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        if children.len() != 1 {
-            break;
-        }
-        current.clone_from(&children[0]);
-        visited += 1;
-    }
-
-    Err(format!(
-        "REALLIVEDATA/Seen.txt not found under {}; pass --game-root pointing at a RealLive game root",
-        game_root.display()
-    )
-    .into())
-}
-
 /// Read `Gameexe.ini` bytes for the RealLive bridge, surfacing a structured
 /// kaifuu diagnostic instead of silently degrading to an empty inventory.
 /// `Gameexe.ini` is mandatory for a RealLive title, so its absence is a real
@@ -197,31 +154,4 @@ pub(crate) fn read_gameexe_inventory_bytes(
         )
         .into()),
     }
-}
-
-pub(crate) fn game_root_gameexe_path(game_root: &Path) -> PathBuf {
-    // RealLive titles can ship Gameexe.ini alongside Seen.txt or at the
-    // game root. Probe both shapes.
-    let candidates = [
-        game_root.join("REALLIVEDATA").join("Gameexe.ini"),
-        game_root.join("Gameexe.ini"),
-    ];
-    for candidate in &candidates {
-        if candidate.is_file() {
-            return candidate.clone();
-        }
-    }
-    if let Ok(entries) = fs::read_dir(game_root) {
-        for entry in entries.flatten() {
-            for sub in [
-                entry.path().join("REALLIVEDATA").join("Gameexe.ini"),
-                entry.path().join("Gameexe.ini"),
-            ] {
-                if sub.is_file() {
-                    return sub;
-                }
-            }
-        }
-    }
-    candidates[0].clone()
 }

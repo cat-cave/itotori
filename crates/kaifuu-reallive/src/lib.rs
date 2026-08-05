@@ -110,6 +110,7 @@ mod diagnostics;
 pub mod encoding;
 pub mod framing;
 pub mod gameexe;
+pub mod layout;
 pub mod opcode;
 mod opcodes;
 mod parser;
@@ -154,6 +155,10 @@ pub use framing::{FramingError, FramingSpan, framing_manifest, reemit_scene};
 pub use gameexe::{
     GameexeIniDiagnostic, GameexeInventoryEntry, GameexeInventoryReport, GameexeKeyFamily,
     GameexeKeyTreatment, UNKNOWN_GAMEEXE_KEY_CODE, UnknownReason, parse_gameexe_inventory,
+};
+pub use layout::{
+    REALLIVE_LAYOUT_MAX_DESCENT, RealLiveLayoutError, RealLiveLayoutKind, RealLiveResolvedLayout,
+    resolve_layout,
 };
 pub use opcode::{
     COMMAND_HEADER_LEN, CommandArg, Expr, GotoPointerSite, RealLiveOpcode, RealLiveParseError,

@@ -8,8 +8,7 @@ use super::opcode_gate::{
     UnknownOpcodeGate, evaluate_unknown_opcode_gate, unknown_opcode_tuples_json,
 };
 use super::paths::{
-    game_root_gameexe_path, read_gameexe_inventory_bytes, resolve_reallive_game_root,
-    resolve_reallive_game_root_via_vault,
+    read_gameexe_inventory_bytes, resolve_reallive_game_root_via_vault, resolve_reallive_layout,
 };
 use crate::{flag, flag_optional, flag_present};
 
@@ -35,17 +34,17 @@ pub(crate) fn run_extract_reallive_bundle(
     // read-only vault adapter (`kaifuu-vault-source`). `--game-root` /
     // A raw source is always explicit. Durable private roots belong in the
     // platform inventory; this command consumes the selected path as an arg.
-    let resolved_game_root = if let Some(canonical_id) = flag_optional(args, "--vault-canonical-id")
-    {
+    let layout = if let Some(canonical_id) = flag_optional(args, "--vault-canonical-id") {
         let tree_root = resolve_reallive_game_root_via_vault(canonical_id)?;
-        resolve_reallive_game_root(&tree_root)?
+        resolve_reallive_layout(&tree_root)?
     } else {
         let game_root = PathBuf::from(flag_optional(args, "--game-root").ok_or(
             "--vault-canonical-id <ID> (vault by-id sourcing) or --game-root <PATH> required",
         )?);
-        resolve_reallive_game_root(&game_root)?
+        resolve_reallive_layout(&game_root)?
     };
-    let seen_path = resolved_game_root.join("REALLIVEDATA").join("Seen.txt");
+    let resolved_game_root = layout.game_root.clone();
+    let seen_path = layout.seen_txt.clone();
     let seen_bytes = fs::read(&seen_path).map_err(|err| -> Box<dyn std::error::Error> {
         format!("failed to read {}: {err}", seen_path.display()).into()
     })?;
@@ -60,7 +59,7 @@ pub(crate) fn run_extract_reallive_bundle(
         format!("kaifuu.reallive.archive_parse: {err:?}").into()
     })?;
 
-    let gameexe_path = game_root_gameexe_path(&resolved_game_root);
+    let gameexe_path = layout.gameexe_ini.clone();
     let gameexe_bytes = read_gameexe_inventory_bytes(&gameexe_path)?;
     let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
 
@@ -212,6 +211,8 @@ pub(crate) fn run_extract_reallive_bundle(
                 "unknownOpcodeTuples": unknown_opcode_tuples_json(&unknown_signatures),
                 "sourceSeenSha256": source_seen_sha256,
                 "resolvedGameRoot": resolved_game_root.display().to_string(),
+                "resolvedLayout": layout.kind.as_str(),
+                "resolvedSeenPath": seen_path.display().to_string(),
             });
             write_json(&PathBuf::from(report_path), &report)?;
         }

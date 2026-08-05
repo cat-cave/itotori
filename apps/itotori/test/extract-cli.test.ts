@@ -8,7 +8,10 @@ import { KAIFUU_NATIVE_OUTPUT_REDACTED } from "../src/extract/kaifuu-extract-sea
 import type { NativeCliProcessResult } from "../src/native-bin/cli-bin-resolver.js";
 
 const MISSING_ARCHIVE_DIAGNOSTIC =
-  "REALLIVEDATA/Seen.txt not found under /synthetic/owned-source-root-00; " +
+  "kaifuu.reallive.layout_not_found: no known RealLive layout under /synthetic/owned-source-root-00; " +
+  "probed: /synthetic/owned-source-root-00/REALLIVEDATA/Seen.txt (data-directory), " +
+  "/synthetic/owned-source-root-00/Seen.txt (flat-root); " +
+  "also searched nested directories up to depth 4 for either layout; " +
   "pass --game-root pointing at a RealLive game root";
 
 function baseDependencies(projectPath: string, projectDocument: unknown): ItotoriCliDependencies {
@@ -89,7 +92,7 @@ describe("itotori extract", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]!.args).toContain("extract");
-    expect(Buffer.byteLength(MISSING_ARCHIVE_DIAGNOSTIC, "utf8")).toBe(120);
+    expect(Buffer.byteLength(MISSING_ARCHIVE_DIAGNOSTIC, "utf8")).toBe(347);
     expect(caught?.message).toContain(MISSING_ARCHIVE_DIAGNOSTIC);
     expect(caught?.message).not.toContain(KAIFUU_NATIVE_OUTPUT_REDACTED);
   });
