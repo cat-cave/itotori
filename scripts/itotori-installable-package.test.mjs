@@ -142,42 +142,47 @@ describe("itotori installable package — built bin", () => {
 
   test("itotori extract relays a native missing-metadata error to the terminal", () => {
     const nativeDir = mkdtempSync(path.join(tmpdir(), "itotori-native-diagnostic-"));
+    const projectDir = mkdtempSync(path.join(tmpdir(), "itotori-project-diagnostic-"));
     const nativeBin = path.join(nativeDir, "kaifuu-cli");
+    const projectPath = path.join(projectDir, "project.json");
     try {
       writeFileSync(
         nativeBin,
         "#!/bin/sh\nprintf '%s\\n' 'missing RealLive bridge metadata flag --game-version; pass --game-id, --game-version, --source-profile-id, and --source-locale' >&2\nexit 1\n",
       );
       chmodSync(nativeBin, 0o755);
-      const r = runCli(
-        distCli,
-        [
-          "extract",
-          "--engine",
-          "reallive",
-          "--game-root",
-          "/synthetic/source",
-          "--game-id",
-          "fixture",
-          "--game-version",
-          "1",
-          "--source-profile-id",
-          "fixture-profile",
-          "--source-locale",
-          "ja-JP",
-          "--scene",
-          "1",
-          "--bundle-output",
-          "/synthetic/bridge.json",
-        ],
-        repoRoot,
-        { ...process.env, ITOTORI_KAIFUU_BIN: nativeBin },
+      writeFileSync(
+        projectPath,
+        `${JSON.stringify({
+          schemaVersion: 1,
+          engine: "reallive",
+          adapter: {},
+          source: { root: "/synthetic/source" },
+          identity: {
+            id: "fixture",
+            version: "1",
+            sourceLocale: "ja-JP",
+            sourceProfileId: "fixture-profile",
+          },
+          extract: {
+            output: path.join(projectDir, "bridge.json"),
+            scope: { kind: "all" },
+          },
+          structure: {
+            output: path.join(projectDir, "structure.json"),
+          },
+        })}\n`,
       );
+      const r = runCli(distCli, ["extract", "--project", projectPath], repoRoot, {
+        ...process.env,
+        ITOTORI_KAIFUU_BIN: nativeBin,
+      });
       assert.notEqual(r.status, 0, "native metadata failure must exit non-zero");
       assert.match(r.stderr, /missing RealLive bridge metadata flag --game-version/u);
       assert.doesNotMatch(r.stderr, /native kaifuu output redacted/u);
     } finally {
       rmSync(nativeDir, { recursive: true, force: true });
+      rmSync(projectDir, { recursive: true, force: true });
     }
   });
 

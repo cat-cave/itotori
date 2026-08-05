@@ -99,9 +99,10 @@ fn run_extract_softpal_bundle(args: &[String]) -> Result<(), Box<dyn std::error:
         game_dir: &game_dir,
     })?;
     let bridge = &extraction.bridge;
-    let units = bridge.get("units").and_then(|value| value.as_array()).ok_or(
-        "kaifuu.softpal.extract.invalid_bundle: v0.2 bridge is missing its units array",
-    )?;
+    let units = bridge
+        .get("units")
+        .and_then(|value| value.as_array())
+        .ok_or("kaifuu.softpal.extract.invalid_bundle: v0.2 bridge is missing its units array")?;
     let source_unit_keys = units
         .iter()
         .enumerate()
