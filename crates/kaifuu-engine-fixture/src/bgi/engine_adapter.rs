@@ -176,7 +176,8 @@ impl EngineAdapter for BgiBytecodeAdapter {
                     "patch entry does not target a parsed BGI string reference",
                 ));
             };
-            if entry.source_hash != content_hash(&reference.decoded_text) {
+            // BridgeBundleV02 unit sourceHash is sha256 of sourceText UTF-8 bytes.
+            if entry.source_hash != sha256_hash_bytes(reference.decoded_text.as_bytes()) {
                 return Ok(Self::patch_fail(
                     &request.patch_export.patch_export_id,
                     sha256_hash_bytes(&asset.bytes),
@@ -225,7 +226,8 @@ impl EngineAdapter for BgiBytecodeAdapter {
                         "patch entry does not target a parsed BGI string reference",
                     ));
                 };
-                if entry.source_hash != content_hash(&reference.decoded_text) {
+                // BridgeBundleV02 unit sourceHash is sha256 of sourceText UTF-8 bytes.
+                if entry.source_hash != sha256_hash_bytes(reference.decoded_text.as_bytes()) {
                     return Ok(Self::patch_fail(
                         &request.patch_export.patch_export_id,
                         sha256_hash_bytes(&asset.bytes),
