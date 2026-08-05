@@ -101,7 +101,10 @@ describe("native operator diagnostics", () => {
 
   it("passes the native missing-archive diagnostic through to the operator", () => {
     const missingArchive =
-      "REALLIVEDATA/Seen.txt not found under /synthetic/owned-source-root-00; " +
+      "kaifuu.reallive.layout_not_found: no known RealLive layout under /synthetic/owned-source-root-00; " +
+      "probed: /synthetic/owned-source-root-00/REALLIVEDATA/Seen.txt (data-directory), " +
+      "/synthetic/owned-source-root-00/Seen.txt (flat-root); " +
+      "also searched nested directories up to depth 4 for either layout; " +
       "pass --game-root pointing at a RealLive game root";
 
     const diagnostic = nativeFailureDiagnostic({
