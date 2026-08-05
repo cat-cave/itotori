@@ -38,8 +38,19 @@ export type LocalizePortfolioResult = {
 
 export class LocalizePortfolioExecutionError extends Error {
   constructor(readonly result: LocalizePortfolioResult) {
-    super(`${String(result.failedCount)} localize portfolio run(s) failed`);
+    super(formatPortfolioError(result));
   }
+}
+
+function formatPortfolioError(result: LocalizePortfolioResult): string {
+  const lines: string[] = [];
+  lines.push(`${String(result.failedCount)} localize portfolio run(s) failed:`);
+  for (const outcome of result.outcomes) {
+    if (outcome.status === "failed") {
+      lines.push(`  ${outcome.projectId}/${outcome.runId}: ${outcome.error ?? "unknown error"}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 export async function runLocalizePortfolioCommand(
@@ -110,10 +121,11 @@ export async function runLocalizePortfolioCommand(
       maxConcurrency: result.maxConcurrency,
       completedCount: result.completedCount,
       failedCount: result.failedCount,
-      outcomes: result.outcomes.map(({ projectId, runId, status }) => ({
+      outcomes: result.outcomes.map(({ projectId, runId, status, error }) => ({
         projectId,
         runId,
         status,
+        ...(error !== undefined ? { error } : {}),
       })),
     };
     const outputPath = optionalFlag(args, "--output");
