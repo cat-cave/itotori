@@ -5,51 +5,41 @@ const CONTENT_FIELDS: &str = concat!(
     "plaintext raw rawBytes raw_bytes raw-bytes reason replacementText replacement_text replacement-text ",
     "script source sourceText source_text source-text targetText target_text target-text text value bytes"
 );
-const DIAGNOSTIC_TERMS: &str = "missing |required |requires |unknown |unrecognized |invalid |unsupported |not supported|expected |failed|failure|cannot |could not |not found|usage:|choose exactly|permission denied|denied|i/o error|already exists|drift|malformed|mismatch|must |reject|unavailable|validation|shorten |restore |preserve |replace ";
 const COMMON_SECRET_PREFIXES: &str =
     "sk- ghp_ gho_ ghu_ ghs_ ghr_ github_pat_ xoxa- xoxb- xoxp- xoxr- xoxs-";
 const SAFE_CONTEXT_FIELDS: &str = "actual byteLen byte_len code column end error expected index kind len length line offset partial path scene start status unit";
 /// Redact private diagnostic spans while preserving useful operator context.
 pub fn redact_diagnostic_for_operator(text: &str) -> String {
     let without_secrets = redact_operator_secret_spans(text);
-    let redacted = redact_operator_content_spans(&without_secrets);
-    if redacted == without_secrets
-        && !text.trim().is_empty()
-        && !looks_like_operator_diagnostic(&redacted)
-    {
-        redacted_content_summary("diagnostic", &redacted)
+    redact_terminal_path_payload(&redact_operator_content_spans(&without_secrets))
+}
+
+fn redact_terminal_path_payload(text: &str) -> String {
+    let Some(marker) = text.find(['?', '#']) else {
+        return text.to_string();
+    };
+    let path = &text[..marker];
+    let payload = &text[marker + 1..];
+    if is_operator_path_prefix(path) && !payload.is_empty() {
+        format!(
+            "{}{}",
+            path,
+            redacted_content_summary("path_payload", payload)
+        )
     } else {
-        redacted
+        text.to_string()
     }
 }
 
-fn looks_like_operator_diagnostic(text: &str) -> bool {
-    let lower = text.to_ascii_lowercase();
-    let (label, prose) = lower.split_once(": ").unwrap_or(("", lower.as_str()));
-    let prose = if label.chars().any(char::is_whitespace) {
-        lower.as_str()
-    } else {
-        prose
-    };
-    SAFE_CONTEXT_FIELDS.split_ascii_whitespace().any(|field| {
-        let field = field.to_ascii_lowercase();
-        lower.contains(&format!("{field}=")) || lower.contains(&format!("{field}:"))
-    }) || is_operator_path(text)
-        || ((lower.starts_with("kaifuu.")
-            || lower.starts_with("itotori.")
-            || lower.starts_with("utsushi."))
-            && is_safe_vocabulary_token(text.trim()))
-        || (text.trim().contains('_') && is_safe_vocabulary_token(text.trim()))
-        || DIAGNOSTIC_TERMS
-            .split('|')
-            .any(|needle| prose.contains(needle))
-}
-fn is_operator_path(text: &str) -> bool {
+fn is_operator_path_prefix(text: &str) -> bool {
     is_local_absolute_path(text)
         && !text.chars().any(char::is_whitespace)
         && !text.contains("://")
-        && text.find(['?', '#', '\0']).is_none()
         && text.matches(['/', '\\']).count() > 1
+}
+
+fn is_operator_path(text: &str) -> bool {
+    is_operator_path_prefix(text) && text.find(['?', '#', '\0']).is_none()
 }
 fn redact_operator_content_spans(text: &str) -> String {
     redact_named_spans(text, is_content_field, false, |field, value| {

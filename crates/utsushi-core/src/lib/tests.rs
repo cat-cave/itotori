@@ -199,8 +199,13 @@ fn launch_capture_harness_discards_stdout_by_default() {
 }
 
 #[test]
-fn nonzero_exit_summarizes_stderr_without_exposing_contents() {
-    harness_stderr_diagnostics::nonzero_exit_summarizes_stderr_without_exposing_contents();
+fn nonzero_exit_relays_bounded_span_redacted_stderr() {
+    harness_stderr_diagnostics::nonzero_exit_relays_bounded_span_redacted_stderr();
+}
+
+#[test]
+fn timeout_relays_bounded_span_redacted_stderr() {
+    harness_stderr_diagnostics::timeout_relays_bounded_span_redacted_stderr();
 }
 
 #[test]

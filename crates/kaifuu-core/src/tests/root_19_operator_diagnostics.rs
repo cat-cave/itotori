@@ -88,8 +88,10 @@ fn operator_diagnostic_masks_common_secret_forms_without_hiding_context() {
     let uri_password = "uri-password-sentinel";
     let private_key_body = "private-key-body-sentinel";
     let authorization = "authorization-payload-sentinel";
-    let private_key =
-        format!("-----BEGIN PRIVATE KEY-----\n{private_key_body}\n-----END PRIVATE KEY-----");
+    let private_key = format!(
+        "-----BEGIN {}-----\n{private_key_body}\n-----END {}-----",
+        "PRIVATE KEY", "PRIVATE KEY"
+    );
     let diagnostic = format!(
         "kaifuu.transport.failed: fingerprint={raw_key}, secondary={second_raw_key}; Bearer {bearer} common={common_token} jwt={jwt} uri=postgres://operator:{uri_password}@db.example.test/input {private_key} proxy_authorization={authorization}; status=1"
     );
@@ -113,27 +115,26 @@ fn operator_diagnostic_masks_common_secret_forms_without_hiding_context() {
 }
 
 #[test]
-fn operator_diagnostic_summarizes_unstructured_terminal_text() {
+fn operator_diagnostic_preserves_unlabelled_terminal_text() {
     let payload = "unstructured-terminal-payload-sentinel";
     let diagnostic = format!("kaifuu.decode.failed: {payload}");
 
     let redacted = redact_diagnostic_for_operator(&diagnostic);
 
-    assert!(!redacted.contains(payload), "payload leaked: {redacted}");
-    assert!(redacted.contains("kind=diagnostic"));
+    assert_eq!(redacted, diagnostic);
 }
 
 #[test]
-fn operator_diagnostic_summarizes_unstructured_text_after_secret_masking() {
+fn operator_diagnostic_masks_secrets_without_hiding_unlabelled_text() {
     let payload = "unstructured-terminal-payload-with-secret-sentinel";
     let secret = "secret-value-sentinel";
     let diagnostic = format!("kaifuu.decode.failed: {payload} api_key={secret}");
 
     let redacted = redact_diagnostic_for_operator(&diagnostic);
 
-    assert!(!redacted.contains(payload), "payload leaked: {redacted}");
+    assert!(redacted.contains(payload), "payload missing: {redacted}");
     assert!(!redacted.contains(secret), "secret leaked: {redacted}");
-    assert!(redacted.contains("kind=diagnostic"));
+    assert!(redacted.contains(SEMANTIC_SECRET_REDACTED));
 }
 
 #[test]

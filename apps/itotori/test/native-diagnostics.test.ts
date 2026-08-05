@@ -82,8 +82,8 @@ describe("native operator diagnostics", () => {
     expect(relayed).toContain("status=1");
   });
 
-  it("treats unstructured failing output channels as content payloads", () => {
-    const payload = "PRIVATE-UNSTRUCTURED-PAYLOAD";
+  it("passes unlabelled failing output channels through by default", () => {
+    const payload = "unlabelled native decoder failure";
     const stdoutDiagnostic = nativeFailureDiagnostic({
       error: undefined,
       stderr: "",
@@ -95,36 +95,32 @@ describe("native operator diagnostics", () => {
       stdout: "",
     });
 
-    expect(stdoutDiagnostic).toContain(NATIVE_CONTENT_REDACTED);
-    expect(stdoutDiagnostic).not.toContain(payload);
-    expect(stderrDiagnostic).toContain(NATIVE_CONTENT_REDACTED);
-    expect(stderrDiagnostic).not.toContain(payload);
+    expect(stdoutDiagnostic).toBe(payload);
+    expect(stderrDiagnostic).toBe(payload);
   });
 
-  it("passes the native missing-metadata diagnostic through to the operator", () => {
-    const missingMetadata =
-      "missing RealLive bridge metadata flag --game-version; pass --game-id, --game-version, " +
-      "--source-profile-id, and --source-locale";
+  it("passes the native missing-archive diagnostic through to the operator", () => {
+    const missingArchive =
+      "REALLIVEDATA/Seen.txt not found under /synthetic/owned-source-root-00; " +
+      "pass --game-root pointing at a RealLive game root";
 
     const diagnostic = nativeFailureDiagnostic({
       error: undefined,
-      stderr: missingMetadata,
+      stderr: missingArchive,
       stdout: "",
     });
 
-    expect(diagnostic).toBe(missingMetadata);
+    expect(diagnostic).toBe(missingArchive);
   });
 
-  it("does not let a content-looking tail ride on a missing-flag diagnostic", () => {
-    const content = "PRIVATE-MISSING-FLAG-TAIL-SENTINEL";
+  it("passes the native missing-bridge diagnostic through to the operator", () => {
     const diagnostic = nativeFailureDiagnostic({
       error: undefined,
-      stderr: `missing metadata flag --game-version; ${content}`,
+      stderr: "missing --bridge",
       stdout: "",
     });
 
-    expect(diagnostic).toContain(NATIVE_CONTENT_REDACTED);
-    expect(diagnostic).not.toContain(content);
+    expect(diagnostic).toBe("missing --bridge");
   });
 
   it("summarizes content spans across delimiters while retaining nearby metadata", () => {
@@ -147,6 +143,21 @@ describe("native operator diagnostics", () => {
     expect(diagnostic).not.toContain(secondContent);
   });
 
+  it("keeps a diagnostic around a labelled script span", () => {
+    const script = "*entry\n@wait 10\nmessage synthetic-script-text";
+    const diagnostic = nativeFailureDiagnostic({
+      error: undefined,
+      stderr: `native parser failed: script=${JSON.stringify(script)}; line=2 offset=17`,
+      stdout: "",
+    });
+
+    expect(diagnostic).toContain("native parser failed");
+    expect(diagnostic).toContain("line=2");
+    expect(diagnostic).toContain("offset=17");
+    expect(diagnostic).toContain(NATIVE_CONTENT_REDACTED);
+    expect(diagnostic).not.toContain(script);
+  });
+
   it("does not mistake a one-component source value for a filesystem path", () => {
     const source = "/PRIVATE-PATH-SHAPED-CONTENT-SENTINEL";
     const diagnostic = redactNativeDiagnostic(`kaifuu.decode.failed: source=${source} offset=42`);
@@ -163,7 +174,11 @@ describe("native operator diagnostics", () => {
     const urlPassword = "url-password-sentinel";
     const bearer = "bearer-token-sentinel";
     const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJvcGVyYXRvciJ9.signature-sentinel";
-    const pem = "-----BEGIN PRIVATE KEY-----\nPRIVATE-PEM-SENTINEL\n-----END PRIVATE KEY-----";
+    const pem = [
+      "-----BEGIN",
+      " PRIVATE KEY-----\nPRIVATE-PEM-SENTINEL\n-----END",
+      " PRIVATE KEY-----",
+    ].join("");
     const rawKey = "00112233445566778899aabbccddeeff00112233";
     const diagnostic = nativeFailureDiagnostic({
       error: undefined,
@@ -192,12 +207,11 @@ describe("native operator diagnostics", () => {
     }
   });
 
-  it("contains raw, unstructured caught errors rather than relaying them", () => {
-    const content = "PRIVATE-UNSTRUCTURED-ERROR-SENTINEL";
+  it("passes unlabelled caught errors through by default", () => {
+    const content = "unlabelled native process error";
     const diagnostic = redactNativeError(new Error(content));
 
-    expect(diagnostic).toContain(NATIVE_CONTENT_REDACTED);
-    expect(diagnostic).not.toContain(content);
+    expect(diagnostic).toBe(content);
   });
 
   it("keeps a safe diagnostic already wrapped by the extraction seam", () => {

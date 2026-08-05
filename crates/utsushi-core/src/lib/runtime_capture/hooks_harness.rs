@@ -4,7 +4,7 @@ use super::execution_adapter::{
     RuntimeHookExecutionError, bounded_hook_timeout, configure_runtime_process_tree,
     remaining_until, run_capture_hook_with_timeout,
 };
-use super::stderr_diagnostic::{begin_runtime_stderr_drain, with_redacted_stderr_summary};
+use super::stderr_diagnostic::{begin_runtime_stderr_drain, with_bounded_stderr_diagnostic};
 pub struct RuntimeCaptureContext {
     pub operation: RuntimeOperation,
     pub boundary: RuntimeCaptureBoundary,
@@ -197,8 +197,7 @@ impl RuntimeLaunchCaptureHarness {
             command.stdout(Stdio::piped());
         }
         // Runtime stderr may contain browser/game content or credentials. Pipe
-        // it only to drain safely and summarize failures without exposing any
-        // raw bytes to operators or managed artifacts.
+        // it so every failure can relay a bounded, span-redacted diagnostic.
         command.stderr(Stdio::piped());
         configure_runtime_process_tree(&mut command, plan.operation)?;
         let mut child = command.spawn().map_err(|error| {
@@ -246,7 +245,10 @@ impl RuntimeLaunchCaptureHarness {
         ) {
             let cleanup =
                 terminate_runtime_process(&mut child, plan.shutdown_grace, plan.poll_interval);
-            return Err(error.with_process_id(process_id).with_cleanup(cleanup));
+            return Err(with_bounded_stderr_diagnostic(
+                error.with_process_id(process_id).with_cleanup(cleanup),
+                stderr_drain.as_ref(),
+            ));
         }
 
         let status =
@@ -278,7 +280,7 @@ impl RuntimeLaunchCaptureHarness {
                             .with_detail("beforeTerminateHookError", hook_error.code())
                             .with_detail("beforeTerminateHookMessage", hook_error.message);
                     }
-                    return Err(error);
+                    return Err(with_bounded_stderr_diagnostic(error, stderr_drain.as_ref()));
                 }
                 Err(error) => {
                     let cleanup = terminate_runtime_process(
@@ -286,14 +288,15 @@ impl RuntimeLaunchCaptureHarness {
                         plan.shutdown_grace,
                         plan.poll_interval,
                     );
-                    return Err(RuntimeHarnessError::new(
+                    let error = RuntimeHarnessError::new(
                         RuntimeHarnessErrorKind::ProcessWaitFailed,
                         plan.operation,
                         format!("failed while waiting for runtime process: {error}"),
                     )
                     .with_process_id(process_id)
                     .with_cleanup(cleanup)
-                    .with_detail("ioKind", error.kind().to_string()));
+                    .with_detail("ioKind", error.kind().to_string());
+                    return Err(with_bounded_stderr_diagnostic(error, stderr_drain.as_ref()));
                 }
             };
 
@@ -340,13 +343,16 @@ impl RuntimeLaunchCaptureHarness {
                 }
                 error
             };
-            return Err(with_redacted_stderr_summary(error, stderr_drain.as_ref()));
+            return Err(with_bounded_stderr_diagnostic(error, stderr_drain.as_ref()));
         }
 
         if let Some(error) = after_exit_error {
-            return Err(error
-                .with_detail("processExit", "success")
-                .with_detail("processExitSuccess", "true"));
+            return Err(with_bounded_stderr_diagnostic(
+                error
+                    .with_detail("processExit", "success")
+                    .with_detail("processExitSuccess", "true"),
+                stderr_drain.as_ref(),
+            ));
         }
 
         let stdout = stdout_reader.take().map(|handle| {

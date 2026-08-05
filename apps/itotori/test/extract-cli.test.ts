@@ -4,9 +4,9 @@ import { runItotoriCliCommand, type ItotoriCliDependencies } from "../src/cli-ha
 import { KAIFUU_NATIVE_OUTPUT_REDACTED } from "../src/extract/kaifuu-extract-seam.js";
 import type { NativeCliProcessResult } from "../src/native-bin/cli-bin-resolver.js";
 
-const MISSING_METADATA_DIAGNOSTIC =
-  "missing RealLive bridge metadata flag --game-version; pass --game-id, --game-version, " +
-  "--source-profile-id, and --source-locale";
+const MISSING_ARCHIVE_DIAGNOSTIC =
+  "REALLIVEDATA/Seen.txt not found under /synthetic/owned-source-root-00; " +
+  "pass --game-root pointing at a RealLive game root";
 
 function baseDependencies(): ItotoriCliDependencies {
   return {
@@ -31,14 +31,14 @@ function baseDependencies(): ItotoriCliDependencies {
 }
 
 describe("itotori extract", () => {
-  it("relays the native missing-metadata diagnostic through the public command", async () => {
+  it("relays the native missing-archive diagnostic through the public command", async () => {
     const calls: Array<{ command: string; args: string[] }> = [];
     const dependencies = baseDependencies();
     dependencies.nativeCli = {
       env: {},
       runProcess: (command, args): NativeCliProcessResult => {
         calls.push({ command, args });
-        return { status: 1, stdout: "", stderr: MISSING_METADATA_DIAGNOSTIC };
+        return { status: 1, stdout: "", stderr: MISSING_ARCHIVE_DIAGNOSTIC };
       },
     };
 
@@ -50,7 +50,7 @@ describe("itotori extract", () => {
           "--engine",
           "reallive",
           "--game-root",
-          "/synthetic/source",
+          "/synthetic/owned-source-root-00",
           "--game-id",
           "fixture",
           "--game-version",
@@ -73,7 +73,8 @@ describe("itotori extract", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]!.args).toContain("extract");
-    expect(caught?.message).toContain(MISSING_METADATA_DIAGNOSTIC);
+    expect(Buffer.byteLength(MISSING_ARCHIVE_DIAGNOSTIC, "utf8")).toBe(120);
+    expect(caught?.message).toContain(MISSING_ARCHIVE_DIAGNOSTIC);
     expect(caught?.message).not.toContain(KAIFUU_NATIVE_OUTPUT_REDACTED);
   });
 });
