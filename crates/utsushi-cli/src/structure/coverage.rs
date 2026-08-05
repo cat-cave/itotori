@@ -86,18 +86,6 @@ impl Coverage {
     }
 }
 
-pub(super) fn reject_truncating_limit(
-    max_scenes: usize,
-    archive_scenes: usize,
-) -> Result<(), String> {
-    if max_scenes < archive_scenes {
-        return Err(format!(
-            "utsushi.structure.truncated: --max-scenes={max_scenes} cannot cover {archive_scenes} archive scenes; no artifact was written"
-        ));
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,12 +104,6 @@ mod tests {
             emitted_edges: 2,
             unresolved_edges: 1,
         }
-    }
-
-    #[test]
-    fn truncated_scene_limit_is_a_hard_error() {
-        let error = reject_truncating_limit(1, 2).expect_err("partial export must fail");
-        assert!(error.contains("no artifact was written"));
     }
 
     #[test]

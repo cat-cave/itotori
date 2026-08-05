@@ -223,7 +223,7 @@ export function detectPatchbackEngineFromAdapters(
       "ambiguous-engine",
       `source root '${sourceRoot}' matches multiple patch-back engines (${matched
         .map((adapter) => adapter.engineId)
-        .join(", ")}); pass an explicit engine to disambiguate`,
+        .join(", ")}); choose a source root containing exactly one engine's artifacts`,
     );
   }
   return matched[0]!;

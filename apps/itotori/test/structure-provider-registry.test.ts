@@ -1,170 +1,93 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  registeredStructureEngines,
-  resolveStructureProvider,
-  runStructureProvider,
-  structureProviderCapabilities,
-} from "../src/structure-export/structure-provider-registry.js";
+import { runStructureProvider } from "../src/structure-export/structure-provider-registry.js";
+
+type NativeCall = { command: string; args: string[] };
 
 const MISSING_BRIDGE_DIAGNOSTIC = "missing --bridge";
 
-describe("StructureProvider registry", () => {
-  it("requires an engine-discriminated provider and forwards the RealLive native identity", () => {
-    const provider = resolveStructureProvider("reallive");
-    const source = provider.parseCli([
-      "--engine",
-      "reallive",
-      "--gameexe",
-      "game/Gameexe.ini",
-      "--seen",
-      "game/Seen.txt",
-      "--output",
-      "out/structure.json",
-      "--entry-scene",
-      "42",
-      "--max-scenes",
-      "99",
-    ]);
-    const calls: Array<{ command: string; args: string[] }> = [];
+describe("uniform native structure provider", () => {
+  it("forwards the same structure argv for every declared engine", () => {
+    const engines = ["reallive", "siglus", "softpal", "rpg-maker"];
 
-    const result = runStructureProvider({
-      ...source,
-      env: { ITOTORI_UTSUSHI_BIN: "utsushi-test" },
-      runProcess(command, args) {
-        calls.push({ command, args });
-        return { status: 0, stdout: "", stderr: "" };
-      },
-    });
+    for (const engine of engines) {
+      const calls: NativeCall[] = [];
+      const result = runStructureProvider({
+        engine,
+        gameRoot: "game",
+        bridgePath: "artifacts/bridge.json",
+        outputPath: "artifacts/structure.json",
+        env: {},
+        runProcess(command, args) {
+          calls.push({ command, args });
+          return { status: 0, stdout: "", stderr: "" };
+        },
+      });
 
-    expect(result).toMatchObject({ execution: "native-process", process: { status: 0 } });
-    expect(calls).toEqual([
-      {
-        command: "cargo",
-        args: [
-          "run",
-          "-p",
-          "utsushi-cli",
-          "--quiet",
-          "--",
-          "structure",
-          "--engine",
-          "reallive",
-          "--gameexe",
-          "game/Gameexe.ini",
-          "--seen",
-          "game/Seen.txt",
-          "--output",
-          "out/structure.json",
-          "--entry-scene",
-          "42",
-          "--max-scenes",
-          "99",
-        ],
-      },
-    ]);
+      expect(result).toMatchObject({ execution: "native-process", process: { status: 0 } });
+      expect(calls).toEqual([
+        {
+          command: "cargo",
+          args: [
+            "run",
+            "-p",
+            "utsushi-cli",
+            "--quiet",
+            "--",
+            "structure",
+            "--engine",
+            engine,
+            "--game-root",
+            "game",
+            "--bridge",
+            "artifacts/bridge.json",
+            "--output",
+            "artifacts/structure.json",
+          ],
+        },
+      ]);
+    }
   });
 
-  it("runs the Softpal native producer through the shared Utsushi seam", () => {
-    expect(registeredStructureEngines()).toEqual(["reallive", "softpal", "siglus", "rpg-maker"]);
-    expect(structureProviderCapabilities().map((capability) => capability.implemented)).toEqual([
-      true,
-      true,
-      true,
-      true,
-    ]);
-    const calls: Array<{ command: string; args: string[] }> = [];
-    const source = resolveStructureProvider("softpal").parseCli([
-      "--engine",
-      "softpal",
-      "--game-root",
-      "game",
-      "--output",
-      "out/structure.json",
-    ]);
-    const result = runStructureProvider({
-      ...source,
-      env: { ITOTORI_UTSUSHI_BIN: "utsushi-test" },
+  it("forwards declared format settings as one generic adapter config", () => {
+    const calls: NativeCall[] = [];
+
+    runStructureProvider({
+      engine: "hypothetical",
+      gameRoot: "game",
+      bridgePath: "artifacts/bridge.json",
+      outputPath: "artifacts/structure.json",
+      adapterConfig: { containerRevision: 3 },
+      env: {},
       runProcess(command, args) {
         calls.push({ command, args });
         return { status: 0, stdout: "", stderr: "" };
       },
     });
 
-    expect(result).toMatchObject({ execution: "native-process", process: { status: 0 } });
-    expect(calls).toEqual([
-      {
-        command: "cargo",
-        args: [
-          "run",
-          "-p",
-          "utsushi-cli",
-          "--quiet",
-          "--",
-          "structure",
-          "--engine",
-          "softpal",
-          "--game-root",
-          "game",
-          "--output",
-          "out/structure.json",
-        ],
-      },
-    ]);
-  });
-
-  it("runs the Siglus provider through the native producer without routing it to RealLive", () => {
-    const source = resolveStructureProvider("siglus").parseCli([
-      "--engine",
-      "siglus",
-      "--scene",
-      "game/Scene.pck",
-      "--gameexe",
-      "game/Gameexe.dat",
-      "--output",
-      "out/structure.json",
-    ]);
-    const calls: Array<{ command: string; args: string[] }> = [];
-
-    const result = runStructureProvider({
-      ...source,
-      env: { ITOTORI_UTSUSHI_BIN: "utsushi-test" },
-      runProcess(command, args) {
-        calls.push({ command, args });
-        return { status: 0, stdout: "", stderr: "" };
-      },
-    });
-
-    expect(result).toMatchObject({ execution: "native-process", process: { status: 0 } });
-    expect(calls[0]?.args.slice(-9)).toEqual([
+    expect(calls[0]?.args.slice(-11)).toEqual([
       "structure",
       "--engine",
-      "siglus",
-      "--gameexe",
-      "game/Gameexe.dat",
-      "--scene",
-      "game/Scene.pck",
+      "hypothetical",
+      "--game-root",
+      "game",
+      "--bridge",
+      "artifacts/bridge.json",
       "--output",
-      "out/structure.json",
+      "artifacts/structure.json",
+      "--adapter-config",
+      '{"containerRevision":3}',
     ]);
   });
 
   it("relays the native missing-bridge diagnostic through the provider seam", () => {
-    const source = resolveStructureProvider("reallive").parseCli([
-      "--engine",
-      "reallive",
-      "--gameexe",
-      "/synthetic/game/Gameexe.ini",
-      "--seen",
-      "/synthetic/game/Seen.txt",
-      "--output",
-      "/synthetic/structure.json",
-    ]);
-
     let caught: Error | undefined;
     try {
       runStructureProvider({
-        ...source,
+        engine: "reallive",
+        gameRoot: "/synthetic/game",
+        bridgePath: "/synthetic/bridge.json",
+        outputPath: "/synthetic/structure.json",
         env: {},
         runProcess: () => ({ status: 1, stdout: "", stderr: MISSING_BRIDGE_DIAGNOSTIC }),
       });
@@ -178,11 +101,5 @@ describe("StructureProvider registry", () => {
       `utsushi structure failed with status 1: ${MISSING_BRIDGE_DIAGNOSTIC}`,
     );
     expect(caught?.message).not.toContain("REDACTED_CONTENT kind=nativestderr");
-  });
-
-  it("rejects an unregistered provider", () => {
-    expect(() => resolveStructureProvider("unknown")).toThrow(
-      "not a registered structure provider",
-    );
   });
 });

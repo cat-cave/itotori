@@ -39,7 +39,15 @@
 // (`just doctor` / `just doctor provision`); this artifact is the bin +
 // the compiled CLI surface that consumes them.
 
-import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  copyFileSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,6 +68,8 @@ const OUT_DIR = path.join(here, "dist");
 const OUT_FILE = path.join(OUT_DIR, "cli.js");
 const MIGRATIONS_SRC = path.join(repoRoot, "packages/itotori-db/migrations");
 const MIGRATIONS_OUT = path.join(here, "migrations");
+const ENGINE_PROJECT_ADAPTERS_SRC = path.join(repoRoot, "apps/itotori/src/engine-project/adapters");
+const ENGINE_PROJECT_ADAPTERS_OUT = path.join(OUT_DIR, "adapters");
 
 // The version stamped into the installable package MUST equal the product
 // semver. Parse it from the source literal (the same source `itotori --version`
@@ -117,6 +127,21 @@ try {
 
 normalizeCliShebang();
 
+// The project-config catalog intentionally discovers JSON declarations beside
+// the bundled CLI. Keep that declaration directory with the installable
+// artifact so `extract --engine <id> --describe` has the same surface as a
+// checkout without adding an engine list to command code.
+rmSync(ENGINE_PROJECT_ADAPTERS_OUT, { recursive: true, force: true });
+cpSync(ENGINE_PROJECT_ADAPTERS_SRC, ENGINE_PROJECT_ADAPTERS_OUT, { recursive: true });
+const adapterCount = readdirSync(ENGINE_PROJECT_ADAPTERS_OUT).filter((file) =>
+  file.endsWith(".json"),
+).length;
+if (adapterCount === 0) {
+  throw new Error(
+    `itotori-cli build: no adapter declarations found at ${ENGINE_PROJECT_ADAPTERS_SRC}`,
+  );
+}
+
 // Ship the migration SQL files the bundle's `migrate()` reads at runtime.
 rmSync(MIGRATIONS_OUT, { recursive: true, force: true });
 mkdirSync(MIGRATIONS_OUT, { recursive: true });
@@ -132,7 +157,7 @@ if (migrationCount === 0) {
 }
 
 process.stdout.write(
-  `itotori-cli build: dist/cli.js + ${migrationCount} migrations (version ${PRODUCT_VERSION})\n`,
+  `itotori-cli build: dist/cli.js + ${adapterCount} adapter declarations + ${migrationCount} migrations (version ${PRODUCT_VERSION})\n`,
 );
 
 function readProductVersion() {

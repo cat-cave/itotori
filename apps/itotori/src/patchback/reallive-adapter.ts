@@ -72,8 +72,7 @@ export const realLivePatchbackAdapter: EnginePatchbackAdapter = {
       },
       structure: {
         engine: "reallive",
-        gameexePath: join(request.sourceRoot, "REALLIVEDATA", "Gameexe.ini"),
-        seenPath: join(request.sourceRoot, "REALLIVEDATA", "Seen.txt"),
+        gameRoot: request.sourceRoot,
         bridgePath: request.bridgePath,
         outputPath: request.structurePath,
       },

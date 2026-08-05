@@ -227,8 +227,7 @@ describe("POST /api/patchback/produce — finalized CAS run, real primary_corpus
       });
       runUtsushiStructureExport({
         engine: "reallive",
-        gameexePath: join(root, "REALLIVEDATA", "Gameexe.ini"),
-        seenPath: join(root, "REALLIVEDATA", "Seen.txt"),
+        gameRoot: root,
         outputPath: structurePath,
         bridgePath,
       });

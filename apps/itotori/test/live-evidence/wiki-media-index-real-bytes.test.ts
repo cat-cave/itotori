@@ -30,6 +30,7 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { resolvePrivateCorpus } from "../../src/private-inventory.js";
 
+import { runKaifuuExtract } from "../../src/extract/kaifuu-extract-seam.js";
 import { runNativeCli } from "../../src/native-bin/cli-bin-resolver.js";
 import { runUtsushiStructureExport } from "../../src/structure-export/utsushi-structure-seam.js";
 import { createItotoriServer } from "../../src/server.js";
@@ -93,6 +94,7 @@ describe("real-primary_corpus media ref resolution through the sanitized server"
       );
     }
     const workDir = mkdtempSync(join(tmpdir(), "itotori-media-real-"));
+    const bridgePath = join(workDir, "bridge.json");
     const structurePath = join(workDir, "structure.json");
     const managedDir = join(workDir, "managed");
     const privateDir = join(workDir, "private");
@@ -101,10 +103,20 @@ describe("real-primary_corpus media ref resolution through the sanitized server"
     mkdirSync(privateDir, { recursive: true });
 
     // 1. Entry scene from the real structure export.
+    runKaifuuExtract({
+      engine: "reallive",
+      gameRoot: c.gameRoot,
+      gameId: "media-index-source",
+      gameVersion: "real",
+      sourceProfileId: "media-index-source",
+      sourceLocale: "ja-JP",
+      wholeSeen: true,
+      bundleOutputPath: bridgePath,
+    });
     runUtsushiStructureExport({
       engine: "reallive",
-      gameexePath: c.gameexe,
-      seenPath: c.seen,
+      gameRoot: c.gameRoot,
+      bridgePath,
       outputPath: structurePath,
     });
     const structure = JSON.parse(readFileSync(structurePath, "utf8")) as { entryScene?: number };

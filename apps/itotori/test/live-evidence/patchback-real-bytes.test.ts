@@ -119,8 +119,7 @@ describe("native patchback + replay real primary_corpus byte oracle", () => {
     expect(
       runUtsushiStructureExport({
         engine: "reallive",
-        gameexePath: c.gameexe,
-        seenPath: c.seen,
+        gameRoot: c.gameRoot,
         outputPath: structurePath,
         bridgePath,
       }).status,

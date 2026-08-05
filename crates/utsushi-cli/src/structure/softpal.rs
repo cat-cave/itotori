@@ -13,23 +13,17 @@ use kaifuu_softpal::{OpcodeScan, PacArchive, ScriptScan, TextDat};
 use serde_json::{Value, json};
 
 use super::StructureCommandInput;
+use super::adapters::validate_empty_adapter_config;
+use super::softpal_bridge::selected_source_unit_keys;
 
 const SCENE_ID: &str = "scene:script-src";
 
 pub(super) fn build_softpal_structure(
     input: StructureCommandInput,
 ) -> Result<Value, Box<dyn Error>> {
-    if input.gameexe.is_some()
-        || input.seen.is_some()
-        || input.scene.is_some()
-        || input.bridge.is_some()
-    {
-        return Err("softpal structure accepts --game-root and --output only".into());
-    }
-    if input.entry.is_some() || input.max_scenes.is_some() {
-        return Err("softpal structure does not accept scene selection limits".into());
-    }
-    let game_root = input.game_root.as_deref().ok_or("missing --game-root")?;
+    validate_empty_adapter_config("softpal", &input)?;
+    let selected_keys = selected_source_unit_keys(&input.bridge)?;
+    let game_root = &input.game_root;
     let (script, textdat) = read_structure_inputs(game_root)?;
     let scan = ScriptScan::parse(&script)?;
     let textdat = TextDat::parse(&textdat)?;
@@ -59,6 +53,7 @@ pub(super) fn build_softpal_structure(
         &disassembly,
         opcode_exhaustive,
         choice_menu_count,
+        &selected_keys,
     ))
 }
 
@@ -125,11 +120,16 @@ fn structure_value(
     disassembly: &kaifuu_softpal::Disassembly,
     opcode_exhaustive: bool,
     choice_menu_count: usize,
+    selected_keys: &std::collections::BTreeSet<String>,
 ) -> Value {
     let mut messages = Vec::new();
     let mut choices = Vec::new();
     let mut choice_index = 0_usize;
     for dialogue in &disassembly.dialogue {
+        let key = format!("softpal:dialogue:{}", dialogue.text.pointer);
+        if !selected_keys.contains(&key) {
+            continue;
+        }
         messages.push(json!({
             "order": messages.len(),
             "speaker": dialogue.speaker.as_ref().and_then(|speaker| speaker.resolved_text()),
@@ -138,6 +138,10 @@ fn structure_value(
         }));
     }
     for choice in &disassembly.choices {
+        let key = format!("softpal:choice:{}", choice.text.pointer);
+        if !selected_keys.contains(&key) {
+            continue;
+        }
         if let Some(label) = choice.text.resolved_text() {
             choices.push(json!({
                 "optionIndex": choice_index,
@@ -161,7 +165,7 @@ fn structure_value(
                 "textBearingChoiceCount": disassembly.text_bearing_choice_count(),
                 "systemSelectCount": disassembly.nontext_select_count(),
                 "limitations": [
-                    "Structure is the complete byte-order SCRIPT.SRC walk; it does not claim a branch route graph.",
+                    "Structure follows the selected bridge units in SCRIPT.SRC byte order; it does not claim a branch route graph.",
                     "System selects without TEXT.DAT labels are not emitted as narrative choices."
                 ]
             }
@@ -180,15 +184,15 @@ fn structure_value(
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::Path;
 
     use kaifuu_softpal::{
         PAC_COUNT_OFFSET, PAC_ENTRY_NAME_BYTE_LEN, PAC_HEADER_BYTE_LEN, PAC_INDEX_ENTRY_BYTE_LEN,
         PAC_MAGIC, SCRIPT_MAGIC_PREFIX, SELECT_WORD_HI, SELECT_WORD_LO, TEXT_SHOW_WORD_HI,
         TEXTDAT_FLAG_PLAINTEXT, TEXTDAT_MAGIC_TAIL,
     };
+    use serde_json::Value;
     use tempfile::TempDir;
-
-    use super::*;
 
     fn build_pac(files: &[(&str, &[u8])]) -> Vec<u8> {
         let index_end = PAC_HEADER_BYTE_LEN + files.len() * PAC_INDEX_ENTRY_BYTE_LEN;
@@ -275,8 +279,32 @@ mod tests {
         script
     }
 
+    fn write_bridge(path: &Path, source_unit_keys: &[String]) {
+        let units = source_unit_keys
+            .iter()
+            .map(|source_unit_key| serde_json::json!({ "sourceUnitKey": source_unit_key }))
+            .collect::<Vec<_>>();
+        fs::write(path, serde_json::json!({ "units": units }).to_string())
+            .expect("write selected bridge");
+    }
+
+    fn structure_args(root: &Path, bridge: &Path, output: &Path) -> Vec<String> {
+        vec![
+            "--engine".to_owned(),
+            "softpal".to_owned(),
+            "--game-root".to_owned(),
+            root.to_string_lossy().into_owned(),
+            "--bridge".to_owned(),
+            bridge.to_string_lossy().into_owned(),
+            "--adapter-config".to_owned(),
+            "{}".to_owned(),
+            "--output".to_owned(),
+            output.to_string_lossy().into_owned(),
+        ]
+    }
+
     #[test]
-    fn exports_runtime_messages_and_text_bearing_choices_from_a_game_root() {
+    fn generic_structure_command_exports_softpal_from_a_game_root() {
         let root = TempDir::new().expect("temporary game root");
         let (textdat, pointers) = textdat();
         let script = script(&pointers);
@@ -285,17 +313,21 @@ mod tests {
             build_pac(&[("SCRIPT.SRC", &script), ("TEXT.DAT", &textdat)]),
         )
         .expect("write fixture archive");
+        let bridge = root.path().join("generic.bridge.json");
+        write_bridge(
+            &bridge,
+            &[
+                format!("softpal:dialogue:{}", pointers[0]),
+                format!("softpal:choice:{}", pointers[2]),
+                format!("softpal:choice:{}", pointers[3]),
+            ],
+        );
+        let output = root.path().join("structure.json");
+        let args = structure_args(root.path(), &bridge, &output);
 
-        let structure = build_softpal_structure(StructureCommandInput {
-            gameexe: None,
-            seen: None,
-            scene: None,
-            game_root: Some(root.path().to_path_buf()),
-            bridge: None,
-            entry: None,
-            max_scenes: None,
-        })
-        .expect("structure export");
+        super::super::run_structure_command(&args).expect("generic structure export");
+        let structure: Value = serde_json::from_slice(&fs::read(output).expect("read structure"))
+            .expect("structure is JSON");
 
         assert_eq!(structure["engine"], "softpal");
         assert_eq!(structure["scenes"].as_array().map(Vec::len), Some(1));
@@ -304,5 +336,36 @@ mod tests {
         assert_eq!(scene["messages"][0]["speaker"], "speaker");
         assert_eq!(scene["choices"].as_array().map(Vec::len), Some(2));
         assert_eq!(scene["choices"][0]["label"], "choice one");
+    }
+
+    #[test]
+    fn generic_structure_command_respects_the_selected_softpal_bridge_units() {
+        let root = TempDir::new().expect("temporary game root");
+        let (textdat, pointers) = textdat();
+        let script = script(&pointers);
+        fs::write(
+            root.path().join("data.pac"),
+            build_pac(&[("SCRIPT.SRC", &script), ("TEXT.DAT", &textdat)]),
+        )
+        .expect("write fixture archive");
+        let bridge = root.path().join("selected.bridge.json");
+        write_bridge(
+            &bridge,
+            &[
+                format!("softpal:dialogue:{}", pointers[0]),
+                format!("softpal:choice:{}", pointers[3]),
+            ],
+        );
+        let output = root.path().join("structure.json");
+
+        super::super::run_structure_command(&structure_args(root.path(), &bridge, &output))
+            .expect("selected generic structure export");
+        let structure: Value = serde_json::from_slice(&fs::read(output).expect("read structure"))
+            .expect("structure is JSON");
+        let scene = &structure["scenes"][0];
+
+        assert_eq!(scene["messages"].as_array().map(Vec::len), Some(1));
+        assert_eq!(scene["choices"].as_array().map(Vec::len), Some(1));
+        assert_eq!(scene["choices"][0]["label"], "choice two");
     }
 }

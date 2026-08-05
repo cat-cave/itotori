@@ -1,8 +1,9 @@
-//! Narrative-structure export built from the replayed archive.
+//! Engine-agnostic narrative-structure command parsing and artifact writing.
 //!
-//! RealLive exports require the exact bridge used for localization, producing
-//! the evidence-complete v2 artifact and its stronger coverage checks.
+//! Format-specific inputs and behavior live in [`adapters`]. The shared command
+//! accepts only the common project transport fields.
 
+mod adapters;
 mod bridge;
 mod coverage;
 mod expanded;
@@ -10,31 +11,20 @@ mod graph;
 mod output;
 mod reallive_extension;
 mod softpal;
+mod softpal_bridge;
 
-use std::collections::BTreeSet;
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 
-use kaifuu_reallive::parse_archive;
 use serde_json::Value;
-use utsushi_reallive::Gameexe;
-
-use self::bridge::BridgeIndex;
-use self::coverage::reject_truncating_limit;
-use self::expanded::ExpandedInput;
-use crate::staged_replay::staged_archive;
 
 pub(crate) fn run_structure_command(args: &[String]) -> Result<(), Box<dyn Error>> {
     let mut engine = None;
-    let mut gameexe = None;
-    let mut seen = None;
-    let mut scene = None;
     let mut output = None;
     let mut bridge = None;
     let mut game_root = None;
-    let mut entry = None;
-    let mut max_scenes = None;
+    let mut adapter_config = None;
 
     let mut index = 0;
     while index < args.len() {
@@ -44,30 +34,32 @@ pub(crate) fn run_structure_command(args: &[String]) -> Result<(), Box<dyn Error
             .ok_or_else(|| format!("missing value for {flag}"))?;
         match flag.as_str() {
             "--engine" => engine = Some(value.clone()),
-            "--gameexe" => gameexe = Some(PathBuf::from(value)),
-            "--seen" => seen = Some(PathBuf::from(value)),
-            "--scene" => scene = Some(PathBuf::from(value)),
             "--output" => output = Some(PathBuf::from(value)),
             "--bridge" => bridge = Some(PathBuf::from(value)),
             "--game-root" => game_root = Some(PathBuf::from(value)),
-            "--entry-scene" => entry = Some(value.parse::<u32>()?),
-            "--max-scenes" => max_scenes = Some(value.parse::<usize>()?),
+            "--adapter-config" => {
+                if adapter_config.is_some() {
+                    return Err(
+                        "utsushi.structure.adapter_config.duplicate: --adapter-config may be supplied once"
+                            .into(),
+                    );
+                }
+                adapter_config = Some(parse_adapter_config(value)?);
+            }
             _ => return Err(format!("unknown structure flag: {flag}").into()),
         }
         index += 2;
     }
 
     let engine = engine.ok_or("missing --engine")?;
-    let provider = structure_provider(&engine)?;
+    let provider = adapters::structure_provider(&engine)?;
     let output = output.ok_or("missing --output")?;
+    let game_root = game_root.ok_or("missing --game-root")?;
+    let bridge = bridge.ok_or("missing --bridge")?;
     let structure = provider(StructureCommandInput {
-        gameexe,
-        seen,
-        scene,
         game_root,
         bridge,
-        entry,
-        max_scenes,
+        adapter_config,
     })?;
 
     if let Some(parent) = output.parent() {
@@ -77,121 +69,19 @@ pub(crate) fn run_structure_command(args: &[String]) -> Result<(), Box<dyn Error
     Ok(())
 }
 
+fn parse_adapter_config(value: &str) -> Result<Value, Box<dyn Error>> {
+    let config: Value = serde_json::from_str(value)
+        .map_err(|error| format!("invalid --adapter-config JSON object: {error}"))?;
+    config
+        .is_object()
+        .then_some(config)
+        .ok_or_else(|| "--adapter-config must be a JSON object".into())
+}
+
 struct StructureCommandInput {
-    gameexe: Option<PathBuf>,
-    seen: Option<PathBuf>,
-    scene: Option<PathBuf>,
-    game_root: Option<PathBuf>,
-    bridge: Option<PathBuf>,
-    entry: Option<u32>,
-    max_scenes: Option<usize>,
-}
-
-type StructureProvider = fn(StructureCommandInput) -> Result<Value, Box<dyn Error>>;
-
-const STRUCTURE_PROVIDERS: &[(&str, StructureProvider)] = &[
-    ("reallive", build_reallive_structure),
-    ("softpal", softpal::build_softpal_structure),
-    ("siglus", build_siglus_structure),
-];
-
-fn structure_provider(engine: &str) -> Result<StructureProvider, Box<dyn Error>> {
-    STRUCTURE_PROVIDERS
-        .iter()
-        .find_map(|(id, provider)| (*id == engine).then_some(*provider))
-        .ok_or_else(|| format!("unregistered structure provider: {engine}").into())
-}
-
-fn build_reallive_structure(input: StructureCommandInput) -> Result<Value, Box<dyn Error>> {
-    let bridge_path = input.bridge.as_deref().ok_or("missing --bridge")?;
-    let gameexe_path = input.gameexe.as_deref().ok_or("missing --gameexe")?;
-    let seen_path = input.seen.as_deref().ok_or("missing --seen")?;
-    let entry_scene = input.entry;
-    let max_scenes = input.max_scenes;
-    let seen_bytes = fs::read(seen_path)?;
-    let archive = parse_archive(&seen_bytes)
-        .map_err(|diagnostic| format!("utsushi.structure.archive_parse: {diagnostic:?}"))?;
-    let archive_scene_ids = archive
-        .entries
-        .iter()
-        .map(|entry| entry.scene_id)
-        .collect::<BTreeSet<_>>();
-    if archive_scene_ids.len() != archive.entries.len() {
-        return Err("SEEN archive contains duplicate scene identifiers".into());
-    }
-    if let Some(limit) = max_scenes {
-        reject_truncating_limit(limit, archive_scene_ids.len())?;
-    }
-
-    let gameexe = Gameexe::parse(&fs::read(gameexe_path)?)?;
-    let seen_start = gameexe.get_int("SEEN_START").unwrap_or(0).max(0) as u32;
-    let resolver = gameexe.namae_resolver();
-    let staged = staged_archive(seen_path)?;
-    let decoded_scene_ids = staged
-        .scenes
-        .iter()
-        .map(|scene| scene.scene_id)
-        .collect::<BTreeSet<_>>();
-    if decoded_scene_ids != archive_scene_ids
-        || staged.store_stats.loaded != archive_scene_ids.len()
-        || staged.store_stats.skipped != 0
-    {
-        return Err(format!(
-            "incomplete archive decode: archive={} decoded={} loaded={} skipped={}",
-            archive_scene_ids.len(),
-            decoded_scene_ids.len(),
-            staged.store_stats.loaded,
-            staged.store_stats.skipped
-        )
-        .into());
-    }
-
-    let engine = staged.engine.with_namae_resolver(resolver);
-    let bridge = BridgeIndex::load(bridge_path, &seen_bytes)?;
-    if !bridge.asset_scene_ids.is_subset(&archive_scene_ids) {
-        return Err(format!(
-            "bridge scope names scenes outside archive: archive={} bridge={}",
-            archive_scene_ids.len(),
-            bridge.asset_scene_ids.len()
-        )
-        .into());
-    }
-    let selected_scene_ids = &bridge.asset_scene_ids;
-    let entry_scene = entry_scene.unwrap_or_else(|| {
-        if bridge.source_scope["kind"] == "whole_archive" {
-            seen_start
-        } else {
-            u32::from(
-                *selected_scene_ids
-                    .first()
-                    .expect("scoped bridge has an asset"),
-            )
-        }
-    });
-    let entry_scene = u16::try_from(entry_scene)
-        .map_err(|err| format!("entry scene is outside the RealLive scene range: {err}"))?;
-    let selected_scenes = staged
-        .scenes
-        .iter()
-        .filter(|scene| selected_scene_ids.contains(&scene.scene_id))
-        .cloned()
-        .collect::<Vec<_>>();
-    let structure = expanded::build(ExpandedInput {
-        engine,
-        decoded_scenes: &selected_scenes,
-        loaded_scene_count: selected_scenes.len(),
-        archive_scene_ids: selected_scene_ids,
-        bridge: &bridge,
-        entry: entry_scene,
-    })
-    .map_err(|error| -> Box<dyn Error> { error.into() })?;
-    reallive_extension::common_structure(structure).map_err(Into::into)
-}
-
-fn build_siglus_structure(input: StructureCommandInput) -> Result<Value, Box<dyn Error>> {
-    let scene_path = input.scene.as_deref().ok_or("missing --scene")?;
-    let gameexe_path = input.gameexe.as_deref().ok_or("missing --gameexe")?;
-    utsushi_siglus::build_siglus_structure(scene_path, gameexe_path).map_err(Into::into)
+    game_root: PathBuf,
+    bridge: PathBuf,
+    adapter_config: Option<Value>,
 }
 
 #[cfg(test)]
@@ -199,18 +89,97 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reallive_structure_requires_a_bridge_before_reading_game_inputs() {
-        let error = build_reallive_structure(StructureCommandInput {
-            gameexe: None,
-            seen: None,
-            scene: None,
-            game_root: None,
-            bridge: None,
-            entry: None,
-            max_scenes: None,
-        })
-        .expect_err("the v2-only RealLive exporter must require --bridge");
+    fn adapter_config_must_be_a_json_object() {
+        let args = vec![
+            "--engine".to_owned(),
+            "softpal".to_owned(),
+            "--adapter-config".to_owned(),
+            "[]".to_owned(),
+        ];
 
-        assert_eq!(error.to_string(), "missing --bridge");
+        let error = run_structure_command(&args).expect_err("arrays are not adapter configs");
+
+        assert_eq!(error.to_string(), "--adapter-config must be a JSON object");
+    }
+
+    #[test]
+    fn adapter_config_must_be_valid_json() {
+        let args = vec![
+            "--engine".to_owned(),
+            "softpal".to_owned(),
+            "--adapter-config".to_owned(),
+            "not-json".to_owned(),
+        ];
+
+        let error = run_structure_command(&args).expect_err("invalid JSON must fail");
+
+        assert!(
+            error
+                .to_string()
+                .starts_with("invalid --adapter-config JSON object:"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn adapter_config_may_be_supplied_once() {
+        let args = vec![
+            "--engine".to_owned(),
+            "softpal".to_owned(),
+            "--adapter-config".to_owned(),
+            "{}".to_owned(),
+            "--adapter-config".to_owned(),
+            "{}".to_owned(),
+        ];
+
+        let error = run_structure_command(&args).expect_err("duplicate config must fail");
+
+        assert_eq!(
+            error.to_string(),
+            "utsushi.structure.adapter_config.duplicate: --adapter-config may be supplied once"
+        );
+    }
+
+    #[test]
+    fn adapters_name_an_unsupported_config_key() {
+        let args = vec![
+            "--engine".to_owned(),
+            "softpal".to_owned(),
+            "--game-root".to_owned(),
+            "source-root".to_owned(),
+            "--bridge".to_owned(),
+            "bridge.json".to_owned(),
+            "--adapter-config".to_owned(),
+            r#"{"unknown":true}"#.to_owned(),
+            "--output".to_owned(),
+            "unused.json".to_owned(),
+        ];
+
+        let error = run_structure_command(&args).expect_err("unknown config keys must fail");
+
+        assert_eq!(
+            error.to_string(),
+            "utsushi.structure.softpal.adapter_config: unsupported key \"unknown\""
+        );
+    }
+
+    #[test]
+    fn rejects_removed_engine_shaped_legacy_flags() {
+        let args = vec![
+            "--engine".to_owned(),
+            "reallive".to_owned(),
+            "--game-root".to_owned(),
+            "source-root".to_owned(),
+            "--bridge".to_owned(),
+            "bridge.json".to_owned(),
+            "--output".to_owned(),
+            "structure.json".to_owned(),
+            "--scene".to_owned(),
+            "legacy-scene.pck".to_owned(),
+        ];
+
+        let error = run_structure_command(&args).expect_err("legacy asset paths are rejected");
+
+        assert_eq!(error.to_string(), "unknown structure flag: --scene");
     }
 }

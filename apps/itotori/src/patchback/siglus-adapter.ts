@@ -66,8 +66,6 @@ export const siglusPatchbackAdapter: EnginePatchbackAdapter = {
       request.translatedBundlePath,
       "--scope",
       request.scope,
-      "--cipher-method",
-      "exe_angou_xor_lzss",
     ];
     if (request.force ?? true) args.push("--force");
     return args;

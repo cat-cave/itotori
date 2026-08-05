@@ -187,7 +187,7 @@ pub(crate) fn run_extract_reallive_bundle(
         })?;
         write_json(&bundle_output, &produced.json)?;
 
-        // `kaifuu extract --whole-seen` produces the BRIDGE only (pure kaifuu
+        // `kaifuu extract --scope all` produces the BRIDGE only (pure kaifuu
         // decode). The replay-derived narrative structure / `sceneDispatchOrder`
         // is NOT kaifuu's concern — deriving it needs the Utsushi replay runtime,
         // and kaifuu must never depend on utsushi (deps flow utsushi → kaifuu).

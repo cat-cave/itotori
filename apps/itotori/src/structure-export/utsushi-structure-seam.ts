@@ -1,16 +1,15 @@
-// Native StructureProvider seam — wraps `utsushi structure` so the
-// narrative-structure artifact is a FIRST-CLASS itotori command, not a
+// Native structure-export seam — wraps `utsushi structure` so the
+// narrative-structure artifact is a first-class itotori command, not a
 // foreign Rust bin.
 //
 // The narrative-structure producer lives on the UTSUSHI side
 // (`crates/utsushi-cli/src/structure.rs` — it owns the replay engine that
 // derives the real scene-dispatch order via `observe_playthrough`, with the
 // `use_xor_2` compiler-110002 staging + the Gameexe `#NAMAE` /
-// `#COLOR_TABLE` speaker resolver). It emits the
-// narrative-structure artifact the itotori whole-game localize driver consumes
-// as its structure-informed context. `structure-provider-registry.ts` is the
-// user-shaped front door; this module is the registered providers'
-// native-process implementation.
+// `#COLOR_TABLE` speaker resolver). It emits the narrative-structure artifact
+// the itotori whole-game localize driver consumes as its structure-informed
+// context. The engine project layer supplies one uniform source-root + bridge
+// envelope; format-specific path resolution belongs to the native adapter.
 //
 // The binary is resolved through the SAME authoritative order the native-deps
 // doctor uses (ITOTORI_UTSUSHI_BIN -> ITOTORI_LIBEXEC_DIR -> CARGO_TARGET_DIR /
@@ -48,42 +47,24 @@ type UtsushiStructureProcessArgs = {
   log?: (message: string) => void;
 };
 
-export type RunUtsushiStructureArgs =
-  | (UtsushiStructureProcessArgs & {
-      /** The provider identity forwarded to the native structure registry. */
-      engine: "reallive";
-      /** Path to Gameexe.ini (resolves `SEEN_START` + `#NAMAE`/`#COLOR_TABLE`). */
-      gameexePath: string;
-      /** Path to Seen.txt (the compressed scene archive). */
-      seenPath: string;
-      /** Exact Kaifuu bridge whose unit evidence is joined into the v2 export. */
-      bridgePath?: string;
-      /**
-       * Override the Gameexe `SEEN_START` entry scene. Pass a scene id to drive
-       * the dispatch-order walk from a route-specific entry (e.g. a different
-       * route's opening); omit to fall back to the game's declared `SEEN_START`.
-       */
-      entryScene?: number;
-      /**
-       * Require an archive to contain at most N scenes. A smaller limit fails
-       * without writing an artifact; it never produces a partial export.
-       */
-      maxScenes?: number;
-    })
-  | (UtsushiStructureProcessArgs & {
-      /** The provider identity forwarded to the native structure registry. */
-      engine: "softpal";
-      /** Root directory containing the PAC archive with SCRIPT.SRC + TEXT.DAT. */
-      gameRoot: string;
-    })
-  | (UtsushiStructureProcessArgs & {
-      /** The provider identity forwarded to the native structure registry. */
-      engine: "siglus";
-      /** Path to Gameexe.dat, required by the Siglus decoder. */
-      gameexePath: string;
-      /** Path to Scene.pck (the packed Siglus scene archive). */
-      scenePath: string;
-    });
+/** Primitive format settings declared by an adapter manifest. */
+export type UtsushiStructureAdapterConfig = Readonly<Record<string, boolean | number | string>>;
+
+/**
+ * The single operator-neutral envelope every native structure adapter accepts.
+ * The engine resolves its own format files below `gameRoot`; it may interpret
+ * only its declared `adapterConfig` properties.
+ */
+export type RunUtsushiStructureArgs = UtsushiStructureProcessArgs & {
+  /** The selected source-format adapter. */
+  engine: string;
+  /** Read-only root containing the source material. */
+  gameRoot: string;
+  /** Exact bridge artifact whose units are projected into structure. */
+  bridgePath: string;
+  /** Optional declared format-only settings. */
+  adapterConfig?: UtsushiStructureAdapterConfig;
+};
 
 export type RunUtsushiStructureResult = {
   command: string;
@@ -110,9 +91,9 @@ export class UtsushiStructureExportError extends Error {
 }
 
 /**
- * Run the selected native provider's `utsushi structure` command and assert it
- * exited 0. RealLive receives its Gameexe and Seen archive with replay options;
- * Softpal receives its game root; Siglus receives Gameexe and Scene.pck.
+ * Run a native adapter's uniform `utsushi structure` command and assert it
+ * exited 0. The native adapter resolves format-specific files below the supplied
+ * game root rather than exposing them as operator flags.
  *
  * The producer owns its own JSON write (it writes the structure artifact to
  * `outputPath` directly via `utsushi_core::write_json`); this seam returns the
@@ -153,31 +134,24 @@ export function runUtsushiStructureExport(
 }
 
 /**
- * Build the provider-specific flag surface the native producer parses. The
- * RealLive form carries its archive inputs and optional replay controls,
- * Softpal carries the game root that contains its data archive, and Siglus
- * carries its Gameexe and packed scene archive.
+ * Build the one native structure invocation used by every adapter. A non-empty
+ * adapter config remains one generic JSON value; no format-specific flag enters
+ * this boundary.
  */
 export function buildUtsushiStructureArgs(args: RunUtsushiStructureArgs): string[] {
-  const out = ["structure", "--engine", args.engine];
-  if (args.engine === "softpal") {
-    out.push("--game-root", args.gameRoot, "--output", args.outputPath);
-    return out;
-  }
-  out.push("--gameexe", args.gameexePath);
-  if (args.engine === "siglus") {
-    out.push("--scene", args.scenePath, "--output", args.outputPath);
-    return out;
-  }
-  out.push("--seen", args.seenPath, "--output", args.outputPath);
-  if (args.bridgePath !== undefined) {
-    out.push("--bridge", args.bridgePath);
-  }
-  if ("entryScene" in args && args.entryScene !== undefined) {
-    out.push("--entry-scene", String(args.entryScene));
-  }
-  if ("maxScenes" in args && args.maxScenes !== undefined) {
-    out.push("--max-scenes", String(args.maxScenes));
+  const out = [
+    "structure",
+    "--engine",
+    args.engine,
+    "--game-root",
+    args.gameRoot,
+    "--bridge",
+    args.bridgePath,
+    "--output",
+    args.outputPath,
+  ];
+  if (args.adapterConfig !== undefined && Object.keys(args.adapterConfig).length > 0) {
+    out.push("--adapter-config", JSON.stringify(args.adapterConfig));
   }
   return out;
 }

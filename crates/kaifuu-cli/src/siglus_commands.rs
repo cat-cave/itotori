@@ -3,22 +3,26 @@ use std::path::{Path, PathBuf};
 
 use crate::{
     EngineAdapter, SiglusParserBoundarySmokeRequest, SiglusParserBoundarySmokeVariant,
-    atomic_write_text, flag, flag_optional, positional, read_json,
-    run_siglus_known_key_parser_boundary_smoke, write_json,
+    atomic_write_text, extract_scope::parse_extract_scope, flag, flag_optional, positional,
+    read_json, run_siglus_known_key_parser_boundary_smoke, write_json,
 };
 
-pub(crate) fn is_siglus_engine_command(args: &[String]) -> bool {
-    flag_optional(args, "--engine") == Some("siglus")
-        && matches!(args.first().map(String::as_str), Some("extract" | "patch"))
-}
+mod selection;
 
 /// Dispatch standard engine verbs through the Siglus profile gate.
 ///
 /// The profile check deliberately runs before a source path is read. The bridge
 /// and patchback byte transformations remain owned by their dedicated modules.
 pub(crate) fn run_siglus_engine_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    if flag_optional(args, "--cipher-method").is_some() {
+        return Err(
+            "kaifuu.siglus.legacy_flag: --cipher-method is not supported; the decoder selects the format-defined cipher profile"
+                .into(),
+        );
+    }
     let profile = kaifuu_siglus::SiglusEngineProfile::standard();
-    profile.validate_cipher_method(flag(args, "--cipher-method")?)?;
+    let _cipher_method = profile
+        .validate_cipher_method(kaifuu_siglus::SiglusCipherMethod::ExeAngouXorLzss.as_str())?;
 
     match args.first().map(String::as_str) {
         Some("extract") => run_extract_siglus_bundle(args, &profile),
@@ -27,12 +31,15 @@ pub(crate) fn run_siglus_engine_command(args: &[String]) -> Result<(), Box<dyn s
     }
 }
 
-/// `extract --engine siglus` decodes every SceneList entry, then passes the
-/// decoded payloads plus the Gameexe inventory to the whole-pack bridge.
+/// `extract --engine siglus` selects SceneList entries through the shared scope
+/// vocabulary, then passes their decoded payloads and Gameexe inventory to the
+/// bridge. A `unit-set` item is the archive's decimal SceneList id; a
+/// `unit-range` counts entries in SceneList directory order.
 fn run_extract_siglus_bundle(
     args: &[String],
     profile: &kaifuu_siglus::SiglusEngineProfile,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let scope = parse_extract_scope(args)?;
     let game_root = siglus_game_root(args)?;
     let scene_pck = fs::read(game_root.join("Scene.pck"))?;
     let gameexe = fs::read(game_root.join("Gameexe.dat"))?;
@@ -48,8 +55,9 @@ fn run_extract_siglus_bundle(
         .as_ref()
         .map(kaifuu_siglus::ExeAngouKeyRecovery::material);
 
-    let mut decoded_scenes = Vec::with_capacity(index.entries.len());
-    for entry in &index.entries {
+    let selected_entries = selection::select_scene_entries(&scope, &index.entries)?;
+    let mut decoded_scenes = Vec::with_capacity(selected_entries.len());
+    for entry in selected_entries {
         let packed = siglus_scene_slice(&scene_pck, entry)?;
         let decoded = kaifuu_siglus::decode_scene_chunk(
             entry.scene_id,
@@ -80,12 +88,8 @@ fn run_extract_siglus_bundle(
         extractor_name: "kaifuu-siglus-bridge",
         extractor_version: env!("CARGO_PKG_VERSION"),
     };
-    let produced = kaifuu_siglus::produce_whole_scene_pack_bundle(
-        &scene_pck,
-        &scene_inputs,
-        &inventory,
-        &opts,
-    )?;
+    let produced =
+        kaifuu_siglus::produce_scene_pack_bundle(&scene_pck, &scene_inputs, &inventory, &opts)?;
 
     write_json(
         &PathBuf::from(flag(args, "--bundle-output")?),

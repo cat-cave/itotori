@@ -101,8 +101,8 @@ fn build_synthetic_seen_txt_two_scenes() -> Vec<u8> {
 }
 
 #[test]
-fn whole_seen_extract_writes_one_multi_scene_bridge() {
-    // `kaifuu extract --whole-seen` produces the BRIDGE (pure kaifuu decode)
+fn whole_source_extract_writes_one_multi_scene_bridge() {
+    // `kaifuu extract --scope all` produces the BRIDGE (pure kaifuu decode)
     // — NOT the replay-derived narrative structure. Deriving the structure /
     // `sceneDispatchOrder` needs the Utsushi replay runtime and kaifuu must
     // never depend on utsushi (deps flow utsushi → kaifuu); the structure is
@@ -133,7 +133,8 @@ fn whole_seen_extract_writes_one_multi_scene_bridge() {
             "kaifuu-reallive-synthetic",
             "--source-locale",
             "ja-JP",
-            "--whole-seen",
+            "--scope",
+            "all",
             "--bundle-output",
             bridge_path.to_str().unwrap(),
             "--decompile-report-output",
@@ -184,7 +185,7 @@ fn whole_seen_extract_writes_one_multi_scene_bridge() {
     );
 
     let report: serde_json::Value = read_json(&report_path).unwrap();
-    assert_eq!(report["scope"], "whole-seen");
+    assert_eq!(report["scope"], "all");
     assert_eq!(report["sceneCount"], 2);
     assert_eq!(report["unknownOpcodes"], 0);
     // A fully-recognised SEEN carries an empty tuple list and passes the
@@ -195,7 +196,7 @@ fn whole_seen_extract_writes_one_multi_scene_bridge() {
 }
 
 #[test]
-fn scoped_scene_extract_declares_a_non_whole_identity() {
+fn unit_set_extract_declares_a_non_whole_identity() {
     let root = temp_dir("scoped-scene-extract");
     let game_root = root.join("game");
     let data_root = game_root.join("REALLIVEDATA");
@@ -210,7 +211,8 @@ fn scoped_scene_extract_declares_a_non_whole_identity() {
             "extract", "--engine", "reallive", "--game-root", game_root.to_str().unwrap(),
             "--game-id", "kaifuu-reallive-synthetic", "--game-version", "1.0.0",
             "--source-profile-id", "kaifuu-reallive-synthetic", "--source-locale", "ja-JP",
-            "--scene", "1", "--bundle-output", bridge_path.to_str().unwrap(),
+            "--scope", "unit-set", "--unit-ids", "1", "--bundle-output",
+            bridge_path.to_str().unwrap(),
         ]
         .iter()
         .map(std::string::ToString::to_string)
@@ -304,7 +306,8 @@ fn whole_seen_extract_args(
         "kaifuu-reallive-synthetic",
         "--source-locale",
         "ja-JP",
-        "--whole-seen",
+        "--scope",
+        "all",
         "--bundle-output",
         bridge_path.to_str().unwrap(),
         "--decompile-report-output",

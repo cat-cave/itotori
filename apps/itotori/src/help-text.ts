@@ -29,10 +29,8 @@ export function buildHelpText(allCommands = false): string {
   lines.push("");
 
   lines.push("LOCALIZATION:");
-  lines.push("  extract                 Extract a bridge bundle from a game.");
-  lines.push(
-    "  structure-export        Export narrative structure (--engine <provider> required).",
-  );
+  lines.push("  extract                 Extract a bridge bundle from a project config.");
+  lines.push("  structure-export        Export narrative structure from that project config.");
   lines.push("  localize                Run the whole-project localization driver (new pipeline).");
   lines.push(
     "                          --run-mode production|pilot|test-dev  Operational posture (gates legality).",
@@ -189,17 +187,20 @@ export function buildCommandHelpText(args: readonly string[]): string | undefine
       lines.push("Prints the active release and reproducible authorization provenance receipt.");
       break;
     case "extract":
-      usage("itotori extract --engine <ENGINE> ... --bundle-output <JSON>");
-      lines.push("RealLive requires --engine reallive, --game-root, --game-id, --game-version,");
-      lines.push("--source-profile-id, --source-locale, and exactly one scope (--scene, --scenes,");
-      lines.push("--unit-range, or --whole-seen).");
+      usage("itotori extract --project <PROJECT.json>");
+      lines.push(
+        "Read the engine, source root, identity, output, and shared extraction scope from one",
+      );
+      lines.push("strict project document. Inspect an adapter with:");
+      lines.push("  itotori extract --engine <ENGINE> --describe");
       break;
     case "structure-export":
-      usage("itotori structure-export --engine <ENGINE> --output <JSON> ...");
+      usage("itotori structure-export --project <PROJECT.json>");
       lines.push(
-        "RealLive requires --engine reallive --gameexe <INI> --seen <TXT> --output <JSON>.",
+        "Uses the same strict project document as extract; source format files are resolved",
       );
-      lines.push("--bridge <JSON>, --entry-scene <N>, and --max-scenes <N> are optional.");
+      lines.push("inside the selected adapter. Inspect an adapter with:");
+      lines.push("  itotori structure-export --engine <ENGINE> --describe");
       break;
     case "wiki":
       if (subcommand !== "build") return undefined;

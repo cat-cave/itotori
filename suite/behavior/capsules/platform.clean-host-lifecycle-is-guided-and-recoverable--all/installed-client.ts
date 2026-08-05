@@ -211,7 +211,10 @@ function commandProof(binary: string, root: string): boolean {
     help.status === 0 &&
     help.signal === null &&
     resultText(help).includes("LOCALIZATION:") &&
-    failed(extract, "extract refused: --engine <engine> is required") &&
+    failed(
+      extract,
+      "itotori extract accepts either --project <PROJECT.json> or --engine <ENGINE> --describe",
+    ) &&
     failed(localize, "ITOTORI_FIELD_CIPHER_KEY is required") &&
     failed(patch, "flag --source is missing its value") &&
     failed(validate, "flag --engine is missing its value")

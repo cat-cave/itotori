@@ -1,4 +1,70 @@
 #[test]
+fn siglus_extract_infers_its_declared_cipher_without_a_cli_parameter() {
+    let error = run_with_args(vec![
+        "extract".to_string(),
+        "--engine".to_string(),
+        "siglus".to_string(),
+        "--scope".to_string(),
+        "all".to_string(),
+    ])
+    .expect_err("a source is still required");
+
+    assert!(
+        error
+            .to_string()
+            .contains("kaifuu.siglus.engine_profile.source_unresolved"),
+        "the profile gate must pass before source validation: {error}"
+    );
+    assert!(
+        !error.to_string().contains("cipher-method"),
+        "the caller must not be asked for an implementation cipher knob: {error}"
+    );
+}
+
+#[test]
+fn siglus_extract_rejects_the_removed_cipher_method_flag() {
+    let error = run_with_args(vec![
+        "extract".to_string(),
+        "--engine".to_string(),
+        "siglus".to_string(),
+        "--cipher-method".to_string(),
+        "exe_angou_xor_lzss".to_string(),
+    ])
+    .expect_err("cipher selection is decoder-owned");
+
+    assert!(error.to_string().contains("--cipher-method is not supported"));
+    assert!(error.to_string().contains("format-defined cipher profile"));
+}
+
+#[test]
+fn siglus_extract_accepts_shared_partial_scopes_before_reading_source() {
+    for scope_args in [
+        vec!["unit-set", "--unit-ids", "7"],
+        vec!["unit-range", "--start", "0", "--end-exclusive", "1"],
+    ] {
+        let mut args = vec![
+            "extract".to_string(),
+            "--engine".to_string(),
+            "siglus".to_string(),
+            "--scope".to_string(),
+        ];
+        args.extend(scope_args.into_iter().map(str::to_owned));
+        let error = run_with_args(args).expect_err("a source is still required");
+
+        assert!(
+            error
+                .to_string()
+                .contains("kaifuu.siglus.engine_profile.source_unresolved"),
+            "partial scope must pass generic scope parsing: {error}"
+        );
+        assert!(
+            !error.to_string().contains("unsupported"),
+            "Siglus must not retain an all-only scope gate: {error}"
+        );
+    }
+}
+
+#[test]
 fn siglus_detector_profile_fixture_reports_identify_inventory_only() {
     let root = temp_dir("public-siglus-detector");
     let game_dir = public_fixture_path("fixtures/public/kaifuu-encrypted-matrix/raw/siglus");
