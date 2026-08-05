@@ -1,10 +1,6 @@
 import { optionalFlag, requiredFlag } from "../cli/flags.js";
 import { EXTRACT_CAPABILITIES } from "./extract-adapter-capabilities.js";
-import {
-  REALLIVE_SCENE_ID_MAX,
-  SIGLUS_SUPPORTED_CIPHER_METHODS,
-  type ExtractAdapter,
-} from "./extract-adapter-types.js";
+import { REALLIVE_SCENE_ID_MAX, type ExtractAdapter } from "./extract-adapter-types.js";
 import {
   assertCapabilityPayload,
   optionalApiScene,
@@ -12,7 +8,6 @@ import {
   parseRealliveSceneId,
   parseRealliveSceneSet,
   parseRealliveUnitRange,
-  parseSiglusCipherMethod,
   requiredApiString,
 } from "./extract-adapter-validation.js";
 
@@ -35,11 +30,20 @@ export const realliveExtractAdapter: ExtractAdapter<"reallive"> = {
       "--source-locale",
       args.sourceLocale,
     );
-    if (args.wholeSeen === true) out.push("--whole-seen");
-    else if (args.scene !== undefined) out.push("--scene", String(args.scene));
-    else if (args.scenes !== undefined) out.push("--scenes", args.scenes.join(","));
+    if (args.wholeSeen === true) out.push("--scope", "all");
+    else if (args.scene !== undefined)
+      out.push("--scope", "unit-set", "--unit-ids", String(args.scene));
+    else if (args.scenes !== undefined)
+      out.push("--scope", "unit-set", "--unit-ids", args.scenes.join(","));
     else if (args.unitRange !== undefined)
-      out.push("--unit-range", `${args.unitRange.start}:${args.unitRange.endExclusive}`);
+      out.push(
+        "--scope",
+        "unit-range",
+        "--start",
+        String(args.unitRange.start),
+        "--end-exclusive",
+        String(args.unitRange.endExclusive),
+      );
     out.push("--bundle-output", args.bundleOutputPath);
     if (args.decompileReportOutputPath !== undefined)
       out.push("--decompile-report-output", args.decompileReportOutputPath);
@@ -164,8 +168,9 @@ export const softpalExtractAdapter: ExtractAdapter<"softpal"> = {
   capability: EXTRACT_CAPABILITIES.softpal,
   buildArgs(args) {
     const out: string[] = ["extract", "--engine", "softpal"];
-    if (args.gameRoot !== undefined && args.gameRoot.length > 0) out.push(args.gameRoot);
-    out.push("--bundle-output", args.bundleOutputPath);
+    if (args.gameRoot !== undefined && args.gameRoot.length > 0)
+      out.push("--game-root", args.gameRoot);
+    out.push("--scope", "all", "--bundle-output", args.bundleOutputPath);
     return out;
   },
   validate(args, _env) {
@@ -197,7 +202,8 @@ export const rpgMakerExtractAdapter: ExtractAdapter<"rpg-maker"> = {
   capability: EXTRACT_CAPABILITIES["rpg-maker"],
   buildArgs(args) {
     const out: string[] = ["extract", "--engine", "rpg-maker"];
-    if (args.gameDir !== undefined && args.gameDir.length > 0) out.push("--game-dir", args.gameDir);
+    if (args.gameDir !== undefined && args.gameDir.length > 0)
+      out.push("--game-root", args.gameDir);
     out.push(
       "--game-id",
       args.gameId,
@@ -207,6 +213,8 @@ export const rpgMakerExtractAdapter: ExtractAdapter<"rpg-maker"> = {
       args.sourceProfileId,
       "--source-locale",
       args.sourceLocale,
+      "--scope",
+      "all",
       "--bundle-output",
       args.bundleOutputPath,
     );
@@ -218,18 +226,23 @@ export const rpgMakerExtractAdapter: ExtractAdapter<"rpg-maker"> = {
     const hasGameDir = args.gameDir !== undefined && args.gameDir.length > 0;
     if (!hasGameDir)
       throw new Error(
-        "kaifuu extract (rpg-maker) refused: sourcing requires a game www/ dir — pass gameDir",
+        "kaifuu extract (rpg-maker) refused: sourcing requires a game root — pass gameRoot",
       );
   },
   mode() {
     return "whole-game";
   },
   parseCli(args) {
+    if (args.includes("--game-dir"))
+      throw new Error("extract refused: --game-dir is not supported; use --game-root <PATH>");
     if (args.includes("--scene") || args.includes("--whole-seen"))
       throw new Error(
         "extract refused: --engine rpg-maker is whole-game; --scene / --whole-seen are RealLive-only",
       );
-    const gameDir = optionalFlag(args, "--game-dir");
+    const scope = requiredFlag(args, "--scope");
+    if (scope !== "all")
+      throw new Error("extract refused: --engine rpg-maker supports only --scope all");
+    const gameDir = optionalFlag(args, "--game-root");
     const findingsOutputPath = optionalFlag(args, "--findings-output");
     return {
       engine: "rpg-maker",
@@ -272,18 +285,14 @@ export const siglusExtractAdapter: ExtractAdapter<"siglus"> = {
       args.sourceProfileId,
       "--source-locale",
       args.sourceLocale,
-      "--cipher-method",
-      args.cipherMethod,
+      "--scope",
+      "all",
       "--bundle-output",
       args.bundleOutputPath,
     );
     return out;
   },
   validate(args, _env) {
-    if (!SIGLUS_SUPPORTED_CIPHER_METHODS.some((method) => method === args.cipherMethod))
-      throw new Error(
-        `kaifuu.siglus.engine_profile.out_of_profile_cipher_method: '${args.cipherMethod}' is not declared by the Siglus engine profile`,
-      );
     const hasVault = args.vaultCanonicalId !== undefined && args.vaultCanonicalId.length > 0;
     const hasGameRoot = args.gameRoot !== undefined && args.gameRoot.length > 0;
     if (hasVault && hasGameRoot)
@@ -299,27 +308,29 @@ export const siglusExtractAdapter: ExtractAdapter<"siglus"> = {
     return "whole-game";
   },
   parseCli(args) {
+    if (args.includes("--cipher-method")) {
+      throw new Error(
+        "extract refused: --cipher-method is not a Siglus input; the decoder selects its supported format profile",
+      );
+    }
     if (args.includes("--scene") || args.includes("--whole-seen"))
       throw new Error(
         "extract refused: --engine siglus is whole-game; --scene / --whole-seen are not supported",
       );
     const gameRoot = optionalFlag(args, "--game-root");
     const vaultCanonicalId = optionalFlag(args, "--vault-canonical-id");
-    const cipherMethod = parseSiglusCipherMethod(requiredFlag(args, "--cipher-method"));
     return {
       engine: "siglus",
       gameId: requiredFlag(args, "--game-id"),
       gameVersion: requiredFlag(args, "--game-version"),
       sourceProfileId: requiredFlag(args, "--source-profile-id"),
       sourceLocale: requiredFlag(args, "--source-locale"),
-      cipherMethod,
       ...(gameRoot !== undefined ? { gameRoot } : {}),
       ...(vaultCanonicalId !== undefined ? { vaultCanonicalId } : {}),
     };
   },
   parseApi(input) {
     assertCapabilityPayload(EXTRACT_CAPABILITIES.siglus, input);
-    const cipherMethod = parseSiglusCipherMethod(requiredApiString(input, "cipherMethod"));
     const vaultCanonicalId = optionalApiString(input, "vaultCanonicalId");
     const gameRoot = optionalApiString(input, "gameRoot");
     return {
@@ -328,7 +339,6 @@ export const siglusExtractAdapter: ExtractAdapter<"siglus"> = {
       gameVersion: requiredApiString(input, "gameVersion"),
       sourceProfileId: requiredApiString(input, "sourceProfileId"),
       sourceLocale: requiredApiString(input, "sourceLocale"),
-      cipherMethod,
       ...(vaultCanonicalId !== undefined ? { vaultCanonicalId } : {}),
       ...(gameRoot !== undefined ? { gameRoot } : {}),
     };

@@ -3124,9 +3124,6 @@
             {
               "additionalProperties": false,
               "properties": {
-                "cipherMethod": {
-                  "type": "string"
-                },
                 "engine": {
                   "const": "siglus"
                 },
@@ -3150,7 +3147,6 @@
                 }
               },
               "required": [
-                "cipherMethod",
                 "engine",
                 "gameId",
                 "gameVersion",

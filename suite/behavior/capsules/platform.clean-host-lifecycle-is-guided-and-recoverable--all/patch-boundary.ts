@@ -80,6 +80,8 @@ export function patchBoundaryProof(binary: string, root: string, repositoryRoot:
   const source = join(root, "patch-source");
   const target = join(root, "patch-target");
   const extractedBundle = join(root, "extracted-bundle.json");
+  const structureOutput = join(root, "extracted-structure.json");
+  const projectPath = join(root, "extract-project.json");
   const bundle = join(root, "translated-bundle.json");
   const sourceData = join(source, "data");
   const sourceSystem = join(sourceData, "System.json");
@@ -87,28 +89,38 @@ export function patchBoundaryProof(binary: string, root: string, repositoryRoot:
   mkdirSync(target, { recursive: true });
   writeFileSync(sourceSystem, sourceContents(), "utf8");
   writeFileSync(join(target, "operator-owned.txt"), "do not copy or replace\n", "utf8");
+  writeFileSync(
+    projectPath,
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        engine: "rpg-maker",
+        adapter: {},
+        source: { root: source },
+        identity: {
+          id: "clean-host-proof",
+          version: "1.0.0",
+          sourceLocale: "en-US",
+          sourceProfileId: "clean-host",
+        },
+        extract: {
+          output: extractedBundle,
+          scope: { kind: "all" },
+        },
+        structure: {
+          output: structureOutput,
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
   const sentinel = sha256(join(target, "operator-owned.txt"));
   const sourceDigest = sha256(sourceSystem);
   const extracted = run(
     process.execPath,
-    [
-      binary,
-      "extract",
-      "--engine",
-      "rpg-maker",
-      "--game-dir",
-      source,
-      "--game-id",
-      "clean-host-proof",
-      "--game-version",
-      "1.0.0",
-      "--source-profile-id",
-      "clean-host",
-      "--source-locale",
-      "en-US",
-      "--bundle-output",
-      extractedBundle,
-    ],
+    [binary, "extract", "--project", projectPath],
     repositoryRoot,
   );
   if (

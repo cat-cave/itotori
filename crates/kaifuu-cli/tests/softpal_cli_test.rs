@@ -1,4 +1,4 @@
-//! Real-byte CLI integration for `kaifuu-cli extract --engine softpal <root>`.
+//! Real-byte CLI integration for `kaifuu-cli extract --engine softpal --game-root <root>`.
 //!
 //! The staged plaintext corpus test asserts its exact known dialogue and choice
 //! unit count through the positional game-root interface. This target belongs
@@ -25,7 +25,7 @@ fn v60663_game_dir() -> Option<PathBuf> {
 }
 
 #[test]
-fn cli_extract_engine_softpal_positional_root_writes_bridge_with_expected_units() {
+fn cli_extract_engine_softpal_game_root_writes_bridge_with_expected_units() {
     let Some(game_dir) = v60663_game_dir() else {
         panic!("real-bytes proof not established: required corpus is unavailable");
     };
@@ -33,20 +33,23 @@ fn cli_extract_engine_softpal_positional_root_writes_bridge_with_expected_units(
     let tmp_dir = tempfile::tempdir().expect("tmp dir");
     let bundle_out = tmp_dir.path().join("v60663.bridge.json");
 
-    // Game root passed POSITIONALLY (no --game-dir): this is the contract the
-    // audit required — a positional root must work like the other engines.
+    // The engine-neutral source root and all-engine extraction scope are the
+    // public contract. Historical aliases are not needed by this path.
     let output = Command::new(kaifuu_cli_binary())
         .arg("extract")
         .arg("--engine")
         .arg("softpal")
+        .arg("--game-root")
         .arg(&game_dir)
+        .arg("--scope")
+        .arg("all")
         .arg("--bundle-output")
         .arg(&bundle_out)
         .output()
         .expect("kaifuu-cli must run");
     assert!(
         output.status.success(),
-        "kaifuu-cli extract --engine softpal <positional root> exited non-zero: status={:?}\nstderr={}",
+        "kaifuu-cli extract --engine softpal --game-root exited non-zero: status={:?}\nstderr={}",
         output.status,
         String::from_utf8_lossy(&output.stderr),
     );
@@ -59,5 +62,5 @@ fn cli_extract_engine_softpal_positional_root_writes_bridge_with_expected_units(
         V60663_EXPECTED_UNITS,
         "v60663 must extract the known dialogue+choice unit count via the positional root"
     );
-    eprintln!("softpal positional extract: units={}", units.len());
+    eprintln!("softpal game-root extract: units={}", units.len());
 }

@@ -98,7 +98,7 @@ describe("in-studio decode/extract runner drives the REAL kaifuu extract seam", 
     expect(outcome.command).toContain("extract");
   });
 
-  it("whole-seen: drives --whole-seen and reports mode=whole-seen", async () => {
+  it("whole-seen: drives the shared --scope all spelling and reports mode=whole-seen", async () => {
     const capture: { argv?: string[] } = {};
     const runner = createDecodeExtractRunner({ runExtract: realSeamWithFakeSpawn(capture) });
 
@@ -108,7 +108,9 @@ describe("in-studio decode/extract runner drives the REAL kaifuu extract seam", 
       wholeSeen: true,
     });
 
-    expect(capture.argv).toContain("--whole-seen");
+    expect(capture.argv).toContain("--scope");
+    expect(capture.argv![capture.argv!.indexOf("--scope") + 1]).toBe("all");
+    expect(capture.argv).not.toContain("--whole-seen");
     expect(capture.argv).not.toContain("--scene");
     expect(capture.argv![capture.argv!.indexOf("--vault-canonical-id") + 1]).toBe(
       "vault-primary_corpus",

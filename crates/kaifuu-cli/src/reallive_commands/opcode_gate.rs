@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-/// ALPHA-006a — `extract --engine reallive --scene <N> --bundle-output <PATH>`.
+/// ALPHA-006a — `extract --engine reallive --scope unit-set --unit-ids <N>`.
 /// Sources the RealLive corpus either BY-ID through the read-only vault
 /// (`--vault-canonical-id <ID>`, the alpha production route) or from a raw
 /// game tree (`--game-root <PATH>` / `private inventory row`, the env-gated
@@ -24,7 +24,7 @@ pub(crate) enum UnknownOpcodeGate {
     Fail(String),
 }
 
-/// Decide the decode-honesty gate for a completed `--whole-seen` extract.
+/// Decide the decode-honesty gate for a completed `--scope all` extract.
 /// `unknown_opcodes` is the authoritative `!is_recognized` occurrence count;
 /// `signatures` is the `(module_type, module_id, opcode) -> count` tuple
 /// histogram. When the count is non-zero the SEEN did NOT fully decode: by

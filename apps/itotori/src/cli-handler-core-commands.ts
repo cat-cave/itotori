@@ -14,11 +14,7 @@ import type {
   JsonFileStore,
 } from "./cli-handler-contracts.js";
 import { optionalFlag, requiredFlag } from "./cli/flags.js";
-import {
-  extractCapabilities,
-  resolveExtractAdapter,
-  runKaifuuExtract,
-} from "./extract/kaifuu-extract-seam.js";
+import { runEngineProjectCommand } from "./engine-project/command-runner.js";
 import { runLocalizeCommand } from "./cli/localize-command.js";
 import { runLocalizePortfolioCommand } from "./cli/localize-portfolio-command.js";
 import { runPlayCommand } from "./cli/play-command.js";
@@ -26,12 +22,6 @@ import { createRuntimeLauncherRegistry } from "./play/patch-runtime-launcher.js"
 import { applyEnginePatchback, detectPatchbackEngine } from "./patchback/index.js";
 import { runPatchbackProduceCommand } from "./patchback/produce-cli.js";
 import type { ProjectState } from "./services/project-types.js";
-import {
-  resolveStructureProvider,
-  runStructureProvider,
-  structureProviderCapabilities,
-  type StructureProviderResult,
-} from "./structure-export/structure-provider-registry.js";
 
 export async function runPatchCommand(
   args: string[],
@@ -144,27 +134,9 @@ export async function runDashboardStatus(
 
 export async function runStructureExportHandler(
   args: string[],
-  _dependencies: ItotoriCliDependencies,
+  dependencies: ItotoriCliDependencies,
 ): Promise<void> {
-  const engine = optionalFlag(args, "--engine");
-  if (engine === undefined) {
-    throw new Error(
-      `structure-export refused: --engine <engine> is required (registered providers: ${structureProviderCapabilities()
-        .map((capability) => capability.engine)
-        .join(", ")})`,
-    );
-  }
-  const provider = resolveStructureProvider(engine);
-  const source = provider.parseCli(args);
-  const result: StructureProviderResult = runStructureProvider(source);
-  const status = result.execution === "native-process" ? result.process.status : 0;
-  process.stdout.write(
-    `${JSON.stringify(
-      { engine: provider.engine, outputPath: source.outputPath, status },
-      null,
-      2,
-    )}\n`,
-  );
+  writeEngineProjectResult(runEngineProjectCommand("structure-export", args, dependencies));
 }
 
 export async function runLocalize(
@@ -221,38 +193,20 @@ export async function runExtract(
   args: string[],
   dependencies: ItotoriCliDependencies,
 ): Promise<void> {
-  const engineRaw = optionalFlag(args, "--engine");
-  if (engineRaw === undefined) {
-    const available = extractCapabilities()
-      .map((capability) => capability.engine)
-      .join(", ");
-    throw new Error(
-      `extract refused: --engine <engine> is required (registered adapters: ${available})`,
-    );
-  }
-  const adapter = resolveExtractAdapter(engineRaw);
-  const source = adapter.parseCli(args);
-  const bundleOutputPath = requiredFlag(args, "--bundle-output");
-  const nativeCli = dependencies.nativeCli;
-  const result = runKaifuuExtract({
-    ...source,
-    bundleOutputPath,
-    ...(nativeCli?.env === undefined ? {} : { env: nativeCli.env }),
-    ...(nativeCli?.runProcess === undefined ? {} : { runProcess: nativeCli.runProcess }),
-    log: (message) => process.stdout.write(`${message}\n`),
-  });
-  process.stdout.write(
-    `${JSON.stringify(
-      {
-        engine: result.engine,
-        mode: result.mode,
-        bundleOutputPath: result.bundleOutputPath,
-        status: result.status,
-      },
-      null,
-      2,
-    )}\n`,
-  );
+  writeEngineProjectResult(runEngineProjectCommand("extract", args, dependencies));
+}
+
+function writeEngineProjectResult(result: ReturnType<typeof runEngineProjectCommand>): void {
+  const output =
+    result.kind === "describe"
+      ? {
+          engine: result.description.manifest.engine,
+          summary: result.description.manifest.summary,
+          parameters: result.description.manifest.parameters,
+          sharedParameters: result.description.sharedParameters,
+        }
+      : result.receipt;
+  process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
 }
 
 export async function runIngestRuntime(

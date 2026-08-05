@@ -120,6 +120,20 @@ describe("itotori installable package — built bin", () => {
     assert.equal(r.stdout.trim(), `itotori ${readProductVersion()}`);
   });
 
+  test("the bundled CLI discovers its declarative engine schemas", () => {
+    const adaptersDir = path.join(pkgDir, "dist", "adapters");
+    assert.deepEqual(
+      readdirSync(adaptersDir)
+        .filter((file) => file.endsWith(".json"))
+        .sort(),
+      ["reallive.json", "rpg-maker.json", "siglus.json", "softpal.json"],
+    );
+    const r = runCli(distCli, ["extract", "--engine", "siglus", "--describe"]);
+    assert.equal(r.status, 0, `--describe exited ${r.status}: ${r.stderr}`);
+    assert.match(r.stdout, /"engine": "siglus"/u);
+    assert.match(r.stdout, /"sharedParameters"/u);
+  });
+
   test("itotori localize does not require the retired --config flag", () => {
     const r = runCli(distCli, ["localize"]);
     assert.notEqual(r.status, 0, "localize without its required run flags must exit non-zero");
@@ -128,42 +142,47 @@ describe("itotori installable package — built bin", () => {
 
   test("itotori extract relays a native missing-metadata error to the terminal", () => {
     const nativeDir = mkdtempSync(path.join(tmpdir(), "itotori-native-diagnostic-"));
+    const projectDir = mkdtempSync(path.join(tmpdir(), "itotori-project-diagnostic-"));
     const nativeBin = path.join(nativeDir, "kaifuu-cli");
+    const projectPath = path.join(projectDir, "project.json");
     try {
       writeFileSync(
         nativeBin,
         "#!/bin/sh\nprintf '%s\\n' 'missing RealLive bridge metadata flag --game-version; pass --game-id, --game-version, --source-profile-id, and --source-locale' >&2\nexit 1\n",
       );
       chmodSync(nativeBin, 0o755);
-      const r = runCli(
-        distCli,
-        [
-          "extract",
-          "--engine",
-          "reallive",
-          "--game-root",
-          "/synthetic/source",
-          "--game-id",
-          "fixture",
-          "--game-version",
-          "1",
-          "--source-profile-id",
-          "fixture-profile",
-          "--source-locale",
-          "ja-JP",
-          "--scene",
-          "1",
-          "--bundle-output",
-          "/synthetic/bridge.json",
-        ],
-        repoRoot,
-        { ...process.env, ITOTORI_KAIFUU_BIN: nativeBin },
+      writeFileSync(
+        projectPath,
+        `${JSON.stringify({
+          schemaVersion: 1,
+          engine: "reallive",
+          adapter: {},
+          source: { root: "/synthetic/source" },
+          identity: {
+            id: "fixture",
+            version: "1",
+            sourceLocale: "ja-JP",
+            sourceProfileId: "fixture-profile",
+          },
+          extract: {
+            output: path.join(projectDir, "bridge.json"),
+            scope: { kind: "all" },
+          },
+          structure: {
+            output: path.join(projectDir, "structure.json"),
+          },
+        })}\n`,
       );
+      const r = runCli(distCli, ["extract", "--project", projectPath], repoRoot, {
+        ...process.env,
+        ITOTORI_KAIFUU_BIN: nativeBin,
+      });
       assert.notEqual(r.status, 0, "native metadata failure must exit non-zero");
       assert.match(r.stderr, /missing RealLive bridge metadata flag --game-version/u);
       assert.doesNotMatch(r.stderr, /native kaifuu output redacted/u);
     } finally {
       rmSync(nativeDir, { recursive: true, force: true });
+      rmSync(projectDir, { recursive: true, force: true });
     }
   });
 
@@ -283,6 +302,17 @@ describe("itotori installable package — npm pack + install (from the install, 
     });
     assert.equal(r.status, 0, `installed --version failed: ${r.stderr}`);
     assert.equal(r.stdout.trim(), `itotori ${readProductVersion()}`);
+  });
+
+  test("the installed CLI retains its declarative engine schemas", () => {
+    const r = spawnSync(binPath, ["extract", "--engine", "softpal", "--describe"], {
+      encoding: "utf8",
+      cwd: tmpdir(),
+      timeout: 60_000,
+    });
+    assert.equal(r.status, 0, `installed --describe failed: ${r.stderr}`);
+    assert.match(r.stdout, /"engine": "softpal"/u);
+    assert.match(r.stdout, /"parameters": \[\]/u);
   });
 
   test("itotori localize FROM THE INSTALL does not require --config", () => {

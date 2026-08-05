@@ -35,7 +35,7 @@ describe("extract-adapter registry", () => {
       "extract",
       "--engine",
       "rpg-maker",
-      "--game-dir",
+      "--game-root",
       "/games/rpg/www",
       "--game-id",
       "g",
@@ -45,6 +45,8 @@ describe("extract-adapter registry", () => {
       "p",
       "--source-locale",
       "ja-JP",
+      "--scope",
+      "all",
       "--bundle-output",
       "/run/bridge.json",
     ]);
@@ -75,20 +77,18 @@ describe("extract-adapter registry", () => {
       "p",
       "--source-locale",
       "ja-JP",
-      "--cipher-method",
-      "exe_angou_xor_lzss",
       "--bundle-output",
       "/run/bridge.json",
     ]);
-    expect(siglus).toMatchObject({ engine: "siglus", cipherMethod: "exe_angou_xor_lzss" });
+    expect(siglus).toMatchObject({ engine: "siglus" });
     expect(() =>
       resolveExtractAdapter("siglus").parseCli([
         "extract",
         "--engine",
         "siglus",
         "--cipher-method",
-        "not-declared",
+        "implementation-detail",
       ]),
-    ).toThrow(/out_of_profile_cipher_method/u);
+    ).toThrow(/not a Siglus input/u);
   });
 });

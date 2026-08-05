@@ -35,7 +35,9 @@ use kaifuu_delta::{
 
 mod bgi_commands;
 mod binary_patch_smoke;
+mod engine_commands;
 mod evidence_commands;
+mod extract_scope;
 mod golden_profile_commands;
 mod helper_commands;
 mod key_commands;
@@ -99,16 +101,8 @@ fn run_with_args_and_registry(
     args: Vec<String>,
     registry: &AdapterRegistry,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if flag_optional(&args, "--engine") == Some("softpal")
-        && matches!(
-            args.first().map(String::as_str),
-            Some("extract" | "patch" | "verify")
-        )
-    {
-        return run_softpal_command(&args);
-    }
-    if siglus_commands::is_siglus_engine_command(&args) {
-        return siglus_commands::run_siglus_engine_command(&args);
+    if engine_commands::dispatch(&args)? {
+        return Ok(());
     }
     match args.first().map(String::as_str) {
         Some("detect") => {
@@ -121,27 +115,6 @@ fn run_with_args_and_registry(
             )?;
         }
         Some("extract") => {
-            // --engine reallive --scene <N> --bundle-output <path>
-            // routes through the kaifuu-reallive bridge producer rather
-            // than the registry adapter surface. The `game_dir` positional
-            // is optional under --engine reallive — if absent we read
-            // `private inventory row` as a generic real-corpus fixture
-            // convenience.
-            if let Some(engine) = flag_optional(&args, "--engine")
-                && engine == "reallive"
-            {
-                return run_extract_reallive_bundle(&args);
-            }
-            // RPG Maker MV/MZ extraction (vertical-slice wiring) routes
-            // through the kaifuu-rpgmaker `extract_game_dir` bundle
-            // producer: it takes the game's `www/` directory plus the same
-            // identity-metadata flags as the RealLive path and writes the
-            // v0.2 BridgeBundle JSON to `--bundle-output`.
-            if let Some(engine) = flag_optional(&args, "--engine")
-                && (engine == "rpgmaker" || engine == "rpg-maker")
-            {
-                return run_extract_rpgmaker_bundle(&args);
-            }
             let game_dir = PathBuf::from(positional(&args, 1)?);
             let output = PathBuf::from(flag(&args, "--output")?);
             match detect_or_partial(registry, &game_dir, false)? {
@@ -192,26 +165,6 @@ fn run_with_args_and_registry(
             write_stable_asset_inventory(&output, &manifest)?;
         }
         Some("patch") => {
-            // `patch --engine reallive --source <readonly>
-            // --target <writable> --bundle <translated.json>` routes
-            // through the kaifuu-reallive bundle-driven patchback. The
-            // historical registry-adapter path runs when --engine is
-            // absent or set to anything other than `reallive`.
-            if let Some(engine) = flag_optional(&args, "--engine")
-                && engine == "reallive"
-            {
-                return run_patch_reallive_bundle(&args);
-            }
-            // RPG Maker MV/MZ bundle-driven patchback + `.kaifuu` delta
-            // producer (vertical-slice wiring). Reads the translated v0.2
-            // bundle, byte-surgically patches the source `www/data/*.json`
-            // into `--patched-data-output`, and writes the delta package to
-            // `--delta-output`. The source tree is never mutated.
-            if let Some(engine) = flag_optional(&args, "--engine")
-                && (engine == "rpgmaker" || engine == "rpg-maker")
-            {
-                return run_patch_rpgmaker_bundle(&args);
-            }
             patch_commands::run_patch_command(&args, registry)?;
         }
         Some("diff") => {

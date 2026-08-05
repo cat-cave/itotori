@@ -36,9 +36,6 @@ export type RpgMakerExtractSource = {
   findingsOutputPath?: string;
 };
 
-export const SIGLUS_SUPPORTED_CIPHER_METHODS = ["exe_angou_xor_lzss"] as const;
-export type SiglusCipherMethod = (typeof SIGLUS_SUPPORTED_CIPHER_METHODS)[number];
-
 export type SiglusExtractSource = {
   engine: "siglus";
   vaultCanonicalId?: string;
@@ -47,7 +44,6 @@ export type SiglusExtractSource = {
   gameVersion: string;
   sourceProfileId: string;
   sourceLocale: string;
-  cipherMethod: SiglusCipherMethod;
 };
 
 export type ExtractSource =
@@ -122,7 +118,6 @@ export type ExtractCapability = {
   fields: readonly ExtractFormField[];
   constraints: readonly ExtractFormConstraint[];
   modes: readonly ExtractModeCapability[];
-  supportedCipherMethods?: readonly string[];
 };
 
 export type ExtractApiPayload = Readonly<Record<string, unknown>>;

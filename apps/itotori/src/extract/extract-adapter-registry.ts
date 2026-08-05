@@ -16,7 +16,7 @@ import type {
   ExtractSource,
 } from "./extract-adapter-types.js";
 
-export { REALLIVE_SCENE_ID_MAX, SIGLUS_SUPPORTED_CIPHER_METHODS } from "./extract-adapter-types.js";
+export { REALLIVE_SCENE_ID_MAX } from "./extract-adapter-types.js";
 export type {
   AnyExtractAdapter,
   ExtractAdapter,
@@ -38,7 +38,6 @@ export type {
   KaifuuSoftpalExtractArgs,
   RealliveExtractSource,
   RpgMakerExtractSource,
-  SiglusCipherMethod,
   SiglusExtractSource,
   SoftpalExtractSource,
 } from "./extract-adapter-types.js";

@@ -3,8 +3,6 @@ import {
   type ExtractApiPayload,
   type ExtractCapability,
   type ExtractFormField,
-  type SiglusCipherMethod,
-  SIGLUS_SUPPORTED_CIPHER_METHODS,
 } from "./extract-adapter-types.js";
 
 export function parseRealliveSceneId(value: string): number {
@@ -47,16 +45,6 @@ export function parseRealliveUnitRange(value: string): { start: number; endExclu
     );
   }
   return range;
-}
-
-export function parseSiglusCipherMethod(value: string): SiglusCipherMethod {
-  const method = SIGLUS_SUPPORTED_CIPHER_METHODS.find((candidate) => candidate === value);
-  if (method === undefined) {
-    throw new Error(
-      `kaifuu.siglus.engine_profile.out_of_profile_cipher_method: '${value}' is not declared by the Siglus engine profile`,
-    );
-  }
-  return method;
 }
 
 export function assertCapabilityPayload(

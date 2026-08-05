@@ -1,15 +1,12 @@
-// itotori-cli-extract-command (P1, user-shaped CLI) — the engine-agnostic spawn
-// orchestration behind every `itotori extract`.
+// Internal engine-discriminated extraction spawn seam for Studio and corpus
+// workflows. The public `itotori extract` command uses engine-project config.
 //
-// The user-shaped extract wraps `kaifuu-cli extract --engine <engine>`, producing
-// the BridgeBundleV02 that `itotori localize` consumes — WITHOUT forcing the caller
-// to know about the Rust binary or `cargo`. This module is engine-agnostic: it
-// resolves the ADAPTER for the request's REQUIRED `engine` discriminant from the
-// `extract-adapter-registry`, then delegates argv construction, pre-spawn
-// validation, and mode reporting to that adapter. There is NO default engine —
-// an omitted or unregistered engine is REJECTED at the boundary (see
-// `resolveExtractAdapter`), never silently routed to RealLive. Output is always
-// the common `BridgeBundleV02`, whichever engine produced it.
+// This seam wraps `kaifuu-cli extract --engine <engine>`, producing the
+// BridgeBundleV02 that `itotori localize` consumes. It resolves the adapter for
+// its required engine discriminant, then delegates argv construction,
+// pre-spawn validation, and mode reporting to that adapter. There is no default
+// engine: an omitted or unregistered engine is rejected at the boundary. Output
+// is always the common BridgeBundleV02, whichever engine produced it.
 //
 // The kaifuu-cli binary is resolved through the SAME authoritative order the
 // native-deps doctor uses (ITOTORI_KAIFUU_BIN -> ITOTORI_LIBEXEC_DIR ->
@@ -55,11 +52,9 @@ export type {
   KaifuuSoftpalExtractArgs,
   RealliveExtractSource,
   RpgMakerExtractSource,
-  SiglusCipherMethod,
   SiglusExtractSource,
   SoftpalExtractSource,
 } from "./extract-adapter-registry.js";
-export { SIGLUS_SUPPORTED_CIPHER_METHODS } from "./extract-adapter-registry.js";
 // Locally-bound (used here) re-exports.
 export { resolveExtractAdapter };
 export type { ExtractMode, KaifuuExtractArgs, KaifuuProcessResult };

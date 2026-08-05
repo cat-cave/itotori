@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { runItotoriCliCommand, type ItotoriCliDependencies } from "../src/cli-handlers.js";
 import { KAIFUU_NATIVE_OUTPUT_REDACTED } from "../src/extract/kaifuu-extract-seam.js";
@@ -8,11 +11,12 @@ const MISSING_ARCHIVE_DIAGNOSTIC =
   "REALLIVEDATA/Seen.txt not found under /synthetic/owned-source-root-00; " +
   "pass --game-root pointing at a RealLive game root";
 
-function baseDependencies(): ItotoriCliDependencies {
+function baseDependencies(projectPath: string, projectDocument: unknown): ItotoriCliDependencies {
   return {
     io: {
-      readJson: () => {
-        throw new Error("readJson should not be called");
+      readJson: (path) => {
+        if (path !== projectPath) throw new Error(`unexpected readJson path: ${path}`);
+        return projectDocument;
       },
       writeJson: () => {
         throw new Error("writeJson should not be called");
@@ -31,9 +35,42 @@ function baseDependencies(): ItotoriCliDependencies {
 }
 
 describe("itotori extract", () => {
+  const temporaryRoots: string[] = [];
+
+  afterEach(() => {
+    while (temporaryRoots.length > 0) {
+      const root = temporaryRoots.pop();
+      if (root !== undefined) rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("relays the native missing-archive diagnostic through the public command", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "itotori-extract-cli-"));
+    temporaryRoots.push(projectDir);
+    const projectPath = join(projectDir, "project.json");
+    const projectDocument = {
+      schemaVersion: 1,
+      engine: "reallive",
+      adapter: {},
+      source: { root: "/synthetic/owned-source-root-00" },
+      identity: {
+        id: "fixture",
+        version: "1",
+        sourceLocale: "ja-JP",
+        sourceProfileId: "fixture-profile",
+      },
+      extract: {
+        output: join(projectDir, "bridge.json"),
+        scope: { kind: "all" },
+      },
+      structure: {
+        output: join(projectDir, "structure.json"),
+      },
+    };
+    writeFileSync(projectPath, `${JSON.stringify(projectDocument)}\n`);
+
     const calls: Array<{ command: string; args: string[] }> = [];
-    const dependencies = baseDependencies();
+    const dependencies = baseDependencies(projectPath, projectDocument);
     dependencies.nativeCli = {
       env: {},
       runProcess: (command, args): NativeCliProcessResult => {
@@ -44,28 +81,7 @@ describe("itotori extract", () => {
 
     let caught: Error | undefined;
     try {
-      await runItotoriCliCommand(
-        [
-          "extract",
-          "--engine",
-          "reallive",
-          "--game-root",
-          "/synthetic/owned-source-root-00",
-          "--game-id",
-          "fixture",
-          "--game-version",
-          "1",
-          "--source-profile-id",
-          "fixture-profile",
-          "--source-locale",
-          "ja-JP",
-          "--scene",
-          "1",
-          "--bundle-output",
-          "/synthetic/bridge.json",
-        ],
-        dependencies,
-      );
+      await runItotoriCliCommand(["extract", "--project", projectPath], dependencies);
     } catch (error) {
       if (error instanceof Error) caught = error;
       else throw error;

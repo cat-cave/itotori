@@ -1,270 +1,44 @@
-// Engine-discriminated structure-export provider registry.
+// Uniform native structure-export provider.
 //
-// A caller MUST select one registered provider with `--engine`; there is no
-// default and the CLI handler does not know any provider's input shape.  Each
-// provider owns parsing its source flags and either produces the common
-// NarrativeStructure artifact or reports its declared implementation boundary.
+// This compatibility-named module intentionally contains no format-specific
+// parser or execution branch. Every caller supplies the same source-root,
+// bridge, output, and optional declared adapter-config envelope to Utsushi.
 
-import { optionalFlag, requiredFlag } from "../cli/flags.js";
 import {
   runUtsushiStructureExport,
-  type UtsushiProcessResult,
   type RunUtsushiStructureResult,
+  type UtsushiProcessResult,
+  type UtsushiStructureAdapterConfig,
 } from "./utsushi-structure-seam.js";
-import { writeRpgMakerBridgeStructure } from "./rpgmaker-bridge-structure.js";
 
-export type RealliveStructureSource = {
-  engine: "reallive";
-  gameexePath: string;
-  seenPath: string;
-  outputPath: string;
-  bridgePath?: string;
-  entryScene?: number;
-  maxScenes?: number;
-  env?: NodeJS.ProcessEnv;
-  runProcess?: (command: string, args: string[], env: NodeJS.ProcessEnv) => UtsushiProcessResult;
-  log?: (message: string) => void;
+/** One source-format-neutral structure-export request. */
+export type StructureProviderSource = {
+  readonly engine: string;
+  readonly gameRoot: string;
+  readonly bridgePath: string;
+  readonly outputPath: string;
+  readonly adapterConfig?: UtsushiStructureAdapterConfig;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly runProcess?: (
+    command: string,
+    args: string[],
+    env: NodeJS.ProcessEnv,
+  ) => UtsushiProcessResult;
+  readonly log?: (message: string) => void;
 };
 
-export type SoftpalStructureSource = {
-  engine: "softpal";
-  gameRoot: string;
-  outputPath: string;
-  env?: NodeJS.ProcessEnv;
-  runProcess?: (command: string, args: string[], env: NodeJS.ProcessEnv) => UtsushiProcessResult;
-  log?: (message: string) => void;
+export type StructureProviderResult = {
+  readonly execution: "native-process";
+  readonly process: RunUtsushiStructureResult;
 };
 
-export type SiglusStructureSource = {
-  engine: "siglus";
-  scenePath: string;
-  gameexePath: string;
-  outputPath: string;
-  env?: NodeJS.ProcessEnv;
-  runProcess?: (command: string, args: string[], env: NodeJS.ProcessEnv) => UtsushiProcessResult;
-  log?: (message: string) => void;
-};
-
-export type RpgMakerStructureSource = {
-  engine: "rpg-maker";
-  bridgePath: string;
-  outputPath: string;
-};
-
-export type StructureProviderSource =
-  | RealliveStructureSource
-  | SoftpalStructureSource
-  | SiglusStructureSource
-  | RpgMakerStructureSource;
-
-type StructureSourceByEngine = {
-  reallive: RealliveStructureSource;
-  softpal: SoftpalStructureSource;
-  siglus: SiglusStructureSource;
-  "rpg-maker": RpgMakerStructureSource;
-};
-
-export type StructureEngineId = keyof StructureSourceByEngine;
-
-export type StructureProviderCapability = {
-  engine: StructureEngineId;
-  summary: string;
-  implemented: boolean;
-};
-
-export type StructureProviderResult =
-  | { execution: "native-process"; process: RunUtsushiStructureResult }
-  | { execution: "in-process"; outputPath: string };
-
-export interface StructureProvider<E extends StructureEngineId> {
-  readonly engine: E;
-  readonly capability: StructureProviderCapability;
-  parseCli(args: readonly string[]): StructureSourceByEngine[E];
-  run(source: StructureSourceByEngine[E]): StructureProviderResult;
-}
-
-export type AnyStructureProvider = {
-  readonly engine: StructureEngineId;
-  readonly capability: StructureProviderCapability;
-  parseCli(args: readonly string[]): StructureProviderSource;
-  run(source: StructureProviderSource): StructureProviderResult;
-};
-
-function defineStructureProvider<E extends StructureEngineId>(
-  provider: StructureProvider<E>,
-): AnyStructureProvider {
-  return provider as unknown as AnyStructureProvider;
-}
-
-function parsePositiveInteger(args: readonly string[], flag: string): number | undefined {
-  const raw = optionalFlag(args, flag);
-  if (raw === undefined) return undefined;
-  const value = Number.parseInt(raw, 10);
-  if (!Number.isFinite(value) || value <= 0 || String(value) !== raw) {
-    throw new Error(`structure-export refused: ${flag} '${raw}' must be a positive integer`);
-  }
-  return value;
-}
-
-function parseNonNegativeInteger(args: readonly string[], flag: string): number | undefined {
-  const raw = optionalFlag(args, flag);
-  if (raw === undefined) return undefined;
-  const value = Number.parseInt(raw, 10);
-  if (!Number.isFinite(value) || value < 0 || String(value) !== raw) {
-    throw new Error(`structure-export refused: ${flag} '${raw}' must be a non-negative integer`);
-  }
-  return value;
-}
-
-const realliveStructureProvider: StructureProvider<"reallive"> = {
-  engine: "reallive",
-  capability: {
-    engine: "reallive",
-    summary: "Gameexe.ini + Seen.txt narrative graph export",
-    implemented: true,
-  },
-  parseCli(args) {
-    const bridgePath = optionalFlag(args, "--bridge");
-    const entryScene = parseNonNegativeInteger(args, "--entry-scene");
-    const maxScenes = parsePositiveInteger(args, "--max-scenes");
-    return {
-      engine: "reallive",
-      gameexePath: requiredFlag(args, "--gameexe"),
-      seenPath: requiredFlag(args, "--seen"),
-      outputPath: requiredFlag(args, "--output"),
-      ...(bridgePath === undefined ? {} : { bridgePath }),
-      ...(entryScene === undefined ? {} : { entryScene }),
-      ...(maxScenes === undefined ? {} : { maxScenes }),
-    };
-  },
-  run(source) {
-    return {
-      execution: "native-process",
-      process: runUtsushiStructureExport({
-        engine: source.engine,
-        gameexePath: source.gameexePath,
-        seenPath: source.seenPath,
-        outputPath: source.outputPath,
-        ...(source.bridgePath === undefined ? {} : { bridgePath: source.bridgePath }),
-        ...(source.entryScene === undefined ? {} : { entryScene: source.entryScene }),
-        ...(source.maxScenes === undefined ? {} : { maxScenes: source.maxScenes }),
-        ...(source.env === undefined ? {} : { env: source.env }),
-        ...(source.runProcess === undefined ? {} : { runProcess: source.runProcess }),
-        ...(source.log === undefined ? {} : { log: source.log }),
-      }),
-    };
-  },
-};
-
-const softpalStructureProvider: StructureProvider<"softpal"> = {
-  engine: "softpal",
-  capability: {
-    engine: "softpal",
-    summary: "Whole-game linear structure from SCRIPT.SRC + TEXT.DAT",
-    implemented: true,
-  },
-  parseCli(args) {
-    return {
-      engine: "softpal",
-      gameRoot: requiredFlag(args, "--game-root"),
-      outputPath: requiredFlag(args, "--output"),
-    };
-  },
-  run(source) {
-    return {
-      execution: "native-process",
-      process: runUtsushiStructureExport({
-        engine: source.engine,
-        gameRoot: source.gameRoot,
-        outputPath: source.outputPath,
-        ...(source.env === undefined ? {} : { env: source.env }),
-        ...(source.runProcess === undefined ? {} : { runProcess: source.runProcess }),
-        ...(source.log === undefined ? {} : { log: source.log }),
-      }),
-    };
-  },
-};
-
-const siglusStructureProvider: StructureProvider<"siglus"> = {
-  engine: "siglus",
-  capability: {
-    engine: "siglus",
-    summary: "Scene.pck + Gameexe.dat static narrative structure export",
-    implemented: true,
-  },
-  parseCli(args) {
-    return {
-      engine: "siglus",
-      scenePath: requiredFlag(args, "--scene"),
-      gameexePath: requiredFlag(args, "--gameexe"),
-      outputPath: requiredFlag(args, "--output"),
-    };
-  },
-  run(source) {
-    return {
-      execution: "native-process",
-      process: runUtsushiStructureExport({
-        engine: source.engine,
-        scenePath: source.scenePath,
-        gameexePath: source.gameexePath,
-        outputPath: source.outputPath,
-        ...(source.env === undefined ? {} : { env: source.env }),
-        ...(source.runProcess === undefined ? {} : { runProcess: source.runProcess }),
-        ...(source.log === undefined ? {} : { log: source.log }),
-      }),
-    };
-  },
-};
-
-const rpgMakerStructureProvider: StructureProvider<"rpg-maker"> = {
-  engine: "rpg-maker",
-  capability: {
-    engine: "rpg-maker",
-    summary: "Bridge-linked whole-game narrative structure projection",
-    implemented: true,
-  },
-  parseCli(args) {
-    return {
-      engine: "rpg-maker",
-      bridgePath: requiredFlag(args, "--bridge"),
-      outputPath: requiredFlag(args, "--output"),
-    };
-  },
-  run(source) {
-    writeRpgMakerBridgeStructure(source);
-    return { execution: "in-process", outputPath: source.outputPath };
-  },
-};
-
-const STRUCTURE_PROVIDERS: Readonly<Record<StructureEngineId, AnyStructureProvider>> = {
-  reallive: defineStructureProvider(realliveStructureProvider),
-  softpal: defineStructureProvider(softpalStructureProvider),
-  siglus: defineStructureProvider(siglusStructureProvider),
-  "rpg-maker": defineStructureProvider(rpgMakerStructureProvider),
-};
-
-export function registeredStructureEngines(): StructureEngineId[] {
-  return Object.keys(STRUCTURE_PROVIDERS) as StructureEngineId[];
-}
-
-export function structureProviderCapabilities(): StructureProviderCapability[] {
-  return registeredStructureEngines().map((engine) => STRUCTURE_PROVIDERS[engine].capability);
-}
-
-export function isRegisteredStructureEngine(engine: string): engine is StructureEngineId {
-  return Object.prototype.hasOwnProperty.call(STRUCTURE_PROVIDERS, engine);
-}
-
-export function resolveStructureProvider(engine: string): AnyStructureProvider {
-  if (!isRegisteredStructureEngine(engine)) {
-    throw new Error(
-      `structure-export refused: --engine '${engine}' is not a registered structure provider (registered: ${registeredStructureEngines().join(", ")})`,
-    );
-  }
-  return STRUCTURE_PROVIDERS[engine];
-}
-
-/** Run a typed source through its registered provider. */
+/**
+ * Run the selected native format adapter through the single uniform structure
+ * argv. Utsushi owns source-format resolution and validation after this seam.
+ */
 export function runStructureProvider(source: StructureProviderSource): StructureProviderResult {
-  return resolveStructureProvider(source.engine).run(source);
+  return {
+    execution: "native-process",
+    process: runUtsushiStructureExport(source),
+  };
 }

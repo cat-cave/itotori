@@ -72,7 +72,7 @@ export function stageRealLiveQ5Fixture(): RealLiveQ5Fixture {
     if (extract.status !== 0 || !existsSync(bridgePath)) {
       throw new Error("public Q5 fixture native bridge extraction did not produce an artifact");
     }
-    const structureExport = nativeStructure(dataRoot, bridgePath, structurePath);
+    const structureExport = nativeStructure(sourceRoot, bridgePath, structurePath);
     if (structureExport.status !== 0 || !existsSync(structurePath)) {
       throw new Error("public Q5 fixture native structure export did not produce an artifact");
     }
@@ -150,12 +150,11 @@ function nativeExtract(sourceRoot: string, bridgePath: string) {
   }
 }
 
-function nativeStructure(dataRoot: string, bridgePath: string, structurePath: string) {
+function nativeStructure(gameRoot: string, bridgePath: string, structurePath: string) {
   try {
     return runUtsushiStructureExport({
       engine: "reallive",
-      gameexePath: join(dataRoot, "Gameexe.ini"),
-      seenPath: join(dataRoot, "Seen.txt"),
+      gameRoot,
       bridgePath,
       outputPath: structurePath,
     });

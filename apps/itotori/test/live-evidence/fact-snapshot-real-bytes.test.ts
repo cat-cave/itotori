@@ -111,8 +111,7 @@ describe("buildFactSnapshot real primary_corpus byte oracle", () => {
     // (2) real structure, joined to that bridge's unit evidence.
     const structureExport = runUtsushiStructureExport({
       engine: "reallive",
-      gameexePath: corpus.gameexe,
-      seenPath: corpus.seen,
+      gameRoot: corpus.gameRoot,
       outputPath: structurePath,
       bridgePath,
     });

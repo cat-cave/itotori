@@ -39,6 +39,11 @@ fn real_paths() -> (PathBuf, PathBuf) {
     (gameexe, seen)
 }
 
+fn real_game_root() -> PathBuf {
+    real_corpus::game_root()
+        .unwrap_or_else(|| panic!("real-bytes proof requires staged RealLive game root"))
+}
+
 fn write_whole_seen_bridge(gameexe_path: &Path, seen_path: &Path, output: &Path) -> Value {
     let seen_bytes = fs::read(seen_path).expect("read staged Seen.txt");
     let gameexe_bytes = fs::read(gameexe_path).expect("read staged Gameexe.ini");
@@ -80,9 +85,9 @@ fn write_whole_seen_bridge(gameexe_path: &Path, seen_path: &Path, output: &Path)
         .collect();
     let gameexe = kaifuu_reallive::parse_gameexe_inventory(&gameexe_bytes);
     let opts = kaifuu_reallive::BridgeOpts {
-        game_id: "sweetie-hd",
+        game_id: "primary-corpus",
         game_version: "1.0.0",
-        source_profile_id: "kaifuu-reallive-sweetie-hd",
+        source_profile_id: "kaifuu-reallive-primary-corpus",
         source_locale: "ja-JP",
         extractor_name: "kaifuu-reallive-bridge",
         extractor_version: "0.1.0",
@@ -111,17 +116,16 @@ fn reallive_evidence<'a>(value: &'a Value, field: &str) -> &'a Value {
 }
 
 #[test]
-fn utsushi_structure_primary_corpus_rejects_truncation_without_an_artifact() {
+fn utsushi_structure_primary_corpus_rejects_removed_limit_without_an_artifact() {
+    let game_root = real_game_root();
     let (gameexe, seen) = real_paths();
     let tmp_dir = tempfile::tempdir().expect("tmp dir");
     let bridge_path = tmp_dir.path().join("whole.bridge.json");
     let _bridge = write_whole_seen_bridge(&gameexe, &seen, &bridge_path);
     let structure_out = tmp_dir.path().join("must-not-exist.json");
     let output = Command::new(utsushi_cli_binary())
-        .args(["structure", "--engine", "reallive", "--gameexe"])
-        .arg(gameexe)
-        .arg("--seen")
-        .arg(seen)
+        .args(["structure", "--engine", "reallive", "--game-root"])
+        .arg(game_root)
         .arg("--bridge")
         .arg(bridge_path)
         .arg("--output")
@@ -129,18 +133,21 @@ fn utsushi_structure_primary_corpus_rejects_truncation_without_an_artifact() {
         .args(["--max-scenes", "1"])
         .output()
         .expect("utsushi-cli must run");
-    assert!(!output.status.success(), "truncated export must fail");
+    assert!(!output.status.success(), "removed limit must fail");
     assert!(
         !structure_out.exists(),
         "a rejected partial export must not leave an artifact"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("utsushi.structure.truncated"), "{stderr}");
-    assert!(stderr.contains("no artifact was written"), "{stderr}");
+    assert!(
+        stderr.contains("unknown structure flag: --max-scenes"),
+        "{stderr}"
+    );
 }
 
 #[test]
 fn utsushi_structure_primary_corpus_v2_matches_bridge_and_graph() {
+    let game_root = real_game_root();
     let (gameexe, seen) = real_paths();
     let tmp_dir = tempfile::tempdir().expect("tmp dir");
     let bridge_path = tmp_dir.path().join("whole.bridge.json");
@@ -152,10 +159,8 @@ fn utsushi_structure_primary_corpus_v2_matches_bridge_and_graph() {
         .collect::<std::collections::HashMap<_, _>>();
     let structure_out = tmp_dir.path().join("expanded.json");
     let output = Command::new(utsushi_cli_binary())
-        .args(["structure", "--engine", "reallive", "--gameexe"])
-        .arg(gameexe)
-        .arg("--seen")
-        .arg(seen)
+        .args(["structure", "--engine", "reallive", "--game-root"])
+        .arg(game_root)
         .arg("--bridge")
         .arg(bridge_path)
         .arg("--output")

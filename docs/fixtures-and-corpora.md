@@ -166,9 +166,9 @@ access = "read-only"
 ```
 
 Registry-backed tests resolve the selected identity from that inventory beneath
-the configured mount. The
-extract stage instead selects its source with `--game-root` and produces the
-bridge bundle. Structure export consumes that bridge. The current public CLI
+the configured mount. The extract stage instead selects its source through the
+project config's `source.root` and produces the bridge bundle. Structure export
+consumes that bridge from the same project config. The current public CLI
 does not provide an observed bridge-to-patch handoff; its selected game root
 must be a read-only source tree for the run and is treated as private local
 state.
@@ -176,8 +176,12 @@ state.
 For a one-off single-corpus run, operators should pass the source explicitly:
 
 ```sh
-itotori extract --source <local-private-root>
+itotori extract --project <local-project.json>
 ```
+
+The local project file holds `source.root` as `<local-private-root>`; see
+[engine project configuration](engine-project-config.md). Do not commit that
+file when it identifies a private corpus.
 
 Never commit an absolute private root or a copied command transcript that
 reveals the selected root. Committed tests and dry-run artifacts should use

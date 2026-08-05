@@ -76,18 +76,14 @@ extract → structure-export → wiki + localize → final accepted outputs → 
 ```
 
 ```sh
-itotori extract --whole-seen \
-  --engine reallive --game-root <read-only-game-root> \
-  --game-id <id> --game-version <ver> \
-  --source-profile-id <profile> --source-locale ja-JP \
-  --bundle-output <run-dir>/bridge.json
-
-itotori structure-export \
-  --engine reallive \
-  --gameexe <game-root>/REALLIVEDATA/Gameexe.ini \
-  --seen     <game-root>/REALLIVEDATA/Seen.txt \
-  --bridge   <run-dir>/bridge.json --output <run-dir>/structure.json
+itotori extract --project <project.json>
+itotori structure-export --project <project.json>
 ```
+
+The one project file declares the engine, source root, identity, shared
+extraction scope, and bridge/structure destinations. It never asks for
+engine-shaped flags. See [engine project configuration](docs/engine-project-config.md)
+for the strict JSON contract, shared scope rules, and `--describe`.
 
 `wiki build` and `localize` both require migrated Postgres and
 `ITOTORI_FIELD_CIPHER_KEY`. A completed production run stores final accepted
@@ -97,8 +93,9 @@ and returns a persistent patched build. `run-summary.json` remains a redacted
 summary, not a patch input; do not substitute it for a translated bridge or
 `NativePatchbackInput`.
 
-Use `itotori <command> --help` at the command you are about to run; it prints
-that command's required flags. A live run additionally requires the provider
+Use `itotori <command> --help` at the command you are about to run. Use
+`itotori extract --engine <engine> --describe` to inspect the selected
+adapter's declared project schema. A live run additionally requires the provider
 credentials and ZDR posture described in step 2.
 
 For a step-by-step RealLive walkthrough with configuration boundaries and

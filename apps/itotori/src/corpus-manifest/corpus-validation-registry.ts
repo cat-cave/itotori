@@ -205,10 +205,9 @@ const realliveCorpusValidationAdapter: CorpusValidationAdapter<"reallive"> = {
     });
     runUtsushiStructureExport({
       engine: "reallive",
-      gameexePath: source.inputPaths.gameexeIni,
-      seenPath: source.inputPaths.seenTxt,
+      gameRoot: source.gameRoot,
+      bridgePath: fullBridgePath,
       outputPath: structurePath,
-      maxScenes: 10_000,
       env: nativeEnv,
     });
     return {

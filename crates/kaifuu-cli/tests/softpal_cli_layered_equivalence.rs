@@ -87,7 +87,9 @@ fn pac(files: &[(&str, &[u8])]) -> Vec<u8> {
 fn extract_bundle(game_dir: &Path, bundle_path: &Path) -> Value {
     let output = Command::new(kaifuu_cli_binary())
         .args(["extract", "--engine", "softpal"])
+        .args(["--game-root"])
         .arg(game_dir)
+        .args(["--scope", "all"])
         .args(["--bundle-output"])
         .arg(bundle_path)
         .output()

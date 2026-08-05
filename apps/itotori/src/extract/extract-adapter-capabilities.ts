@@ -1,6 +1,5 @@
 import {
   REALLIVE_SCENE_ID_MAX,
-  SIGLUS_SUPPORTED_CIPHER_METHODS,
   type ExtractCapability,
   type ExtractEngineId,
 } from "./extract-adapter-types.js";
@@ -171,13 +170,6 @@ export const EXTRACT_CAPABILITIES = {
         required: true,
         defaultValue: "ja-JP",
       },
-      {
-        key: "cipherMethod",
-        label: "Cipher method",
-        input: "text",
-        required: true,
-        defaultValue: SIGLUS_SUPPORTED_CIPHER_METHODS[0],
-      },
     ],
     constraints: [
       {
@@ -187,7 +179,6 @@ export const EXTRACT_CAPABILITIES = {
       },
     ],
     modes: [{ id: "whole-game", label: "Entire game", fixedValues: {}, fields: [] }],
-    supportedCipherMethods: SIGLUS_SUPPORTED_CIPHER_METHODS,
   },
 } as const satisfies Readonly<Record<ExtractEngineId, ExtractCapability>>;
 

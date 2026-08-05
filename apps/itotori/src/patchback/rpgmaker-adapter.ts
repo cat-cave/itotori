@@ -69,6 +69,7 @@ export const rpgMakerPatchbackAdapter: EnginePatchbackAdapter = {
       },
       structure: {
         engine: "rpg-maker",
+        gameRoot: request.sourceRoot,
         bridgePath: request.bridgePath,
         outputPath: request.structurePath,
       },

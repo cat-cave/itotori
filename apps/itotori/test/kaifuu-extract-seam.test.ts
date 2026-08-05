@@ -16,7 +16,7 @@ import {
 import { IDENTITY, RPG_IDENTITY } from "./kaifuu-extract-seam.support.js";
 
 describe("buildExtractArgs (argv shape)", () => {
-  it("per-scene: mirrors run.mjs Phase 1 ordering", () => {
+  it("unit-set: uses the shared native scope vocabulary", () => {
     const a = buildExtractArgs({
       ...IDENTITY,
       gameRoot: "/games/sample-game",
@@ -37,14 +37,16 @@ describe("buildExtractArgs (argv shape)", () => {
       "profile-1",
       "--source-locale",
       "ja-JP",
-      "--scene",
+      "--scope",
+      "unit-set",
+      "--unit-ids",
       "6010",
       "--bundle-output",
       "/run/bridge.json",
     ]);
   });
 
-  it("whole-seen: emits --whole-seen (no --scene) + optional decompile report", () => {
+  it("all: uses the shared scope spelling + optional decompile report", () => {
     const a = buildExtractArgs({
       ...IDENTITY,
       vaultCanonicalId: "vault-id",
@@ -52,7 +54,8 @@ describe("buildExtractArgs (argv shape)", () => {
       bundleOutputPath: "/run/bridge.json",
       decompileReportOutputPath: "/run/decompile.json",
     });
-    expect(a).toContain("--whole-seen");
+    expect(a[a.indexOf("--scope") + 1]).toBe("all");
+    expect(a).not.toContain("--whole-seen");
     expect(a).not.toContain("--scene");
     expect(a[a.indexOf("--vault-canonical-id") + 1]).toBe("vault-id");
     expect(a[a.indexOf("--decompile-report-output") + 1]).toBe("/run/decompile.json");
@@ -60,7 +63,7 @@ describe("buildExtractArgs (argv shape)", () => {
 });
 
 describe("runKaifuuExtract (invocation shape mirrors run.mjs Phase 1)", () => {
-  it("per-scene: invokes kaifuu-cli extract with the right args + reports status 0", () => {
+  it("unit-set: invokes kaifuu-cli extract with the shared scope args + reports status 0", () => {
     let captured: { command: string; args: string[] } | undefined;
     const res = runKaifuuExtract({
       ...IDENTITY,
@@ -97,14 +100,16 @@ describe("runKaifuuExtract (invocation shape mirrors run.mjs Phase 1)", () => {
       "profile-1",
       "--source-locale",
       "ja-JP",
-      "--scene",
+      "--scope",
+      "unit-set",
+      "--unit-ids",
       "6010",
       "--bundle-output",
       "/run/bridge.json",
     ]);
   });
 
-  it("whole-seen: invokes with --whole-seen and reports mode=whole-seen", () => {
+  it("all: invokes with --scope all and reports mode=whole-seen", () => {
     let captured: string[] | undefined;
     const res = runKaifuuExtract({
       ...IDENTITY,
@@ -118,7 +123,9 @@ describe("runKaifuuExtract (invocation shape mirrors run.mjs Phase 1)", () => {
       },
     });
     expect(res.mode).toBe("whole-seen");
-    expect(captured).toContain("--whole-seen");
+    expect(captured).toContain("--scope");
+    expect(captured![captured!.indexOf("--scope") + 1]).toBe("all");
+    expect(captured).not.toContain("--whole-seen");
     expect(captured).not.toContain("--scene");
   });
 
@@ -284,13 +291,16 @@ describe("runKaifuuExtract (invocation shape mirrors run.mjs Phase 1)", () => {
       runProcess: () => ({ status: 0, stdout: "", stderr: "" }),
     });
     expect(
-      lines.some((line) => line.startsWith("kaifuu-extract:") && line.includes("--scene 7")),
+      lines.some(
+        (line) =>
+          line.startsWith("kaifuu-extract:") && line.includes("--scope unit-set --unit-ids 7"),
+      ),
     ).toBe(true);
   });
 });
 
 describe("buildExtractArgs (softpal argv shape)", () => {
-  it("passes the game root positionally + --bundle-output (matches the CLI arm)", () => {
+  it("passes --game-root + --scope all + --bundle-output", () => {
     const a = buildExtractArgs({
       engine: "softpal",
       gameRoot: "/games/softpal-title/game",
@@ -300,7 +310,10 @@ describe("buildExtractArgs (softpal argv shape)", () => {
       "extract",
       "--engine",
       "softpal",
-      "/games/softpal-title/game", // positional root — NOT a --game-root flag
+      "--game-root",
+      "/games/softpal-title/game",
+      "--scope",
+      "all",
       "--bundle-output",
       "/run/bridge.json",
     ]);
@@ -308,15 +321,23 @@ describe("buildExtractArgs (softpal argv shape)", () => {
     expect(a).not.toContain("--scene");
     expect(a).not.toContain("--whole-seen");
     expect(a).not.toContain("--game-id");
-    expect(a).not.toContain("--game-root");
+    expect(a).toContain("--game-root");
   });
 
-  it("omits the positional root when it falls back to the softpal env var", () => {
+  it("uses --scope all when it falls back to the softpal env var", () => {
     const a = buildExtractArgs({
       engine: "softpal",
       bundleOutputPath: "/run/bridge.json",
     });
-    expect(a).toEqual(["extract", "--engine", "softpal", "--bundle-output", "/run/bridge.json"]);
+    expect(a).toEqual([
+      "extract",
+      "--engine",
+      "softpal",
+      "--scope",
+      "all",
+      "--bundle-output",
+      "/run/bridge.json",
+    ]);
   });
 });
 
@@ -341,7 +362,10 @@ describe("runKaifuuExtract (softpal dispatch)", () => {
       "extract",
       "--engine",
       "softpal",
+      "--game-root",
       "/games/softpal-title/game",
+      "--scope",
+      "all",
       "--bundle-output",
       "/run/bridge.json",
     ]);
@@ -386,7 +410,7 @@ describe("runKaifuuExtract (softpal dispatch)", () => {
 });
 
 describe("buildExtractArgs (rpg-maker argv shape)", () => {
-  it("emits --game-dir + identity flags + --bundle-output (matches the CLI arm)", () => {
+  it("emits --game-root + shared scope + identity flags + --bundle-output", () => {
     const a = buildExtractArgs({
       engine: "rpg-maker",
       ...RPG_IDENTITY,
@@ -398,7 +422,7 @@ describe("buildExtractArgs (rpg-maker argv shape)", () => {
       "extract",
       "--engine",
       "rpg-maker",
-      "--game-dir",
+      "--game-root",
       "/games/rpg-title/www",
       "--game-id",
       "sample-rpg",
@@ -408,6 +432,8 @@ describe("buildExtractArgs (rpg-maker argv shape)", () => {
       "profile-1",
       "--source-locale",
       "ja-JP",
+      "--scope",
+      "all",
       "--bundle-output",
       "/run/bridge.json",
       "--findings-output",
@@ -419,13 +445,13 @@ describe("buildExtractArgs (rpg-maker argv shape)", () => {
     expect(a).not.toContain("--vault-canonical-id");
   });
 
-  it("omits --game-dir when it falls back to the rpg-maker env var", () => {
+  it("omits --game-root when no source directory is supplied", () => {
     const a = buildExtractArgs({
       engine: "rpg-maker",
       ...RPG_IDENTITY,
       bundleOutputPath: "/run/bridge.json",
     });
-    expect(a).not.toContain("--game-dir");
+    expect(a).not.toContain("--game-root");
     expect(a).not.toContain("--findings-output");
   });
 });

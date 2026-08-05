@@ -135,8 +135,7 @@ describe("produce playable build real primary_corpus byte oracle", () => {
     expect(
       runUtsushiStructureExport({
         engine: "reallive",
-        gameexePath: primaryCorpus.gameexe,
-        seenPath: primaryCorpus.seen,
+        gameRoot: primaryCorpus.gameRoot,
         outputPath: structurePath,
         bridgePath,
       }).status,
@@ -228,7 +227,7 @@ describe("produce playable build real primary_corpus byte oracle", () => {
     }
     const corpora = [
       { label: "primary_corpus", corpus },
-      { label: "kanon", corpus: secondCorpus },
+      { label: "secondary-corpus", corpus: secondCorpus },
     ];
     expect(new Set(corpora.map(({ corpus: current }) => current.gameRoot)).size).toBe(2);
 
@@ -252,8 +251,7 @@ describe("produce playable build real primary_corpus byte oracle", () => {
         expect(
           runUtsushiStructureExport({
             engine: "reallive",
-            gameexePath: current.gameexe,
-            seenPath: current.seen,
+            gameRoot: current.gameRoot,
             outputPath: structurePath,
             bridgePath,
           }).status,
