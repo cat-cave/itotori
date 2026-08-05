@@ -133,6 +133,8 @@ mod artifact_store;
 mod harness_cleanup;
 #[path = "tests/harness_execution.rs"]
 mod harness_execution;
+#[path = "tests/harness_stderr_diagnostics.rs"]
+mod harness_stderr_diagnostics;
 #[path = "tests/validation_and_support.rs"]
 mod validation_and_support;
 
@@ -194,6 +196,11 @@ fn launch_capture_harness_captures_stdout_when_requested() {
 #[test]
 fn launch_capture_harness_discards_stdout_by_default() {
     harness_execution::launch_capture_harness_discards_stdout_by_default();
+}
+
+#[test]
+fn nonzero_exit_summarizes_stderr_without_exposing_contents() {
+    harness_stderr_diagnostics::nonzero_exit_summarizes_stderr_without_exposing_contents();
 }
 
 #[test]

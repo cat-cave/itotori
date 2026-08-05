@@ -22,6 +22,7 @@ import {
   spawnNativeCliProcess,
   type NativeSpawnResult,
 } from "../native-bin/cli-bin-resolver.js";
+import { nativeFailureDiagnostic } from "../native-bin/native-diagnostics.js";
 
 const NATIVE_PROBE_BYTES = 4_096;
 
@@ -99,7 +100,10 @@ export function buildSourceCliEnvironment(
     env,
   );
   if (build.error !== undefined || build.status !== 0) {
-    throw new Error("private corpus validation could not build trusted native CLIs");
+    const diagnostic = nativeFailureDiagnostic(build, env);
+    throw new Error(
+      `private corpus validation could not build trusted native CLIs with status ${String(build.status)}: ${diagnostic}`,
+    );
   }
 
   const kaifuuBin = join(canonicalTargetRoot, "debug", "kaifuu-cli");

@@ -310,15 +310,10 @@ fn patch_command_rejects_reallive_target_reallivedata_symlink_to_source_before_c
         "{error}"
     );
     assert!(
-        error.contains(kaifuu_core::SEMANTIC_SECRET_REDACTED),
-        "{error}"
+        error.contains(target_data.to_string_lossy().as_ref()),
+        "operator path missing: {error}"
     );
-    for forbidden in [
-        source_root.to_string_lossy(),
-        source_data.to_string_lossy(),
-        target_root.to_string_lossy(),
-        target_data.to_string_lossy(),
-    ] {
+    for forbidden in [source_root.to_string_lossy(), source_data.to_string_lossy()] {
         assert!(
             !error.contains(forbidden.as_ref()),
             "diagnostic leaked private path {forbidden}: {error}"
@@ -375,13 +370,13 @@ fn patch_command_rejects_reallive_nested_target_symlink_to_writable_dir_before_c
         error.contains("kaifuu.reallive.patchback_target_symlink"),
         "{error}"
     );
+    let target_data = target_root.join("REALLIVEDATA");
     assert!(
-        error.contains(kaifuu_core::SEMANTIC_SECRET_REDACTED),
-        "{error}"
+        error.contains(target_data.to_string_lossy().as_ref()),
+        "operator path missing: {error}"
     );
     for forbidden in [
         source_root.to_string_lossy(),
-        target_root.to_string_lossy(),
         linked_writable.to_string_lossy(),
     ] {
         assert!(

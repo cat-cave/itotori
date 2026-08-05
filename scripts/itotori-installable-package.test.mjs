@@ -21,7 +21,15 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -116,6 +124,47 @@ describe("itotori installable package — built bin", () => {
     const r = runCli(distCli, ["localize"]);
     assert.notEqual(r.status, 0, "localize without its required run flags must exit non-zero");
     assert.doesNotMatch(r.stderr + r.stdout, /missing required flag --config/u);
+  });
+
+  test("itotori extract relays a native missing-metadata error to the terminal", () => {
+    const nativeDir = mkdtempSync(path.join(tmpdir(), "itotori-native-diagnostic-"));
+    const nativeBin = path.join(nativeDir, "kaifuu-cli");
+    try {
+      writeFileSync(
+        nativeBin,
+        "#!/bin/sh\nprintf '%s\\n' 'missing RealLive bridge metadata flag --game-version; pass --game-id, --game-version, --source-profile-id, and --source-locale' >&2\nexit 1\n",
+      );
+      chmodSync(nativeBin, 0o755);
+      const r = runCli(
+        distCli,
+        [
+          "extract",
+          "--engine",
+          "reallive",
+          "--game-root",
+          "/synthetic/source",
+          "--game-id",
+          "fixture",
+          "--game-version",
+          "1",
+          "--source-profile-id",
+          "fixture-profile",
+          "--source-locale",
+          "ja-JP",
+          "--scene",
+          "1",
+          "--bundle-output",
+          "/synthetic/bridge.json",
+        ],
+        repoRoot,
+        { ...process.env, ITOTORI_KAIFUU_BIN: nativeBin },
+      );
+      assert.notEqual(r.status, 0, "native metadata failure must exit non-zero");
+      assert.match(r.stderr, /missing RealLive bridge metadata flag --game-version/u);
+      assert.doesNotMatch(r.stderr, /native kaifuu output redacted/u);
+    } finally {
+      rmSync(nativeDir, { recursive: true, force: true });
+    }
   });
 
   test("itotori db-migrate dispatches (errors on missing DATABASE_URL)", () => {

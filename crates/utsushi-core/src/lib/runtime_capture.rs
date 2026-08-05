@@ -8,6 +8,8 @@ mod execution_adapter;
 mod hooks_harness;
 #[path = "runtime_capture/launch_plan.rs"]
 mod launch_plan;
+#[path = "runtime_capture/stderr_diagnostic.rs"]
+mod stderr_diagnostic;
 
 pub use error_artifact::{
     CaptureWriteFence, RuntimeCaptureArtifactStore, RuntimeCaptureBoundary,

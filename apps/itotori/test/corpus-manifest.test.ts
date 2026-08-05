@@ -28,6 +28,7 @@ import {
   stableJson,
   type CorpusManifest,
 } from "../src/corpus-manifest/manifest.js";
+import { NATIVE_CONTENT_REDACTED } from "../src/native-bin/native-diagnostics.js";
 
 const MANIFEST_PATH = fileURLToPath(
   new URL("./fixtures/corpus-manifest.private.json", import.meta.url),
@@ -255,6 +256,50 @@ describe("registered private corpus manifest", () => {
           },
         ),
       ).toThrow(/native validation failed|build/i);
+      expect(existsSync(ownedTempRoot)).toBe(false);
+    } finally {
+      rmSync(parent, { force: true, recursive: true });
+    }
+  });
+
+  it("retains a useful redacted native validation diagnostic", () => {
+    const parent = mkdtempSync(join(tmpdir(), "itotori-corpus-diagnostic-"));
+    const ownedTempRoot = join(parent, "owned-run");
+    const sourceDialogue = "PRIVATE-CORPUS-DIALOGUE-SENTINEL";
+    mkdirSync(ownedTempRoot);
+    let caught: Error | undefined;
+    try {
+      try {
+        deriveCorpusEvidence(
+          {
+            gameRoot: "/unused",
+            inputPaths: { seenTxt: "/unused/Seen.txt", gameexeIni: "/unused/Gameexe.ini" },
+          },
+          MANIFEST,
+          {},
+          {
+            makeTempRoot: () => ownedTempRoot,
+            assertPinnedCorpusInputs: () => {},
+            buildSourceCliEnvironment: () => ({}),
+            extractCorpusValidationArtifacts: () => {
+              throw new Error(
+                `kaifuu extract (reallive) failed with status 4: ` +
+                  `kaifuu.reallive.protected_span_drift: scene=7 offset=42 source=${sourceDialogue}`,
+              );
+            },
+          },
+        );
+      } catch (error) {
+        if (error instanceof Error) caught = error;
+        else throw error;
+      }
+      expect(caught?.message).toContain("private corpus native validation failed");
+      expect(caught?.message).toContain("protected_span_drift");
+      expect(caught?.message).toContain("scene=7");
+      expect(caught?.message).toContain("offset=42");
+      expect(caught?.message).toContain(NATIVE_CONTENT_REDACTED);
+      expect(caught?.message).not.toContain(sourceDialogue);
+      expect(caught?.message).not.toContain("[native output redacted]");
       expect(existsSync(ownedTempRoot)).toBe(false);
     } finally {
       rmSync(parent, { force: true, recursive: true });

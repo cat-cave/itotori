@@ -20,6 +20,10 @@
 
 import { resolveNativeCli, spawnNativeCliProcess } from "../native-bin/cli-bin-resolver.js";
 import {
+  nativeFailureDiagnostic,
+  redactNativeDiagnostic,
+} from "../native-bin/native-diagnostics.js";
+import {
   resolveExtractAdapter,
   type ExtractEngineId,
   type ExtractMode,
@@ -94,10 +98,10 @@ export class KaifuuExtractError extends Error {
 }
 
 /**
- * The only native-process diagnostic this boundary may expose. In particular,
- * RealLive protected-span drift errors can include the source dialogue that
- * drifted; retaining the original stderr (or stdout fallback) would leak it
- * into CLI/API error handling and logs.
+ * Successful native output is opaque rather than an operator diagnostic. A
+ * successful decode can contain source material, so callers receive a marker
+ * instead of a raw protocol channel. Failures use `nativeFailureDiagnostic`,
+ * which preserves safe diagnostics and redacts only content/secret spans.
  */
 export const KAIFUU_NATIVE_OUTPUT_REDACTED = "[native kaifuu output redacted]";
 
@@ -130,10 +134,11 @@ export function runKaifuuExtract(args: KaifuuExtractArgs): KaifuuExtractResult {
   const runProcess = args.runProcess ?? ((cmd, a, e) => defaultRunProcess(cmd, a, e, engine));
   const res = runProcess(command, extractArgs, env);
   if (res.status !== 0) {
+    const diagnostic = nativeFailureDiagnostic(res, env);
     throw new KaifuuExtractError(
       res.status,
-      KAIFUU_NATIVE_OUTPUT_REDACTED,
-      `kaifuu extract (${engine}) failed with status ${String(res.status)}: ${KAIFUU_NATIVE_OUTPUT_REDACTED}`,
+      diagnostic,
+      `kaifuu extract (${engine}) failed with status ${String(res.status)}: ${diagnostic}`,
     );
   }
   return {
@@ -159,10 +164,11 @@ function defaultRunProcess(
   // tool — it never needs OpenRouter creds).
   const res = spawnNativeCliProcess(command, args, env);
   if (res.error !== undefined) {
+    const diagnostic = nativeFailureDiagnostic(res, env);
     throw new KaifuuExtractError(
       null,
-      KAIFUU_NATIVE_OUTPUT_REDACTED,
-      `kaifuu extract (${engine}) could not be spawned (${command}): ${KAIFUU_NATIVE_OUTPUT_REDACTED}`,
+      diagnostic,
+      `kaifuu extract (${engine}) could not be spawned (${redactNativeDiagnostic(command, env)}): ${diagnostic}`,
     );
   }
   return {

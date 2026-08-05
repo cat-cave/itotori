@@ -5,13 +5,17 @@ use std::path::{Component, Path, PathBuf};
 use kaifuu_core::{
     AdapterFailure, AdapterRegistry, EngineAdapter, KaifuuResult, PatchExport,
     PatchPreflightRequest, PatchRequest, PatchResult, promote_staged_directory_no_clobber,
-    read_json, redact_for_log_or_report, redact_report_value, write_json,
+    read_json, redact_diagnostic_for_operator, redact_report_value, write_json,
 };
 use kaifuu_delta::apply_delta;
 
 use crate::{flag, flag_optional, positional, registered_adapter_for_game};
 
 const APPLY_REPORT_FILE_NAME: &str = "patch-result.json";
+
+fn operator_path_for_diagnostic(path: &Path) -> String {
+    redact_diagnostic_for_operator(&path.display().to_string())
+}
 
 pub(super) fn run_patch_command(
     args: &[String],
@@ -38,7 +42,7 @@ pub(super) fn run_patch_command(
     if result.status == kaifuu_core::OperationStatus::Failed {
         return Err(format!(
             "patch failed; see {}",
-            redact_for_log_or_report(&output.join(APPLY_REPORT_FILE_NAME).display().to_string())
+            operator_path_for_diagnostic(&output.join(APPLY_REPORT_FILE_NAME))
         )
         .into());
     }
@@ -107,18 +111,18 @@ fn patch_preflight_failure_message(result: &PatchResult) -> String {
 }
 
 fn patch_preflight_failure_detail(failure: &AdapterFailure) -> String {
-    let mut detail = redact_for_log_or_report(&failure.error_code);
+    let mut detail = redact_diagnostic_for_operator(&failure.error_code);
     if !failure.support_boundary.is_empty() {
         detail.push_str(" (");
-        detail.push_str(&redact_for_log_or_report(&failure.support_boundary));
+        detail.push_str(&redact_diagnostic_for_operator(&failure.support_boundary));
         if let Some(remediation) = &failure.remediation {
             detail.push_str("; remediation ");
-            detail.push_str(&redact_for_log_or_report(remediation));
+            detail.push_str(&redact_diagnostic_for_operator(remediation));
         }
         detail.push(')');
     } else if let Some(remediation) = &failure.remediation {
         detail.push_str(" (remediation ");
-        detail.push_str(&redact_for_log_or_report(remediation));
+        detail.push_str(&redact_diagnostic_for_operator(remediation));
         detail.push(')');
     }
     detail
@@ -145,7 +149,7 @@ pub(super) fn validate_patch_target_root(
         Ok(metadata) if metadata.file_type().is_symlink() => {
             return Err(format!(
                 "{target_label} must not be a symlink: {}",
-                redact_for_log_or_report(&target_root.display().to_string())
+                operator_path_for_diagnostic(target_root)
             )
             .into());
         }
@@ -157,7 +161,7 @@ pub(super) fn validate_patch_target_root(
     let source_root_canonical = fs::canonicalize(source_root).map_err(|_| {
         format!(
             "source game directory must be readable before patching: {}",
-            redact_for_log_or_report(&source_root.display().to_string())
+            operator_path_for_diagnostic(source_root)
         )
     })?;
     let target_root_canonical = canonical_existing_prefix(target_root)?;
@@ -166,7 +170,7 @@ pub(super) fn validate_patch_target_root(
     {
         return Err(format!(
             "{target_label} must not alias source game directory: {}",
-            redact_for_log_or_report(&target_root.display().to_string())
+            operator_path_for_diagnostic(target_root)
         )
         .into());
     }
@@ -177,7 +181,7 @@ pub(super) fn validate_patch_target_root(
     {
         return Err(format!(
             "{target_label} must not nest with source game directory; pick a fully-disjoint path: {}",
-            redact_for_log_or_report(&target_root.display().to_string())
+            operator_path_for_diagnostic(target_root)
         )
         .into());
     }
@@ -201,7 +205,7 @@ fn validate_apply_report_output(
     {
         return Err(format!(
             "apply report output must not be inside source game directory: {}",
-            redact_for_log_or_report(&report_output.display().to_string())
+            operator_path_for_diagnostic(report_output)
         )
         .into());
     }
@@ -210,7 +214,7 @@ fn validate_apply_report_output(
     {
         return Err(format!(
             "apply report output must not be inside patched output directory: {}",
-            redact_for_log_or_report(&report_output.display().to_string())
+            operator_path_for_diagnostic(report_output)
         )
         .into());
     }
@@ -272,7 +276,7 @@ fn reject_existing_symlink_components(path: &Path) -> KaifuuResult<()> {
                 if metadata.file_type().is_symlink() {
                     return Err(format!(
                         "apply report output path must not contain symlinks: {}",
-                        redact_for_log_or_report(&current.display().to_string())
+                        operator_path_for_diagnostic(&current)
                     )
                     .into());
                 }
@@ -307,14 +311,14 @@ fn create_report_parent_without_symlinks(parent: &Path) -> KaifuuResult<()> {
                         if metadata.file_type().is_symlink() {
                             return Err(format!(
                                 "apply report output parent must not contain symlinks: {}",
-                                redact_for_log_or_report(&current.display().to_string())
+                                operator_path_for_diagnostic(&current)
                             )
                             .into());
                         }
                         if !metadata.is_dir() {
                             return Err(format!(
                                 "apply report output parent must be a directory: {}",
-                                redact_for_log_or_report(&current.display().to_string())
+                                operator_path_for_diagnostic(&current)
                             )
                             .into());
                         }
@@ -325,7 +329,7 @@ fn create_report_parent_without_symlinks(parent: &Path) -> KaifuuResult<()> {
                         if metadata.file_type().is_symlink() || !metadata.is_dir() {
                             return Err(format!(
                                 "apply report output parent must be a directory and not a symlink: {}",
-                                redact_for_log_or_report(&current.display().to_string())
+                                operator_path_for_diagnostic(&current)
                             )
                             .into());
                         }

@@ -221,7 +221,6 @@ export async function runExtract(
   args: string[],
   dependencies: ItotoriCliDependencies,
 ): Promise<void> {
-  void dependencies;
   const engineRaw = optionalFlag(args, "--engine");
   if (engineRaw === undefined) {
     const available = extractCapabilities()
@@ -234,9 +233,12 @@ export async function runExtract(
   const adapter = resolveExtractAdapter(engineRaw);
   const source = adapter.parseCli(args);
   const bundleOutputPath = requiredFlag(args, "--bundle-output");
+  const nativeCli = dependencies.nativeCli;
   const result = runKaifuuExtract({
     ...source,
     bundleOutputPath,
+    ...(nativeCli?.env === undefined ? {} : { env: nativeCli.env }),
+    ...(nativeCli?.runProcess === undefined ? {} : { runProcess: nativeCli.runProcess }),
     log: (message) => process.stdout.write(`${message}\n`),
   });
   process.stdout.write(

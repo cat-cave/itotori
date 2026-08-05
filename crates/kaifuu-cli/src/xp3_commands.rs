@@ -6,9 +6,9 @@ use crate::{
     Xp3ProfileProofFixture, Xp3ProfileProofRequest, atomic_write_text, encode_xp3, flag,
     flag_optional, generate_xp3_capability_profile, pack_plain_xp3_from_directory,
     plain_xp3_writer_capability, positional, read_json, read_plain_xp3_archive,
-    redact_for_log_or_report, replace_plain_xp3_entry_payload, run_encrypted_xp3_contract_scaffold,
-    run_plain_xp3_smoke_from_path, sha256_hash_bytes, stable_json, unpack_plain_xp3_to_directory,
-    xp3_profile_proof,
+    redact_diagnostic_for_operator, replace_plain_xp3_entry_payload,
+    run_encrypted_xp3_contract_scaffold, run_plain_xp3_smoke_from_path, sha256_hash_bytes,
+    stable_json, unpack_plain_xp3_to_directory, xp3_profile_proof,
 };
 
 /// `kaifuu xp3` subcommands.
@@ -412,12 +412,12 @@ fn run_xp3_contract_scaffold(args: &[String]) -> Result<(), Box<dyn std::error::
             Some(code) => println!(
                 "  [{marker}] {} (semantic: {code}) — {}",
                 outcome.stage.as_str(),
-                redact_for_log_or_report(&outcome.detail)
+                redact_diagnostic_for_operator(&outcome.detail)
             ),
             None => println!(
                 "  [{marker}] {} — {}",
                 outcome.stage.as_str(),
-                redact_for_log_or_report(&outcome.detail)
+                redact_diagnostic_for_operator(&outcome.detail)
             ),
         }
     }

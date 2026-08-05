@@ -197,6 +197,9 @@ pub use secret_redaction_reporting::*;
 #[rustfmt::skip]
 pub(crate) use secret_redaction_reporting::{ free_text_requires_redaction, path_starts_with_home_or_local_env_var, redact_asset_ref_for_report, };
 
+mod operator_diagnostic_redaction;
+pub use operator_diagnostic_redaction::*;
+
 mod profile_requirements;
 pub use profile_requirements::*;
 

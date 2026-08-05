@@ -16,6 +16,7 @@ import {
   type CorpusResolution,
   type ResolvedCorpus,
 } from "./corpus-validation-registry.js";
+import { redactNativeError } from "../native-bin/native-diagnostics.js";
 import { parseStrictJson } from "./json.js";
 import {
   stableJson,
@@ -36,6 +37,8 @@ export type DeriveCorpusDependencies = {
   buildSourceCliEnvironment?: (input: SourceCliBuildInput) => NodeJS.ProcessEnv;
   /** Test seam for a failure that occurs after the temporary root is owned. */
   assertPinnedCorpusInputs?: (corpus: ResolvedCorpus, manifest: CorpusManifest) => void;
+  /** Test seam for a display-safe native extraction failure. */
+  extractCorpusValidationArtifacts?: typeof extractCorpusValidationArtifacts;
 };
 
 /**
@@ -109,13 +112,14 @@ export function deriveCorpusEvidence(
       targetRoot: join(tempRoot, "native-target"),
     });
 
+    const extractArtifacts =
+      dependencies.extractCorpusValidationArtifacts ?? extractCorpusValidationArtifacts;
     let artifacts;
     try {
-      artifacts = extractCorpusValidationArtifacts(manifest, corpus, tempRoot, nativeEnv);
-    } catch {
-      // Native adapter seams are intentionally content-free at this boundary.
-      // In particular, do not rethrow a future producer diagnostic verbatim.
-      throw new Error("private corpus native validation failed [native output redacted]");
+      artifacts = extractArtifacts(manifest, corpus, tempRoot, nativeEnv);
+    } catch (error) {
+      const diagnostic = redactNativeError(error, nativeEnv);
+      throw new Error(`private corpus native validation failed: ${diagnostic}`);
     }
 
     return deriveEvidenceFromOutputs({

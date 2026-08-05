@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { assertPatchExportV02, type PatchExportV02 } from "@itotori/localization-bridge-schema";
 
 import { runNativeCli, type NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
+import { nativeFailureDiagnostic } from "../native-bin/native-diagnostics.js";
 
 export type ReplayObserveArgs = {
   /** Path to the Seen.txt whose bytes are replayed (patched OR source). */
@@ -161,10 +162,11 @@ function parseTextLineCount(stdout: string): number | null {
 export function replayObserve(args: ReplayObserveArgs): ObservedReplay {
   const res = runNativeCli("utsushi-cli", replayValidateArgs(args), args.nativeCli ?? {});
   if (res.status !== 0) {
+    const diagnostic = nativeFailureDiagnostic(res, args.nativeCli?.env);
     throw new ReplayObserveError(
       res.status,
-      res.stderr,
-      `utsushi replay-validate failed with status ${String(res.status)}: ${res.stderr.trim() || res.stdout.trim() || "<no output>"}`,
+      diagnostic,
+      `utsushi replay-validate failed with status ${String(res.status)}: ${diagnostic}`,
     );
   }
   return {

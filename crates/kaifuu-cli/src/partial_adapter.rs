@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use kaifuu_core::{
     AdapterRegistry, DetectionResult, EngineAdapter, EvidenceStatus, KaifuuResult,
     PartialAdapterCommand, PartialAdapterDiagnostic, PartialAdapterInventory, PartialAdapterReport,
-    PartialDiagnosticSeverity, atomic_write_text, redact_for_log_or_report, sha256_hash_bytes,
-    stable_json,
+    PartialDiagnosticSeverity, atomic_write_text, redact_diagnostic_for_operator,
+    sha256_hash_bytes, stable_json,
 };
 
 fn detect_registered_adapter(
@@ -15,7 +15,7 @@ fn detect_registered_adapter(
     registry.detect(game_dir)?.ok_or_else(|| {
         format!(
             "no registered adapter detected {}",
-            redact_for_log_or_report(&game_dir.display().to_string())
+            redact_diagnostic_for_operator(&game_dir.display().to_string())
         )
         .into()
     })
@@ -100,7 +100,7 @@ pub(crate) fn detect_or_partial<'a>(
         Some(detection) => Ok(DetectOutcome::Partial(detection)),
         None => Err(format!(
             "no registered adapter detected {}",
-            redact_for_log_or_report(&game_dir.display().to_string())
+            redact_diagnostic_for_operator(&game_dir.display().to_string())
         )
         .into()),
     }

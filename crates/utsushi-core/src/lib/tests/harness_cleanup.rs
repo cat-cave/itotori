@@ -150,6 +150,8 @@ pub(super) fn nonzero_exit_cleanup_terminates_runtime_process_tree() {
 
     assert_eq!(error.kind, RuntimeHarnessErrorKind::ProcessFailed);
     assert_eq!(error.code(), "runtime_process_failed");
+    assert!(error.to_string().contains("operation=capture"));
+    assert!(error.to_string().contains("exitCode=42"));
     assert!(
         error
             .details

@@ -4,6 +4,7 @@ use super::execution_adapter::{
     RuntimeHookExecutionError, bounded_hook_timeout, configure_runtime_process_tree,
     remaining_until, run_capture_hook_with_timeout,
 };
+use super::stderr_diagnostic::{begin_runtime_stderr_drain, with_redacted_stderr_summary};
 pub struct RuntimeCaptureContext {
     pub operation: RuntimeOperation,
     pub boundary: RuntimeCaptureBoundary,
@@ -195,6 +196,10 @@ impl RuntimeLaunchCaptureHarness {
         if plan.capture_stdout {
             command.stdout(Stdio::piped());
         }
+        // Runtime stderr may contain browser/game content or credentials. Pipe
+        // it only to drain safely and summarize failures without exposing any
+        // raw bytes to operators or managed artifacts.
+        command.stderr(Stdio::piped());
         configure_runtime_process_tree(&mut command, plan.operation)?;
         let mut child = command.spawn().map_err(|error| {
             RuntimeHarnessError::new(
@@ -208,6 +213,7 @@ impl RuntimeLaunchCaptureHarness {
             .with_detail("ioKind", error.kind().to_string())
         })?;
         let process_id = child.id();
+        let stderr_drain = child.stderr.take().map(begin_runtime_stderr_drain);
         // Drain stdout on a dedicated thread so a large `--dump-dom` payload
         // cannot deadlock the poll-based wait by filling the pipe buffer while
         // the child blocks writing. The buffer is joined only on the success
@@ -304,7 +310,7 @@ impl RuntimeLaunchCaptureHarness {
         if !exit.success {
             let cleanup =
                 terminate_runtime_process(&mut child, plan.shutdown_grace, plan.poll_interval);
-            if let Some(error) = after_exit_error {
+            let error = if let Some(error) = after_exit_error {
                 let mut error = error
                     .with_process_id(process_id)
                     .with_cleanup(cleanup)
@@ -315,19 +321,26 @@ impl RuntimeLaunchCaptureHarness {
                 if let Some(code) = exit.code {
                     error = error.with_detail("exitCode", code.to_string());
                 }
-                return Err(error);
-            }
-            let mut error = RuntimeHarnessError::new(
-                RuntimeHarnessErrorKind::ProcessFailed,
-                plan.operation,
-                "runtime process exited with a non-zero status",
-            )
-            .with_process_id(process_id)
-            .with_cleanup(cleanup);
-            if let Some(code) = exit.code {
-                error = error.with_detail("exitCode", code.to_string());
-            }
-            return Err(error);
+                error
+            } else {
+                let mut error = RuntimeHarnessError::new(
+                    RuntimeHarnessErrorKind::ProcessFailed,
+                    plan.operation,
+                    format!(
+                        "runtime process exited with a non-zero status (operation={} exitCode={})",
+                        plan.operation.as_str(),
+                        exit.code
+                            .map_or_else(|| "unavailable".to_string(), |code| code.to_string())
+                    ),
+                )
+                .with_process_id(process_id)
+                .with_cleanup(cleanup);
+                if let Some(code) = exit.code {
+                    error = error.with_detail("exitCode", code.to_string());
+                }
+                error
+            };
+            return Err(with_redacted_stderr_summary(error, stderr_drain.as_ref()));
         }
 
         if let Some(error) = after_exit_error {

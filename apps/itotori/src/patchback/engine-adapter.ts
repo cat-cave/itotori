@@ -15,6 +15,7 @@
 // a new `if (engine === ...)` branch in the producer.
 
 import { runNativeCli, type NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
+import { nativeFailureDiagnostic } from "../native-bin/native-diagnostics.js";
 import type { KaifuuExtractArgs } from "../extract/kaifuu-extract-seam.js";
 import type { RuntimeLauncherAdapterFactory } from "../play/runtime-launcher-registry.js";
 import type { StructureProviderSource } from "../structure-export/structure-provider-registry.js";
@@ -297,11 +298,12 @@ export function applyEnginePatchback(
   request.log?.(`native-apply: kaifuu-cli ${args.join(" ")}`);
   const res = runNativeCli("kaifuu-cli", args, request.nativeCli ?? {});
   if (res.status !== 0) {
+    const diagnostic = nativeFailureDiagnostic(res, request.nativeCli?.env);
     throw new EnginePatchbackApplyError(
       adapter.engineId,
       res.status,
-      res.stderr,
-      `kaifuu patch (${adapter.engineId}) failed with status ${String(res.status)}: ${res.stderr.trim() || res.stdout.trim() || "<no output>"}`,
+      diagnostic,
+      `kaifuu patch (${adapter.engineId}) failed with status ${String(res.status)}: ${diagnostic}`,
     );
   }
   return {

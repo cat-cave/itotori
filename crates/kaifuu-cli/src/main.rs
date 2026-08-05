@@ -15,8 +15,8 @@ use kaifuu_core::{
     fixture_helper_registry, generate_alpha_encrypted_readiness, generate_xp3_capability_profile,
     normalize_helper_result_value, pack_plain_xp3_from_directory, parse_helper_capability,
     parse_hex_bytes, plain_xp3_writer_capability, read_json, read_plain_xp3_archive,
-    redact_for_log_or_report, redact_report_value, replace_plain_xp3_entry_payload,
-    run_plain_xp3_smoke_from_path, run_round_trip_golden,
+    redact_diagnostic_for_operator, redact_for_log_or_report, redact_report_value,
+    replace_plain_xp3_entry_payload, run_plain_xp3_smoke_from_path, run_round_trip_golden,
     run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes, stable_json,
     unpack_plain_xp3_to_directory, validate_helper_registry_entry_value,
     validate_helper_result_value, validate_offset_map_value, validate_packed_engine_readiness_dir,
@@ -78,7 +78,7 @@ pub(crate) use xp3_commands::run_xp3_command;
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("{}", redact_for_log_or_report(&error.to_string()));
+        eprintln!("{}", redact_diagnostic_for_operator(&error.to_string()));
         std::process::exit(1);
     }
 }
@@ -261,7 +261,9 @@ fn run_with_args_and_registry(
                         return Err(format!(
                             "verify reported {} blocking diagnostic(s); see {}",
                             report.severity_counts.blocking(),
-                            redact_for_log_or_report(&PathBuf::from(output).display().to_string())
+                            redact_diagnostic_for_operator(
+                                &PathBuf::from(output).display().to_string()
+                            )
                         )
                         .into());
                     }

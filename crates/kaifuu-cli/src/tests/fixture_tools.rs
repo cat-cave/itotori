@@ -157,7 +157,7 @@ fn asset_ocr_public_fixture_matches_committed_golden() {
 }
 
 #[test]
-fn reallive_patch_read_write_and_source_mutation_diagnostics_redact_private_paths() {
+fn reallive_patch_read_write_and_source_mutation_diagnostics_keep_operator_paths() {
     let source_seen = PathBuf::from("/home/dev/private-game/REALLIVEDATA/Seen.txt");
     let target_seen = PathBuf::from("/home/dev/private-target/REALLIVEDATA/Seen.txt");
     let read_error = reallive_patch_read_source_error(
@@ -173,12 +173,12 @@ fn reallive_patch_read_write_and_source_mutation_diagnostics_redact_private_path
 
     for rendered in [read_error, write_error, source_mutated_error] {
         assert!(
-            rendered.contains("[REDACTED:kaifuu.secret_redacted]"),
-            "diagnostic should carry a redaction token: {rendered}"
+            rendered.contains("/home/dev/private"),
+            "diagnostic should retain the operator path: {rendered}"
         );
         assert!(
-            !rendered.contains("/home/dev/private"),
-            "diagnostic leaked a private root: {rendered}"
+            !rendered.contains("[REDACTED:kaifuu.secret_redacted]"),
+            "diagnostic should not blanket-redact a path: {rendered}"
         );
         assert!(
             rendered.contains("Seen.txt"),
