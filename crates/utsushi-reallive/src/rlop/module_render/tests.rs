@@ -99,18 +99,19 @@ fn grp_open_screen_loads_dc0_visible() {
     assert_eq!(snap.bg_canvas.unwrap().asset_key, "BG10");
 }
 
-// rlvm "???" sentinel filename means "keep current" — no load.
+// rlvm `?` (and the established local `???` form) means "keep current" — no load.
 #[test]
-fn grp_open_screen_skips_triple_question_sentinel() {
-    let runtime = rt();
-    grp(&runtime, GrpOp::OpenScreen, &[s(b"???"), int(0)]);
-    assert!(
-        runtime
+fn grp_open_screen_skips_question_sentinels() {
+    for filename in [&b"?"[..], &b"???"[..]] {
+        let runtime = rt();
+        grp(&runtime, GrpOp::OpenScreen, &[s(filename), int(0)]);
+        let is_empty = runtime
             .state_snapshot()
             .stack
             .get(GraphicsPlane::Background, 0)
-            .is_none()
-    );
+            .is_none();
+        assert!(is_empty);
+    }
 }
 
 // rlvm grpCopy(src, dst): copy DC src → DC dst.

@@ -16,8 +16,7 @@
 //! by an additional `bytecode_element_second_reallive_real_bytes.rs`
 //! test.
 //!
-//! Until the second corpus is staged this test is `#[ignore]`-gated
-//! and only runs when `private inventory row` is set.
+//! This feature-gated test runs when `private inventory row` is set.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -66,7 +65,6 @@ const ELEMENT_COUNT_MAX: usize = 300;
 const PRIMARY_CORPUS_SCENE_ONE_SELECTION_MARKER_COUNT: usize = 8;
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn scene1_element_stream_partition_and_first_command_header() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(

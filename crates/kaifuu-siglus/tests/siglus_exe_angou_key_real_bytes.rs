@@ -3,8 +3,8 @@
 //! Copyrighted title bytes stay outside this repository, so the two game roots
 //! are supplied via environment variables (the same ones the `Gameexe.dat`
 //! real-bytes proof uses). Each root holds both `SiglusEngine.exe` and
-//! `Gameexe.dat`. When either root is absent the test reports a skip and
-//! succeeds; when present it:
+//! `Gameexe.dat`. When either root is absent the test fails loudly; when
+//! present it:
 //!   1. statically recovers the 16-byte exe-angou key from `SiglusEngine.exe`
 //!      bytes — no Wine, no running the exe, purely `&[u8]` PE analysis; and
 //!   2. wires the recovered key into [`decode_gameexe_dat`] and proves the real
@@ -34,12 +34,14 @@ const KNOWN_KEY_SHA256: [&str; 2] = [
 ];
 
 /// Resolve a game root env var to `(SiglusEngine.exe, Gameexe.dat)` paths, or a
-/// clean skip when the var is unset / the files are absent.
+/// required-input failure when the var is unset / the files are absent.
 fn title_paths(variable: &str) -> Option<(PathBuf, PathBuf)> {
     let value = corpus_registry::resolve_identity(variable)
         .ok()
         .or_else(|| {
-            eprintln!("SKIP siglus exe-angou real bytes: {variable} is unset");
+            eprintln!(
+                "REAL-BYTES REQUIRED INPUT: siglus exe-angou real bytes: {variable} is unset"
+            );
             None
         })?;
     let root = value;
@@ -55,7 +57,7 @@ fn title_paths(variable: &str) -> Option<(PathBuf, PathBuf)> {
         Some((exe, gameexe))
     } else {
         eprintln!(
-            "SKIP siglus exe-angou real bytes: {variable} has no SiglusEngine.exe + Gameexe.dat \
+            "REAL-BYTES REQUIRED INPUT: siglus exe-angou real bytes: {variable} has no SiglusEngine.exe + Gameexe.dat \
              under {}",
             dir.display()
         );
@@ -113,7 +115,6 @@ fn exercise_title(exe_path: &Path, gameexe_path: &Path, label: &str) {
 mod real_bytes;
 
 #[test]
-#[ignore = "real-bytes; requires two declared Siglus corpus roots"]
 fn recovered_key_decodes_two_real_siglus_gameexe_dats() {
     let (first_exe, first_gameexe) = real_bytes::require_real_bytes(
         title_paths(FIRST_TITLE_ENV),

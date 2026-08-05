@@ -1,3 +1,19 @@
+fn full_synthetic_program(tokens: &[[u8; 4]]) -> Vec<u8> {
+    let mut bytes = Vec::from(&b"Sv20"[..]);
+    bytes.extend_from_slice(&[0; 8]);
+    for token in tokens {
+        bytes.extend_from_slice(token);
+    }
+    bytes
+}
+
+fn operator(id: u16) -> [u8; 4] {
+    let mut token = [0; 4];
+    token[..2].copy_from_slice(&id.to_le_bytes());
+    token[2..].copy_from_slice(&1_u16.to_le_bytes());
+    token
+}
+
 #[test]
 fn ranks_a_point_table_designated_message_without_promoting_the_root() {
     // Mutation guard for the rank-13 experiment: deleting the actual entry
@@ -41,4 +57,3 @@ fn ranks_a_point_table_designated_message_without_promoting_the_root() {
         })
     );
 }
-

@@ -59,7 +59,6 @@ fn inventory(engine: &ReplayEngine) -> BTreeMap<RlopKey, usize> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row + _2"]
 fn reports_every_executed_unknown_opcode_with_overload_and_occurrences() {
     let corpora = real_corpus::corpora();
     if corpora.len() < 2 {

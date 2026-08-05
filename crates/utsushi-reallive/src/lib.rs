@@ -368,10 +368,10 @@ pub use rlop::module_obj::{
 };
 
 pub use rlop::module_render::{
-    GRP_MODULE_ID, GrpOp, GrpRenderOp, OBJ_BG_CREATION_ID, OBJ_BG_MGMT_ID, OBJ_BG_RANGE_ID,
-    OBJ_BG_SETTER_ID, OBJ_FG_CREATION_ID, OBJ_FG_GETTER_ID, OBJ_FG_MGMT_ID, OBJ_FG_RANGE_ID,
-    OBJ_FG_SETTER_ID, OBJ_MGMT_ID, ObjCreateOp, ObjGetKind, ObjGetOp, ObjMgmtOp, ObjMgmtRenderOp,
-    ObjSetOp, ObjSetProp, RENDER_GAPS, RLVM_PIXEL_DIFF_TOLERANCE, SCREEN_DC_SLOT,
+    GRP_MODULE_ID, GrpOp, GrpRenderOp, OBJ_BG_CREATION_ID, OBJ_BG_GETTER_ID, OBJ_BG_MGMT_ID,
+    OBJ_BG_RANGE_ID, OBJ_BG_SETTER_ID, OBJ_FG_CREATION_ID, OBJ_FG_GETTER_ID, OBJ_FG_MGMT_ID,
+    OBJ_FG_RANGE_ID, OBJ_FG_SETTER_ID, OBJ_MGMT_ID, ObjCreateOp, ObjGetKind, ObjGetOp, ObjMgmtOp,
+    ObjMgmtRenderOp, ObjSetOp, ObjSetProp, RENDER_GAPS, RLVM_PIXEL_DIFF_TOLERANCE, SCREEN_DC_SLOT,
     register_render_rlops,
 };
 

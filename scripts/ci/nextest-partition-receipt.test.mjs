@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   buildNextestPartitionReceipt,
+  EXPECTED_IGNORED_PRIVATE_CORPUS,
   summarizeNextestListReport,
 } from "./nextest-partition-receipt.mjs";
 
@@ -14,7 +15,7 @@ function testCase(ignored, status, reason) {
   };
 }
 
-function listReport({ selected = 2, partitionNonselected = 3, ignored = 4 } = {}) {
+function listReport({ selected = 2, partitionNonselected = 3, ignored = 0 } = {}) {
   const testcases = {};
   for (let index = 0; index < selected; index += 1) {
     testcases[`selected-${index}`] = testCase(false, "matches");
@@ -35,11 +36,11 @@ function summary(executed, skipped) {
   return `\u001b[32mSummary [  0.01s] ${executed} tests run: ${executed} passed, ${skipped} skipped\u001b[0m\n`;
 }
 
-test("builds a zero-CI-skip receipt while keeping partition and corpus exclusions visible", () => {
+test("builds a zero-CI-skip receipt while keeping partition exclusions visible", () => {
   const receipt = buildNextestPartitionReceipt({
     lane: "tier1-rust-1of3",
     listReport: listReport(),
-    runReport: `${summary(1, 0)}${summary(2, 7)}`,
+    runReport: `${summary(1, 0)}${summary(2, 3)}`,
   });
 
   assert.deepEqual(receipt, {
@@ -47,19 +48,17 @@ test("builds a zero-CI-skip receipt while keeping partition and corpus exclusion
     executed: 2,
     ciSkipped: 0,
     partitionNonselected: 3,
-    ignoredPrivateCorpus: 4,
-    rawNextestSkipped: 7,
-    listed: 9,
+    ignoredPrivateCorpus: EXPECTED_IGNORED_PRIVATE_CORPUS,
+    rawNextestSkipped: 3,
+    listed: 5,
   });
 });
 
-test("derives the ignored private-corpus inventory from each nextest list", () => {
-  assert.deepEqual(summarizeNextestListReport(listReport({ ignored: 5 })), {
-    listed: 10,
-    selected: 2,
-    partitionNonselected: 3,
-    ignoredPrivateCorpus: 5,
-  });
+test("rejects any reintroduced ignored test", () => {
+  assert.throws(
+    () => summarizeNextestListReport(listReport({ ignored: 1 })),
+    /expected 0, found 1/u,
+  );
 });
 
 test("rejects a filter mismatch outside the partition ownership state", () => {
@@ -81,7 +80,7 @@ test("rejects a nextest run that executes a different count than the listed part
       buildNextestPartitionReceipt({
         lane: "tier1-rust-2of3",
         listReport: listReport(),
-        runReport: summary(1, 7),
+        runReport: summary(1, 3),
       }),
     /listed 2 selected tests, run reported 1/u,
   );
@@ -93,9 +92,9 @@ test("rejects unaccounted raw nextest skips", () => {
       buildNextestPartitionReceipt({
         lane: "tier1-rust-3of3",
         listReport: listReport(),
-        runReport: summary(2, 6),
+        runReport: summary(2, 2),
       }),
-    /expected 7 partition-or-private-corpus exclusions, run reported 6/u,
+    /expected 3 partition-or-private-corpus exclusions, run reported 2/u,
   );
 });
 

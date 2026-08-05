@@ -2,7 +2,7 @@
 //!
 //! Copyrighted title bytes stay outside this repository, so the two roots are
 //! supplied via environment variables. When either root is absent the test
-//! panics with a named `REAL-BYTES SKIP`; when present it reads each real `Gameexe.dat`,
+//! panics with a named `REAL-BYTES REQUIRED INPUT`; when present it reads each real `Gameexe.dat`,
 //! proving the outer-header reader recovers `version` + `exe_angou_mode` from
 //! real bytes and that the body decode applies its semantic gating BEFORE any
 //! output.
@@ -28,7 +28,9 @@ fn gameexe_path(variable: &str) -> Option<PathBuf> {
     let value = corpus_registry::resolve_identity(variable)
         .ok()
         .or_else(|| {
-            eprintln!("SKIP siglus Gameexe.dat real bytes: {variable} is unset");
+            eprintln!(
+                "REAL-BYTES REQUIRED INPUT: siglus Gameexe.dat real bytes: {variable} is unset"
+            );
             None
         })?;
     let path = value;
@@ -41,7 +43,7 @@ fn gameexe_path(variable: &str) -> Option<PathBuf> {
         Some(candidate)
     } else {
         eprintln!(
-            "SKIP siglus Gameexe.dat real bytes: {variable} has no readable Gameexe.dat at {}",
+            "REAL-BYTES REQUIRED INPUT: siglus Gameexe.dat real bytes: {variable} has no readable Gameexe.dat at {}",
             candidate.display()
         );
         None
@@ -89,7 +91,6 @@ fn exercise_title(path: &Path, label: &str) {
 mod real_bytes;
 
 #[test]
-#[ignore = "real-bytes; requires two declared Siglus corpus roots"]
 fn two_real_siglus_gameexe_dats_read_and_gate() {
     let first = real_bytes::require_real_bytes(
         gameexe_path(FIRST_TITLE_ENV),

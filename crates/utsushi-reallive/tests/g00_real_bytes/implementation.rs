@@ -4,7 +4,7 @@
 //! Pins the decoder against the primary_corpus HD `$GAME/REALLIVEDATA/g00/`
 //! corpus (2,450 files) following the same inventory-backed pattern as
 //! `decompressor_real_bytes.rs` / `scene_header_real_bytes.rs`: the
-//! tests are `#[ignore]`-gated and only run when the `reallive/1/encrypted`
+//! tests are feature-gated and only run when the `reallive/1/encrypted`
 //! private-inventory row resolves (see `tests/engine_port_real_bytes.rs` for
 //! the canonical pattern).
 //!

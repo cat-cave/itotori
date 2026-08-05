@@ -6,28 +6,22 @@
 //! - `cargo test -p utsushi-reallive graphics_object_stack_256_objects`
 //! - `cargo test -p utsushi-reallive render_wipe_solid_colour_deterministic_png`
 //!
-//! Both tests cover synthetic stack mechanics. The env-gated
-//! `g00_real_bytes.rs` and `render_g00_real_bytes.rs` suites cover real g00
-//! decoding and rendering. A third entrypoint
-//! (`graphics_pipeline_honours_reallive_real_bytes_gameexe_screen_size`) is
-//! env-gated on `private inventory row` and pins the real-bytes
-//! `SCREENSIZE_MOD=999,1280,720` round-trip through
+//! Both tests cover synthetic stack mechanics. The feature-gated
+//! `g00_real_bytes.rs`, `render_g00_real_bytes.rs`, and
+//! `graphics_object_stack_real_bytes.rs` targets cover real g00 decoding,
+//! rendering, and the `SCREENSIZE_MOD=999,1280,720` round-trip through
 //! [`utsushi_reallive::SyscallDispatcher::screen_size`]
 //! [`utsushi_reallive::RenderPass::new`].
 
-#[path = "support/real_corpus.rs"]
-mod real_corpus;
-
 use std::fs;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use utsushi_core::RuntimeArtifactRoot;
 use utsushi_core::substrate::EvidenceTier;
 use utsushi_reallive::{
-    GRAPHICS_OBJECT_SLOT_COUNT, Gameexe, GraphicsObject, GraphicsObjectStack, GraphicsPlane,
+    GRAPHICS_OBJECT_SLOT_COUNT, GraphicsObject, GraphicsObjectStack, GraphicsPlane,
     GraphicsStackError, PNG_FILE_MAGIC, RGBA_BYTES_PER_PIXEL, RecordingFrameArtifactSink,
-    RenderPass, SyscallDispatcher, TextLayer, WipeColour,
+    RenderPass, TextLayer, WipeColour,
 };
 
 /// Unique managed runtime-artifact root under the process temp dir.
@@ -234,64 +228,4 @@ fn render_wipe_solid_colour_deterministic_png() {
     );
     let _ = fs::remove_dir_all(root_a.path());
     let _ = fs::remove_dir_all(root_b.path());
-}
-
-/// Real-bytes pin (env-gated): with the primary_corpus HD `Gameexe.ini`
-/// loaded, [`utsushi_reallive::SyscallDispatcher::screen_size`] reports
-/// `width=1280, height=720`, and [`utsushi_reallive::RenderPass::new`]
-/// honours those dimensions verbatim. Pin for the
-/// "render pass observes the `SCREENSIZE_MOD=999,1280,720` Gameexe
-/// value and emits a 1280x720 buffer" acceptance criterion.
-#[test]
-#[ignore = "requires private inventory row; opt in with --include-ignored"]
-fn graphics_pipeline_honours_reallive_real_bytes_gameexe_screen_size() {
-    let Some(gameexe_path) = real_gameexe_ini_path() else {
-        real_corpus::require_real_bytes(
-            "utsushi-reallive graphics_pipeline_honours_reallive_real_bytes_gameexe_screen_size",
-        );
-        return;
-    };
-    let bytes = fs::read(&gameexe_path).expect("primary_corpus HD Gameexe.ini readable");
-    let gameexe = Gameexe::parse(&bytes).expect("primary_corpus HD Gameexe.ini parses");
-    let dispatcher = SyscallDispatcher::from_gameexe(&gameexe).expect("dispatcher builds");
-    let screen_size = dispatcher
-        .screen_size()
-        .expect("primary_corpus HD declares SCREENSIZE_MOD=999,1280,720");
-    assert_eq!(screen_size.mode, 999);
-    assert_eq!(screen_size.width, 1280);
-    assert_eq!(screen_size.height, 720);
-
-    let mut pass = RenderPass::new(screen_size).expect("non-zero screen");
-    assert_eq!(pass.width(), 1280);
-    assert_eq!(pass.height(), 720);
-
-    let mut stack = GraphicsObjectStack::new();
-    stack
-        .set(
-            GraphicsPlane::Foreground,
-            0,
-            GraphicsObject::wipe(WipeColour::BLACK),
-        )
-        .expect("set wipe");
-    let text = TextLayer::localized(vec!["SCREENSIZE".to_string()]);
-    let root = temp_artifact_root("real-screen-size");
-    let sink = RecordingFrameArtifactSink::new();
-    let emission = pass
-        .emit_localized_screenshot(&stack, &text, &root, "screen-size", &sink)
-        .expect("emit");
-    assert_eq!(emission.width, Some(1280));
-    assert_eq!(emission.height, Some(720));
-    let bytes = fs::read(
-        root.artifact_path(&emission.artifact_ref.uri)
-            .expect("path"),
-    )
-    .expect("retained");
-    // PNG IHDR at bytes 16..24 carries width/height big-endian.
-    assert_eq!(&bytes[16..20], &1280u32.to_be_bytes());
-    assert_eq!(&bytes[20..24], &720u32.to_be_bytes());
-    let _ = fs::remove_dir_all(root.path());
-}
-
-fn real_gameexe_ini_path() -> Option<PathBuf> {
-    real_corpus::gameexe_ini_path()
 }

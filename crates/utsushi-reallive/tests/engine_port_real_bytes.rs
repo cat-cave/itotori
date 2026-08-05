@@ -13,11 +13,11 @@
 //! are backed by exercised machinery rather than advertised-but-inert.
 //!
 //! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE
-//! (no opt-out; these `#[ignore]`-d suites run only in the periodic
+//! (no opt-out; these feature-gated suites run only in the periodic
 //! ground-truth oracle, `just test real-bytes-oracle`, where corpora are staged).
 //! Run with
 //! `private inventory row=<sweetie> private inventory row=<kanon>
-//! cargo test -p utsushi-reallive --test engine_port_real_bytes -- --ignored`.
+//! cargo test -p utsushi-reallive --features real-bytes --test engine_port_real_bytes`.
 
 #[path = "support/port_support.rs"]
 mod port_support;
@@ -309,7 +309,6 @@ fn run_title(corpus: &RealCorpus, need: corpus_registry::Need<'_>, label: &str) 
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row (title 1)"]
 fn port_drives_all_three_sinks_title1_real_bytes() {
     let Some(corpus) = real_corpus::corpus_1() else {
         real_corpus::require_real_bytes(
@@ -321,7 +320,6 @@ fn port_drives_all_three_sinks_title1_real_bytes() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row (title 2)"]
 fn port_drives_all_three_sinks_title2_real_bytes() {
     let Some(corpus) = real_corpus::corpus_2() else {
         real_corpus::require_real_bytes(

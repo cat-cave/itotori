@@ -104,7 +104,6 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
     let reason = real_corpus::unavailable_message("CLI patch real-bytes test");
     let source_root = real_corpus::game_root().unwrap_or_else(|| panic!("{reason}"));

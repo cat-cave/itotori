@@ -180,7 +180,7 @@ pub(super) fn protected_span_mappings_for_target(
 // Synthetic fixtures carry only the fixed Softpal FORMAT signatures (the
 // same magics any Softpal title exposes); no copyrighted content bytes are
 // embedded or committed. The real two-title validation lives behind an
-// env-gated `#[ignore]` integration test (see
+// feature-gated real-byte integration test (see
 // `tests/live_softpal_detector_test.rs`).
 
 // Build a synthetic Softpal `.pac`: `PAC ` magic, a sane entry count, then

@@ -18,12 +18,12 @@
 //! difference.
 //!
 //! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE
-//! (no opt-out; these `#[ignore]`-d suites run only in the periodic
+//! (no opt-out; these feature-gated suites run only in the periodic
 //! ground-truth oracle, `just test real-bytes-oracle`, where corpora are staged).
 //! Run with
 //! `private inventory row=<sweetie> private inventory row=<kanon>
-//! cargo test -p utsushi-reallive --test decoder_parity_real_bytes --
-//! --ignored`.
+//! cargo test -p utsushi-reallive --features real-bytes
+//! --test decoder_parity_real_bytes`.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -69,7 +69,6 @@ fn staged_scene_bytecode(seen_bytes: &[u8]) -> Vec<(u16, Vec<u8>)> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row (+ private inventory row)"]
 fn utsushi_decode_reaches_kaifuu_parity_on_every_populated_scene() {
     let corpora = real_corpus::corpora();
     if corpora.is_empty() {

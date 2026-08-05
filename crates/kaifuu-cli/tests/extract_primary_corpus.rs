@@ -44,7 +44,6 @@ fn kaifuu_cli_binary() -> PathBuf {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn cli_extract_engine_reallive_dialogue_scene_writes_schema_valid_v02_bundle() {
     let Some(game_root) = real_corpus::game_root() else {
         panic!(
@@ -119,7 +118,6 @@ fn cli_extract_engine_reallive_dialogue_scene_writes_schema_valid_v02_bundle() {
 /// carries its numeric scene in `context.route.sceneKey` — the field the
 /// whole-game localize driver joins to the utsushi-produced structure.
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn cli_extract_whole_seen_primary_corpus_writes_multi_scene_bridge() {
     let Some(game_root) = real_corpus::game_root() else {
         panic!(

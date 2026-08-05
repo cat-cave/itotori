@@ -62,7 +62,6 @@ use kaifuu_reallive::{
 };
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn pins_primary_corpus_scene_1_dispatch_with_zero_unknown_opcodes() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes("Sweetie HD scene-1 dispatch test");
@@ -319,7 +318,6 @@ fn decompressed_scene_1(seen_path: &PathBuf) -> Vec<u8> {
 /// labels), not game content; regenerate them only when the decoder's
 /// framing legitimately changes.
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn scene_1_arg_expression_framing_offsets_are_pinned_byte_exact() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes("Sweetie HD scene-1 framing-offset pin");

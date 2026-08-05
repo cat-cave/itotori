@@ -23,7 +23,7 @@
 //!   Env-gated like the rest of the real-bytes suite and STRICT: needs
 //!   `private inventory row` (Sweetie HD) and `private inventory row`
 //!   (Kanon). Without them an absent corpus is an unconditional HARD FAILURE
-//!   (no opt-out). These `#[ignore]`-d suites run only in the periodic
+//!   (no opt-out). These feature-gated suites run only in the periodic
 //!   ground-truth oracle (`just test real-bytes-oracle`), where corpora are staged.
 
 #[path = "support/real_corpus.rs"]
@@ -368,7 +368,6 @@ fn print_report(report: &PurityReport) {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row (+ private inventory row for multi-game)"]
 fn bridge_bundles_carry_zero_non_dialogue_units_on_both_corpora_real_bytes() {
     let corpora = real_corpus::corpora();
     if corpora.is_empty() {

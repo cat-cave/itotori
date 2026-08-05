@@ -54,7 +54,6 @@ fn load_reallive_real_bytes_gameexe() -> Option<Arc<Gameexe>> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn koe_play_archive_selection_is_authoritative_not_defaulted() {
     let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
         real_corpus::require_real_bytes(
@@ -125,7 +124,6 @@ fn koe_play_archive_selection_is_authoritative_not_defaulted() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn bgm_play_resolves_through_foldname_bgm() {
     let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
         real_corpus::require_real_bytes("utsushi-reallive bgm_play_resolves_through_foldname_bgm");
@@ -167,7 +165,6 @@ fn bgm_play_resolves_through_foldname_bgm() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn bgm_play_asset_id_resolves_against_real_asa_nwa_path() {
     let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
         real_corpus::require_real_bytes(
@@ -176,6 +173,9 @@ fn bgm_play_asset_id_resolves_against_real_asa_nwa_path() {
         return;
     };
     let Some(bgm_dir) = real_bgm_dir() else {
+        real_corpus::require_real_bytes(
+            "utsushi-reallive bgm_play_asset_id_resolves_against_real_asa_nwa_path",
+        );
         return;
     };
     let emitter = Arc::new(AudioEventEmitter::new());
@@ -209,16 +209,5 @@ fn bgm_play_asset_id_resolves_against_real_asa_nwa_path() {
         bgm_dir.join(ASA_NWA).exists(),
         "expected {} to exist",
         bgm_dir.join(ASA_NWA).display(),
-    );
-}
-
-#[test]
-fn audio_rlop_real_bytes_skips_when_env_unset() {
-    if real_corpus::game_root().is_some() {
-        return;
-    }
-    eprintln!(
-        "reallive/1/encrypted not set — audio RLOperation real-bytes tests are \
-         #[ignore]-gated and only run with private inventory row set.",
     );
 }

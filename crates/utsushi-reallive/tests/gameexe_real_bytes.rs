@@ -266,28 +266,24 @@ fn verify_dotted_path_lookup() {
 
 /// Worktree-prompt filter: `cargo test... gameexe_real_bytes...`.
 #[test]
-#[ignore = "requires private inventory row; opt in with --include-ignored"]
 fn gameexe_real_bytes_known_values() {
     verify_real_bytes_known_values();
 }
 
 /// Worktree-prompt filter: `cargo test... gameexe_real_bytes...`.
 #[test]
-#[ignore = "requires private inventory row; opt in with --include-ignored"]
 fn gameexe_real_bytes_dotted_path_lookup() {
     verify_dotted_path_lookup();
 }
 
 /// DAG-spec filter: `cargo test... gameexe_known_values`.
 #[test]
-#[ignore = "requires private inventory row; opt in with --include-ignored"]
 fn gameexe_known_values() {
     verify_real_bytes_known_values();
 }
 
 /// DAG-spec filter: `cargo test... gameexe_dotted_path_lookup`.
 #[test]
-#[ignore = "requires private inventory row; opt in with --include-ignored"]
 fn gameexe_dotted_path_lookup() {
     verify_dotted_path_lookup();
 }

@@ -291,7 +291,6 @@ fn print_report(report: &SpanReport) {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row (+ private inventory row for multi-game)"]
 fn protected_span_extraction_generalizes_to_second_corpus_real_bytes() {
     let corpora = real_corpus::corpora();
     if corpora.is_empty() {

@@ -70,8 +70,8 @@ fn decoded_mwnd_template_controls_message_projection() {
     assert_eq!(projection.moji_size, 32);
 }
 
+#[cfg(feature = "real-bytes")]
 #[test]
-#[ignore = "real-bytes; requires a private corpus"]
 fn real_siglus_positioned_message_boundary_is_measured() {
     let Some(root) = corpus_registry::resolve_identity("siglus/1/encrypted").ok() else {
         panic!("real-bytes proof not established: required corpus is unavailable");

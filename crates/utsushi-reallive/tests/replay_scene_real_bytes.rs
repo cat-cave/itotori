@@ -15,7 +15,7 @@
 //!    NOT be `FatalDiagnostic` for an unknown opcode; the run reaches
 //!    text before any unknown stops it.
 //!
-//! The test is `#[ignore]`-gated. Pass `--include-ignored` and set
+//! The test is feature-gated. Pass `--features real-bytes` and set
 //! `private inventory row` to run it.
 
 #[path = "support/real_corpus.rs"]
@@ -37,7 +37,6 @@ fn real_seen_txt_path() -> Option<PathBuf> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn reallive_real_bytes_scene_one_replay_emits_textline() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(
@@ -142,7 +141,6 @@ fn reallive_real_bytes_scene_one_replay_emits_textline() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn reallive_real_bytes_scene_one_replay_is_byte_deterministic() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(
@@ -179,7 +177,6 @@ fn reallive_real_bytes_scene_one_replay_is_byte_deterministic() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn reallive_real_bytes_scene_one_snapshot_round_trips() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(

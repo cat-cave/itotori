@@ -369,7 +369,6 @@ fn real_corpus_gameexe(corpus: &real_corpus::RealCorpus) -> Option<Vec<u8>> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row (Sweetie HD) + private inventory row (Kanon)"]
 fn kidoku_and_name_control_markup_round_trips_on_two_reallive_titles() {
     let corpora = real_corpus::corpora();
     if corpora.is_empty() {

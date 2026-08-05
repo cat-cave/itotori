@@ -13,6 +13,7 @@ import test from "node:test";
 import {
   MUTATIONS,
   REAL_GUARDS,
+  UNAVAILABLE_REAL_GUARD_FAMILIES,
   applyMutation,
   classifyOutcome,
   deriveRealGuards,
@@ -81,12 +82,15 @@ test("every mutation's find token occurs exactly once in its (real, current) tar
   }
 });
 
-test("mutation ids are unique and reference a known real-bytes guard family", () => {
+test("mutation ids are unique and declare available or explicitly unavailable real evidence", () => {
   const ids = MUTATIONS.map((m) => m.id);
   assert.equal(new Set(ids).size, ids.length, "duplicate mutation id");
   for (const m of MUTATIONS) {
     assert.ok(Array.isArray(m.guardCrates) && m.guardCrates.length > 0, `${m.id}: no guardCrates`);
-    assert.ok(REAL_GUARDS[m.realFamily], `${m.id}: unknown realFamily ${m.realFamily}`);
+    assert.ok(
+      REAL_GUARDS[m.realFamily] || UNAVAILABLE_REAL_GUARD_FAMILIES.has(m.realFamily),
+      `${m.id}: unknown realFamily ${m.realFamily}`,
+    );
   }
 });
 
@@ -96,28 +100,28 @@ test("real-byte guards are derived from each family's mutation guard-crate union
       { realFamily: "example", guardCrates: ["crate-a"] },
       { realFamily: "example", guardCrates: ["crate-b", "crate-a"] },
     ]),
-    { example: { crates: ["crate-a", "crate-b"], ignored: true } },
+    { example: { crates: ["crate-a", "crate-b"], realBytes: true } },
   );
 });
 
-test("strict RealLive opcode corpus tests remain opt-in outside the synthetic mutation lane", () => {
+test("strict RealLive opcode corpus tests are feature-gated outside the synthetic mutation lane", () => {
   const source = readFileSync(
     join(repoRoot, "crates/utsushi-reallive/tests/msg_opcode_table_real_bytes.rs"),
     "utf8",
   );
+  const manifest = readFileSync(join(repoRoot, "crates/utsushi-reallive/Cargo.toml"), "utf8");
   for (const name of [
     "decoder_reports_the_msg_opcode_inventory_from_both_real_archives",
     "every_decoded_msg_command_resolves_in_both_real_archives",
   ]) {
-    assert.match(
-      source,
-      new RegExp(
-        `#\\[ignore = "strict real-bytes proof; requires two staged RealLive archives"\\]\\nfn ${name}`,
-        "u",
-      ),
-      `${name} must run only through the strict --ignored real-bytes recipe`,
-    );
+    assert.match(source, new RegExp(`fn ${name}`, "u"), `${name} must remain asserted`);
   }
+  assert.doesNotMatch(source, /#\[ignore/u);
+  assert.match(
+    manifest,
+    /name = "msg_opcode_table_real_bytes"\npath = "tests\/msg_opcode_table_real_bytes\.rs"\nrequired-features = \["real-bytes"\]/u,
+    "the strict real-byte target must require the real-bytes feature",
+  );
 });
 
 test("the mutation set covers each representative real-regression class", () => {

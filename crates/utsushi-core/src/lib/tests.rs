@@ -1,6 +1,5 @@
 use super::*;
 use serde_json::json;
-use std::process::Command as StdCommand;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -65,24 +64,38 @@ fn temp_root(name: &str) -> PathBuf {
     root
 }
 
-fn harness_child_command(test_name: &str) -> RuntimeLaunchCommand {
-    RuntimeLaunchCommand::new(std::env::current_exe().unwrap()).args([
-        "--exact",
-        test_name,
-        "--ignored",
-        "--nocapture",
-    ])
+#[derive(Clone, Copy)]
+enum HarnessChild {
+    Exits,
+    PrintsStdoutSentinel,
+    Sleeps,
+    SpawnsGrandchild,
+    SpawnsGrandchildThenFails,
 }
 
-fn wait_for_path(path: &Path, timeout: Duration) -> bool {
-    let started_at = Instant::now();
-    while started_at.elapsed() < timeout {
-        if path.exists() {
-            return true;
+fn harness_child_command(child: HarnessChild) -> RuntimeLaunchCommand {
+    const HEARTBEAT_CHILD: &str = r#"
+(
+    n=0
+    while :; do
+        printf '%s' "$n" > grandchild-heartbeat
+        n=$((n + 1))
+        sleep 0.02
+    done
+) &
+echo "$!" > grandchild.pid
+while [ ! -f grandchild-heartbeat ]; do sleep 0.01; done
+"#;
+    let script = match child {
+        HarnessChild::Exits => "exit 0".to_string(),
+        HarnessChild::PrintsStdoutSentinel => {
+            format!("printf '%s\\n' '{HARNESS_STDOUT_SENTINEL}'")
         }
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    path.exists()
+        HarnessChild::Sleeps => "sleep 5".to_string(),
+        HarnessChild::SpawnsGrandchild => format!("{HEARTBEAT_CHILD}while :; do sleep 1; done"),
+        HarnessChild::SpawnsGrandchildThenFails => format!("{HEARTBEAT_CHILD}exit 42"),
+    };
+    RuntimeLaunchCommand::new("sh").arg("-c").arg(script)
 }
 
 // poll the out-of-band slot the detached hook worker records
@@ -136,42 +149,6 @@ fn evidence_report_observation_event_rejects_tier_above_report_ceiling() {
 #[test]
 fn rfc3339_instant_parity_matrix_matches_observation_hook_validator() {
     validation_and_support::rfc3339_instant_parity_matrix_matches_observation_hook_validator();
-}
-
-#[test]
-#[ignore = "child-process harness entry point; spawned by a parent harness test, not run standalone"]
-fn harness_child_exits() {
-    validation_and_support::harness_child_exits();
-}
-
-#[test]
-#[ignore = "child-process harness entry point; spawned by a parent harness test, not run standalone"]
-fn harness_child_prints_stdout_sentinel() {
-    validation_and_support::harness_child_prints_stdout_sentinel();
-}
-
-#[test]
-#[ignore = "child-process harness entry point; spawned by a parent harness test, not run standalone"]
-fn harness_child_sleeps() {
-    validation_and_support::harness_child_sleeps();
-}
-
-#[test]
-#[ignore = "child-process harness entry point; spawned by a parent harness test, not run standalone"]
-fn harness_child_spawns_grandchild() {
-    validation_and_support::harness_child_spawns_grandchild();
-}
-
-#[test]
-#[ignore = "child-process harness entry point; spawned by a parent harness test, not run standalone"]
-fn harness_child_spawns_grandchild_then_fails() {
-    validation_and_support::harness_child_spawns_grandchild_then_fails();
-}
-
-#[test]
-#[ignore = "child-process harness entry point; spawned by a parent harness test, not run standalone"]
-fn harness_grandchild_heartbeats() {
-    validation_and_support::harness_grandchild_heartbeats();
 }
 
 #[test]

@@ -47,7 +47,6 @@ const TRICKY_CHOICE_0: &str = "[EN] Maybe today I'm in the mood (yes!), a bit.";
 const TRICKY_CHOICE_1: &str = "[EN] No way - I'd rather not... [skip]";
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn scope_dialogue_and_choices_patches_scene_2011_choice_nextstring_safe_round_trip() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(
@@ -136,7 +135,6 @@ fn scope_dialogue_and_choices_patches_scene_2011_choice_nextstring_safe_round_tr
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn scope_dialogue_only_carries_scene_2011_choice_byte_identical() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(

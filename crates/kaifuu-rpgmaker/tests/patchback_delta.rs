@@ -7,60 +7,16 @@
 //! * a single-surface translation changes ONLY that file, only that
 //!   string literal, and `apply_delta` reproduces the patched tree;
 //! * a stale on-disk source is a typed error, never a silent splice.
-//! - An `#[ignore]`d real-bytes test runs the byte-identical untranslated
-//!   round-trip on the LustMemory corpus. No verbatim text is asserted or
-//!   printed.
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use kaifuu_rpgmaker::{
     BridgeOpts, PatchbackError, PatchbackOpts, TranslatedBundleV02, apply_translated_bundle,
     extract_game_dir, produce_delta_package,
 };
 
-/// Descend (bounded BFS) from the staged corpus root to the RPG Maker `www`
-/// directory (the one that holds `data/`). The LustMemory corpus is staged
-/// with an extra title-specific parent (`extracted/LustMemory/www`), so the
-/// env var points at the corpus ROOT and the test resolves the game dir —
-/// mirroring the utsushi-core composite real-bytes test's `locate_subdir`.
-fn resolve_www_dir(root: &Path) -> PathBuf {
-    fn find(dir: &Path, depth: usize) -> Option<PathBuf> {
-        if dir
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.eq_ignore_ascii_case("www"))
-            && dir.join("data").is_dir()
-        {
-            return Some(dir.to_path_buf());
-        }
-        if depth == 0 {
-            return None;
-        }
-        let mut children: Vec<PathBuf> = fs::read_dir(dir)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|entry| entry.path())
-            .filter(|path| path.is_dir())
-            .collect();
-        children.sort();
-        children
-            .into_iter()
-            .find_map(|child| find(&child, depth - 1))
-    }
-    if root.join("data").is_dir() {
-        return root.to_path_buf();
-    }
-    find(root, 5).unwrap_or_else(|| {
-        panic!(
-            "rpg-maker-mv-mz/1/plain={} contains no `www/` dir with a `data/` \
-             subdirectory (expected an RPG Maker MV/MZ install tree)",
-            root.display()
-        )
-    })
-}
 use serde_json::Value;
 
 fn opts() -> BridgeOpts<'static> {
@@ -324,69 +280,5 @@ fn stale_on_disk_source_is_typed_error() {
     assert!(
         matches!(err, PatchbackError::StaleSource { .. }),
         "expected StaleSource, got {err:?}"
-    );
-}
-
-#[test]
-#[ignore = "requires private inventory row (read-only LustMemory corpus)"]
-fn real_bytes_untranslated_round_trip_is_byte_identical() {
-    let root = corpus_registry::resolve_identity("rpg-maker-mv-mz/1/plain")
-        .map(|path| path.to_string_lossy().into_owned())
-        .expect("rpg-maker-mv-mz/1/plain must be set for the real-bytes test");
-    let www_root = resolve_www_dir(Path::new(&root));
-    let www = www_root.as_path();
-
-    let extraction = extract_game_dir(www, &opts()).expect("real corpus extraction");
-    let unit_count = extraction.bundle.bundle.units.len();
-    let translated = build_translated_bundle(&extraction.bundle.json, &BTreeMap::new());
-    let bundle = TranslatedBundleV02::from_json(&translated).expect("translated bundle parses");
-
-    // In-memory byte-identity for every referenced file (proves every
-    // surfaced unit is patch-back-targetable AND no spurious diffs).
-    let data_dir = www.join("data");
-    let patched =
-        apply_translated_bundle(www, &bundle, &PatchbackOpts::rpg_maker_default()).expect("apply");
-    for (file, bytes) in &patched {
-        let source = fs::read(data_dir.join(file)).expect("read source data file");
-        assert_eq!(bytes, &source, "{file} must round-trip byte-identical");
-    }
-    eprintln!(
-        "[real-bytes] untranslated round-trip byte-identical over {} referenced files ({unit_count} units)",
-        patched.len()
-    );
-
-    // Delta level: zero changed files + apply reproduces the source tree.
-    let tmp = tempfile::tempdir().unwrap();
-    let patched_dir = tmp.path().join("patched-data");
-    let produced = produce_delta_package(
-        www,
-        &bundle,
-        &PatchbackOpts::rpg_maker_default(),
-        &patched_dir,
-    )
-    .expect("delta produce");
-    assert_eq!(
-        produced.changed_file_count, 0,
-        "no changed files for an untranslated draft"
-    );
-    assert_eq!(
-        produced.delta["changedEntries"].as_array().unwrap().len(),
-        0
-    );
-    assert_eq!(
-        produced.delta["sourceCompatibility"]["rootHash"],
-        produced.delta["target"]["rootHash"]
-    );
-
-    let delta_path = tmp.path().join("real.kaifuu");
-    kaifuu_core::write_json(&delta_path, &produced.delta).unwrap();
-    let output_dir = tmp.path().join("applied");
-    let report =
-        kaifuu_delta::apply_delta(&data_dir, &delta_path, &output_dir).expect("apply_delta");
-    assert_eq!(report["status"], "passed");
-    assert_eq!(
-        read_tree(&output_dir),
-        read_tree(&data_dir),
-        "apply reproduces the source tree"
     );
 }

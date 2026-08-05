@@ -5,7 +5,7 @@ pub(super) fn in_boundary_hook_write_succeeds_within_fence() {
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Capture,
-        harness_child_command("tests::harness_child_exits"),
+        harness_child_command(HarnessChild::Exits),
     )
     .with_artifact_root(&artifact_root)
     .with_timeout(Duration::from_secs(5))
@@ -35,7 +35,7 @@ pub(super) fn panicking_capture_hooks_are_contained_and_cleanup_runtime_process(
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Capture,
-        harness_child_command("tests::harness_child_sleeps"),
+        harness_child_command(HarnessChild::Sleeps),
     )
     .with_timeout(Duration::from_secs(5))
     .with_hook_timeout(Duration::from_secs(1))
@@ -62,7 +62,7 @@ pub(super) fn before_terminate_hook_timeout_does_not_delay_cleanup() {
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Capture,
-        harness_child_command("tests::harness_child_sleeps"),
+        harness_child_command(HarnessChild::Sleeps),
     )
     .with_timeout(Duration::from_millis(50))
     .with_hook_timeout(Duration::from_millis(50))
@@ -100,7 +100,7 @@ pub(super) fn timeout_cleanup_terminates_runtime_process_tree() {
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Capture,
-        harness_child_command("tests::harness_child_spawns_grandchild").current_dir(&temp),
+        harness_child_command(HarnessChild::SpawnsGrandchild).current_dir(&temp),
     )
     .with_timeout(Duration::from_millis(250))
     .with_shutdown_grace(Duration::from_secs(1))
@@ -138,8 +138,7 @@ pub(super) fn nonzero_exit_cleanup_terminates_runtime_process_tree() {
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Capture,
-        harness_child_command("tests::harness_child_spawns_grandchild_then_fails")
-            .current_dir(&temp),
+        harness_child_command(HarnessChild::SpawnsGrandchildThenFails).current_dir(&temp),
     )
     .with_timeout(Duration::from_secs(5))
     .with_shutdown_grace(Duration::from_secs(1))
@@ -184,8 +183,7 @@ pub(super) fn nonzero_exit_after_exit_hook_failure_cleans_process_tree_before_re
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Capture,
-        harness_child_command("tests::harness_child_spawns_grandchild_then_fails")
-            .current_dir(&temp),
+        harness_child_command(HarnessChild::SpawnsGrandchildThenFails).current_dir(&temp),
     )
     .with_timeout(Duration::from_secs(5))
     .with_shutdown_grace(Duration::from_secs(1))
@@ -241,7 +239,7 @@ pub(super) fn successful_exit_after_exit_hook_failure_reports_process_exit_diagn
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Capture,
-        harness_child_command("tests::harness_child_exits"),
+        harness_child_command(HarnessChild::Exits),
     )
     .with_timeout(Duration::from_secs(5))
     .with_hook_timeout(Duration::from_secs(1));
@@ -278,7 +276,7 @@ pub(super) fn launch_capture_harness_fails_closed_without_process_tree_cleanup_s
     let plan = RuntimeLaunchCapturePlan::new(
         HARNESS_RUN_ID,
         RuntimeOperation::Capture,
-        harness_child_command("tests::harness_child_exits"),
+        harness_child_command(HarnessChild::Exits),
     );
     let harness = RuntimeLaunchCaptureHarness::new();
     let mut hooks = RuntimeCaptureHooks::new();

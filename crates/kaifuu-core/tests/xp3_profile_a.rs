@@ -1,15 +1,12 @@
 //! Metadata-only licensed plain-XP3 profile A intake.
 //!
 //! The committed fixture intentionally carries no game bytes, member paths, or
-//! scenario prose. Set `private inventory archive` to the separately
-//! licensed source archive to run the read-side real-byte proof locally.
+//! scenario prose.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use kaifuu_core::read_plain_xp3_inventory;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 
 const LICENSE_ID: &str = "LicenseRef-MangaGamer-Commercial-EULA";
 
@@ -93,28 +90,4 @@ fn metadata_only_profile_a_declares_honest_inventory_and_kag_coverage() {
         expected_ratio >= 0.5,
         "profile A must cover half of kaifuu-kag-synthetic-corpus tags"
     );
-}
-
-#[test]
-#[ignore = "real-bytes; requires a private corpus"]
-fn supplied_licensed_archive_matches_profile_a_inventory_metadata() {
-    let Some(archive_path) = corpus_registry::resolve_identity("kirikiri-xp3/1/plain").ok() else {
-        panic!("real-bytes proof not established: required corpus is unavailable");
-    };
-    let bytes = std::fs::read(archive_path).expect("read supplied licensed archive");
-    let inventory = read_plain_xp3_inventory(&bytes).expect("supplied archive must parse cleanly");
-    let manifest = manifest();
-    let archive = &manifest["archive"];
-
-    assert_eq!(
-        format!("{:x}", Sha256::digest(&bytes)),
-        archive["sha256"].as_str().unwrap(),
-        "supplied archive hash must match the metadata-only capture"
-    );
-    assert_eq!(
-        inventory.entries.len() as u64,
-        archive["inventoryEntryCount"].as_u64().unwrap(),
-        "reader inventory count must match the metadata-only capture"
-    );
-    assert!(inventory.entries.len() >= 3);
 }

@@ -73,7 +73,7 @@ Run from this worktree (the research root is read-only):
 
 ```sh
 direnv exec . env private inventory row=/scratch/softpal-research \
-  cargo test -p kaifuu-softpal --test opcode_real_corpus -- --ignored --nocapture
+  cargo test -p kaifuu-softpal --features real-bytes --test opcode_real_corpus --nocapture
 ```
 
 Expected result: one passing test. It parses `SCRIPT.SRC` from both v21465

@@ -80,7 +80,6 @@ fn real_koe_dir() -> Option<PathBuf> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn ovk_z0001_two_entries() {
     let Some(koe_dir) = real_koe_dir() else {
         real_corpus::require_real_bytes("utsushi-reallive ovk_z0001_two_entries");
@@ -169,17 +168,6 @@ fn ovk_z0001_two_entries() {
         entry1.sample_num,
         entry1.data_size,
         entry1.data_offset,
-    );
-}
-
-#[test]
-fn ovk_real_bytes_skips_when_env_unset() {
-    if real_corpus::game_root().is_some() {
-        return;
-    }
-    eprintln!(
-        "reallive/1/encrypted not set — OVK real-bytes tests are #[ignore]-gated and \
-         only run with reallive/1/encrypted set.",
     );
 }
 

@@ -21,7 +21,7 @@ pub fn seen_txt_path() -> Option<PathBuf> {
 
 pub fn unavailable_message(test_name: &str) -> String {
     format!(
-        "REAL-BYTES SKIP {test_name}: reallive/1/encrypted is unavailable or malformed; refusing a passing real-bytes proof without its required input"
+        "REAL-BYTES REQUIRED INPUT {test_name}: reallive/1/encrypted is unavailable or malformed; failing loud rather than reporting a passing proof without its required input"
     )
 }
 

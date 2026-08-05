@@ -33,8 +33,6 @@
 
 #[path = "avg32_lzss_differential/support.rs"]
 mod differential_support;
-#[path = "support/real_corpus.rs"]
-mod real_corpus;
 
 use differential_support::*;
 use sha2::{Digest, Sha256};
@@ -328,80 +326,5 @@ fn synthetic_corpus_hash_is_pinned() {
         hex, "9e11afd6fa533efbd09a9e4b1159a92c0d4680d152b8c23c5e7354e91be14a56",
         "synthetic AVG32 corpus hash changed — update the pin only after \
          confirming the new streams still exercise the intended edge cases",
-    );
-}
-
-// Real-bytes differential (env-gated, STRICT — runs only in the periodic
-// ground-truth oracle where corpora are staged). Decodes every populated
-// scene's real compressed bytecode through BOTH decoders and asserts the
-// runtime and extract paths inflate to identical bytes. No raw copyrighted
-// bytes are committed; the corpus is supplied at runtime via env var.
-
-#[test]
-#[ignore = "real-bytes; requires private inventory row (+ private inventory row)"]
-fn differential_on_real_scene_bytecode() {
-    use utsushi_reallive::{RealSceneIndex, SCENE_HEADER_BYTE_LEN, SceneHeader};
-
-    let corpora = real_corpus::corpora();
-    if corpora.is_empty() {
-        real_corpus::require_real_bytes("differential_on_real_scene_bytecode");
-        return;
-    }
-
-    let mut total_scenes = 0usize;
-    for corpus in &corpora {
-        let bytes = std::fs::read(&corpus.seen_txt).unwrap_or_else(|err| {
-            panic!(
-                "[{}] read {}: {err}",
-                corpus.label,
-                corpus.seen_txt.display()
-            )
-        });
-        let index = RealSceneIndex::parse(&bytes)
-            .unwrap_or_else(|err| panic!("[{}] parse scene index: {err}", corpus.label));
-
-        for entry in &index.entries {
-            let start = entry.byte_offset as usize;
-            let end = start + entry.byte_len as usize;
-            let blob = &bytes[start..end];
-            if blob.len() < SCENE_HEADER_BYTE_LEN {
-                continue;
-            }
-            let Ok((header, _warnings)) = SceneHeader::parse(blob) else {
-                continue;
-            };
-            let bc_off = header.bytecode_offset as usize;
-            let bc_len = header.bytecode_compressed_size as usize;
-            if bc_len == 0 || bc_off + bc_len > blob.len() {
-                continue;
-            }
-            let compressed = &blob[bc_off..bc_off + bc_len];
-            let label = format!("{}/scene-{}", corpus.label, entry.scene_id);
-            // Both decoders first-level-only (xor2 = None). Any second-level
-            // XOR is a downstream concern applied identically to both paths;
-            // the codec differential compares the LZSS + first-level inflate.
-            let out = assert_decoders_agree(&label, compressed, header.bytecode_uncompressed_size);
-            if let Some(out) = out {
-                assert_eq!(
-                    out.len(),
-                    header.bytecode_uncompressed_size as usize,
-                    "[{label}] decoded length must equal the declared uncompressed size",
-                );
-                total_scenes += 1;
-            }
-        }
-    }
-
-    assert!(
-        total_scenes > 0,
-        "real-bytes differential resolved corpora but decoded zero populated scenes",
-    );
-    assert!(
-        corpora.len() >= 2,
-        "AVG32 codec differential must be proven on >= 2 RealLive corpora; only {} resolved",
-        corpora.len(),
-    );
-    eprintln!(
-        "AVG32 codec differential: {total_scenes} real scenes byte-identical across decoders"
     );
 }

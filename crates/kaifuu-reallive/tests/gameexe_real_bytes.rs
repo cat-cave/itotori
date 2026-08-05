@@ -33,7 +33,6 @@ use kaifuu_core::RedactedContentSummary;
 use kaifuu_reallive::{GameexeKeyFamily, GameexeKeyTreatment, parse_gameexe_inventory};
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn classifies_every_staged_gameexe_ini_to_zero_unknown() {
     // STRICT gate: corpus-1 (Sweetie HD) must be staged. An absent
     // primary corpus is an unconditional hard failure (no silent pass).

@@ -319,24 +319,18 @@ fn siglus_real_signature_does_not_false_positive() {
 // Real-corpus validation (≥2 titles). The operator supplies one vault mount;
 // the private inventory selects the two Siglus libraries beneath it. This test
 // reads only their header signatures and commits no game bytes.
+#[cfg(feature = "real-bytes")]
 #[test]
-#[ignore = "requires the private inventory's two Siglus corpus entries"]
 fn siglus_detects_real_corpus_titles() {
     let dirs = ["siglus/1/encrypted", "siglus/2/encrypted"]
         .into_iter()
-        .filter_map(
-            |identity| match corpus_registry::resolve_identity(identity) {
-                Ok(path) => Some((identity, path)),
-                Err(error) => {
-                    eprintln!("skipping: {identity} unavailable: {error}");
-                    None
-                }
-            },
-        )
+        .map(|identity| {
+            let path = corpus_registry::resolve_identity(identity).unwrap_or_else(|reason| {
+                panic!("real-bytes proof not established: {identity}: {reason}")
+            });
+            (identity, path)
+        })
         .collect::<Vec<_>>();
-    if dirs.len() < 2 {
-        return;
-    }
     let adapter = SiglusProfileDetectorAdapter;
     let mut recognized = 0usize;
     for (identity, game_dir) in dirs {

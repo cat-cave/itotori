@@ -93,6 +93,8 @@ pub const OBJ_BG_SETTER_ID: u8 = 82;
 pub const OBJ_FG_RANGE_ID: u8 = 90;
 /// `module_id` of the ObjFg getter module.
 pub const OBJ_FG_GETTER_ID: u8 = 84;
+/// `module_id` of the ObjBg getter module.
+pub const OBJ_BG_GETTER_ID: u8 = 85;
 /// `module_id` of the ObjRangeBg SETTER module.
 pub const OBJ_BG_RANGE_ID: u8 = 91;
 /// `module_id` of the generic ObjManagement module.

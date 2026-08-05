@@ -16,7 +16,7 @@
 //! intentionally describe that corpus. Per-decoder paired-corpus coverage is
 //! still separate work.
 //!
-//! The test is `#[ignore]`-gated and runs only when the private corpus
+//! The test is feature-gated and runs only when the private corpus
 //! inventory is available.
 
 #[path = "support/real_corpus.rs"]
@@ -49,7 +49,6 @@ const PRIMARY_CORPUS_FIRST_SCENE_BYTE_LEN: u32 = 0x5fa;
 const PRIMARY_CORPUS_LAST_SCENE_ID: u16 = 9999;
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn scene_index_real_bytes_parses_reallive_real_bytes_seen_txt_into_198_populated_scene_entries() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(

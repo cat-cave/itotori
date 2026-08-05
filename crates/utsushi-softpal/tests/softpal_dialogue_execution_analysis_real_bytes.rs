@@ -14,17 +14,8 @@ use kaifuu_softpal::{CommandFamily, OpcodeScan, PacArchive, ScriptScan, TextDat}
 use utsushi_softpal::{RuntimeTraceEvent, SceneStep, SoftpalScene};
 
 include!("softpal_dialogue_execution_analysis/common.rs");
+include!("softpal_dialogue_execution_analysis/real_common.rs");
 include!("softpal_dialogue_execution_analysis/cfg.rs");
-
-mod script_only_slice {
-    use super::*;
-    include!("softpal_dialogue_execution_analysis/script_only_slice.rs");
-}
-
-mod point_entry_ranking {
-    use super::*;
-    include!("softpal_dialogue_execution_analysis/point_entry_ranking.rs");
-}
 
 mod real_corpus_ranking {
     use super::*;

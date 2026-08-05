@@ -12,8 +12,8 @@ pub const REAL_GAME_ROOT_ENV: &str = "reallive/1/encrypted";
 /// test must never report a green PASS when it asserted nothing. Real-bytes
 /// coverage is STRICT: an absent corpus is an UNCONDITIONAL HARD FAILURE (this
 /// panics, naming the missing [`REAL_GAME_ROOT_ENV`]). There is NO opt-out —
-/// the real-bytes suites are `#[ignore]`-d and run only in the periodic
-/// ground-truth oracle (`just test real-bytes-oracle`), where the corpora are always
+/// the compile-time real-bytes suites run only in the periodic ground-truth
+/// oracle (`just test real-bytes-oracle`), where the corpora are always
 /// staged. Returns `()` (not `!`) so the early-return call sites keep their
 /// `return` without an `unreachable_code` lint.
 pub fn require_real_bytes(test_name: &str) {

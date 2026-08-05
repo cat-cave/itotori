@@ -172,6 +172,57 @@ fn detects_reallive_when_seen_txt_lives_under_nested_reallivedata_subdir() {
 }
 
 #[test]
+fn detects_reallive_when_flat_assets_live_under_a_nested_title_directory() {
+    // Older RealLive layouts place the archive and Gameexe.ini directly in a
+    // title directory. A registry may point at the adjacent version wrapper,
+    // so the detector must find one unambiguous nested pair without requiring
+    // a `REALLIVEDATA/` marker.
+    let directory_byte_len = kaifuu_reallive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize;
+    let payload: &[u8] = b"nested-flat-shape-payload";
+    let mut seen_bytes = vec![0u8; directory_byte_len + payload.len()];
+    seen_bytes[8..12].copy_from_slice(&(directory_byte_len as u32).to_le_bytes());
+    seen_bytes[12..16].copy_from_slice(&(payload.len() as u32).to_le_bytes());
+    seen_bytes[directory_byte_len..].copy_from_slice(payload);
+
+    let game_dir = temp_dir("reallive-nested-flat-assets");
+    let nested_dir = game_dir.join("title");
+    fs::create_dir_all(&nested_dir).unwrap();
+    fs::write(nested_dir.join(REALLIVE_SEEN_TXT_PATH), &seen_bytes).unwrap();
+    fs::write(
+        nested_dir.join(REALLIVE_GAMEEXE_INI_PATH),
+        b"#REGNAME=KaifuuFixture\\RealLive\n#SEEN_START=1\n",
+    )
+    .unwrap();
+
+    let detection = RealLiveProfileDetectorAdapter
+        .detect(DetectRequest {
+            game_dir: &game_dir,
+        })
+        .unwrap();
+    assert!(
+        detection.detected,
+        "nested flat title assets must be recognized; got: {detection:#?}"
+    );
+    assert_eq!(
+        detection.detected_variant.as_deref(),
+        Some("reallive-positive-live-layout")
+    );
+    let resolved_row = detection
+        .evidence
+        .iter()
+        .find(|row| row.kind == REALLIVE_NESTED_DATA_DIR_RESOLVED_CODE)
+        .expect("nested flat asset directory must be reported");
+    assert!(resolved_row.path.ends_with("title"));
+    let seen_row = detection
+        .evidence
+        .iter()
+        .find(|row| row.kind == "reallive_seen_txt_envelope")
+        .expect("SEEN.TXT evidence row must be present");
+    assert!(seen_row.path.ends_with("title/SEEN.TXT"));
+    let _ = fs::remove_dir_all(game_dir);
+}
+
+#[test]
 fn does_not_emit_resolved_data_dir_evidence_when_no_nested_reallivedata_present() {
     // regression: synthetic fixtures that ship SEEN.TXT
     // at the game root (no nested REALLIVEDATA/ marker) must keep

@@ -13,6 +13,9 @@ serde_json.workspace = true
 sha2.workspace = true
 unicode-normalization.workspace = true
 
+[features]
+real-bytes = []
+
 # fd-relative / no-follow (openat/unlinkat/renameat/getdents)
 # filesystem operations for the runtime artifact root. Opening the managed root
 # once as a directory descriptor and driving every write/rename/cleanup relative
@@ -27,6 +30,11 @@ corpus-registry = { path = "../corpus-registry" }
 jsonschema.workspace = true
 tempfile.workspace = true
 utsushi-fixture = { path = "../utsushi-fixture" }
+
+[[test]]
+name = "composite_asset_package_real_bytes"
+path = "tests/composite_asset_package_real_bytes.rs"
+required-features = ["real-bytes"]
 
 [lints]
 workspace = true

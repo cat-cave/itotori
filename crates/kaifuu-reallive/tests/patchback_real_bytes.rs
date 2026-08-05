@@ -18,8 +18,8 @@
 //! - The original source byte slice is unchanged (returned `Vec<u8>`
 //!   is a fresh allocation).
 //!   Env-gated and STRICT: without `private inventory row` an absent corpus is
-//!   an unconditional HARD FAILURE (no opt-out). This `#[ignore]`-d suite runs
-//!   only in the periodic ground-truth oracle (`just test real-bytes-oracle`), where
+//!   an unconditional HARD FAILURE (no opt-out). This feature-gated suite runs
+//!   in the periodic ground-truth oracle (`just test real-bytes-oracle`), where
 //!   the corpus is staged.
 
 #[path = "support/real_corpus.rs"]
@@ -231,7 +231,6 @@ fn boundary_ordinals(bytecode: &[u8]) -> std::collections::BTreeMap<usize, (usiz
 ///   in the source — i.e. a jump that pointed to opcode X still points to
 ///   opcode X at its new offset, never into the middle of a command.
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn length_changing_patch_recalculates_goto_targets_on_real_scene() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(

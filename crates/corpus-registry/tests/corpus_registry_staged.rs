@@ -1,7 +1,6 @@
 use corpus_registry::{Need, resolve};
 
 #[test]
-#[ignore = "strict real-bytes proof; requires the private platform inventory"]
 fn staged_registry_resolves_each_declared_corpus() {
     let needs = [
         Need {

@@ -81,7 +81,6 @@ fn static_textout_sequence(
 }
 
 #[test]
-#[ignore = "requires private inventory row with the optional real corpus"]
 fn entry_playthrough_emits_an_ordered_subset_of_static_text_bytes() {
     let Some(corpus) = real_corpus::corpus_2() else {
         real_corpus::require_real_bytes(
@@ -223,7 +222,6 @@ fn entry_playthrough_emits_an_ordered_subset_of_static_text_bytes() {
 }
 
 #[test]
-#[ignore = "requires the private inventory row for the optional second real corpus"]
 fn real_entry_gate_chain_advances_the_frame_loop_before_its_next_pointer_boundary() {
     let Some(corpus) = real_corpus::corpus_2() else {
         real_corpus::require_real_bytes(
@@ -389,7 +387,6 @@ fn real_entry_gate_chain_advances_the_frame_loop_before_its_next_pointer_boundar
 }
 
 #[test]
-#[ignore = "requires the private inventory row for the optional primary real corpus"]
 fn primary_entry_path_keeps_its_executed_oracle_coverage() {
     let Some(corpus) = real_corpus::corpus_1() else {
         real_corpus::require_real_bytes(

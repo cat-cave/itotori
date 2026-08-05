@@ -81,7 +81,6 @@ fn report_for_archive(bytes: &[u8]) -> OverloadReport {
 }
 
 #[test]
-#[ignore = "real-bytes; requires both configured corpus roots"]
 fn decoded_real_bytes_report_overload_distinguished_operations() {
     let corpora = real_corpus::corpora();
     if corpora.len() < 2 {

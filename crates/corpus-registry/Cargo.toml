@@ -12,8 +12,16 @@ engine-contract = { path = "../engine-contract" }
 serde.workspace = true
 thiserror.workspace = true
 
+[features]
+real-bytes = []
+
 [dev-dependencies]
 tempfile.workspace = true
+
+[[test]]
+name = "corpus_registry_staged"
+path = "tests/corpus_registry_staged.rs"
+required-features = ["real-bytes"]
 
 [lints]
 workspace = true

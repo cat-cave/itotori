@@ -216,23 +216,36 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
         );
     }
 
-    // `ObjFgGetters` is a distinct, foreground-only oracle module. Its
-    // position and dimensions operations write through direct integer-bank
-    // references, so they must not be modelled as inert observed surfaces.
-    count += register_on_types(
-        registry,
-        &[1],
-        OBJ_FG_GETTER_ID,
-        1000,
-        Arc::new(ObjGetOp::new(Arc::clone(&runtime), ObjGetKind::Position)),
-    );
-    count += register_on_types(
-        registry,
-        &[1],
-        OBJ_FG_GETTER_ID,
-        1100,
-        Arc::new(ObjGetOp::new(Arc::clone(&runtime), ObjGetKind::Dimensions)),
-    );
+    // ObjFgGetters (84) and ObjBgGetters (85) both write their selected
+    // object's position and dimensions through direct integer-bank
+    // references. These values can drive a script-owned pointer rectangle.
+    for (mid, plane) in [
+        (OBJ_FG_GETTER_ID, GraphicsPlane::Foreground),
+        (OBJ_BG_GETTER_ID, GraphicsPlane::Background),
+    ] {
+        count += register_on_types(
+            registry,
+            &[1],
+            mid,
+            1000,
+            Arc::new(ObjGetOp::for_plane(
+                Arc::clone(&runtime),
+                plane,
+                ObjGetKind::Position,
+            )),
+        );
+        count += register_on_types(
+            registry,
+            &[1],
+            mid,
+            1100,
+            Arc::new(ObjGetOp::for_plane(
+                Arc::clone(&runtime),
+                plane,
+                ObjGetKind::Dimensions,
+            )),
+        );
+    }
 
     for (mid, plane) in [
         (OBJ_FG_SETTER_ID, GraphicsPlane::Foreground),

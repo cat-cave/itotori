@@ -4,6 +4,10 @@
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+// Private-byte targets are feature-gated, not ignored. A listed ignored test
+// is therefore always a regression.
+export const EXPECTED_IGNORED_PRIVATE_CORPUS = 0;
+
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -87,6 +91,12 @@ export function summarizeNextestListReport(report) {
     );
   }
   if (counts.selected === 0) throw new Error("nextest partition selected no runnable tests");
+  if (counts.ignoredPrivateCorpus !== EXPECTED_IGNORED_PRIVATE_CORPUS) {
+    throw new Error(
+      "nextest ignored-test inventory mismatch: " +
+        `expected ${EXPECTED_IGNORED_PRIVATE_CORPUS}, found ${counts.ignoredPrivateCorpus}`,
+    );
+  }
   return { listed: declaredCount, ...counts };
 }
 

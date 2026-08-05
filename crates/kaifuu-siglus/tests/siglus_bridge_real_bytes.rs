@@ -21,7 +21,7 @@ fn title_paths(variable: &str) -> Option<(PathBuf, PathBuf, PathBuf)> {
     let value = corpus_registry::resolve_identity(variable)
         .ok()
         .or_else(|| {
-            eprintln!("SKIP siglus bridge real bytes: {variable} is unset");
+            eprintln!("REAL-BYTES REQUIRED INPUT: siglus bridge real bytes: {variable} is unset");
             None
         })?;
     let root = value;
@@ -37,7 +37,7 @@ fn title_paths(variable: &str) -> Option<(PathBuf, PathBuf, PathBuf)> {
         Some((exe, scene, gameexe))
     } else {
         eprintln!(
-            "SKIP siglus bridge real bytes: {variable} has no SiglusEngine.exe + Scene.pck + Gameexe.dat under {}",
+            "REAL-BYTES REQUIRED INPUT: siglus bridge real bytes: {variable} has no SiglusEngine.exe + Scene.pck + Gameexe.dat under {}",
             dir.display()
         );
         None
@@ -179,7 +179,6 @@ fn exercise_title(exe_path: &Path, scene_path: &Path, gameexe_path: &Path, label
 mod real_bytes;
 
 #[test]
-#[ignore = "real-bytes; requires two declared Siglus corpus roots"]
 fn two_real_siglus_titles_assemble_schema_valid_deterministic_bridges() {
     let (first_exe, first_scene, first_gameexe) = real_bytes::require_real_bytes(
         title_paths(FIRST_TITLE_ENV),

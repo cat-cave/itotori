@@ -34,6 +34,9 @@ utsushi-softpal = { path = "../utsushi-softpal" }
 utsushi-rpgmaker-mv = { path = "../utsushi-rpgmaker-mv" }
 utsushi-siglus = { path = "../utsushi-siglus" }
 
+[features]
+real-bytes = []
+
 [dev-dependencies]
 corpus-registry = { path = "../corpus-registry" }
 # Real-bytes single-scene xor2 replay test: synthesises a localized
@@ -53,6 +56,26 @@ tempfile = { workspace = true }
 # pulled in so the gate can collect every `PARITY_PROFILE` and assert
 # feature-parity across them.
 utsushi-rpgmaker-mv-mz = { path = "../utsushi-rpgmaker-mv-mz" }
+
+[[test]]
+name = "patch_render_real_bytes"
+path = "tests/patch_render_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "single_scene_xor2_replay_real_bytes"
+path = "tests/single_scene_xor2_replay_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "structure_primary_corpus"
+path = "tests/structure_primary_corpus.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "softpal_structure_real_corpus"
+path = "tests/softpal_structure_real_corpus.rs"
+required-features = ["real-bytes"]
 
 [build-dependencies]
 serde_json.workspace = true

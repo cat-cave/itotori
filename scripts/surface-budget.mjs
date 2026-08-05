@@ -15,7 +15,7 @@ const SURFACE_MEASURES = [
   { field: "justRecipes", label: "just recipes" },
 ];
 const STATED_LIMITS =
-  "stated limits: static tracked-text comparison with the merge-base; dynamically constructed names, untracked files, recipe semantics, and other command surfaces are not counted.\n";
+  "stated limits: static tracked-text comparison with the merge-base; growth fails, while reductions are reported without blocking; dynamically constructed names, untracked files, recipe semantics, and other command surfaces are not counted.\n";
 
 export function findEnvVarNames(contents) {
   return new Set([...contents.matchAll(PREFIXED_NAME)].map((match) => match[0]));
@@ -150,11 +150,18 @@ export function evaluateSurface(actual, base) {
     if (change > 0) {
       failures.push(`${label} grew: measured ${actual[field]}, merge-base ${base[field]}.`);
     }
-    if (change < 0) {
-      failures.push(`${label} shrank: measured ${actual[field]}, merge-base ${base[field]}.`);
-    }
   }
   return failures;
+}
+
+export function reportSurfaceReductions(actual, base) {
+  const reductions = [];
+  for (const { field, label } of SURFACE_MEASURES) {
+    if (actual[field] < base[field]) {
+      reductions.push(`${label} shrank: measured ${actual[field]}, merge-base ${base[field]}.`);
+    }
+  }
+  return reductions;
 }
 
 function main() {
@@ -175,9 +182,12 @@ function main() {
   }
 
   const failures = evaluateSurface(actual, base.surface);
+  const reductions = reportSurfaceReductions(actual, base.surface);
   if (failures.length > 0) {
     process.stderr.write(
-      `surface budget: FAILED.\n${failures.map((failure) => `  ${failure}`).join("\n")}\n${STATED_LIMITS}`,
+      `surface budget: FAILED.\n${[...failures, ...reductions]
+        .map((message) => `  ${message}`)
+        .join("\n")}\n${STATED_LIMITS}`,
     );
     process.exitCode = 1;
     return;
@@ -185,6 +195,9 @@ function main() {
   process.stdout.write(
     `surface budget: passed. env-var names: ${actual.envVarNames}/${base.surface.envVarNames}; ` +
       `just recipes: ${actual.justRecipes}/${base.surface.justRecipes} (merge-base ${base.revision}).\n` +
+      (reductions.length === 0
+        ? ""
+        : `${reductions.map((reduction) => `  ${reduction}`).join("\n")}\n`) +
       STATED_LIMITS,
   );
 }

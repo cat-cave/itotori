@@ -3,24 +3,6 @@ use crate::compat_regression::fixtures::*;
 use crate::repro_bundle::fixtures as bundle_fixtures;
 
 #[test]
-#[ignore = "developer helper: regenerates the committed regression fixtures"]
-fn emit_committed_fixtures() {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/kaifuu/compat-regression");
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(
-        dir.join("public-fixture-catalogue.json"),
-        format!("{}\n", stable_json(&public_catalogue()).unwrap()),
-    )
-    .unwrap();
-    std::fs::write(
-        dir.join("baseline.json"),
-        format!("{}\n", stable_json(&baseline()).unwrap()),
-    )
-    .unwrap();
-}
-
-#[test]
 fn clean_run_passes_and_records_every_tuple_field() {
     let bundle = bundle_fixtures::clean_bundle();
     let report = run_claimed_profile_regression(&bundle, &public_catalogue(), &baseline());

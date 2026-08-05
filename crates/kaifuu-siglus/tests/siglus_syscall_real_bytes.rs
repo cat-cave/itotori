@@ -20,7 +20,7 @@ fn title_paths(variable: &str) -> Option<(PathBuf, PathBuf)> {
     let value = corpus_registry::resolve_identity(variable)
         .ok()
         .or_else(|| {
-            eprintln!("SKIP siglus syscall real bytes: {variable} is unset");
+            eprintln!("REAL-BYTES REQUIRED INPUT: siglus syscall real bytes: {variable} is unset");
             None
         })?;
     let root = value;
@@ -34,7 +34,9 @@ fn title_paths(variable: &str) -> Option<(PathBuf, PathBuf)> {
     if exe.is_file() && scene.is_file() {
         Some((exe, scene))
     } else {
-        eprintln!("SKIP siglus syscall real bytes: {variable} has no SiglusEngine.exe + Scene.pck");
+        eprintln!(
+            "REAL-BYTES REQUIRED INPUT: siglus syscall real bytes: {variable} has no SiglusEngine.exe + Scene.pck"
+        );
         None
     }
 }
@@ -223,7 +225,6 @@ fn exercise_title(exe_path: &Path, scene_path: &Path, label: &str) -> TitleTotal
 mod real_bytes;
 
 #[test]
-#[ignore = "real-bytes; requires two declared Siglus corpus roots"]
 fn two_real_siglus_scene_packs_decode_all_system_calls() {
     let (first_exe, first_scene) = real_bytes::require_real_bytes(
         title_paths(FIRST_TITLE_ENV),

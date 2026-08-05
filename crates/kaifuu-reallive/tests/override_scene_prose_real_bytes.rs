@@ -13,7 +13,6 @@ use kaifuu_reallive::{
 };
 
 #[test]
-#[ignore = "SKIP real-bytes; public CI has no registered secondary corpus; ci-real-bytes runs this assertion"]
 fn reports_when_effective_scene_bytes_contain_no_extractable_prose() {
     let Some(data_dir) = second_corpus_data_dir() else {
         real_corpus::require_real_bytes(

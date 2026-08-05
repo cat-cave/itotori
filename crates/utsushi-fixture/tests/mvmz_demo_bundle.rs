@@ -53,10 +53,6 @@ fn read_json(path: &Path) -> Value {
     serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
 }
 
-fn committed_bundle() -> Value {
-    read_json(&bundle_golden_path())
-}
-
 fn built_bundle() -> Value {
     mvmz_demo_bundle_from_paths(
         &patched_proof_path(),
@@ -252,31 +248,4 @@ fn unproven_patched_proof_invalidates_the_bundle() {
     assert_eq!(bundle["bundleValid"], false);
     assert_eq!(bundle["provenEvidenceTier"], "none");
     assert_eq!(check_status(&bundle, CHECK_PATCHED_PROOF_PROVEN_E1), "fail");
-}
-
-/// Regenerate the committed demo-bundle golden from the committed
-/// upstream artifacts. Env-gated so it only writes when explicitly asked.
-#[test]
-#[ignore = "regenerates the committed demo-bundle golden; run manually with REGENERATE_FIXTURES=1"]
-fn regenerate_committed_demo_bundle_golden() {
-    if std::env::var("REGENERATE_FIXTURES").ok().as_deref() != Some("1") {
-        eprintln!(
-            "SKIP regenerate_committed_demo_bundle_golden: set REGENERATE_FIXTURES=1 to write"
-        );
-        return;
-    }
-    let bundle = built_bundle();
-    assert_eq!(
-        bundle["bundleValid"], true,
-        "refusing to write an invalid golden"
-    );
-    let out = bundle_golden_path();
-    fs::create_dir_all(out.parent().unwrap()).unwrap();
-    let mut text = serde_json::to_string_pretty(&bundle).unwrap();
-    text.push('\n');
-    fs::write(&out, text).unwrap();
-    eprintln!("regen: wrote {}", out.display());
-
-    // Sanity: the freshly-written golden round-trips to the built bundle.
-    assert_eq!(committed_bundle(), bundle);
 }

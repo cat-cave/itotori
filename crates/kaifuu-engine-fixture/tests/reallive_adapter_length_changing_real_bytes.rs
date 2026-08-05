@@ -8,8 +8,7 @@
 //! and every goto jump pointer is recalculated to land on an element boundary
 //! (at least one re-based by the length delta), never into the middle of a
 //! command.
-//! Env-gated and STRICT BY DEFAULT: without `private inventory row` the test
-//! is a no-op (it is `#[ignore]`d and only runs under `--include-ignored`).
+//! Feature-gated and strict: a missing registry-selected corpus is a failure.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -126,7 +125,6 @@ fn find_gameexe_ini(root: &Path) -> Option<PathBuf> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row (Sweetie HD)"]
 fn reallive_adapter_length_changing_patch_round_trips_on_primary_corpus() {
     let Ok(root) = corpus_registry::resolve_identity(REAL_GAME_ROOT_ENV)
         .map(|path| path.to_string_lossy().into_owned())
@@ -376,7 +374,6 @@ fn reallive_adapter_length_changing_patch_round_trips_on_primary_corpus() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row (Kanon/plaintext RealLive title)"]
 fn reallive_adapter_extract_still_reads_plaintext_kanon_title() {
     let Ok(root) = corpus_registry::resolve_identity(REAL_GAME_ROOT_2_ENV)
         .map(|path| path.to_string_lossy().into_owned())

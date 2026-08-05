@@ -1,5 +1,4 @@
 [package]
-# @itotori-real-bytes-package
 name = "kaifuu-nexas"
 version = "0.0.0"
 publish = false
@@ -12,10 +11,6 @@ description = "Pure-Rust NeXAS engine reader: deterministic enumerate + extract 
 encoding_rs.workspace = true
 serde = { workspace = true }
 thiserror.workspace = true
-
-[dev-dependencies]
-corpus-registry = { path = "../corpus-registry" }
-sha2.workspace = true
 
 [lints]
 workspace = true

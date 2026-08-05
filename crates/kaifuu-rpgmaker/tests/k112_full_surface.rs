@@ -24,9 +24,6 @@ use kaifuu_rpgmaker::{
     trivial_target,
 };
 
-#[path = "k112_full_surface/real_bytes.rs"]
-mod real_bytes;
-
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
 /// reused from a different (since-removed) worktree would point fixture reads at

@@ -693,7 +693,6 @@ dependencies = [
 name = "kaifuu-kirikiri"
 version = "0.0.0"
 dependencies = [
- "corpus-registry",
  "encoding_rs",
  "flate2",
  "kaifuu-core",
@@ -707,10 +706,8 @@ dependencies = [
 name = "kaifuu-nexas"
 version = "0.0.0"
 dependencies = [
- "corpus-registry",
  "encoding_rs",
  "serde",
- "sha2",
  "thiserror",
 ]
 
@@ -1731,6 +1728,7 @@ dependencies = [
 name = "utsushi-softpal"
 version = "0.0.0"
 dependencies = [
+ "corpus-registry",
  "kaifuu-softpal",
  "serde",
  "tempfile",

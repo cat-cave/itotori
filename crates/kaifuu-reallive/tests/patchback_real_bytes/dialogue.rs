@@ -1,7 +1,6 @@
 use super::*;
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_identical() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(
@@ -208,7 +207,6 @@ fn patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_ide
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn provenance_mismatch_byte_range_emits_typed_error_on_real_bytes() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(
@@ -271,7 +269,6 @@ fn provenance_mismatch_byte_range_emits_typed_error_on_real_bytes() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row env var"]
 fn missing_target_payload_surfaces_typed_schema_invalid_on_real_bytes() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(

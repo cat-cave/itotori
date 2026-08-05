@@ -1,7 +1,6 @@
 use super::*;
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row reallive/1/encrypted"]
 fn g00_corpus_histogram_real_bytes_2450_files() {
     let Some(g00_dir) = real_g00_dir() else {
         real_corpus::require_real_bytes(
@@ -86,7 +85,6 @@ fn g00_corpus_histogram_real_bytes_2450_files() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row reallive/1/encrypted"]
 fn g00_type2_btn000_decodes_header_and_regions() {
     let Some(g00_dir) = real_g00_dir() else {
         real_corpus::require_real_bytes(
@@ -199,20 +197,6 @@ fn g00_type2_btn000_decodes_header_and_regions() {
     assert_eq!(image.regions[0].rect.x2, r0_x2);
     assert_eq!(image.regions[0].rect.y1, r0_y1);
     assert_eq!(image.regions[0].rect.y2, r0_y2);
-}
-
-#[test]
-fn g00_corpus_histogram_no_inventory_row_documents_skip() {
-    // When the inventory row is unavailable, the ignored real-bytes tests
-    // above fail loudly through `require_real_bytes`. This default-lane test
-    // records that the absence is explicit rather than a silent pass.
-    if real_g00_dir().is_some() {
-        return;
-    }
-    eprintln!(
-        "reallive/1/encrypted is unavailable — g00 corpus histogram real-bytes tests require \
-         its private inventory row.",
-    );
 }
 
 #[test]

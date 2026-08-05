@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
 
-export function runCargoTest({ crates, ignored, cwd, env }) {
+export function runCargoTest({ crates, realBytes = false, cwd, env }) {
   const pflags = crates.map((crateName) => `-p ${crateName}`).join(" ");
-  const ignoredFlag = ignored ? " -- --ignored" : "";
-  const cmd = `cargo test ${pflags} --quiet${ignoredFlag}`;
+  const realBytesFeature = realBytes ? " --features real-bytes" : "";
+  const cmd = `cargo test ${pflags} --quiet${realBytesFeature}`;
   const started = Date.now();
   const result = spawnSync(cmd, {
     shell: true,

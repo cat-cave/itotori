@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 description = "Pure-Rust RealLive Scene/SEEN parser-boundary smoke (capability_kaifuu_173). Clean-room, behavior-only; rlvm not linked, not derived."
 
+[features]
+real-bytes = []
+
 [dependencies]
 encoding_rs.workspace = true
 kaifuu-core = { path = "../kaifuu-core" }
@@ -19,6 +22,66 @@ uuid.workspace = true
 
 [dev-dependencies]
 corpus-registry = { path = "../corpus-registry" }
+
+[[test]]
+name = "bridge_purity_real_bytes"
+path = "tests/bridge_purity_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "bridge_real_bytes"
+path = "tests/bridge_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "detect_real_bytes"
+path = "tests/detect_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "framing_pins_real_bytes"
+path = "tests/framing_pins_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "gameexe_real_bytes"
+path = "tests/gameexe_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "multi_corpus_real_bytes"
+path = "tests/multi_corpus_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "override_scene_prose_real_bytes"
+path = "tests/override_scene_prose_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "parse_archive_real_bytes"
+path = "tests/parse_archive_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "patchback_kidoku_roundtrip_real_bytes"
+path = "tests/patchback_kidoku_roundtrip_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "patchback_real_bytes"
+path = "tests/patchback_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "protected_span_second_corpus_real_bytes"
+path = "tests/protected_span_second_corpus_real_bytes.rs"
+required-features = ["real-bytes"]
+
+[[test]]
+name = "scene_1_dispatch_real_bytes"
+path = "tests/scene_1_dispatch_real_bytes.rs"
+required-features = ["real-bytes"]
 
 [lints]
 workspace = true

@@ -1,14 +1,12 @@
 use super::*;
 
 impl RealLiveProfileDetectorAdapter {
-    // depth-N descent that locates the REALLIVEDATA/ engine
-    // asset root inside an arbitrary game directory tree. Some installations
-    // place it at
-    // `<game_root>/<localized-title>/REALLIVEDATA/`
-    // (depth 2 from the install root); pointing `kaifuu detect` at the
-    // install root must walk the title subdir before reporting any
-    // RealLive marker missing. See `docs/audits/real-bytes-validation-2026-06-24.md`
-    // §2.1 and `kaifuu_reallive::detector` for the depth bound rationale.
+    // Depth-N descent locates the RealLive engine asset root inside an
+    // arbitrary game directory tree. Most installations place it at
+    // `<game_root>/<localized-title>/REALLIVEDATA/`; older flat titles place
+    // `SEEN.TXT` and `Gameexe.ini` directly under the localized-title
+    // directory. Pointing `kaifuu detect` at the installer wrapper must find
+    // either layout before reporting a missing marker.
     // I/O errors are swallowed into `None` here because this helper feeds
     // a detector that already tolerates "directory unreadable" elsewhere
     // (e.g. extract / profile flows). The kaifuu-reallive detector
@@ -19,6 +17,7 @@ impl RealLiveProfileDetectorAdapter {
             .ok()
             .flatten()
             .map(|evidence| evidence.reallive_data_path)
+            .or_else(|| nested_flat_reallive_asset_dir(game_dir))
     }
 
     // Returns the effective data-root for SEEN.TXT/Gameexe.ini/extension
@@ -352,4 +351,43 @@ impl RealLiveProfileDetectorAdapter {
             ],
         }
     }
+}
+
+/// Find one unambiguous nested flat RealLive asset directory. This is the
+/// older counterpart to `REALLIVEDATA/`: both required marker files live in
+/// the title directory itself, while the registry may intentionally point at
+/// a one-level installer/version wrapper. Direct-root layouts keep the
+/// existing `None` result so their evidence paths remain byte-stable.
+fn nested_flat_reallive_asset_dir(game_dir: &Path) -> Option<std::path::PathBuf> {
+    const MAX_DESCENT: usize = 2;
+    let mut level = vec![game_dir.to_path_buf()];
+    for _ in 0..MAX_DESCENT {
+        let mut next = Vec::new();
+        let mut matches = Vec::new();
+        for directory in level {
+            let entries = fs::read_dir(&directory).ok()?;
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if has_flat_reallive_markers(&path) {
+                        matches.push(path);
+                    } else {
+                        next.push(path);
+                    }
+                }
+            }
+        }
+        match matches.len() {
+            0 => level = next,
+            1 => return matches.into_iter().next(),
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn has_flat_reallive_markers(directory: &Path) -> bool {
+    case_insensitive_find(directory, REALLIVE_SEEN_TXT_PATH).is_some_and(|seen| seen.is_file())
+        && case_insensitive_find(directory, REALLIVE_GAMEEXE_INI_PATH)
+            .is_some_and(|gameexe| gameexe.is_file())
 }

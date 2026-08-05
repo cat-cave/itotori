@@ -73,11 +73,11 @@ impl GrpRenderOp {
 
     /// Load an image into a DC. Returns whether an image was actually
     /// installed, so callers that present DC0 do not transition the object
-    /// planes for the `???` keep-current sentinel or malformed input.
+    /// planes for a keep-current sentinel or malformed input.
     fn load_image_to(&self, args: &[ExprValue], slot: usize, visible: bool) -> bool {
         // rlvm {grp,rec}(Mask)?(Load|Buffer|Open|OpenBg) take a
-        // StrConstant_T FILENAME first. `???` means "keep current" in
-        // rlvm; we skip the load on that sentinel.
+        // StrConstant_T FILENAME first. `?` means "keep current" in the
+        // observed title data, so it must not become an attempted `?.g00` load.
         let Some(raw) = arg_bytes(args, 0) else {
             self.runtime
                 .push_warning(GraphicsRuntimeWarning::MissingArg {
@@ -87,9 +87,9 @@ impl GrpRenderOp {
             return false;
         };
         let name = match decode_shift_jis(raw) {
-            Some(n) if !n.is_empty() && n != "???" => n,
+            Some(n) if !n.is_empty() && n != "???" && n != "?" => n,
             Some(_) => {
-                // Empty / "???" filename: no image to load; not an error.
+                // Empty / sentinel filename: no image to load; not an error.
                 return false;
             }
             None => {

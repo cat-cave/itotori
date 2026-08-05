@@ -1,17 +1,17 @@
 //! Read-only regression proof for the shipped Softpal structure producer.
 //!
-//! No retail bytes are committed. When the staged corpora are unavailable the
-//! test reports the missing prerequisite and exits cleanly.
+//! No retail bytes are committed. This compile-time `real-bytes` proof requires
+//! both staged corpora and fails loudly when either required input is absent.
 
 use std::fs;
-use std::path::Path;
 use std::process::Command;
 
 use serde_json::Value;
 use tempfile::TempDir;
 
 struct CorpusExpectation {
-    root: &'static str,
+    identity: &'static str,
+    game_subdir: &'static str,
     messages: usize,
     speakers: usize,
     choices: usize,
@@ -19,13 +19,15 @@ struct CorpusExpectation {
 
 const CORPORA: [CorpusExpectation; 2] = [
     CorpusExpectation {
-        root: "/scratch/corpus/softpal-1",
+        identity: "softpal/1/plain",
+        game_subdir: "v21465/game",
         messages: 30_165,
         speakers: 19_990,
         choices: 11,
     },
     CorpusExpectation {
-        root: "/scratch/corpus/softpal-2",
+        identity: "softpal/2/plain",
+        game_subdir: "v60663/game",
         messages: 39_832,
         speakers: 28_665,
         choices: 16,
@@ -36,21 +38,27 @@ const CORPORA: [CorpusExpectation; 2] = [
 fn exports_complete_linear_structure_for_each_staged_corpus() {
     let output_root = TempDir::new().expect("temporary output root");
     for (index, corpus) in CORPORA.iter().enumerate() {
-        let game_root = Path::new(corpus.root);
-        if !game_root.is_dir() {
-            eprintln!(
-                "SKIP softpal structure corpus {}: staged root is unavailable at {}",
-                index + 1,
-                game_root.display()
-            );
-            continue;
-        }
+        let staged_root =
+            corpus_registry::resolve_identity(corpus.identity).unwrap_or_else(|err| {
+                panic!(
+                    "real-bytes proof requires staged Softpal corpus {} ({}): {err}",
+                    index + 1,
+                    corpus.identity
+                )
+            });
+        let game_root = staged_root.join(corpus.game_subdir);
+        assert!(
+            game_root.is_dir(),
+            "real-bytes proof requires corpus {} game root at {}",
+            index + 1,
+            game_root.display()
+        );
         let output = output_root
             .path()
             .join(format!("structure-{}.json", index + 1));
         let command = Command::new(env!("CARGO_BIN_EXE_utsushi-cli"))
             .args(["structure", "--engine", "softpal", "--game-root"])
-            .arg(game_root)
+            .arg(&game_root)
             .args(["--output"])
             .arg(&output)
             .output()

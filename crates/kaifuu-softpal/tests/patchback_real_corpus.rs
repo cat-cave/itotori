@@ -1,12 +1,11 @@
 //! Real-bytes validation of the Softpal **patch-back** against two owned titles,
 //! extracting `SCRIPT.SRC` + `TEXT.DAT` from the same `data.pac` via the crate's
 //! own PAC reader.
-//! `#[ignore]`d and env-gated: set `private inventory row` to the
-//! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
-//! `--ignored`. **No raw copyrighted text lives in this file** — only counts,
+//! Feature-gated for the staged real-byte lane. **No raw copyrighted text lives
+//! in this file** — only counts,
 //! offsets, SHA-256 digests, and short ASCII/kana strings *we* inject.
-//! Wired into the PERIODIC `ci-real-bytes` lane; see `pac_real_corpus.rs` for
-//! the env-gate / skip-when-absent contract.
+//! Wired into the PERIODIC `ci-real-bytes` lane; required staged inputs fail
+//! loudly when unavailable.
 //! PROOF BAR (both titles):
 //! 1. IDENTITY round-trip — patch-back with an EMPTY translation map rebuilds a
 //!    `TEXT.DAT` + `SCRIPT.SRC` that are BYTE-IDENTICAL (SHA-256) to the
@@ -109,7 +108,6 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private inventory row (read-only Softpal research tree)"]
 fn patchback_on_two_softpal_titles() {
     for (game, identity) in GAMES.iter().zip(GAME_IDENTITIES) {
         let root = corpus_registry::resolve_identity(identity)

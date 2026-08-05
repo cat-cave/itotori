@@ -41,35 +41,32 @@ struct ExpectedChoice {
 }
 
 #[test]
-#[ignore = "real-bytes; requires private corpora"]
 fn two_real_siglus_titles_emit_linked_e1_text_and_choice_surfaces() {
-    let Some(first) = corpus_root(FIRST_TITLE_ENV) else {
-        return;
-    };
-    let Some(second) = corpus_root(SECOND_TITLE_ENV) else {
-        return;
-    };
+    let first = corpus_root(FIRST_TITLE_ENV);
+    let second = corpus_root(SECOND_TITLE_ENV);
 
     exercise_title(&first, "siglus-observe-first");
     exercise_title(&second, "siglus-observe-second");
 }
 
-fn corpus_root(variable: &str) -> Option<PathBuf> {
-    let Some(value) = corpus_registry::resolve_identity(variable).ok() else {
-        panic!("real-bytes proof not established: required corpus is unavailable");
-    };
+fn corpus_root(variable: &str) -> PathBuf {
+    let value = corpus_registry::resolve_identity(variable)
+        .unwrap_or_else(|reason| panic!("real-bytes proof not established: {variable}: {reason}"));
     let candidate = value;
     let root = if candidate.is_dir() {
         candidate
     } else {
-        candidate.parent().map(Path::to_path_buf)?
+        candidate.parent().map_or_else(
+            || panic!("real-bytes proof not established: {variable} has no parent directory"),
+            Path::to_path_buf,
+        )
     };
     for logical in ["Scene.pck", "Gameexe.dat", "SiglusEngine.exe"] {
         if !root.join(logical).is_file() {
             panic!("real-bytes proof not established: required corpus asset is unavailable");
         }
     }
-    Some(root)
+    root
 }
 
 fn exercise_title(root: &Path, package_id: &str) {

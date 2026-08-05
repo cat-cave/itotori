@@ -1,5 +1,5 @@
 // @itotori-real-bytes-proof
-//! Env-gated execution-frontier report over two private Siglus corpora.
+//! Feature-gated execution-frontier report over two staged Siglus corpora.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -54,8 +54,8 @@ struct Blocker {
 
 #[test]
 fn two_real_corpora_report_the_execution_frontier_and_preserve_static_overlap() {
-    let Some(first) = root(FIRST) else { return };
-    let Some(second) = root(SECOND) else { return };
+    let first = root(FIRST);
+    let second = root(SECOND);
     for (label, root) in [("corpus 1", first), ("corpus 2", second)] {
         let one = execute_title(&root, label);
         let two = execute_title(&root, label);
@@ -72,8 +72,11 @@ fn two_real_corpora_report_the_execution_frontier_and_preserve_static_overlap() 
             one.instructions > 0,
             "{label}: no real instructions executed"
         );
+        // `af12452d2` made string-member and call-string handling reach the
+        // next real narrative frontier (+245 instructions); stage dispatch is
+        // opt-in and uses the separate state populated below.
         let (expected_instructions, expected_messages, expected_static_text) = match label {
-            "corpus 1" => (66_191, 82, 56_020),
+            "corpus 1" => (66_436, 82, 56_020),
             "corpus 2" => (75_719, 49, 31_404),
             _ => unreachable!("fixed real-corpus labels"),
         };
@@ -113,12 +116,17 @@ fn two_real_corpora_report_the_execution_frontier_and_preserve_static_overlap() 
     }
 }
 
-fn root(variable: &str) -> Option<PathBuf> {
-    let root = corpus_registry::resolve_identity(variable).ok()?;
-    ["Scene.pck", "SiglusEngine.exe"]
-        .iter()
-        .all(|name| root.join(name).is_file())
-        .then_some(root)
+fn root(variable: &str) -> PathBuf {
+    let root = corpus_registry::resolve_identity(variable)
+        .unwrap_or_else(|reason| panic!("REAL-BYTES REQUIRED INPUT: {variable}: {reason}"));
+    for name in ["Scene.pck", "SiglusEngine.exe"] {
+        assert!(
+            root.join(name).is_file(),
+            "REAL-BYTES REQUIRED INPUT: {variable} has no {name} under {}",
+            root.display()
+        );
+    }
+    root
 }
 
 fn execute_title(root: &Path, label: &str) -> Totals {

@@ -30,7 +30,7 @@ realistic decoder/patchback/replay bug it:
 1. applies a targeted one-line **source patch** to the **real** decoder/patchback
    code (never a mock, never a data corruption — the real algorithm is broken);
 2. recompiles and runs the owning engine family's **synthetic** (default,
-   non-`#[ignore]`, no-real-bytes) test suite;
+   featureless, no-real-bytes) test suite;
 3. asserts the synthetic suite turns **RED** (the mutation is _killed_);
 4. **always reverts** the source and verifies it is byte-identical to the
    original (the mutations are never shipped in the real code path — they live

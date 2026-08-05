@@ -1,11 +1,8 @@
 #[test]
-#[ignore = "real-bytes; requires both staged Softpal corpora"]
 fn ranks_every_byte_designated_entry_without_emitting_private_text() {
-    for (index, root) in CORPORA.iter().enumerate() {
-        let root = PathBuf::from(root);
-        let Some(inputs) = inputs(&root) else {
-            panic!("missing staged corpus {} at {}", index + 1, root.display());
-        };
+    for (index, (identity, ordinal, expected_pac_count)) in CORPORA.iter().enumerate() {
+        let root = runtime_root(identity, *ordinal, *expected_pac_count);
+        let inputs = inputs(&root);
         let disassembly = ScriptScan::parse(&inputs.script)
             .expect("script scan")
             .resolve(&TextDat::parse(&inputs.textdat).expect("text pool"));

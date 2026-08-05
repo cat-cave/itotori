@@ -257,7 +257,6 @@ fn verify_syscall_routes_match_section_h(gameexe: &Gameexe) {
 /// Env-gated on `private inventory row` so the harness can
 /// also run without the corpus.
 #[test]
-#[ignore = "requires private inventory row; opt in with --include-ignored"]
 fn syscall_routes_match_reallive_real_bytes() {
     let Some(gameexe) = gameexe_helpers::load_reallive_real_bytes_gameexe() else {
         real_corpus::require_real_bytes(
@@ -409,7 +408,6 @@ fn syscall_routes_synthetic_eight_kinds_pinned() {
 /// assertion below FAIL. (Verified locally by reverting the repair to
 /// the `break` form and observing this test fail, then restoring.)
 #[test]
-#[ignore = "requires private inventory row; opt in with --include-ignored"]
 fn mouseactioncall_scan_discovers_real_bytes_non_contiguous_namespace() {
     let Some(path) = gameexe_helpers::resolve_gameexe_path() else {
         real_corpus::require_real_bytes(

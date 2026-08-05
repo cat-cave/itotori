@@ -9,16 +9,27 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { discoverRealBytesProofs } from "./real-bytes-proof-manifest.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const ENGINE_PROOF_ROLE = "engine";
+const SUPPORT_PROOF_ROLE = "support";
 
 function fail(message) {
   console.error(`real-bytes-lane: ${message}`);
   process.exitCode = 1;
 }
 
+function requestedRole(argv) {
+  if (argv.length === 0) return ENGINE_PROOF_ROLE;
+  if (argv.length === 1 && argv[0] === "--support") return SUPPORT_PROOF_ROLE;
+  fail("expected no arguments or --support");
+  return undefined;
+}
+
 export function selectProofs(entries, allProofs = discoverRealBytesProofs()) {
   const engines = [...new Set(entries.map((entry) => entry.engine ?? entry))];
   return engines.map((engine) => {
-    const proofs = allProofs.filter((proof) => proof.engine === engine);
+    const proofs = allProofs.filter(
+      (proof) => proof.engine === engine && proof.role === ENGINE_PROOF_ROLE,
+    );
     return proofs.length > 0
       ? { name: engine, proofs, outcome: "skipped", reason: "not started" }
       : { name: engine, outcome: "failed", reason: `declared but unproven engine ${engine}` };
@@ -45,10 +56,60 @@ function summary(statuses) {
   return counts;
 }
 
-function main() {
+function executeProof(proof, group) {
+  console.log(`real-bytes-lane: running ${group}/${proof.name}`);
+  const result = spawnSync("cargo", proof.args, {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: process.env,
+  });
+  process.stdout.write(result.stdout ?? "");
+  process.stderr.write(result.stderr ?? "");
+  const executed = executedTestCount(`${result.stdout ?? ""}${result.stderr ?? ""}`);
+  if (result.error) {
+    return { executed, reason: `proof ${proof.name} did not start: ${result.error.message}` };
+  }
+  if (result.status !== 0) {
+    return {
+      executed,
+      reason: `proof ${proof.name} exited ${result.status} after ${executed} executed tests`,
+    };
+  }
+  if (executed === 0) {
+    return {
+      executed,
+      reason: `NAMED FAILURE: declared ${group} proof ${proof.name} executed zero tests`,
+    };
+  }
+  return { executed };
+}
+
+function runSupportProofs(proofs) {
+  let passed = true;
+  for (const proof of proofs) {
+    const result = executeProof(proof, SUPPORT_PROOF_ROLE);
+    if (result.reason !== undefined) {
+      fail(`support ${result.reason}`);
+      passed = false;
+    }
+  }
+  return passed;
+}
+
+function main(argv = process.argv.slice(2)) {
+  const role = requestedRole(argv);
+  if (role === undefined) return;
   const inventoryCheck = spawnSync(
     "cargo",
-    ["test", "-p", "corpus-registry", "--test", "corpus_registry_staged", "--", "--ignored"],
+    [
+      "test",
+      "-p",
+      "corpus-registry",
+      "--features",
+      "real-bytes",
+      "--test",
+      "corpus_registry_staged",
+    ],
     { cwd: repoRoot, env: process.env, stdio: "inherit" },
   );
   if (inventoryCheck.error || inventoryCheck.status !== 0) {
@@ -56,34 +117,25 @@ function main() {
     return;
   }
   const proofs = discoverRealBytesProofs(repoRoot);
-  const statuses = selectProofs([...new Set(proofs.map(({ engine }) => engine))], proofs);
+  const engineProofs = proofs.filter((proof) => proof.role === ENGINE_PROOF_ROLE);
+  const supportProofs = proofs.filter((proof) => proof.role === SUPPORT_PROOF_ROLE);
+  // The engine receipt is the periodic oracle's compact, named proof. Keep it
+  // ahead of application evidence; the full support sweep is manifest-derived
+  // too, but runs after that evidence via the explicit --support invocation.
+  if (role === SUPPORT_PROOF_ROLE) {
+    runSupportProofs(supportProofs);
+    return;
+  }
+  const statuses = selectProofs([...new Set(engineProofs.map(({ engine }) => engine))], proofs);
   for (const status of statuses) {
     if (status.outcome === "failed") continue;
     let executed = 0;
     for (const proof of status.proofs) {
-      console.log(`real-bytes-lane: running ${status.name}/${proof.name}`);
-      const result = spawnSync("cargo", proof.args, {
-        cwd: repoRoot,
-        encoding: "utf8",
-        env: process.env,
-      });
-      process.stdout.write(result.stdout ?? "");
-      process.stderr.write(result.stderr ?? "");
-      const proofExecuted = executedTestCount(`${result.stdout ?? ""}${result.stderr ?? ""}`);
-      executed += proofExecuted;
-      if (result.error) {
+      const result = executeProof(proof, status.name);
+      executed += result.executed;
+      if (result.reason !== undefined) {
         status.outcome = "failed";
-        status.reason = `proof ${proof.name} did not start: ${result.error.message}`;
-        break;
-      }
-      if (result.status !== 0) {
-        status.outcome = "failed";
-        status.reason = `proof ${proof.name} exited ${result.status} after ${proofExecuted} executed tests`;
-        break;
-      }
-      if (proofExecuted === 0) {
-        status.outcome = "failed";
-        status.reason = `NAMED FAILURE: declared ${status.name} proof ${proof.name} executed zero tests`;
+        status.reason = result.reason;
         break;
       }
     }

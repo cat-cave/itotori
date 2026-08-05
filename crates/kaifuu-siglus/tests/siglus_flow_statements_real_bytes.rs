@@ -5,7 +5,7 @@
 //! Copyrighted title bytes stay outside this repository; the two game roots are
 //! supplied via `private inventory row` / `_2` (each a directory — or a
 //! path inside one — holding `SiglusEngine.exe` + `Scene.pck`). When either root
-//! is absent the test panics with a named `REAL-BYTES SKIP` receipt.
+//! is absent the test panics with a named `REAL-BYTES REQUIRED INPUT` receipt.
 //!
 //! With both present it proves, for every scene of both owned titles
 //! (siglus_corpus_one = 298, siglus_corpus_two = 278):
@@ -50,7 +50,9 @@ fn title_paths(variable: &str) -> Option<(PathBuf, PathBuf)> {
     let value = corpus_registry::resolve_identity(variable)
         .ok()
         .or_else(|| {
-            eprintln!("SKIP siglus flow-statements real bytes: {variable} is unset");
+            eprintln!(
+                "REAL-BYTES REQUIRED INPUT: siglus flow-statements real bytes: {variable} is unset"
+            );
             None
         })?;
     let root = value;
@@ -65,7 +67,7 @@ fn title_paths(variable: &str) -> Option<(PathBuf, PathBuf)> {
         Some((exe, scene))
     } else {
         eprintln!(
-            "SKIP siglus flow-statements real bytes: {variable} has no SiglusEngine.exe + \
+            "REAL-BYTES REQUIRED INPUT: siglus flow-statements real bytes: {variable} has no SiglusEngine.exe + \
              Scene.pck under {}",
             dir.display()
         );
@@ -300,7 +302,6 @@ fn assert_title_invariants(totals: &TitleTotals, label: &str) {
 mod real_bytes;
 
 #[test]
-#[ignore = "real-bytes; requires two declared Siglus corpus roots"]
 fn two_real_siglus_scene_packs_decode_all_statements_and_flow() {
     let (first_exe, first_scene) = real_bytes::require_real_bytes(
         title_paths(FIRST_TITLE_ENV),

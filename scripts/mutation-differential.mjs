@@ -1,56 +1,34 @@
 #!/usr/bin/env node
 // synthetic-fixture-differential-validation — MUTATION harness.
-//
 // The guardrail that makes single-mode synthetic CI strict-proof-compliant.
 // It proves the SYNTHETIC test suite is AS STRONG AS the ~30-minute real-bytes
 // lanes at CATCHING REGRESSIONS, so per-gate CI can run the fast, copyright-free
 // synthetic fixtures instead of re-parsing whole real archives WITHOUT losing
 // regression-detection power.
-//
 // HOW IT WORKS (source-level mutation runner — the faithful, strict-proof form):
 //   For each realistic decoder/patchback/replay bug in MUTATIONS, the runner
 //   applies a targeted one-line SOURCE PATCH to the decoder/patchback code,
 //   recompiles, and runs the owning engine family's SYNTHETIC (default,
-//   non-`#[ignore]`, no-real-bytes) test suite. The synthetic suite MUST turn
+//   featureless, no-real-bytes) test suite. The synthetic suite MUST turn
 //   red (the mutation is "killed"). A mutation that the synthetic suite lets
 //   pass ("escaped") is a coverage hole and FAILS this lane loud.
-//
-//   The mutations are NEVER applied to the LIVE in-tree source. The runner first
-//   copies the workspace into a throwaway per-run SANDBOX (its own source tree +
-//   its own isolated CARGO_TARGET_DIR) and mutates/recompiles ONLY inside that
-//   sandbox, which is deleted when the run ends. The live `crates/**/src` is
-//   therefore byte-identical before and after — never opened for write — so a
-//   CONCURRENTLY-running per-gate lane (e.g. `just check`'s source-reading
-//   self-test, or `cargo fmt/clippy`) can never observe a half-mutated source
-//   file. This removes the earlier in-place-mutation concurrency race
-//   (mutation-differential-source-mutation-concurrency-race) at the root: two
-//   full-CI runs sharing a checkout no longer collide, because each run mutates
-//   only its own disposable copy, never the shared tree.
-//
-// WHY 100% SYNTHETIC KILL ⇒ synthetic >= real: the mutation set is drawn from
-//   the representative real-regression classes, each landing in a code path the
-//   real-bytes lanes also exercise (see scripts/coverage-parity.mjs). If the
-//   synthetic suite kills EVERY mutation, then trivially
-//   `synthetic_kills (=N) >= real_kills (<=N)` — there is no mutation real could
-//   catch that synthetic misses, because synthetic catches all of them. The
-//   optional `--with-real` mode runs the real-bytes lane per mutation as
-//   corroborating evidence (needs the staged corpora + env), but the proof does
-//   not depend on it.
-//
+//   The runner mutates only a throwaway workspace copy with its own
+//   CARGO_TARGET_DIR; the live tree is never opened for write, so concurrent
+//   lanes cannot observe a half-mutated source or race with the harness.
+// WHY 100% SYNTHETIC KILL ⇒ synthetic >= real: mutations target representative
+//   real-regression classes (see scripts/coverage-parity.mjs), and `--with-real`
+//   is corroborating evidence rather than a prerequisite for the proof.
 // Exit codes:
 //   0 — every mutation killed by the synthetic suite (guardrail live)
 //   1 — a mutation ESCAPED the synthetic suite (coverage hole), an invalid
 //       (non-compiling) mutation, or a non-green baseline. Details to stderr.
-//
 // Run:
 //   node scripts/mutation-differential.mjs            # synthetic kill matrix
 //   node scripts/mutation-differential.mjs --list     # print the mutation set
 //   node scripts/mutation-differential.mjs --json      # machine-readable report
 //   node scripts/mutation-differential.mjs --with-real # + real-bytes corroboration
 //   node scripts/mutation-differential.mjs --only header_wrong_offset,choice_drop_option
-//
 // The nix devshell exposes the supported cargo toolchain on PATH.
-
 import {
   cpSync,
   existsSync,
@@ -203,9 +181,10 @@ export const MUTATIONS = [
 
 // Real-byte corroboration is the union of each family's synthetic guard crates.
 // Keep it derived so a new family mutation cannot require a second, shared registry edit.
-export function deriveRealGuards(mutations) {
+export function deriveRealGuards(mutations, unavailableFamilies = new Set()) {
   const cratesByFamily = new Map();
   for (const mutation of mutations) {
+    if (unavailableFamilies.has(mutation.realFamily)) continue;
     const crates = cratesByFamily.get(mutation.realFamily) ?? new Set();
     for (const crate of mutation.guardCrates) crates.add(crate);
     cratesByFamily.set(mutation.realFamily, crates);
@@ -214,23 +193,24 @@ export function deriveRealGuards(mutations) {
     Object.fromEntries(
       [...cratesByFamily].map(([family, crates]) => [
         family,
-        Object.freeze({ crates: Object.freeze([...crates].toSorted()), ignored: true }),
+        Object.freeze({ crates: Object.freeze([...crates].toSorted()), realBytes: true }),
       ]),
     ),
   );
 }
 
-export const REAL_GUARDS = deriveRealGuards(MUTATIONS);
+// The synthetic mutation matrix still spans this decoder family, but no
+// corresponding corpus is staged. `--with-real` must reject that request
+// loudly rather than silently rerunning its featureless synthetic tests.
+export const UNAVAILABLE_REAL_GUARD_FAMILIES = new Set(["rpg_maker_mv_mz"]);
+
+export const REAL_GUARDS = deriveRealGuards(MUTATIONS, UNAVAILABLE_REAL_GUARD_FAMILIES);
 
 // ---------------------------------------------------------------------------
 // Disposable per-run sandbox.
 //
-// The mutation runner NEVER writes to the live in-tree source. It copies the
-// workspace into a throwaway directory (excluding heavy/irrelevant build caches)
-// with its OWN isolated CARGO_TARGET_DIR, mutates + recompiles only there, then
-// deletes the whole sandbox. Because the copy is unique per run (mkdtemp), two
-// concurrent full-CI runs sharing a checkout never collide, and no concurrent
-// lane can ever read a source file this runner has mid-mutated.
+// A unique throwaway copy holds mutations and an isolated CARGO_TARGET_DIR;
+// the live tree stays untouched and concurrent runs cannot collide.
 // ---------------------------------------------------------------------------
 const SANDBOX_SKIP_DIRS = new Set([
   ".git",
@@ -308,7 +288,7 @@ function runOne(mutation, { withReal, sandbox }) {
 
     const synth = runCargoTest({
       crates: mutation.guardCrates,
-      ignored: false,
+      realBytes: false,
       cwd: sandbox.root,
       env: sandbox.env,
     });
@@ -321,7 +301,7 @@ function runOne(mutation, { withReal, sandbox }) {
       if (guard) {
         const real = runCargoTest({
           crates: guard.crates,
-          ignored: guard.ignored,
+          realBytes: guard.realBytes,
           cwd: sandbox.root,
           env: sandbox.env,
         });
@@ -392,6 +372,23 @@ function main() {
 
   const mutations = selectMutations(opts.only);
 
+  if (opts.withReal) {
+    const unavailable = [
+      ...new Set(
+        mutations
+          .map(({ realFamily }) => realFamily)
+          .filter((family) => UNAVAILABLE_REAL_GUARD_FAMILIES.has(family)),
+      ),
+    ];
+    if (unavailable.length > 0) {
+      process.stderr.write(
+        "mutation-differential: --with-real has no staged real-byte proof for " +
+          `${unavailable.join(", ")}; refusing synthetic-only corroboration.\n`,
+      );
+      return 1;
+    }
+  }
+
   // Stage a throwaway per-run sandbox copy of the workspace up front; ALL cargo
   // work (baselines + mutations) runs there so the live tree is never mutated.
   const sandbox = prepareSandbox();
@@ -406,7 +403,7 @@ function main() {
     const uniqueGuards = new Map();
     for (const m of mutations) uniqueGuards.set(guardSignature(m.guardCrates), m.guardCrates);
     for (const [sig, crates] of uniqueGuards) {
-      const base = runCargoTest({ crates, ignored: false, cwd: sandbox.root, env: sandbox.env });
+      const base = runCargoTest({ crates, realBytes: false, cwd: sandbox.root, env: sandbox.env });
       const green = base.status === 0;
       if (!opts.json) {
         process.stderr.write(

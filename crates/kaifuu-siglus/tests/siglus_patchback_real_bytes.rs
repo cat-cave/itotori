@@ -1,7 +1,7 @@
 //! Env-gated, two-installation proof of bundle-driven `Scene.pck` patchback.
 //!
 //! The private corpus is optional: when either configured root is absent this
-//! test emits a named `REAL-BYTES SKIP` panic. With both roots present, each installation proves an
+//! test emits a named `REAL-BYTES REQUIRED INPUT` panic. With both roots present, each installation proves an
 //! identity bundle is byte-identical, one UTF-16 string-table edit survives a
 //! full re-decode/re-decompile, and a stale source hash is rejected.
 
@@ -29,7 +29,9 @@ fn installation_paths(variable: &str) -> Option<(PathBuf, PathBuf, PathBuf)> {
     let root = corpus_registry::resolve_identity(variable)
         .ok()
         .or_else(|| {
-            eprintln!("SKIP siglus patchback real bytes: {variable} is unset");
+            eprintln!(
+                "REAL-BYTES REQUIRED INPUT: siglus patchback real bytes: {variable} is unset"
+            );
             None
         })?;
     let directory = if root.is_dir() {
@@ -44,7 +46,7 @@ fn installation_paths(variable: &str) -> Option<(PathBuf, PathBuf, PathBuf)> {
         Some((exe, scene, gameexe))
     } else {
         eprintln!(
-            "SKIP siglus patchback real bytes: {variable} lacks SiglusEngine.exe + Scene.pck + Gameexe.dat under {}",
+            "REAL-BYTES REQUIRED INPUT: siglus patchback real bytes: {variable} lacks SiglusEngine.exe + Scene.pck + Gameexe.dat under {}",
             directory.display()
         );
         None
@@ -200,7 +202,6 @@ fn translated_json(source: &serde_json::Value, changed: Option<(&str, &str)>) ->
 mod real_bytes;
 
 #[test]
-#[ignore = "real-bytes; requires two declared Siglus corpus roots"]
 fn two_real_siglus_installations_patch_back_byte_correctly() {
     let (first_exe, first_scene, first_gameexe) = real_bytes::require_real_bytes(
         installation_paths(FIRST_ROOT_ENV),

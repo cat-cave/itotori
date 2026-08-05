@@ -7,33 +7,30 @@
 //!   flag `_` = plaintext).
 //!   Together they exercise both TEXT.DAT encryption-flag states and both the
 //!   Pal.dll and PAC-only detection paths.
-//!   `#[ignore]`d by default; run explicitly against the read-only corpus:
+//!   Feature-gated for the staged real-byte lane. Invoke it with:
 //!   ```text
-//!   private inventory row=/scratch/softpal-research \
-//!   cargo test -p kaifuu-engine-fixture \
-//!   --test live_softpal_detector_test -- --ignored --nocapture
+//!   cargo test -p kaifuu-engine-fixture --features real-bytes \
+//!   --test live_softpal_detector_test --nocapture
 //!   NEVER prints raw copyrighted bytes: file names, counts, sizes, container
 //!   magics, and the single-byte TEXT.DAT enc flag (a format field) only.
 //!
 //! Wired into the PERIODIC `ci-real-bytes` lane (the wider
-//! `-p kaifuu-engine-fixture -- --ignored` invocation already picks this up);
-//! soft-skips when `private inventory row` is unset (skip-when-absent
-//! is legitimate for the periodic lane — the Softpal corpus lives under its
-//! own root, separate from the RealLive/RPG-Maker/vault tree).
+//! `-p kaifuu-engine-fixture --features real-bytes` invocation picks this up).
 
 use std::path::{Path, PathBuf};
 
 use kaifuu_core::{DetectRequest, EngineAdapter};
 use kaifuu_engine_fixture::SoftpalProfileDetectorAdapter;
 
-/// Root that holds two extracted installs. Gated on an explicit env var so
-/// nothing runs against the corpus unless a human opts in.
-fn require_corpus_root() -> Option<PathBuf> {
-    let root = corpus_registry::resolve_identity("softpal/1/plain")
-        .map(|path| path.to_string_lossy().into_owned())
-        .ok()?;
-    let path = PathBuf::from(root);
-    path.is_dir().then_some(path)
+/// Root that holds two extracted installs selected by the private registry.
+fn require_corpus_root() -> PathBuf {
+    let path = corpus_registry::resolve_identity("softpal/1/plain")
+        .unwrap_or_else(|reason| panic!("real-bytes proof not established: {reason}"));
+    assert!(
+        path.is_dir(),
+        "real-bytes proof not established: required corpus directory is unavailable"
+    );
+    path
 }
 
 /// Recursively find the directory under `root` that best represents the real
@@ -159,20 +156,14 @@ fn confirm_softpal(label: &str, title_root: &Path) {
 }
 
 #[test]
-#[ignore = "requires private inventory row=/scratch/softpal-research (read-only owned Softpal corpus)"]
 fn first_staged_install_detects_softpal() {
-    let Some(root) = require_corpus_root() else {
-        panic!("real-bytes proof not established: required corpus is unavailable");
-    };
+    let root = require_corpus_root();
     confirm_staged_install(&root, 0);
 }
 
 #[test]
-#[ignore = "requires private inventory row=/scratch/softpal-research (read-only owned Softpal corpus)"]
 fn second_staged_install_detects_softpal() {
-    let Some(root) = require_corpus_root() else {
-        panic!("real-bytes proof not established: required corpus is unavailable");
-    };
+    let root = require_corpus_root();
     confirm_staged_install(&root, 1);
 }
 

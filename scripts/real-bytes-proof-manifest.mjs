@@ -57,18 +57,20 @@ function readDeclaration(path, relativePath) {
       ? Object.keys(value).toSorted(lexical)
       : [];
   if (
-    keys.length !== 3 ||
+    keys.length !== 4 ||
     keys[0] !== "engine" ||
     keys[1] !== "mode" ||
-    keys[2] !== "schema" ||
+    keys[2] !== "role" ||
+    keys[3] !== "schema" ||
     value.schema !== REAL_BYTES_PROOF_SCHEMA ||
     typeof value.engine !== "string" ||
     !identifier.test(value.engine) ||
-    typeof value.mode !== "string"
+    value.mode !== "feature" ||
+    (value.role !== "engine" && value.role !== "support")
   ) {
     throw new Error(`real-bytes proof declaration is invalid: ${relativePath}`);
   }
-  return Object.freeze({ engine: value.engine, mode: value.mode });
+  return Object.freeze({ engine: value.engine, mode: value.mode, role: value.role });
 }
 
 function packageName(manifestPath) {
@@ -103,9 +105,8 @@ function targetDetails(repositoryRoot, sourcePath, sourceRelative) {
 }
 
 function cargoArgs(proof) {
-  const args = ["test", "-p", proof.package];
+  const args = ["test", "-p", proof.package, "--features", "real-bytes"];
   if (proof.target !== undefined) args.push("--test", proof.target);
-  if (proof.mode === "all-ignored" || proof.mode === "ignored") args.push("--", "--ignored");
   return Object.freeze(args);
 }
 
@@ -168,19 +169,14 @@ export function discoverRealBytesProofs(root = defaultRoot) {
     let packageValue;
     let target;
     if (kind === "package") {
-      if (declarationValue.mode !== "all-ignored") {
-        throw new Error(`real-bytes package declaration must use all-ignored mode: ${declaration}`);
-      }
       packageValue = packageName(ownerPath);
     } else {
-      if (declarationValue.mode !== "default" && declarationValue.mode !== "ignored") {
-        throw new Error(`real-bytes target declaration has unknown mode: ${declaration}`);
-      }
       ({ package: packageValue, target } = targetDetails(repositoryRoot, ownerPath, owner));
     }
     const proof = Object.freeze({
       engine: declarationValue.engine,
       mode: declarationValue.mode,
+      role: declarationValue.role,
       package: packageValue,
       ...(target === undefined ? {} : { target }),
     });

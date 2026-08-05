@@ -2,7 +2,7 @@
 // @itotori-meta-check
 // strictness-ci-guard-bans-laxity-reintroduction — CI guard that makes the
 // strictness pass self-enforcing. Once the strictness cluster tightened the
-// repo (reasons on every `#[ignore]`/`#[allow(...)]`, max-strict clippy,
+// repo (no `#[ignore]`, reasoned `#[allow(...)]`, max-strict clippy,
 // `deny`-level bans, strict real-bytes floors, a full real-bytes CI lane),
 // nothing may silently reintroduce the old laxity. This script greps the
 // Rust tree + build config for the forbidden-laxity shapes and fails the
@@ -13,8 +13,7 @@
 // scripts/audit-strictness.test.mjs exercises every rule below.
 //
 // Rules:
-//   1. Bare `#[ignore]` with no reason — every ignore must be
-//      `#[ignore = "…"]`.
+//   1. Any direct or cfg_attr-produced `ignore` attribute in `crates/`.
 //   2. `#[allow(...)]` / `#![allow(...)]` without an inline `// reason:` in the
 //      attached comment block (mirrors the keystone's inventory.rs example).
 //   3. `deny.toml` `multiple-versions` / `wildcards` bans left at anything
@@ -23,7 +22,7 @@
 //      `crates/**/tests/*_real_bytes.rs`, unless the line carries an inline
 //      justification (`// reason:` / `// justification:` / a
 //      `TODO(strictness-fix-relaxed-floors-to-strict)` reference).
-//   5. A real-bytes `#[ignore]` / `*_real_bytes.rs` test in a crate that the
+//   5. A `*_real_bytes.rs` test in a crate that the
 //      `ci-real-bytes` justfile lane (the periodic ground-truth oracle) does
 //      NOT run, and that is not on the transitional allowlist owned by
 //      `strictness-invert-real-bytes-default-and-full-crate-coverage`.
@@ -48,6 +47,7 @@ import { dirname, join, resolve } from "node:path";
 import { execSync } from "node:child_process";
 
 import { discoverRealBytesProofs } from "./real-bytes-proof-manifest.mjs";
+import { findRustIgnoreAttributes } from "./rust-ignore-attribute.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
@@ -79,29 +79,21 @@ function isCommentLine(trimmed) {
   return trimmed.startsWith("//");
 }
 
-// ---- Rule 1: bare `#[ignore]` -------------------------------------------
-// A real bare ignore attribute is a line whose ENTIRE trimmed content is
-// `#[ignore]` (optionally with a trailing `//` comment). This deliberately
-// does NOT match `#[ignore = "…"]` (reasoned) nor `#[ignore]`-in-prose such as
-// a doc comment or a string literal continuation (`#[ignore]-gated …`), which
-// carry trailing non-attribute text.
-const BARE_IGNORE = /^#\[\s*ignore\s*\]\s*(?:\/\/.*)?$/u;
-
-export function checkBareIgnore(path, contents) {
-  const found = [];
-  const lines = contents.split(/\r?\n/u);
-  for (let i = 0; i < lines.length; i += 1) {
-    const trimmed = lines[i].trim();
-    if (BARE_IGNORE.test(trimmed)) {
-      found.push({
-        file: path,
-        line: i + 1,
-        rule: "bare #[ignore] without a reason",
-        excerpt: trimmed.slice(0, 200),
-      });
-    }
-  }
-  return found;
+// ---- Rule 1: Rust `ignore` attributes -----------------------------------
+export function checkRustIgnore(path, contents) {
+  return findRustIgnoreAttributes(contents).map((offset) => {
+    const line = contents.slice(0, offset).split("\n").length;
+    const lineEnd = contents.indexOf("\n", offset);
+    return {
+      file: path,
+      line,
+      rule: "Rust #[ignore] attribute is forbidden",
+      excerpt: contents
+        .slice(offset, lineEnd < 0 ? contents.length : lineEnd)
+        .trim()
+        .slice(0, 200),
+    };
+  });
 }
 
 // ---- Rule 2: unreasoned `#[allow(...)]` ----------------------------------
@@ -244,38 +236,67 @@ export function checkRelaxedFloors(path, contents) {
 }
 
 // ---- Rule 5: real-bytes crate not covered by the lane --------------------
-// Parse the `-p <crate>` set the `ci-real-bytes` recipe passes to `cargo test`.
-// Adjacent real-byte proof declarations own additional package entries, so
-// derive those package names too; either source is coverage by the periodic lane.
-export function parseLaneCrates(justfileText) {
-  const lines = justfileText.replaceAll("\\n", "\n").split(/\r?\n/u);
-  const delegated = justfileText.includes('if (selector === "real-bytes")');
-  let inRecipe = delegated;
-  const crates = new Set();
-  let cargoCommand = "";
-  for (const line of lines) {
-    if (/^ci-real-bytes\s*:/u.test(line)) {
-      inRecipe = true;
-      continue;
-    }
-    if (inRecipe && !delegated && /^\S/u.test(line)) break; // next top-level recipe
-    if (!inRecipe) continue;
+// Only a cargo command that explicitly enables `real-bytes` earns coverage.
+// This avoids crediting a package merely because an unrelated developer command
+// happens to run `cargo test -p <crate>` elsewhere in the dispatcher.
+function realBytesRecipeText(commandSurface) {
+  const normalized = commandSurface.replaceAll("\\n", "\n");
+  const selector = 'if (selector === "real-bytes")';
+  const selectorStart = normalized.indexOf(selector);
+  if (selectorStart >= 0) {
+    const nextSelector = normalized.indexOf("if (selector ===", selectorStart + selector.length);
+    return normalized.slice(selectorStart, nextSelector < 0 ? normalized.length : nextSelector);
+  }
+
+  const lines = normalized.split(/\r?\n/u);
+  const recipeStart = lines.findIndex((line) => /^ci-real-bytes\s*:/u.test(line));
+  if (recipeStart < 0) return "";
+  const recipe = [];
+  for (const line of lines.slice(recipeStart + 1)) {
+    if (/^\S/u.test(line)) break;
+    recipe.push(line);
+  }
+  return recipe.join("\n");
+}
+
+function cargoTestCommands(commandSurface) {
+  const commands = [];
+  let command = "";
+  for (const line of commandSurface.split(/\r?\n/u)) {
     const trimmed = line.trim();
-    if (
-      !cargoCommand &&
-      !trimmed.startsWith("#") &&
-      /\bcargo\s+(?:test|nextest\s+run)\b/u.test(trimmed)
-    ) {
-      cargoCommand = trimmed;
-    } else if (cargoCommand) {
-      cargoCommand += ` ${trimmed}`;
+    if (!command) {
+      const cargoStart = trimmed.search(/\bcargo\s+(?:test|nextest\s+run)\b/u);
+      if (cargoStart < 0 || trimmed.startsWith("#")) continue;
+      command = trimmed.slice(cargoStart);
+    } else {
+      command += ` ${trimmed}`;
     }
-    if (cargoCommand && !trimmed.endsWith("\\")) {
-      for (const match of cargoCommand.matchAll(/(?:^|\s)(?:-p|--package)(?:\s+|=)([^\s\\]+)/gu)) {
-        crates.add(match[1]);
-      }
-      cargoCommand = "";
+    if (!trimmed.endsWith("\\")) {
+      commands.push(command);
+      command = "";
     }
+  }
+  return commands;
+}
+
+function commandEnablesRealBytes(command) {
+  const features = /(?:^|\s)--features(?:\s+|=)(?:"([^"]*)"|'([^']*)'|([^\s]+))/gu;
+  return [...command.matchAll(features)].some((match) =>
+    (match[1] ?? match[2] ?? match[3] ?? "").split(/[\s,]+/u).includes("real-bytes"),
+  );
+}
+
+function packageNames(command) {
+  return [...command.matchAll(/(?:^|\s)(?:-p|--package)(?:\s+|=)([^\s\\]+)/gu)].map(
+    (match) => match[1],
+  );
+}
+
+export function parseLaneCrates(commandSurface) {
+  const crates = new Set();
+  for (const command of cargoTestCommands(realBytesRecipeText(commandSurface))) {
+    if (!commandEnablesRealBytes(command)) continue;
+    for (const crate of packageNames(command)) crates.add(crate);
   }
   return crates;
 }
@@ -292,21 +313,12 @@ export function proofPackages(proofs) {
 }
 
 // A crate "owns a real-bytes test" if it contains a `*_real_bytes.rs` file OR
-// a real `#[ignore = "…"]` attribute whose reason names a live external
-// corpus (a private inventory row or `ITOTORI_VAULT_ROOT`),
-// wired into the periodic `ci-real-bytes` lane with skip-when-absent at the
-// lane level).
-const IGNORE_REASON = /^#\[\s*ignore\s*=\s*"([^"]*)"/u;
-const LIVE_CORPUS_ENV = /private inventory row|ITOTORI_VAULT_ROOT/u;
+// a `*_real_bytes.rs` file. A reintroduced direct ignore is rejected by rule
+// 1, rather than being treated as alternate proof ownership.
 
 export function crateOwnsRealBytes(path, contents) {
-  if (isRealBytesTestPath(path)) return true;
-  const lines = contents.split(/\r?\n/u);
-  for (const line of lines) {
-    const m = line.trim().match(IGNORE_REASON);
-    if (m && LIVE_CORPUS_ENV.test(m[1])) return true;
-  }
-  return false;
+  void contents;
+  return isRealBytesTestPath(path);
 }
 
 function crateOfPath(path) {
@@ -333,8 +345,11 @@ export function evaluateRealBytesCoverage(realBytesCrates, laneCrates) {
 }
 
 // ---------------------------------------------------------------------------
-function listTrackedRustFiles() {
-  const out = execSync("git ls-files crates", { cwd: repoRoot, encoding: "utf8" });
+function listWorkingRustFiles() {
+  const out = execSync("git ls-files --cached --others --exclude-standard crates", {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
   return out
     .split("\n")
     .map((l) => l.trim())
@@ -352,12 +367,12 @@ function readRepoFile(relPath) {
 function runAudit() {
   const violations = [];
 
-  const rustFiles = listTrackedRustFiles();
+  const rustFiles = listWorkingRustFiles();
   const realBytesCrates = new Set();
   for (const relPath of rustFiles) {
     const contents = readRepoFile(relPath);
     if (contents === undefined) continue;
-    violations.push(...checkBareIgnore(relPath, contents));
+    violations.push(...checkRustIgnore(relPath, contents));
     violations.push(...checkUnreasonedAllow(relPath, contents));
     violations.push(...checkRelaxedFloors(relPath, contents));
     if (crateOwnsRealBytes(relPath, contents)) {
@@ -399,7 +414,7 @@ function runAudit() {
     process.stderr.write(
       `strictness audit failed: ${violations.length} laxity ` +
         `pattern${violations.length === 1 ? "" : "s"} found.\n` +
-        "The strictness pass is self-enforcing: no `#[ignore]`/`#[allow]` without a reason, " +
+        "The strictness pass is self-enforcing: no Rust `#[ignore]`, no `#[allow]` without a reason, " +
         "no relaxed real-bytes floors, deny.toml bans locked at `deny`, and every real-bytes " +
         "crate must be in the ci-real-bytes lane (or its transitional allowlist).\n\n",
     );
