@@ -8,6 +8,32 @@ Mutating repositories require a permission-checked actor. See
 `docs/permissions.md` for the current permission matrix and alpha/local
 bootstrap actor model.
 
+## Migrations
+
+Schema changes live as forward-only SQL files under `migrations/`. The apply
+list is **discovered from the directory** (lexicographic order on the filename);
+there is no shared ordinal counter and no hand-edited registry array for authors
+to fight over.
+
+**Do not invent the next sequential number** (`0122_…`). Two concurrent branches
+both minting `0122_*.sql` merge cleanly in git and produce a silent semantic
+collision. New work uses a **stamp ordinal**:
+
+```
+YYYYMMDDHHmmssxxxx_slug.sql
+```
+
+UTC wall time plus four hex entropy bits. Allocate with:
+
+```sh
+node scripts/new-db-migration.mjs <slug>
+```
+
+Apply order stays deterministic: files sort lexicographically, so stamps order
+by time and legacy `NNNN_…` files (history through `0121`) stay first. The
+tier-0 guard `scripts/migration-ordinal-guard.mjs` fails the build if two files
+share an ordinal prefix — that is the hard limit (exactly one file per ordinal).
+
 ## Testing
 
 The DB-backed test suites require a live Postgres instance. The connection
