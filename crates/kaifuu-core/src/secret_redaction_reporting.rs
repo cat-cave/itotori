@@ -215,6 +215,12 @@ pub(crate) fn token_contains_local_absolute_path(token: &str) -> bool {
     if token.is_empty() {
         return false;
     }
+    // A bare "/" or "\\" is a prose separator (e.g. "Pal.dll / PAC+scripts"),
+    // not a filesystem path. Treating it as absolute blanked softpal operator
+    // remediations under report redaction.
+    if matches!(token, "/" | "\\") {
+        return false;
+    }
     if is_local_absolute_path(token) || path_has_windows_drive_prefix_component(token) {
         return true;
     }

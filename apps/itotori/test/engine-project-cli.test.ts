@@ -216,6 +216,78 @@ describe("engine-project primary CLI", () => {
     throw new Error("Expected a typed downstream native failure.");
   });
 
+  it("engine-project chokepoint keeps softpal diagnostics and span-redacts content only", async () => {
+    const directory = temporaryDirectory();
+    const projectPath = writeProject(directory, "softpal-diag", projectDocument("softpal"));
+    const softpalDiagnostic =
+      "kaifuu.softpal.extract.game_root_required: --game-root <PATH> required";
+    const content = "PRIVATE-SOFTPAL-CONTENT-SENTINEL";
+    const mixed =
+      `kaifuu.softpal.decode.failed: source=${content}; ` + "offset=42 path=/synthetic/source";
+    const secret = "operator-api-key-sentinel-softpal";
+
+    const plain = cliDependencies([], {
+      status: 1,
+      stdout: "",
+      stderr: softpalDiagnostic,
+    });
+    try {
+      await runItotoriCliCommand(["extract", "--project", projectPath], plain);
+      throw new Error("Expected softpal native failure.");
+    } catch (error: unknown) {
+      expect(error).toBeInstanceOf(EngineProjectNativeCommandError);
+      if (error instanceof EngineProjectNativeCommandError) {
+        expect(error.stderr).toBe(softpalDiagnostic);
+        expect(error.message).toContain(softpalDiagnostic);
+        expect(error.message).not.toMatch(/REDACTED_CONTENT kind=diagnostic/);
+      }
+    }
+
+    const span = cliDependencies([], { status: 1, stdout: "", stderr: mixed });
+    try {
+      await runItotoriCliCommand(["extract", "--project", projectPath], span);
+      throw new Error("Expected content-bearing native failure.");
+    } catch (error: unknown) {
+      expect(error).toBeInstanceOf(EngineProjectNativeCommandError);
+      if (error instanceof EngineProjectNativeCommandError) {
+        expect(error.stderr).toContain("offset=42");
+        expect(error.stderr).toContain("path=/synthetic/source");
+        expect(error.stderr).toContain("[REDACTED_CONTENT");
+        expect(error.stderr).not.toContain(content);
+      }
+    }
+
+    const secretCalls: NativeCall[] = [];
+    const secretBearing: ItotoriCliDependencies = {
+      ...cliDependencies(secretCalls, {
+        status: 1,
+        stdout: "",
+        stderr: `kaifuu.auth.failed: api_key=${secret}; status=1`,
+      }),
+      nativeCli: {
+        env: { OPENROUTER_API_KEY: secret },
+        runProcess(_command, _args) {
+          return {
+            status: 1,
+            stdout: "",
+            stderr: `kaifuu.auth.failed: api_key=${secret}; status=1`,
+          };
+        },
+      },
+    };
+    try {
+      await runItotoriCliCommand(["extract", "--project", projectPath], secretBearing);
+      throw new Error("Expected secret-bearing native failure.");
+    } catch (error: unknown) {
+      expect(error).toBeInstanceOf(EngineProjectNativeCommandError);
+      if (error instanceof EngineProjectNativeCommandError) {
+        expect(error.stderr).toContain("kaifuu.auth.failed");
+        expect(error.stderr).toContain("status=1");
+        expect(error.stderr).not.toContain(secret);
+      }
+    }
+  });
+
   it("discovers a hypothetical adapter declaration with no new command flag or branch", () => {
     const directory = temporaryDirectory();
     const adapterDirectory = join(directory, "adapters");

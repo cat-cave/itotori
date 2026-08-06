@@ -222,3 +222,41 @@ fn operator_terminal_redaction_does_not_relax_shared_report_redaction() {
         format!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]")
     );
 }
+
+#[test]
+fn whole_channel_guard_fails_on_deliberate_channel_hash_and_passes_clean() {
+    let banned = "[REDACTED_CONTENT kind=diagnostic byte_len=73 sha256=5becaa6400000000000000000000000000000000000000000000000000000000]";
+    assert!(
+        is_whole_channel_content_redaction(banned),
+        "guard must recognise whole-channel content hashing"
+    );
+    let err = assert_not_whole_channel_content_redaction(banned)
+        .expect_err("guard must fail on a reintroduced whole-channel redaction");
+    assert!(
+        err.contains("whole-channel content redaction is forbidden"),
+        "unexpected guard message: {err}"
+    );
+
+    let clean = "kaifuu.softpal.extract.game_root_required: --game-root <PATH> required";
+    assert!(!is_whole_channel_content_redaction(clean));
+    assert_not_whole_channel_content_redaction(clean).expect("clean diagnostic must pass");
+    assert_eq!(redact_diagnostic_for_operator(clean), clean);
+
+    // Span redaction keeps surrounding context — not whole-channel.
+    let span = "kaifuu.decode.failed: source=PRIVATE-CONTENT-SPAN; offset=42";
+    let redacted = redact_diagnostic_for_operator(span);
+    assert!(!is_whole_channel_content_redaction(&redacted));
+    assert!(redacted.contains("offset=42"));
+    assert!(redacted.contains("kind=source"));
+    assert_not_whole_channel_content_redaction(&redacted).expect("span summary must pass");
+}
+
+#[test]
+fn report_redaction_keeps_prose_slash_separators_in_remediation() {
+    // Softpal operator remediations use "A / B" as a prose separator. Bare "/"
+    // must not be treated as an absolute path under report redaction.
+    let remediation =
+        "run detect against a Softpal title (Pal.dll / PAC+SCRIPT.SRC/TEXT.DAT / loose script magics) first";
+    assert_eq!(redact_for_log_or_report(remediation), remediation);
+    assert_eq!(redact_diagnostic_for_operator(remediation), remediation);
+}
