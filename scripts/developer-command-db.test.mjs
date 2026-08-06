@@ -29,6 +29,7 @@ function copyLifecycle(fixture) {
   for (const file of [
     "itotori-db-lifecycle.mjs",
     "itotori-db-compose-env.mjs",
+    "itotori-db-host-port.mjs",
     "itotori-db-wait.mjs",
   ]) {
     copyFileSync(path.join("scripts", file), path.join(scripts, file));

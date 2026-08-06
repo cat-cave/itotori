@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -120,9 +120,20 @@ export function resolveDatabaseUrl(env = process.env) {
 /**
  * Worktree-declared DATABASE_URL. Never reads ambient DATABASE_URL — that is
  * the ambient-state bug (a port whose container is gone).
+ *
+ * Port resolution order:
+ *   1. explicit ITOTORI_DB_HOST_PORT in env (allocator / operator override)
+ *   2. ITOTORI_DB_HOST_PORT from this worktree's compose env file when the
+ *      file's ITOTORI_DB_WORKTREE_ROOT matches (claimed preferred+N after a
+ *      collision probe on last successful `db-up`)
+ *   3. deriveHostPort(worktree) — preferred deterministic port when free
  */
 export function resolveWorktreeDatabaseUrl(env = process.env) {
-  const port = env.ITOTORI_DB_HOST_PORT || String(deriveHostPort(resolveWorktreeRoot(env), env));
+  const root = resolveWorktreeRoot(env);
+  const port =
+    env.ITOTORI_DB_HOST_PORT ||
+    claimedHostPortForRoot(root, env) ||
+    String(deriveHostPort(root, env));
   const user = env.ITOTORI_DB_USER || "itotori";
   const password = env.ITOTORI_DB_PASSWORD || "itotori";
   const name = env.ITOTORI_DB_NAME || "itotori";
@@ -133,15 +144,70 @@ export function resolveComposeEnvPath(env = process.env) {
   return env.ITOTORI_DB_COMPOSE_ENV_PATH || defaultComposeEnvPath;
 }
 
+/**
+ * Read the claimed host port from compose.env only when that file belongs to
+ * `root`. A foreign or stale compose env must not redirect another worktree.
+ * @param {string} root
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {string | undefined}
+ */
+export function claimedHostPortForRoot(root, env = process.env) {
+  const values = readComposeEnvFile(resolveComposeEnvPath(env));
+  if (!values?.ITOTORI_DB_HOST_PORT) return undefined;
+  const fileRoot = values.ITOTORI_DB_WORKTREE_ROOT;
+  if (!fileRoot) return undefined;
+  if (realRoot(fileRoot) !== realRoot(root)) return undefined;
+  return values.ITOTORI_DB_HOST_PORT;
+}
+
+/**
+ * Read ITOTORI_DB_HOST_PORT from the worktree compose env file, if present.
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {string | undefined}
+ */
+export function readDeclaredHostPort(env = process.env) {
+  return claimedHostPortForRoot(resolveWorktreeRoot(env), env);
+}
+
+/**
+ * Parse a compose env file produced by renderComposeEnvFile.
+ * @param {string} filePath
+ * @returns {Record<string, string> | null}
+ */
+export function readComposeEnvFile(filePath) {
+  if (!existsSync(filePath)) return null;
+  /** @type {Record<string, string>} */
+  const values = {};
+  for (const rawLine of readFileSync(filePath, "utf8").split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+    const key = line.slice(0, eq);
+    const encoded = line.slice(eq + 1);
+    values[key] =
+      encoded.startsWith("'") && encoded.endsWith("'") && encoded.length >= 2
+        ? decodeComposeEnvFileValue(encoded)
+        : encoded;
+  }
+  return values;
+}
+
 // Map a canonical worktree root to a stable host port, mirroring the
 // CARGO_TARGET_DIR scheme in AGENTS.md (sha256 of the canonical root path).
 export function deriveHostPort(root, env = process.env) {
+  const { base, span } = portRange(env);
+  return base + (stableNumber(root) % span);
+}
+
+/** @returns {{ base: number, span: number }} */
+export function portRange(env = process.env) {
   const base = parsePort(
     env.ITOTORI_DB_HOST_PORT_BASE || String(defaultPortBase),
     "ITOTORI_DB_HOST_PORT_BASE",
   );
   const span = parseSpan(env.ITOTORI_DB_HOST_PORT_SPAN || String(defaultPortSpan), base);
-  return base + (stableNumber(root) % span);
+  return { base, span };
 }
 
 export function resolveWorktreeRoot(env = process.env) {
