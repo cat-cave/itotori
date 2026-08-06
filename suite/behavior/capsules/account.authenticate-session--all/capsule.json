@@ -1,0 +1,9 @@
+{
+  "schema": "itotori.behavior-proof-capsule.v1",
+  "cell": "cell::account.authenticate-session::all",
+  "behavior": "account.authenticate-session",
+  "subject": "all",
+  "lane": "public-ts",
+  "driver": "driver.ts",
+  "mutation": "mutation.mjs"
+}

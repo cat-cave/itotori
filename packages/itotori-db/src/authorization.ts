@@ -37,3 +37,7 @@ export {
   seedDefaultPermissionSets,
   bootstrapDefaultAccountPrincipal,
 } from "./authorization-bootstrap.js";
+export {
+  requirePermissionForAccount,
+  requireAuthMembersManageForAccount,
+} from "./authorization-account-permission.js";
