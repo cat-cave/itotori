@@ -6,7 +6,9 @@ import {
   permissionValues,
   requirePermission,
 } from "../authorization.js";
+import { requireAuthMembersManageForAccount } from "../authorization-account-permission.js";
 import type { ItotoriDatabase } from "../connection.js";
+
 import {
   authAccountMemberships,
   authAuditEventActionValues,
@@ -40,9 +42,12 @@ export class AuthMemberManagementRepositoryOperations {
     actor: AuthorizationActor,
     input: InviteMemberInput,
   ): Promise<MemberInvitationRecord> {
+    // Unscoped gate first so missing-permission denials surface before input access.
+    // @repository-permission-gate ItotoriAuthMemberManagementRepository.inviteMember authMembersManage
     await requirePermission(this.db, actor, permissionValues.authMembersManage);
-    const email = normalizeEmail(input.email);
     assertNonEmpty(input.accountId, "accountId");
+    await requireAuthMembersManageForAccount(this.db, actor, input.accountId);
+    const email = normalizeEmail(input.email);
     assertFuture(input.expiresAt, "expiresAt");
     const initialPermissionSetIds = uniqueStrings(input.initialPermissionSetIds ?? []);
     await this.support.requirePermissionSetsInAccount(
@@ -83,6 +88,8 @@ export class AuthMemberManagementRepositoryOperations {
     actor: AuthorizationActor,
     input: AcceptMemberInvitationInput,
   ): Promise<MemberRecord> {
+    // Unscoped gate first so missing-permission denials surface before resource lookup.
+    // @repository-permission-gate ItotoriAuthMemberManagementRepository.acceptInvitation authMembersManage
     await requirePermission(this.db, actor, permissionValues.authMembersManage);
     assertNonEmpty(input.invitationId, "invitationId");
     assertNonEmpty(input.displayName, "displayName");
@@ -94,6 +101,8 @@ export class AuthMemberManagementRepositoryOperations {
     const suppliedEmail = input.email === undefined ? undefined : normalizeEmail(input.email);
     return this.db.transaction(async (tx) => {
       const invitation = await this.support.claimOpenInvitation(tx, input.invitationId);
+      // Account-scope chokepoint: the invitation's account must match the actor's grants.
+      await requireAuthMembersManageForAccount(tx, actor, invitation.accountId);
       // Accept must be bound to the invited identity: the invited email is the
       // source of truth. A caller-supplied email that disagrees is rejected
       // rather than silently overriding the invitation address.
@@ -169,16 +178,23 @@ export class AuthMemberManagementRepositoryOperations {
   }
 
   async listMembers(actor: AuthorizationActor, accountId: string): Promise<MemberRecord[]> {
+    // Unscoped gate first so missing-permission denials surface before account lookup.
+    // @repository-permission-gate ItotoriAuthMemberManagementRepository.listMembers authMembersManage
     await requirePermission(this.db, actor, permissionValues.authMembersManage);
     assertNonEmpty(accountId, "accountId");
+    await requireAuthMembersManageForAccount(this.db, actor, accountId);
     return this.support.listMembersForAccount(this.db, accountId);
   }
 
   async removeMember(actor: AuthorizationActor, input: RemoveMemberInput): Promise<MemberRecord> {
+    // Unscoped gate first so missing-permission denials surface before resource lookup.
+    // @repository-permission-gate ItotoriAuthMemberManagementRepository.removeMember authMembersManage
     await requirePermission(this.db, actor, permissionValues.authMembersManage);
     assertNonEmpty(input.membershipId, "membershipId");
     return this.db.transaction(async (tx) => {
       const member = await this.support.requireMemberByMembershipId(tx, input.membershipId);
+      // Account-scope chokepoint: the membership's account must match the actor's grants.
+      await requireAuthMembersManageForAccount(tx, actor, member.accountId);
       const grants = await tx
         .select({ permissionSetId: authPrincipalPermissionSetGrants.permissionSetId })
         .from(authPrincipalPermissionSetGrants)

@@ -1,23 +1,15 @@
-import { and, eq, gt, inArray, isNull, sql } from "drizzle-orm";
-import {
-  AuthorizationError,
-  type AuthorizationActor,
-  type Permission,
-  permissionValues,
-  requirePermission,
-} from "../authorization.js";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
+import { requirePermissionForAccount } from "../authorization-account-permission.js";
 import type { ItotoriDatabase } from "../connection.js";
+
 import {
   authAccountBillingSeats,
   authAccountMemberships,
   authAccounts,
   authInvitations,
-  authPermissionSetPermissions,
-  authPermissionSets,
-  authPrincipalPermissionGrants,
   type AuthBillingPeriod,
 } from "../schema.js";
-import { ItotoriPrincipalRepository } from "./principal-repository.js";
 
 const defaultBillingPlan = {
   planId: "studio-team",
@@ -88,6 +80,10 @@ export class ItotoriAuthBillingSeatRepository {
     includedSeats: number;
     updatedAt: Date;
   }> {
+    // Unscoped gate first so source-gate scanning and missing-permission denials
+    // surface before account membership lookup.
+    // @repository-permission-gate ItotoriAuthBillingSeatRepository.loadSeatUsage authMembersManage
+    await requirePermission(this.db, actor, permissionValues.authMembersManage);
     await requirePermissionForAccount(
       this.db,
       actor,
@@ -159,90 +155,4 @@ function assertNonEmpty(value: string, field: string): void {
   if (value.length === 0) {
     throw new ItotoriAuthBillingSeatRepositoryError(`${field} is required`);
   }
-}
-
-async function requirePermissionForAccount(
-  db: ItotoriDatabase,
-  actor: AuthorizationActor,
-  permission: Permission,
-  accountId: string,
-): Promise<void> {
-  // Billing seat usage is always gated on auth.members.manage for the target account.
-  // @repository-permission-gate ItotoriAuthBillingSeatRepository.loadSeatUsage authMembersManage
-  await requirePermission(db, actor, permissionValues.authMembersManage);
-
-  const identity = await new ItotoriPrincipalRepository(db).loadActorIdentity(actor);
-  const targetAccount = identity.accounts.find((account) => account.accountId === accountId);
-  if (targetAccount === undefined || !(await isAccountActive(db, accountId))) {
-    throw new AuthorizationError(actor, permissionValues.authMembersManage);
-  }
-
-  if (
-    identity.principalId !== null &&
-    (await hasDirectPermission(db, identity.principalId, permissionValues.authMembersManage))
-  ) {
-    return;
-  }
-  if (
-    await permissionSetsIncludePermission(
-      db,
-      targetAccount.permissionSetIds,
-      permissionValues.authMembersManage,
-    )
-  ) {
-    return;
-  }
-  throw new AuthorizationError(actor, permissionValues.authMembersManage);
-}
-
-async function hasDirectPermission(
-  db: ItotoriDatabase,
-  principalId: string,
-  permission: Permission,
-): Promise<boolean> {
-  const rows = await db
-    .select({ permission: authPrincipalPermissionGrants.permission })
-    .from(authPrincipalPermissionGrants)
-    .where(
-      and(
-        eq(authPrincipalPermissionGrants.principalId, principalId),
-        eq(authPrincipalPermissionGrants.permission, permission),
-      ),
-    )
-    .limit(1);
-  return rows.length > 0;
-}
-
-async function isAccountActive(db: ItotoriDatabase, accountId: string): Promise<boolean> {
-  const rows = await db
-    .select({ accountId: authAccounts.accountId })
-    .from(authAccounts)
-    .where(and(eq(authAccounts.accountId, accountId), isNull(authAccounts.disabledAt)))
-    .limit(1);
-  return rows.length > 0;
-}
-
-async function permissionSetsIncludePermission(
-  db: ItotoriDatabase,
-  permissionSetIds: readonly string[],
-  permission: Permission,
-): Promise<boolean> {
-  if (permissionSetIds.length === 0) {
-    return false;
-  }
-  const rows = await db
-    .select({ permission: authPermissionSetPermissions.permission })
-    .from(authPermissionSets)
-    .innerJoin(
-      authPermissionSetPermissions,
-      eq(authPermissionSetPermissions.permissionSetId, authPermissionSets.permissionSetId),
-    )
-    .where(
-      and(
-        inArray(authPermissionSets.permissionSetId, [...permissionSetIds]),
-        eq(authPermissionSetPermissions.permission, permission),
-      ),
-    )
-    .limit(1);
-  return rows.length > 0;
 }
