@@ -101,6 +101,17 @@ test("explicit DATABASE_URL wins for resolveDatabaseUrl; worktree URL ignores am
   assert.equal(values.ITOTORI_DB_WORKTREE_ROOT, rootA);
 });
 
+test("worktree URL prefers an explicit ITOTORI_DB_HOST_PORT over the derived preferred port", () => {
+  // After a collision probe the lifecycle pins the claimed port via env /
+  // compose.env; resolve must surface that claimed port, not re-hash preferred.
+  const claimed = resolveWorktreeDatabaseUrl({
+    ITOTORI_DB_WORKTREE_ROOT: rootA,
+    ITOTORI_DB_HOST_PORT: "57999",
+  });
+  assert.equal(new URL(claimed).port, "57999");
+  assert.notEqual(new URL(claimed).port, String(deriveHostPort(rootA)));
+});
+
 test("distinct worktree roots derive distinct default DATABASE_URLs (no shared DB)", () => {
   const urlA = resolveDatabaseUrl({ ITOTORI_DB_WORKTREE_ROOT: rootA });
   const urlB = resolveDatabaseUrl({ ITOTORI_DB_WORKTREE_ROOT: rootB });
