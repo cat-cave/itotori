@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   NATIVE_CONTENT_REDACTED,
   NATIVE_SECRET_REDACTED,
+  assertNotWholeChannelContentRedaction,
+  isWholeChannelContentRedaction,
   nativeFailureDiagnostic,
   redactNativeDiagnostic,
   redactNativeError,
@@ -69,9 +71,7 @@ describe("native operator diagnostics", () => {
     const nativeSummary =
       "[REDACTED_CONTENT kind=sourceText byte_len=17 sha256=00000000000000000000000000000000]";
 
-    const unclosed = redactNativeDiagnostic(
-      `kaifuu.decode.failed: sourceText=\"${unclosedContent}`,
-    );
+    const unclosed = redactNativeDiagnostic(`kaifuu.decode.failed: sourceText="${unclosedContent}`);
     const relayed = redactNativeDiagnostic(
       `kaifuu.decode.failed: sourceText=${nativeSummary}; status=1`,
     );
@@ -279,5 +279,45 @@ describe("native operator diagnostics", () => {
     const diagnostic = nativeFailureDiagnostic({ error: undefined, stderr: code, stdout: "" });
 
     expect(diagnostic).toBe(code);
+  });
+
+  it("whole-channel guard fails on a deliberate channel hash and passes clean", () => {
+    const banned =
+      "[REDACTED_CONTENT kind=diagnostic byte_len=73 sha256=5becaa6400000000000000000000000000000000000000000000000000000000]";
+    expect(isWholeChannelContentRedaction(banned)).toBe(true);
+    expect(() => assertNotWholeChannelContentRedaction(banned)).toThrow(
+      /whole-channel content redaction is forbidden/,
+    );
+
+    const clean = "kaifuu.softpal.extract.game_root_required: --game-root <PATH> required";
+    expect(isWholeChannelContentRedaction(clean)).toBe(false);
+    expect(assertNotWholeChannelContentRedaction(clean)).toBe(clean);
+    expect(nativeFailureDiagnostic({ error: undefined, stderr: clean, stdout: "" })).toBe(clean);
+
+    // Span summary keeps surrounding context — not whole-channel.
+    const spanDiagnostic = nativeFailureDiagnostic({
+      error: undefined,
+      stderr: "kaifuu.decode.failed: source=PRIVATE-CONTENT-SPAN; offset=42",
+      stdout: "",
+    });
+    expect(isWholeChannelContentRedaction(spanDiagnostic)).toBe(false);
+    expect(spanDiagnostic).toContain("offset=42");
+    expect(spanDiagnostic).toContain(NATIVE_CONTENT_REDACTED);
+    expect(assertNotWholeChannelContentRedaction(spanDiagnostic)).toBe(spanDiagnostic);
+  });
+
+  it("chokepoint refuses to introduce whole-channel content hashing", () => {
+    // Simulates the banned intermediate behaviour: a redaction helper that
+    // replaces the entire channel with kind=diagnostic. The chokepoint must
+    // not emit that form for ordinary diagnostic text.
+    const ordinary = "softpal extract failed: no SCRIPT.SRC/TEXT.DAT surface under game root";
+    const wholeChannel =
+      "[REDACTED_CONTENT kind=diagnostic byte_len=73 sha256=5becaa6400000000000000000000000000000000000000000000000000000000]";
+    expect(isWholeChannelContentRedaction(wholeChannel)).toBe(true);
+    expect(isWholeChannelContentRedaction(ordinary)).toBe(false);
+    // nativeFailureDiagnostic span-redacts only; ordinary text passes unchanged.
+    expect(nativeFailureDiagnostic({ error: undefined, stderr: ordinary, stdout: "" })).toBe(
+      ordinary,
+    );
   });
 });

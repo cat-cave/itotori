@@ -11,6 +11,15 @@ import { LIVE_PROVIDER_SECRET_VARS } from "../env/live-provider-secret-vars.js";
 export const NATIVE_CONTENT_REDACTED = "[REDACTED_CONTENT";
 export const NATIVE_SECRET_REDACTED = "[REDACTED_SECRET]";
 
+/**
+ * Whole-channel content redaction markers that hide an entire native diagnostic
+ * stream. Span summaries keep surrounding message text; these forms are the
+ * entire body. The chokepoint rejects them so a new call site cannot reintroduce
+ * the intermediate "hash the whole stderr" behaviour.
+ */
+const WHOLE_CHANNEL_CONTENT_REDACTION =
+  /^\[REDACTED_CONTENT\s+kind=(?:diagnostic|nativestderr|nativestdout|nativeerror|native-[\w-]+)\b[^\]]*\]\s*$/u;
+
 type NativeDiagnosticResult = {
   error?: Error | undefined;
   stdout: string;
@@ -60,10 +69,40 @@ export function redactNativeDiagnostic(
 }
 
 /**
- * Choose the native failure detail without hiding an entire output channel.
+ * True when `text` is only a whole-channel content-redaction marker (no message
+ * text remains). Limit: span summaries that keep surrounding context pass;
+ * secret-only full masks are not content whole-channel redaction.
+ */
+export function isWholeChannelContentRedaction(text: string): boolean {
+  return WHOLE_CHANNEL_CONTENT_REDACTION.test(text.trim());
+}
+
+/**
+ * Guard used by the native-diagnostic chokepoint and by tests. Fails when a
+ * diagnostic body is only a whole-channel content hash — the failure mode that
+ * replaced a 73-byte softpal error with `kind=diagnostic`.
+ */
+export function assertNotWholeChannelContentRedaction(diagnostic: string): string {
+  if (isWholeChannelContentRedaction(diagnostic)) {
+    throw new Error(
+      "native diagnostic whole-channel content redaction is forbidden: " +
+        "pass the channel through and redact only identified content spans " +
+        `(got ${diagnostic})`,
+    );
+  }
+  return diagnostic;
+}
+
+/**
+ * THE operator-facing native failure chokepoint. Every native spawn seam
+ * (extract / structure-export / engine-project / patch / play / corpus) must
+ * route failure text through here so a new call site inherits span-only
+ * redaction rather than inventing whole-channel hashing.
+ *
  * Every failure channel is diagnostic text by default; content and secrets are
  * reduced only when the span itself identifies them. Mixed output identifies
- * each retained channel for the operator.
+ * each retained channel for the operator. The whole-channel guard fails if
+ * redaction would leave only a content-hash marker.
  */
 export function nativeFailureDiagnostic(
   result: NativeDiagnosticResult,
@@ -80,17 +119,32 @@ export function nativeFailureDiagnostic(
   if (channels.length === 0) return "native tool produced no diagnostic output";
   if (channels.length === 1) {
     const channel = channels[0]!;
-    return redactNativeDiagnostic(channel.value, env);
+    return presentNativeChannelDiagnostic(channel.value, env);
   }
   return channels
-    .map(({ label, value }) => `${label}: ${redactNativeDiagnostic(value, env)}`)
+    .map(({ label, value }) => `${label}: ${presentNativeChannelDiagnostic(value, env)}`)
     .join("\n");
 }
 
 /** Convert a caught native failure into display-safe text without retaining a raw cause. */
 export function redactNativeError(error: unknown, env: NodeJS.ProcessEnv = process.env): string {
   const message = error instanceof Error ? error.message : String(error);
-  return redactNativeDiagnostic(message, env);
+  return presentNativeChannelDiagnostic(message, env);
+}
+
+/**
+ * Present one native channel: span-redact content/secrets, then refuse a
+ * whole-channel-only content marker (pass the original channel through instead).
+ */
+function presentNativeChannelDiagnostic(channel: string, env: NodeJS.ProcessEnv): string {
+  const redacted = redactNativeDiagnostic(channel, env);
+  if (isWholeChannelContentRedaction(redacted) && !isWholeChannelContentRedaction(channel)) {
+    // Defensive: span redaction must never collapse a channel to a sole hash.
+    // Prefer the original channel (secrets already impossible here — a pure
+    // content marker has no secret form) over operator-blinding silence.
+    return assertNotWholeChannelContentRedaction(channel);
+  }
+  return assertNotWholeChannelContentRedaction(redacted);
 }
 
 function redactSecrets(diagnostic: string, env: NodeJS.ProcessEnv): string {
@@ -153,7 +207,7 @@ function redactRawKeyToken(token: string): string {
 }
 
 function trimTokenPunctuation(token: string): string {
-  return token.replace(/^["'`,;:.!?()\[\]{}]+|["'`,;:.!?()\[\]{}]+$/gu, "");
+  return token.replace(/^["'`,;:.!?()[\]{}]+|["'`,;:.!?()[\]{}]+$/gu, "");
 }
 
 function looksLikeRawKeyMaterial(value: string): boolean {

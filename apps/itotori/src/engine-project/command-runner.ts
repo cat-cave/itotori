@@ -4,6 +4,7 @@ import {
   type NativeCliName,
   type NativeCliRunner,
 } from "../native-bin/cli-bin-resolver.js";
+import { nativeFailureDiagnostic } from "../native-bin/native-diagnostics.js";
 import {
   describeEngineProjectAdapter,
   loadEngineProjectAdapterCatalog,
@@ -177,11 +178,17 @@ function invokeNative(
     nativeCli === undefined ? {} : nativeCli,
   );
   if (process.status !== 0) {
+    // Chokepoint: every engine-project native failure inherits span-only
+    // redaction and the whole-channel guard. Do not format stderr ad hoc.
+    const diagnostic = nativeFailureDiagnostic(
+      { error: undefined, stdout: process.stdout, stderr: process.stderr },
+      nativeCli?.env,
+    );
     throw new EngineProjectNativeCommandError({
       command,
       engine: project.engine,
       status: process.status,
-      stderr: process.stderr,
+      stderr: diagnostic,
     });
   }
   return { status: process.status };

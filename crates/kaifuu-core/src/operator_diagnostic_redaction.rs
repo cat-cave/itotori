@@ -8,10 +8,21 @@ const CONTENT_FIELDS: &str = concat!(
 const COMMON_SECRET_PREFIXES: &str =
     "sk- ghp_ gho_ ghu_ ghs_ ghr_ github_pat_ xoxa- xoxb- xoxp- xoxr- xoxs-";
 const SAFE_CONTEXT_FIELDS: &str = "actual byteLen byte_len code column end error expected index kind len length line offset partial path scene start status unit";
-/// Redact private diagnostic spans while preserving useful operator context.
+/// THE operator-facing native diagnostic chokepoint. CLI `main` and every
+/// terminal error path must route through here so a new call site inherits
+/// span-only redaction rather than inventing whole-channel hashing.
+///
+/// Redacts private diagnostic spans while preserving useful operator context.
+/// If redaction would collapse the body to a sole content-hash marker, the
+/// original text is restored (secrets are still span-masked first).
 pub fn redact_diagnostic_for_operator(text: &str) -> String {
     let without_secrets = redact_operator_secret_spans(text);
-    redact_terminal_path_payload(&redact_operator_content_spans(&without_secrets))
+    let redacted = redact_terminal_path_payload(&redact_operator_content_spans(&without_secrets));
+    if is_whole_channel_content_redaction(&redacted) && !is_whole_channel_content_redaction(text) {
+        // Defensive: never introduce whole-channel content hashing.
+        return without_secrets;
+    }
+    redacted
 }
 
 fn redact_terminal_path_payload(text: &str) -> String {
