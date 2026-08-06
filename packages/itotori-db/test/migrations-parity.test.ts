@@ -6,6 +6,11 @@ import { fileURLToPath } from "node:url";
 import { getTableName } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
+import {
+  LEGACY_ORDINAL_PATTERN,
+  STAMP_ORDINAL_PATTERN,
+  parseMigrationFilename,
+} from "../src/migration-identity.js";
 import { migrations } from "../src/migrations.js";
 import { ItotoriProjectRunRepository } from "../src/repositories/project-run-repository.js";
 import {
@@ -20,12 +25,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const migrationsDir = join(here, "..", "migrations");
 
 describe("migrations registration parity", () => {
-  it("keeps migration registration and split public facades available", () => {
+  it("discovers every on-disk SQL file in lexicographic apply order", () => {
     const onDisk = readdirSync(migrationsDir)
       .filter((name) => name.endsWith(".sql"))
       .sort();
-    const registered = migrations.map((m) => m.file).sort();
-    expect(onDisk).toEqual(registered);
+    const registered = migrations.map((m) => m.file);
+    expect(registered).toEqual(onDisk);
     expect([
       getTableName(catalogWorks),
       getTableName(projectRuns),
@@ -44,27 +49,39 @@ describe("migrations registration parity", () => {
     );
   });
 
-  it("every entry in migrations.ts points at a file that exists", () => {
-    const onDisk = new Set(readdirSync(migrationsDir));
-    const missing = migrations.filter((m) => !onDisk.has(m.file));
-    expect(missing).toEqual([]);
-  });
-
   it("every entry's id matches the filename without .sql", () => {
     const mismatched = migrations.filter((m) => `${m.id}.sql` !== m.file);
     expect(mismatched).toEqual([]);
   });
 
-  it("ids are strictly increasing by numeric prefix", () => {
-    const numericPrefixes = migrations.map((m) => {
-      const match = /^(\d{4})_/.exec(m.id);
-      expect(match, `migration id ${m.id} must start with NNNN_`).not.toBeNull();
-      return Number.parseInt(match![1]!, 10);
-    });
-    for (let i = 1; i < numericPrefixes.length; i++) {
+  it("every filename parses as legacy sequential or stamp ordinal", () => {
+    for (const migration of migrations) {
+      const parsed = parseMigrationFilename(migration.file);
+      expect(parsed, `migration ${migration.file} must parse`).not.toBeNull();
+      expect(parsed!.ordinal).toBe(migration.ordinal);
+      const ok =
+        LEGACY_ORDINAL_PATTERN.test(migration.ordinal) ||
+        STAMP_ORDINAL_PATTERN.test(migration.ordinal);
+      expect(ok, `ordinal ${migration.ordinal} must be legacy NNNN or stamp`).toBe(true);
+    }
+  });
+
+  it("ordinal prefixes are unique (exactly one file per ordinal)", () => {
+    const byOrdinal = new Map<string, string[]>();
+    for (const migration of migrations) {
+      const bucket = byOrdinal.get(migration.ordinal) ?? [];
+      bucket.push(migration.file);
+      byOrdinal.set(migration.ordinal, bucket);
+    }
+    const duplicates = [...byOrdinal.entries()].filter(([, files]) => files.length > 1);
+    expect(duplicates).toEqual([]);
+  });
+
+  it("apply order is strictly lexicographic on migration id", () => {
+    for (let i = 1; i < migrations.length; i++) {
       expect(
-        numericPrefixes[i]! > numericPrefixes[i - 1]!,
-        `migration ${migrations[i]!.id} prefix must be greater than ${migrations[i - 1]!.id}`,
+        migrations[i]!.id > migrations[i - 1]!.id,
+        `migration ${migrations[i]!.id} must sort after ${migrations[i - 1]!.id}`,
       ).toBe(true);
     }
   });

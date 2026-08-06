@@ -46,19 +46,17 @@ export function verifyPermissionConstraintDrift(options = {}) {
   );
 }
 
-function permissionVerifierPaths({ authorizationPath, migrationsDir, migrationsSourcePath }) {
+function permissionVerifierPaths({ authorizationPath, migrationsDir }) {
   return {
     authorizationPath:
       authorizationPath ??
       path.join(packageRoot, "src/authorization-permissions-and-local-user.ts"),
     migrationsDir: migrationsDir ?? path.join(packageRoot, "migrations"),
-    migrationsSourcePath:
-      migrationsSourcePath ?? path.join(packageRoot, "src/migrations-registry.ts"),
   };
 }
 
 function latestMigrationPermissionConstraint(paths) {
-  const migrations = registeredMigrationFiles(paths.migrationsSourcePath, relativePath);
+  const migrations = registeredMigrationFiles(paths.migrationsDir, relativePath);
   let latest;
   for (const file of migrations) {
     const sql = readFileSync(path.join(paths.migrationsDir, file), "utf8");

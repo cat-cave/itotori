@@ -1,5 +1,4 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
+import { readdirSync } from "node:fs";
 
 export function parsePermissionValues(source) {
   const body = requiredExportLiteralBody(source, "permissionValues", "{", "}");
@@ -70,40 +69,50 @@ export function parseAllPermissions(source, permissionValues) {
   return { keys, values };
 }
 
-export function registeredMigrationFiles(migrationsSourcePath, relativePath) {
-  const source = readFileSync(migrationsSourcePath, "utf8");
-  const entries = migrationRegistryEntries(source, migrationsSourcePath, relativePath);
-  if (entries.length === 0) {
+/**
+ * Discover migration SQL filenames from the migrations directory.
+ *
+ * Apply order and membership are filesystem-derived (lexicographic). Accepted
+ * shapes: legacy `NNNN_slug.sql` or stamp `YYYYMMDDHHmmssxxxx_slug.sql`.
+ */
+export function registeredMigrationFiles(migrationsDir, relativePath) {
+  let files;
+  try {
+    files = readdirSync(migrationsDir)
+      .filter((name) => name.endsWith(".sql"))
+      .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  } catch {
     throw new Error(
-      `permission constraint drift: migrations registry in ${relativePath(migrationsSourcePath)} contains no SQL files`,
+      `permission constraint drift: migrations directory missing: ${relativePath(migrationsDir)}`,
     );
   }
-
-  const files = entries.map((entry) => {
-    const file = migrationEntryFile(entry);
-    if (file === undefined) {
-      throw new Error(
-        `permission constraint drift: migrations registry in ${relativePath(migrationsSourcePath)} contains an entry without a string file property`,
-      );
-    }
-    return file;
-  });
   if (files.length === 0) {
     throw new Error(
-      `permission constraint drift: migrations registry in ${relativePath(migrationsSourcePath)} contains no SQL files`,
+      `permission constraint drift: no SQL migrations in ${relativePath(migrationsDir)}`,
     );
   }
 
-  const invalidFiles = files.filter((file) => !/^[0-9]{4}_.+\.sql$/u.test(file));
+  const filenamePattern = /^(?:\d{4}|\d{14}[0-9a-f]{4})_[a-z][a-z0-9_]*\.sql$/u;
+  const invalidFiles = files.filter((file) => !filenamePattern.test(file));
   if (invalidFiles.length > 0) {
     throw new Error(
-      `permission constraint drift: migrations registry contains invalid SQL filenames: ${invalidFiles.join(", ")}`,
+      `permission constraint drift: invalid SQL filenames: ${invalidFiles.join(", ")}`,
     );
   }
-  const duplicateFiles = duplicates(files);
-  if (duplicateFiles.length > 0) {
+
+  const byOrdinal = new Map();
+  for (const file of files) {
+    const ordinal = file.slice(0, file.indexOf("_"));
+    const bucket = byOrdinal.get(ordinal);
+    if (bucket === undefined) byOrdinal.set(ordinal, [file]);
+    else bucket.push(file);
+  }
+  const duplicateOrdinals = [...byOrdinal.entries()]
+    .filter(([, names]) => names.length > 1)
+    .map(([ordinal, names]) => `${ordinal} (${names.join(", ")})`);
+  if (duplicateOrdinals.length > 0) {
     throw new Error(
-      `permission constraint drift: migrations registry contains duplicate SQL files: ${duplicateFiles.join(", ")}`,
+      `permission constraint drift: duplicate migration ordinals: ${duplicateOrdinals.join("; ")}`,
     );
   }
   return files;
@@ -141,255 +150,6 @@ export function assertSameValues({ expected, actual, expectedLabel, actualLabel 
         .join("\n"),
     );
   }
-}
-
-function migrationRegistryEntries(source, migrationsSourcePath, relativePath) {
-  const body = requiredConstArrayBody(source, "migrations", migrationsSourcePath, relativePath);
-  if (!body.includes("...")) {
-    return migrationEntryBodies(body, migrationsSourcePath, relativePath);
-  }
-
-  const importedEntryLists = [
-    ...source.matchAll(
-      /import\s+\{\s*(\w+MigrationEntries)\s*\}\s+from\s+"(\.\/migration-entries-[\w-]+\.js)";/gu,
-    ),
-  ];
-  if (importedEntryLists.length === 0) {
-    return migrationEntryBodies(body, migrationsSourcePath, relativePath);
-  }
-  return importedEntryLists.flatMap(([, exportName, modulePath]) => {
-    const entryPath = path.join(
-      path.dirname(migrationsSourcePath),
-      modulePath.replace(/\.js$/u, ".ts"),
-    );
-    const entrySource = readFileSync(entryPath, "utf8");
-    return migrationEntryBodies(
-      requiredConstArrayBody(entrySource, exportName, entryPath, relativePath),
-      entryPath,
-      relativePath,
-    );
-  });
-}
-
-function requiredConstArrayBody(source, variableName, migrationsSourcePath, relativePath) {
-  const declarationPattern = new RegExp(
-    `\\bconst\\s+${escapeRegExp(variableName)}\\s*=\\s*\\[`,
-    "gu",
-  );
-  let match;
-  while ((match = declarationPattern.exec(source)) !== null) {
-    if (!isIgnoredJavaScriptPosition(source, match.index)) {
-      break;
-    }
-  }
-  if (match === null) {
-    throw new Error(
-      `permission constraint drift: missing migrations registry in ${relativePath(migrationsSourcePath)}`,
-    );
-  }
-
-  const bodyStart = match.index + match[0].length;
-  const closeIndex = findMatchingDelimiter(source, bodyStart - 1, "[", "]");
-  if (closeIndex === -1) {
-    throw new Error(
-      `permission constraint drift: migrations registry in ${relativePath(migrationsSourcePath)} is not closed`,
-    );
-  }
-  if (!/^\s*as\s+const\s*;/u.test(source.slice(closeIndex + 1))) {
-    throw new Error(
-      `permission constraint drift: migrations registry in ${relativePath(migrationsSourcePath)} must be a const assertion`,
-    );
-  }
-  return source.slice(bodyStart, closeIndex);
-}
-
-function migrationEntryBodies(body, migrationsSourcePath, relativePath) {
-  const entries = [];
-  let index = 0;
-  while (index < body.length) {
-    index = skipWhitespaceAndComments(body, index);
-    if (index >= body.length) {
-      break;
-    }
-    if (body[index] === ",") {
-      index += 1;
-      continue;
-    }
-    if (body[index] !== "{") {
-      throw new Error(
-        `permission constraint drift: migrations registry in ${relativePath(migrationsSourcePath)} must contain only object entries`,
-      );
-    }
-    const closeIndex = findMatchingDelimiter(body, index, "{", "}");
-    if (closeIndex === -1) {
-      throw new Error(
-        `permission constraint drift: migrations registry in ${relativePath(migrationsSourcePath)} contains an unclosed object entry`,
-      );
-    }
-    entries.push(body.slice(index + 1, closeIndex));
-    index = closeIndex + 1;
-  }
-  return entries;
-}
-
-function migrationEntryFile(entry) {
-  for (const property of splitTopLevel(entry, ",")) {
-    const source = stripJavaScriptComments(property).trim();
-    const match = /^(?:file|"file"|'file')\s*:\s*(["'])([^"'\\]+\.sql)\1\s*$/u.exec(source);
-    if (match?.[2] !== undefined) {
-      return match[2];
-    }
-  }
-  return undefined;
-}
-
-function isIgnoredJavaScriptPosition(source, position) {
-  let index = 0;
-  while (index < position) {
-    const nextIndex = skipIgnoredJavaScript(source, index);
-    if (nextIndex !== index) {
-      if (nextIndex > position) {
-        return true;
-      }
-      index = nextIndex;
-    } else {
-      index += 1;
-    }
-  }
-  return false;
-}
-
-function splitTopLevel(source, separator) {
-  const parts = [];
-  let depth = 0;
-  let start = 0;
-  let index = 0;
-  while (index < source.length) {
-    const nextIndex = skipIgnoredJavaScript(source, index);
-    if (nextIndex !== index) {
-      index = nextIndex;
-      continue;
-    }
-    const char = source[index];
-    if (char === "{" || char === "[" || char === "(") {
-      depth += 1;
-    } else if (char === "}" || char === "]" || char === ")") {
-      depth -= 1;
-    } else if (char === separator && depth === 0) {
-      parts.push(source.slice(start, index));
-      start = index + 1;
-    }
-    index += 1;
-  }
-  parts.push(source.slice(start));
-  return parts;
-}
-
-function findMatchingDelimiter(source, openIndex, open, close) {
-  let depth = 0;
-  let index = openIndex;
-  while (index < source.length) {
-    const nextIndex = skipIgnoredJavaScript(source, index);
-    if (nextIndex !== index) {
-      index = nextIndex;
-      continue;
-    }
-    const char = source[index];
-    if (char === open) {
-      depth += 1;
-    } else if (char === close) {
-      depth -= 1;
-      if (depth === 0) {
-        return index;
-      }
-    }
-    index += 1;
-  }
-  return -1;
-}
-
-function skipWhitespaceAndComments(source, index) {
-  let current = index;
-  while (current < source.length) {
-    const char = source[current];
-    const next = source[current + 1];
-    if (/\s/u.test(char ?? "")) {
-      current += 1;
-    } else if (char === "/" && next === "/") {
-      current = skipLineComment(source, current);
-    } else if (char === "/" && next === "*") {
-      current = skipBlockComment(source, current);
-    } else {
-      break;
-    }
-  }
-  return current;
-}
-
-function skipIgnoredJavaScript(source, index) {
-  const char = source[index];
-  const next = source[index + 1];
-  if (char === "/" && next === "/") {
-    return skipLineComment(source, index);
-  }
-  if (char === "/" && next === "*") {
-    return skipBlockComment(source, index);
-  }
-  if (char === '"' || char === "'" || char === "`") {
-    return skipStringLiteral(source, index, char);
-  }
-  return index;
-}
-
-function skipLineComment(source, index) {
-  const lineEnd = source.indexOf("\n", index + 2);
-  return lineEnd === -1 ? source.length : lineEnd + 1;
-}
-
-function skipBlockComment(source, index) {
-  const commentEnd = source.indexOf("*/", index + 2);
-  return commentEnd === -1 ? source.length : commentEnd + 2;
-}
-
-function skipStringLiteral(source, index, quote) {
-  let current = index + 1;
-  while (current < source.length) {
-    const char = source[current];
-    if (char === "\\") {
-      current += 2;
-    } else if (char === quote) {
-      return current + 1;
-    } else {
-      current += 1;
-    }
-  }
-  return source.length;
-}
-
-function stripJavaScriptComments(source) {
-  let stripped = "";
-  let index = 0;
-  while (index < source.length) {
-    const char = source[index];
-    const next = source[index + 1];
-    if (char === "/" && next === "/") {
-      const commentEnd = skipLineComment(source, index);
-      stripped += " ".repeat(commentEnd - index);
-      index = commentEnd;
-    } else if (char === "/" && next === "*") {
-      const commentEnd = skipBlockComment(source, index);
-      stripped += " ".repeat(commentEnd - index);
-      index = commentEnd;
-    } else if (char === '"' || char === "'" || char === "`") {
-      const literalEnd = skipStringLiteral(source, index, char);
-      stripped += source.slice(index, literalEnd);
-      index = literalEnd;
-    } else {
-      stripped += char;
-      index += 1;
-    }
-  }
-  return stripped;
 }
 
 function requiredExportLiteralBody(source, variableName, open, close) {
